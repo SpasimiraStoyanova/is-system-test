@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Check Minuses</title>
+</head>
+<body>
+    <h2>╨Я╤А╨╛╨▓╨╡╤А╨║╨░ ╨╖╨░ ╨╝╨╕╨╜╤Г╤Б╨╕ (╨б╨░╨╝╨╛ ╨╖╨░ ╤З╨╡╤В╨╡╨╜╨╡)</h2>
+    <p>╨в╨╛╨╖╨╕ ╨╕╨╜╤Б╤В╤А╤Г╨╝╨╡╨╜╤В ╤Б╨║╨░╨╜╨╕╤А╨░ ╨▓╤Б╨╕╤З╨║╨╕ ╨╝╨░╤А╤И╤А╤Г╤В╨╕ ╨╕ ╨╛╤В╤З╨╡╤В╨╕, ╨╖╨░ ╨┤╨░ ╨╜╨░╨╝╨╡╤А╨╕ ╨┤╨╡╤В╨░╨╣╨╗╨╕, ╨║╨╛╨╕╤В╨╛ ╨╕╨╝╨░╤В ╨▓╨╕╤А╤В╤Г╨░╨╗╨╜╨╕ "╨┤╤Г╨┐╨║╨╕" (╨╝╨╕╨╜╤Г╤Б╨╕) ╨┐╨╛ ╨▓╨╡╤А╨╕╨│╨░╤В╨░.</p>
+    <button id="btnStart" onclick="startFix()" style="padding: 10px 20px; font-size: 16px; background: blue; color: white;">╨б╤В╨░╤А╤В╨╕╤А╨░╨╣ ╨┐╤А╨╛╨▓╨╡╤А╨║╨░╤В╨░</button>
+    <div id="log" style="margin-top: 20px; font-family: monospace;"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const logEl = document.getElementById('log');
+        function log(msg) {
+            logEl.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            console.log(msg);
+        }
+
+        async function startFix() {
+            const btn = document.getElementById('btnStart');
+            btn.disabled = true;
+            btn.innerText = '╨Ч╨░╤А╨╡╨╢╨┤╨░╨╜╨╡...';
+            log('╨Ч╨░╨┐╨╛╤З╨▓╨░ ╨╕╨╖╨▓╨╗╨╕╤З╨░╨╜╨╡ ╨╜╨░ ╨┤╨░╨╜╨╜╨╕...');
+            
+            const SUPABASE_URL = 'https://aoekbmhgbohsgpwqsizv.supabase.co';
+            const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFvZWtibWhnYm9oc2dwd3FzaXp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NDU1OTEsImV4cCI6MjEwMjUyMTU5MX0.ikCySPlyg0kPHt0sx34pndAWJAJ9tVCyWonBuG-lLQU';
+            const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+            async function fetchAll(table) {
+                let all = []; let step = 1000; let from = 0;
+                while(true) {
+                    let {data, error} = await client.from(table).select('*').range(from, from + step - 1);
+                    if (error) throw error;
+                    if (!data || data.length === 0) break;
+                    all = all.concat(data);
+                    if (data.length < step) break;
+                    from += step;
+                }
+                return all;
+            }
+
+            try {
+                const [otcheti, marshruti, bom, nom] = await Promise.all([
+                    fetchAll('otcheti'),
+                    fetchAll('marshruti'),
+                    fetchAll('bom'),
+                    fetchAll('╨Э╨╛╨╝╨╡╨╜╨║╨╗╨░╤В╤Г╤А╨░')
+                ]);
+                log(`╨Ш╨╖╤В╨╡╨│╨╗╨╡╨╜╨╕: ${otcheti.length} ╨╛╤В╤З╨╡╤В╨░, ${marshruti.length} ╨╝╨░╤А╤И╤А╤Г╤В╨░.`);
+
+                let routesByDetail = {};
+                marshruti.forEach(r => {
+                    let code = String(r['╨Ъ╨╛╨┤ ╨╜╨░ ╨┤╨╡╤В╨░╨╣╨╗╨░']).trim().toLowerCase();
+                    if(!routesByDetail[code]) routesByDetail[code] = [];
+                    routesByDetail[code].push(r);
+                });
+
+                let completedOps = {}; let scrappedOps = {}; let grossCompletedOps = {}; let manualOps = {};
+                
+                let sortedReports = otcheti.map(r => {
+                    r._ts = new Date(r['╨Т╤А╨╡╨╝╨╡ ╨б╤В╨░╤А╤В'] || r['╨Ф╨░╤В╨░']).getTime();
+                    return r;
+                }).sort((a,b) => a._ts - b._ts);
+                
+                sortedReports.forEach(r => {
+                    let code = String(r['ID ╨Ф╨╡╤В╨░╨╣╨╗']).trim().toLowerCase();
+                    let op = String(r['╨Ю╨┐╨╡╤А╨░╤Ж╨╕╤П']).trim().toLowerCase();
+                    let key = code + '_' + op;
+                    let qty = parseFloat(r['╨Ъ╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛']) || 0;
+                    
+                    if (r['╨б╤В╨░╤В╤Г╤Б'] === '╨С╤А╨░╨║') { scrappedOps[key] = (scrappedOps[key]||0) + qty; } 
+                    else if (r['╨б╤В╨░╤В╤Г╤Б'] === '╨Ю╤В╤З╨╡╤В╨╡╨╜╨╛') {
+                        completedOps[key] = (completedOps[key]||0) + qty;
+                        let isManual = (r['╨Ю╨┐╨╡╤А╨░╤В╨╛╤А'] === '╨б╨Ш╨б╨в╨Х╨Ь╨Р (╨а╤К╤З╨╜╨╛ ╨┤╨╛╨▒╨░╨▓╨╡╨╜)' || (r['╨Ю╨┐╨╡╤А╨░╤В╨╛╤А'] === '╨б╨Ш╨б╨в╨Х╨Ь╨Р (╨Ъ╨╛╤А╨╡╨║╤Ж╨╕╤П ╨╜╨░╨╗╨╕╤З╨╜╨╛╤Б╤В)' && qty > 0));
+                        if (isManual) {
+                            manualOps[key] = (manualOps[key]||0) + qty;
+                        } else if (r['╨Ю╨┐╨╡╤А╨░╤В╨╛╤А'] !== '╨б╨Ш╨б╨в╨Х╨Ь╨Р (╨Х╨║╤Б╨┐╨╡╨┤╨╕╤Ж╨╕╤П)' && !(r['╨Ю╨┐╨╡╤А╨░╤В╨╛╤А'] === '╨б╨Ш╨б╨в╨Х╨Ь╨Р (╨Ъ╨╛╤А╨╡╨║╤Ж╨╕╤П ╨╜╨░╨╗╨╕╤З╨╜╨╛╤Б╤В)' && qty < 0)) {
+                            grossCompletedOps[key] = (grossCompletedOps[key]||0) + qty;
+                        }
+                    }
+                });
+
+                let trueDoneOps = {}; let grossTrueDoneOps = {}; let shippedQty = {}; let grossStartedOps = {};
+                
+                Object.keys(routesByDetail).forEach(code => {
+                    let routes = routesByDetail[code];
+                    routes.sort((a, b) => (parseFloat(a['тДЦ ╨Ю╨┐╨╡╤А╨░╤Ж╨╕╤П']) || 0) - (parseFloat(b['тДЦ ╨Ю╨┐╨╡╤А╨░╤Ж╨╕╤П']) || 0));
+                    if(routes.length === 0) return;
+                    
+                    for (let i = routes.length - 2; i >= 0; i--) {
+                        let opKey = code + '_' + String(routes[i]['╨Ш╨╝╨╡ ╨╜╨░ ╨╛╨┐╨╡╤А╨░╤Ж╨╕╤П']).trim().toLowerCase();
+                        let nextOpKey = code + '_' + String(routes[i+1]['╨Ш╨╝╨╡ ╨╜╨░ ╨╛╨┐╨╡╤А╨░╤Ж╨╕╤П']).trim().toLowerCase();
+                        let requiredFromMe = (grossCompletedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
+                        grossCompletedOps[opKey] = Math.max(grossCompletedOps[opKey] || 0, requiredFromMe);
+                        let manualRequiredFromMe = manualOps[nextOpKey] || 0;
+                        manualOps[opKey] = (manualOps[opKey] || 0) + manualRequiredFromMe;
+                        let trueRequired = (completedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
+                        completedOps[opKey] = Math.max(completedOps[opKey] || 0, trueRequired);
+                    }
+                    
+                    let lastOpKey = code + '_' + String(routes[routes.length-1]['╨Ш╨╝╨╡ ╨╜╨░ ╨╛╨┐╨╡╤А╨░╤Ж╨╕╤П']).trim().toLowerCase();
+                    trueDoneOps[lastOpKey] = completedOps[lastOpKey] || 0;
+                    grossTrueDoneOps[lastOpKey] = grossCompletedOps[lastOpKey] || 0;
+                    
+                    for(let i = routes.length - 2; i >= 0; i--) {
+                        let opKey = code + '_' + String(routes[i]['╨Ш╨╝╨╡ ╨╜╨░ ╨╛╨┐╨╡╤А╨░╤Ж╨╕╤П']).trim().toLowerCase();
+                        let nextOpKey = code + '_' + String(routes[i+1]['╨Ш╨╝╨╡ ╨╜╨░ ╨╛╨┐╨╡╤А╨░╤Ж╨╕╤П']).trim().toLowerCase();
+                        let bucket = (grossCompletedOps[opKey] || 0) - (grossCompletedOps[nextOpKey] || 0) - (scrappedOps[nextOpKey] || 0);
+                        if (bucket < 0) bucket = 0;
+                        grossTrueDoneOps[opKey] = (grossTrueDoneOps[nextOpKey] || 0) + bucket;
+                        let trueBucket = (completedOps[opKey] || 0) - (completedOps[nextOpKey] || 0) - (scrappedOps[nextOpKey] || 0);
+                        if (trueBucket < 0) trueBucket = 0;
+                        trueDoneOps[opKey] = (trueDoneOps[nextOpKey] || 0) + trueBucket;
+                    }
+                    
+                    let firstOpKey = code + '_' + String(routes[0]['╨Ш╨╝╨╡ ╨╜╨░ ╨╛╨┐╨╡╤А╨░╤Ж╨╕╤П']).trim().toLowerCase();
+                    grossStartedOps[firstOpKey] = (grossCompletedOps[firstOpKey] || 0) + (scrappedOps[firstOpKey] || 0);
+                    
+                    shippedQty[code] = Math.max(0, (grossTrueDoneOps[lastOpKey] || 0) - (trueDoneOps[lastOpKey] || 0));
+                });
+
+                let totalShippedCache = {};
+                function getTotalShipped(item, visited = new Set()) {
+                    let lc = item.toLowerCase();
+                    if(totalShippedCache[lc] !== undefined) return totalShippedCache[lc];
+                    if(visited.has(lc)) return 0; visited.add(lc);
+                    let direct = shippedQty[lc] || 0; let indirect = 0;
+                    let parents = bom.filter(b => String(b['ID ╨Ъ╨╛╨╝╨┐╨╛╨╜╨╡╨╜╤В']).trim().toLowerCase() === lc);
+                    parents.forEach(p => {
+                        let parentCode = String(p['ID ╨а╨╛╨┤╨╕╤В╨╡╨╗']).trim().toLowerCase();
+                        if(parentCode !== lc) {
+                            let parentRoutes = routesByDetail[parentCode];
+                            let parentConsumed = 0;
+                            if (parentRoutes && parentRoutes.length > 0) {
+                                let firstOpKey = parentCode + '_' + String(parentRoutes[0]['╨Ш╨╝╨╡ ╨╜╨░ ╨╛╨┐╨╡╤А╨░╤Ж╨╕╤П']).trim().toLowerCase();
+                                parentConsumed = grossStartedOps[firstOpKey] || 0;
+                            } else {
+                                parentConsumed = getTotalShipped(parentCode, new Set(visited));
+                            }
+                            indirect += parentConsumed * (parseFloat(p['╨Ъ╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛'])||1);
+                        }
+                    });
+                    totalShippedCache[lc] = direct + indirect; return totalShippedCache[lc];
+                }
+
+                log('╨Ш╨╖╤З╨╕╤Б╨╗╤П╨▓╨░╨╜╨╡ ╨╜╨░ ╨┤╨╡╤Д╨╕╤Ж╨╕╤В╨╕╤В╨╡...');
+                
+                let inserts = [];
+                Object.keys(routesByDetail).forEach(code => {
+                    let routes = routesByDetail[code];
+                    if(routes.length === 0) return;
+                    let consumedByShipped = getTotalShipped(code);
+                    
+                    let lastRoute = routes[routes.length - 1];
+                    let opName = String(lastRoute['╨Ш╨╝╨╡ ╨╜╨░ ╨╛╨┐╨╡╤А╨░╤Ж╨╕╤П']).trim();
+                    let opKey = code + '_' + opName.toLowerCase();
+                    let myGrossDone = (grossTrueDoneOps[opKey] || 0) + (manualOps[opKey] || 0);
+                    
+                    if (myGrossDone < consumedByShipped) {
+                        let deficit = consumedByShipped - myGrossDone;
+                        inserts.push({
+                            "ID ╨Ф╨╡╤В╨░╨╣╨╗": String(lastRoute['╨Ъ╨╛╨┤ ╨╜╨░ ╨┤╨╡╤В╨░╨╣╨╗╨░']).trim(),
+                            "╨Ю╨┐╨╡╤А╨░╤Ж╨╕╤П": opName,
+                            "╨Ъ╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛": deficit
+                        });
+                        log(`╨Э╨░╨╝╨╡╤А╨╡╨╜ ╨┤╨╡╤Д╨╕╤Ж╨╕╤В ╨╖╨░ ${String(lastRoute['╨Ъ╨╛╨┤ ╨╜╨░ ╨┤╨╡╤В╨░╨╣╨╗╨░']).trim()}: ${deficit} ╨▒╤А.`);
+                    }
+                });
+
+                if (inserts.length === 0) {
+                    log('тЬЕ ╨Т╤Б╨╕╤З╨║╨╛ ╨╡ ╤В╨╛╤З╨╜╨╛, ╨╜╤П╨╝╨░ ╨╗╨╕╨┐╤Б╨▓╨░╤Й╨╕ ╨┐╨╛╨╗╤Г╤Д╨░╨▒╤А╨╕╨║╨░╤В╨╕.');
+                } else {
+                    log('тЭМ ╨Э╨░╨╝╨╡╤А╨╡╨╜╨╕ ╤Б╨░ ╨╗╨╕╨┐╤Б╨▓╨░╤Й╨╕ ╨┐╨╛╨╗╤Г╤Д╨░╨▒╤А╨╕╨║╨░╤В╨╕ (╨╝╨╕╨╜╤Г╤Б╨╕), ╨║╨╛╨╕╤В╨╛ ╨в╨а╨п╨С╨Т╨Р ╨┤╨░ ╤Б╨╡ ╨╕╨╖╤З╨╕╤Б╤В╤П╤В:');
+                }
+                
+                if (inserts.length > 0) {
+                    btn.insertAdjacentHTML('afterend', `
+                        <button id="btnFix" onclick="fixMinuses()" style="padding: 10px 20px; font-size: 16px; background: red; color: white; margin-left: 10px; border-radius: 5px; cursor: pointer; border: none; font-weight: bold;">тЪая╕П ╨Я╨Ю╨Я╨а╨Р╨Т╨Ш ╨Ш ╨Ш╨Ч╨з╨Ш╨б╨в╨Ш ╨Ь╨Ш╨Э╨г╨б╨Ш╨в╨Х ╨Т ╨С╨Р╨Ч╨Р╨в╨Р</button>
+                    `);
+                    window.insertsToFix = inserts;
+                }
+                
+                btn.innerText = '╨Я╤А╨╛╨▓╨╡╤А╨╕ ╨╛╤В╨╜╨╛╨▓╨╛';
+                btn.disabled = false;
+            } catch(err) {
+                log('╨У╤А╨╡╤И╨║╨░: ' + err.message);
+                btn.innerText = '╨Я╤А╨╛╨▓╨╡╤А╨╕ ╨╛╤В╨╜╨╛╨▓╨╛';
+                btn.disabled = false;
+            }
+        }
+
+        async function fixMinuses() {
+            if (!window.insertsToFix || window.insertsToFix.length === 0) return;
+            const btnFix = document.getElementById('btnFix');
+            btnFix.disabled = true;
+            btnFix.innerText = '╨Ч╨░╨┐╨╕╤Б╨▓╨░╨╜╨╡...';
+            
+            const SUPABASE_URL = 'https://aoekbmhgbohsgpwqsizv.supabase.co';
+            const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFvZWtibWhnYm9oc2dwd3FzaXp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NDU1OTEsImV4cCI6MjEwMjUyMTU5MX0.ikCySPlyg0kPHt0sx34pndAWJAJ9tVCyWonBuG-lLQU';
+            const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            
+            log('╨Ч╨░╨┐╨╛╤З╨▓╨░ ╨╖╨░╨┐╨╕╤Б ╨╜╨░ ' + window.insertsToFix.length + ' ╨╗╨╕╨┐╤Б╨▓╨░╤Й╨╕ ╨▒╤А╨╛╨╣╨║╨╕...');
+            let successCount = 0;
+            for (let i = 0; i < window.insertsToFix.length; i++) {
+                let ins = window.insertsToFix[i];
+                let payload = {
+                    "╨Ш╨╝╨╡ ╨╜╨░ ╨┤╨╡╤В╨░╨╣╨╗": ins["ID ╨Ф╨╡╤В╨░╨╣╨╗"],
+                    "ID ╨Ф╨╡╤В╨░╨╣╨╗": ins["ID ╨Ф╨╡╤В╨░╨╣╨╗"],
+                    "╨Ю╨┐╨╡╤А╨░╤В╨╛╤А": "╨б╨Ш╨б╨в╨Х╨Ь╨Р (╨Ъ╨╛╤А╨╡╨║╤Ж╨╕╤П ╨╜╨░╨╗╨╕╤З╨╜╨╛╤Б╤В)",
+                    "╨Ю╨┐╨╡╤А╨░╤Ж╨╕╤П": ins["╨Ю╨┐╨╡╤А╨░╤Ж╨╕╤П"],
+                    "╨Ъ╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛": ins["╨Ъ╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛"],
+                    "╨б╤В╨░╤В╤Г╤Б": "╨Ю╤В╤З╨╡╤В╨╡╨╜╨╛",
+                    "╨Т╤А╨╡╨╝╨╡ ╨б╤В╨░╤А╤В": new Date().toISOString(),
+                    "╨Т╤А╨╡╨╝╨╡ ╨Ъ╤А╨░╨╣": new Date().toISOString(),
+                    "╨Ф╨░╤В╨░": new Date().toISOString().split('T')[0],
+                    "ID ╨Я╨╗╨░╨╜": "╨Ъ╨Ю╨а╨Х╨Ъ╨ж╨Ш╨п",
+                    "╨Ь╨░╤И╨╕╨╜╨░": "╨б╨Ш╨б╨в╨Х╨Ь╨Р",
+                    "╨Ш╨╝╨╡╨╣╨╗": "system"
+                };
+                let {error} = await client.from('otcheti').insert([payload]);
+                if (error) {
+                    log('╨У╤А╨╡╤И╨║╨░ ╨┐╤А╨╕ ╨╖╨░╨┐╨╕╤Б ╨╖╨░ ' + ins["ID ╨Ф╨╡╤В╨░╨╣╨╗"] + ': ' + error.message);
+                } else {
+                    successCount++;
+                    log('╨г╤Б╨┐╨╡╤И╨╜╨╛ ╨╖╨░╨┐╨╕╤Б╨░╨╜╨╕ ' + ins["╨Ъ╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛"] + ' ╨▒╤А. ╨╖╨░ ' + ins["ID ╨Ф╨╡╤В╨░╨╣╨╗"]);
+                }
+            }
+            log('╨У╨╛╤В╨╛╨▓╨╛! ╨Ч╨░╨┐╨╕╤Б╨░╨╜╨╕ ' + successCount + ' ╨╛╤В ' + window.insertsToFix.length);
+            btnFix.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
+

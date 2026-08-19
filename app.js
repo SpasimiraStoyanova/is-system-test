@@ -1,0 +1,1191 @@
+const SUPABASE_URL = 'https://aoekbmhgbohsgpwqsizv.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFvZWtibWhnYm9oc2dwd3FzaXp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NDU1OTEsImV4cCI6MjEwMjUyMTU5MX0.ikCySPlyg0kPHt0sx34pndAWJAJ9tVCyWonBuG-lLQU';
+const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// --- GLOBAL STATE & CACHE ---
+let globalConnections = [];
+let domIdMap = {};
+let domIdCounter = 0;
+let renderedHtmlCache = {};
+
+let staticCache = {
+    isLoaded: false,
+    bomData: [],
+    routesData: [],
+    nomData: [],
+    nomMap: {},
+    routesByDetail: {},
+    bomChildrenMap: {}
+};
+
+window.onload = async function() {
+    if(new URLSearchParams(window.location.search).get('view') === 'machine') {
+        document.body.classList.add('machine-view');
+    }
+    
+    await initialFetch();
+    loadData();
+    setInterval(loadData, 15000); 
+};
+
+function getDomId(realId) {
+    if (!domIdMap[realId]) {
+        domIdCounter++;
+        domIdMap[realId] = 'node_' + domIdCounter;
+    }
+    return domIdMap[realId];
+}
+
+function toggleHarmony(idStr) {
+    const histEl = document.getElementById('hist_' + idStr);
+    const btnEl = document.getElementById('toggle_' + idStr);
+    if (histEl && btnEl) {
+        if (histEl.classList.contains('hidden-history')) {
+            histEl.classList.remove('hidden-history');
+            btnEl.innerText = '▶';
+            btnEl.style.color = '#60a5fa'; 
+            btnEl.style.background = 'rgba(59,130,246,0.15)';
+        } else {
+            histEl.classList.add('hidden-history');
+            btnEl.innerText = '◀';
+            btnEl.style.color = '';
+            btnEl.style.background = '';
+        }
+        setTimeout(() => drawArrows(), 50);
+    }
+}
+
+function toggleTooltip(event, nodeId) {
+    if (event) event.stopPropagation();
+    const el = document.getElementById('tooltip_' + nodeId);
+    if (el) {
+        const isHidden = el.style.display === 'none' || el.style.display === '';
+        document.querySelectorAll('.vsm-tooltip').forEach(t => t.style.display = 'none');
+        el.style.display = isHidden ? 'block' : 'none';
+    }
+}
+
+document.addEventListener('click', function() {
+    document.querySelectorAll('.vsm-tooltip').forEach(t => t.style.display = 'none');
+});
+
+async function fetchAll(table, orderCol) {
+    let allData = [];
+    let from = 0;
+    const step = 1000;
+    while(true) {
+        let query = client.from(table).select('*').range(from, from + step - 1);
+        if (orderCol) query = query.order(orderCol, {ascending: true});
+        let { data, error } = await query;
+        if (error || !data || data.length === 0) break;
+        allData = allData.concat(data);
+        if (data.length < step) break;
+        from += step;
+    }
+    return { data: allData };
+}
+
+// --- DATA FETCHING ---
+async function initialFetch() {
+    const loader = document.getElementById('loading');
+    if (loader) {
+        loader.style.display = 'flex';
+        const txt = loader.querySelector('div');
+        if(txt) txt.innerText = "Зареждане на справочни данни... ⚙️";
+    }
+    
+    try {
+        const [bomRes, routesRes, nomRes] = await Promise.all([
+            fetchAll('bom'),
+            fetchAll('marshruti'),
+            fetchAll('Номенклатура')
+        ]);
+
+        if (bomRes.error) throw bomRes.error;
+
+        staticCache.bomData = bomRes.data || [];
+        staticCache.routesData = routesRes.data || [];
+        staticCache.nomData = nomRes.data || [];
+
+        staticCache.nomData.forEach(n => {
+            if (n['ID Детайл']) staticCache.nomMap[String(n['ID Детайл']).trim().toLowerCase()] = n;
+        });
+
+        staticCache.routesData.forEach(r => {
+            let code = String(r['Код на детайла']).trim().toLowerCase();
+            if(!staticCache.routesByDetail[code]) staticCache.routesByDetail[code] = [];
+            staticCache.routesByDetail[code].push(r);
+        });
+
+        Object.keys(staticCache.routesByDetail).forEach(code => {
+            staticCache.routesByDetail[code].sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
+        });
+
+        let bomDataSorted = staticCache.bomData.sort((a, b) => String(a['ID Компонент']).localeCompare(String(b['ID Компонент'])));
+        bomDataSorted.forEach(b => {
+            let p = String(b['ID Родител']).trim().toLowerCase();
+            if(!staticCache.bomChildrenMap[p]) staticCache.bomChildrenMap[p] = [];
+            staticCache.bomChildrenMap[p].push(b);
+        });
+
+        staticCache.isLoaded = true;
+    } catch (err) {
+        document.getElementById('error-box').innerText = "Грешка при зареждане на справочници: " + err.message;
+    }
+}
+
+async function fetchDynamicData() {
+    let plansQuery = client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', 'Опакован']);
+    
+    const [plansRes, reportsRes, skladRes] = await Promise.all([
+        fetchAll('plan'), // I will just fetch all plans for now and filter in JS, or keep plansQuery
+        fetchAll('otcheti'),
+        fetchAll('sklad')
+    ]);
+
+    // Better: keep plan limited since it's filtered, but if plan can grow > 1000, we should fetchAll and filter
+    let activePlans = (plansRes.data || []).filter(p => ['Активен', 'Завършен', 'Опакован'].includes(p['Статус']));
+    let realReports = (reportsRes.data || []).filter(r => r['Оператор'] !== '💉 СИСТЕМА (Виртуална компенсация)');
+    return {
+        plansData: activePlans,
+        reportsData: realReports,
+        skladData: skladRes.data || []
+    };
+}
+
+// (already returned)
+
+// --- MAIN PROCESS ---
+async function loadData() {
+    if (!staticCache.isLoaded) return;
+    
+    try {
+        const dynamicData = await fetchDynamicData();
+        
+        if (dynamicData.plansData.length === 0) {
+            document.getElementById('loading').style.display = 'none';
+            return;
+        }
+
+        const { mergedNodes, connections, explicitPlanItems } = buildBOMTree(dynamicData.plansData, dynamicData.skladData);
+        const masterData = categorizeParts(mergedNodes, dynamicData.reportsData, explicitPlanItems, connections, dynamicData.plansData);
+
+        drawDashboard(JSON.stringify({ nodes: masterData, connections: connections }));
+
+        // Auto-complete logic for fully finished root plans
+        let plansToComplete = [];
+        let pMap = {}; connections.forEach(c => pMap[c.from] = c.to);
+
+        Object.values(masterData).forEach(nodeList => {
+            nodeList.forEach(node => {
+                if (!pMap[node.id]) { // Is root node
+                    let allOpsDone = node.operations && node.operations.length > 0 && node.operations.every(o => o.state === 'green' || o.completed >= node.planQty);
+                    if (allOpsDone && node.activePlanDbIds && node.activePlanDbIds.length > 0) {
+                        plansToComplete.push(...node.activePlanDbIds);
+                    }
+                }
+            });
+        });
+
+        if (plansToComplete.length > 0) {
+            client.from('plan').update({ 'Статус': 'Завършен' }).in('id', plansToComplete).then(res => {
+                if (!res.error && plansToComplete.length > 0) console.log("Auto-completed plans:", plansToComplete);
+            });
+        }
+
+    } catch (err) {
+        document.getElementById('error-box').innerText = "Грешка: " + err.message;
+        document.getElementById('loading').style.display = 'none';
+    }
+}
+
+function buildBOMTree(plansData, skladData) {
+    plansData.sort((a, b) => a.id - b.id);
+
+    let skladMap = {};
+    skladData.forEach(s => {
+        if (s['ID Детайл']) skladMap[String(s['ID Детайл']).trim().toLowerCase()] = parseFloat(s['Остатък']) || 0;
+    });
+
+    let planMap = {};
+    let explicitPlanItems = new Set(); 
+    let activeNodes = [];
+
+    plansData.forEach(p => { 
+        planMap[p.id] = p; 
+        
+        let originalPlanCode = String(p['Вътрешно име']).trim();
+        let actualBomName = originalPlanCode;
+        let displayName = originalPlanCode;
+        let targetQty = parseFloat(p['Целево количество']) || 0;
+
+        let translated = staticCache.nomData.find(n => String(n['Вътрешно име']).trim() === originalPlanCode);
+        if (translated && translated['ID Детайл']) {
+            actualBomName = String(translated['ID Детайл']).trim();
+            if (originalPlanCode.toUpperCase() === actualBomName.toUpperCase()) {
+                displayName = actualBomName;
+            } else {
+                displayName = `${originalPlanCode} - ${actualBomName}`; 
+            }
+        }
+
+        explicitPlanItems.add(`${p.id}___${actualBomName.toUpperCase()}`);
+
+        function traverseAndAdd(parentName, currentCode, requiredQty, isRootLevel) {
+            let currentCodeLower = currentCode.toLowerCase();
+            let nomEntry = staticCache.nomMap[currentCodeLower] || {};
+            let children = staticCache.bomChildrenMap[currentCodeLower] || [];
+            
+            let isRawMaterial = (children.length === 0) && (!staticCache.routesByDetail[currentCodeLower]);
+            if (isRawMaterial && !isRootLevel) return;
+
+            activeNodes.push({
+                plan_id: p.id,
+                code: currentCode,
+                display_name: isRootLevel ? displayName : currentCode, 
+                plan_qty: requiredQty,
+                parent_code: parentName,
+                ready_qty: skladMap[currentCodeLower] || 0,
+                drawing_url: nomEntry['Линк към чертеж'] || '',
+                part_type: nomEntry['Тип'] || ''
+            });
+
+            children.forEach(c => {
+                let childName = String(c['ID Компонент']).trim();
+                let multiplier = parseFloat(c['Количество']) || 1;
+                traverseAndAdd(currentCode, childName, requiredQty * multiplier, false);
+            });
+        }
+
+        traverseAndAdd('', actualBomName, targetQty, true);
+    });
+    
+    let mergedNodes = {};
+    let connections = [];
+
+    activeNodes.forEach(row => {
+        let pData = planMap[row.plan_id];
+        let pMonthStr = pData ? `${pData['Месец']} ${pData['Година']}` : `ПЛАН ${row.plan_id}`;
+        let codeStr = row.code ? String(row.code).trim() : "";
+        
+        let mergedId = pMonthStr + '___' + codeStr;
+
+        if (!mergedNodes[mergedId]) {
+            mergedNodes[mergedId] = {
+                id: mergedId,
+                planId: row.plan_id, 
+                planMonth: pMonthStr,
+                planDbIds: [],
+                activePlanDbIds: [],
+                code: codeStr,
+                displayName: row.display_name, 
+                planQty: 0, 
+                warehouseQty: row.ready_qty || 0,
+                globalState: 'gray',
+                operations: [],
+                drawingUrl: row.drawing_url,
+                partType: row.part_type ? String(row.part_type) : "",
+                bucket: ""
+            };
+        }
+
+        mergedNodes[mergedId].planQty += (parseFloat(row.plan_qty) || 0);
+        if (!mergedNodes[mergedId].planDbIds.includes(row.plan_id)) {
+            mergedNodes[mergedId].planDbIds.push(row.plan_id);
+        }
+        if (pData && pData['Статус'] === 'Активен' && !mergedNodes[mergedId].activePlanDbIds.includes(row.plan_id)) {
+            mergedNodes[mergedId].activePlanDbIds.push(row.plan_id);
+        }
+
+        if (row.parent_code) {
+            let parentCodeStr = String(row.parent_code).trim();
+            let parentMergedId = pMonthStr + '___' + parentCodeStr;
+            
+            if (!connections.find(c => c.from === mergedId && c.to === parentMergedId)) {
+                connections.push({ from: mergedId, to: parentMergedId });
+            }
+        }
+    });
+
+    return { mergedNodes, connections, explicitPlanItems };
+}
+
+function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connections, plansData) {
+    let planNameToId = {};
+    if (plansData) {
+        plansData.forEach(p => {
+            if (p['Вътрешно име']) planNameToId[String(p['Вътрешно име']).trim()] = String(p.id);
+            planNameToId[String(p.id)] = String(p.id);
+        });
+    }
+
+    let completedOps = {};
+    let opStatusMap = {}; 
+    let savedQty = {};
+    let manualOps = {};
+    
+    // Performance optimization: compute timestamps once before sorting (O(N) instead of O(N log N))
+    let sortedReports = reportsData.map(r => {
+        r._ts = new Date(r['Време Старт'] || r['Дата']).getTime();
+        return r;
+    }).sort((a, b) => a._ts - b._ts);
+
+    let scrappedOps = {};
+    let grossCompletedOps = {};
+
+    let allCombinedReports = sortedReports;
+    let packagedQty = {}; // [NEW] Track packaged items
+
+    allCombinedReports.forEach(r => {
+        let code = String(r['ID Детайл']).trim().toLowerCase();
+        let op = String(r['Операция']).trim().toLowerCase();
+        let key = code + '_' + String(r['Операция']).trim().toLowerCase();
+        let qty = parseFloat(r['Количество']) || 0;
+        
+        if (op.startsWith('опаковане - кашон') && r['Статус'] === 'Отчетено') {
+            let rawPId = String(r['ID План'] || '').trim();
+            let pId = planNameToId[rawPId] || rawPId;
+            let packKey = pId ? (code + '_' + pId) : code;
+            packagedQty[packKey] = (packagedQty[packKey] || 0) + qty;
+        }
+        
+        if (r['Статус'] === 'Брак') {
+            scrappedOps[key] = (scrappedOps[key] || 0) + qty;
+            let rawPId = String(r['ID План'] || '').trim();
+            let pId = planNameToId[rawPId] || rawPId;
+            if (pId) {
+                let planKey = key + '_' + pId;
+                scrappedOps[planKey] = (scrappedOps[planKey] || 0) + qty;
+            }
+        } 
+        else if (r['Статус'] === 'Отчетено') {
+            if (op === 'възстановен') {
+                savedQty[code] = (savedQty[code] || 0) + qty;
+            }
+            completedOps[key] = (completedOps[key] || 0) + qty;
+            
+            let isManual = (r['Оператор'] === 'СИСТЕМА (Ръчно добавен)' || r['Оператор'] === '💉 СИСТЕМА (Ръчно добавен)' || (r['Оператор'] === 'СИСТЕМА (Корекция наличност)' && qty > 0));
+            if (isManual) {
+                manualOps[key] = (manualOps[key] || 0) + qty;
+            } else if (r['Оператор'] !== 'СИСТЕМА (Експедиция)' && !(r['Оператор'] === 'СИСТЕМА (Корекция наличност)' && qty < 0) && op !== 'възстановен' && !op.startsWith('вложен в ')) { 
+                grossCompletedOps[key] = (grossCompletedOps[key] || 0) + qty; 
+            }
+            opStatusMap[key] = 'Отчетено';
+        } else if (r['Статус'] !== 'Брак') {
+            opStatusMap[key] = r['Статус']; 
+        }
+    });
+
+    let trueDoneOps = {};
+    let grossTrueDoneOps = {};
+    let shippedQty = {};
+    let grossStartedOps = {}; 
+
+    Object.keys(staticCache.routesByDetail).forEach(code => {
+        let routes = staticCache.routesByDetail[code];
+        if (routes.length === 0) return;
+        
+        for (let i = routes.length - 2; i >= 0; i--) {
+            let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
+            let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
+            
+            let requiredFromMe = (grossCompletedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
+            grossCompletedOps[opKey] = Math.max(grossCompletedOps[opKey] || 0, requiredFromMe);
+            
+            let manualRequiredFromMe = (manualOps[nextOpKey] || 0);
+            manualOps[opKey] = (manualOps[opKey] || 0) + manualRequiredFromMe;
+            
+            let trueRequired = (completedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
+            completedOps[opKey] = Math.max(completedOps[opKey] || 0, trueRequired);
+        }
+        
+        let lastOpKey = code + '_' + String(routes[routes.length - 1]['Име на операция']).trim().toLowerCase();
+        trueDoneOps[lastOpKey] = (completedOps[lastOpKey] || 0) + (savedQty[code] || 0);
+        grossTrueDoneOps[lastOpKey] = (grossCompletedOps[lastOpKey] || 0) + (savedQty[code] || 0);
+        
+        for (let i = routes.length - 2; i >= 0; i--) {
+            let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
+            let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
+            
+            let bucket = (grossCompletedOps[opKey] || 0) - (grossCompletedOps[nextOpKey] || 0) - (scrappedOps[nextOpKey] || 0);
+            if (bucket < 0) bucket = 0;
+            grossTrueDoneOps[opKey] = (grossTrueDoneOps[nextOpKey] || 0) + bucket;
+            
+            let trueBucket = (completedOps[opKey] || 0) - (completedOps[nextOpKey] || 0) - (scrappedOps[nextOpKey] || 0);
+            if (trueBucket < 0) trueBucket = 0;
+            trueDoneOps[opKey] = (trueDoneOps[nextOpKey] || 0) + trueBucket;
+        }
+        
+        let firstOpKey = code + '_' + String(routes[0]['Име на операция']).trim().toLowerCase();
+        grossStartedOps[firstOpKey] = (grossCompletedOps[firstOpKey] || 0) + (scrappedOps[firstOpKey] || 0);
+        
+        shippedQty[code] = Math.max(0, (grossTrueDoneOps[lastOpKey] || 0) - (trueDoneOps[lastOpKey] || 0));
+    });
+
+    let totalShippedCache = {};
+    function getTotalShipped(item, visited = new Set()) {
+        let lc = item.toLowerCase();
+        if (totalShippedCache[lc] !== undefined) return totalShippedCache[lc];
+        if (visited.has(lc)) return 0;
+        visited.add(lc);
+        
+        let directShipped = shippedQty[lc] || 0;
+        let parents = staticCache.bomData.filter(b => String(b['ID Компонент']).trim().toLowerCase() === lc);
+        let indirectShipped = 0;
+        parents.forEach(p => {
+            let parentCode = String(p['ID Родител']).trim().toLowerCase();
+            if (parentCode !== lc) {
+                let parentRoutes = staticCache.routesByDetail[parentCode];
+                let parentConsumed = 0;
+                if (parentRoutes && parentRoutes.length > 0) {
+                    let lastOpKey = parentCode + '_' + String(parentRoutes[parentRoutes.length-1]['Име на операция']).trim().toLowerCase();
+                    parentConsumed = grossTrueDoneOps[lastOpKey] || 0;
+                } else {
+                    parentConsumed = getTotalShipped(parentCode, new Set(visited));
+                }
+                indirectShipped += parentConsumed * (parseFloat(p['Количество']) || 1);
+            }
+        });
+        
+        totalShippedCache[lc] = directShipped + indirectShipped;
+        return totalShippedCache[lc];
+    }
+
+    let masterData = {
+        tiela: [], predni: [], zadni: [], mpr: [], statori: [], assembly: [],
+        var11: [], var25: [], bearings: [],
+        small_pins: [], small_studs: [], small_rotors: [], small_spools: [], small_others: [], temp_spools: [],
+        small_rotors_var11: [], small_rotors_var25: []
+    };
+
+    // 1. Group nodes by code
+    let nodesByCode = {};
+    Object.values(mergedNodes).forEach(n => {
+        if (!nodesByCode[n.code]) nodesByCode[n.code] = [];
+        nodesByCode[n.code].push(n);
+    });
+
+    let isLastNodeMap = {};
+    Object.keys(nodesByCode).forEach(code => {
+        let nodes = nodesByCode[code];
+        nodes.sort((a, b) => (parseInt(a.planId) || 0) - (parseInt(b.planId) || 0));
+        isLastNodeMap[nodes[nodes.length - 1].id] = true;
+    });
+
+    // 2. Build graph and calculate levels
+    const childrenMap = {};
+    Object.values(mergedNodes).forEach(n => childrenMap[n.id] = []);
+    connections.forEach(c => {
+        if (childrenMap[c.to]) childrenMap[c.to].push(c.from);
+    });
+    
+    const calculatedLevels = {};
+    const visitedForLevel = new Set();
+    Object.values(mergedNodes).forEach(n => {
+        getBottomUpLevel(n.id, childrenMap, calculatedLevels, visitedForLevel);
+    });
+
+    // 3. Sort nodes TOP-DOWN
+    let allNodes = Object.values(mergedNodes);
+    allNodes.sort((a, b) => {
+        let lvlDiff = (calculatedLevels[b.id] || 0) - (calculatedLevels[a.id] || 0);
+        if (lvlDiff !== 0) return lvlDiff;
+        return (parseInt(a.planId) || 0) - (parseInt(b.planId) || 0);
+    });
+
+    allNodes.forEach(n => n.consumedByParents = 0);
+    let alreadyAllocated = {};
+    let alreadyAllocatedWarehouse = {};
+
+    let getMultiplier = (childCode, parentCode) => {
+        let pNameLower = parentCode.toLowerCase();
+        let cNameLower = childCode.toLowerCase();
+        let bomLines = staticCache.bomData.filter(b => String(b['ID Компонент']).trim().toLowerCase() === cNameLower && String(b['ID Детайл']).trim().toLowerCase() === pNameLower);
+        let m = 0;
+        bomLines.forEach(bl => m += (parseFloat(bl['Количество']) || 1));
+        return m || 1;
+    };
+
+    allNodes.forEach(n => {
+        let isLastNode = isLastNodeMap[n.id];
+        let code = n.code;
+        let partRoutes = staticCache.routesByDetail[code.toLowerCase()] || [];
+        let consumedByShipped = getTotalShipped(code);
+        let finalDoneQtyForChildren = 0; 
+        
+        let deficit = Math.max(0, n.planQty - n.consumedByParents);
+
+        if (partRoutes.length > 0) {
+            partRoutes.forEach((route, idx) => {
+                let opName = String(route['Име на операция']).trim();
+                let opKey = code.toLowerCase() + '_' + opName.toLowerCase();
+                
+                let globalGross = (grossTrueDoneOps[opKey] || 0) + (manualOps[opKey] || 0);
+                let globalNet = Math.max(0, globalGross - consumedByShipped);
+                
+                let usedSoFar = alreadyAllocated[opKey] || 0;
+                let availableForThisNode = Math.max(0, globalNet - usedSoFar);
+                
+                let allocatedFromWh = isLastNode ? availableForThisNode : Math.min(deficit, availableForThisNode);
+                let doneQty = n.consumedByParents + allocatedFromWh;
+                
+                alreadyAllocated[opKey] = usedSoFar + allocatedFromWh;
+                
+                let opState = 'gray';
+                let latestStatus = opStatusMap[opKey];
+                if (doneQty >= n.planQty) opState = 'green';
+                else if (doneQty > 0) opState = 'blue';
+                else if (latestStatus === 'Започната') opState = 'blue_0';
+                
+                let pIdStr = String(n.planId || '').trim();
+                let planOpKey = pIdStr ? (opKey + '_' + pIdStr) : opKey;
+                
+                n.operations.push({ name: opName, completed: doneQty, state: opState, scrapped: scrappedOps[planOpKey] || 0, latestStatus: latestStatus });
+                
+                if (idx === 0) finalDoneQtyForChildren = doneQty; 
+            });
+        } else {
+            let globalWarehouse = n.warehouseQty + (completedOps[code + '_възстановен'] || 0);
+            let usedSoFar = alreadyAllocatedWarehouse[code] || 0;
+            let availableForThisNode = Math.max(0, globalWarehouse - usedSoFar);
+            
+            let allocatedFromWh = isLastNode ? availableForThisNode : Math.min(deficit, availableForThisNode);
+            let doneQty = n.consumedByParents + allocatedFromWh;
+            
+            alreadyAllocatedWarehouse[code] = usedSoFar + allocatedFromWh;
+            
+            n.operations.push({ 
+                name: doneQty >= n.planQty ? 'Готов (Склад)' : 'Чакащ (Доставка)', 
+                completed: doneQty,
+                state: doneQty >= n.planQty ? 'green' : 'gray'
+            });
+            finalDoneQtyForChildren = doneQty;
+        }
+
+        childrenMap[n.id].forEach(childId => {
+            let childNode = mergedNodes[childId];
+            if (childNode) {
+                let mult = getMultiplier(childNode.code, n.code);
+                childNode.consumedByParents += finalDoneQtyForChildren * mult;
+            }
+        });
+    });
+
+    Object.values(mergedNodes).forEach(n => {
+
+        let typeStr = (n.partType + " " + n.code).toLowerCase().replace(/[\s\.\-\_]+/g, '');
+        
+        n.packagedQty = packagedQty[n.code.toLowerCase() + '_' + n.planId] || packagedQty[n.code.toLowerCase()] || 0;
+        
+        let isDirectlyInPlan = explicitPlanItems.has(`${n.planId}___${n.code.toUpperCase()}`);
+        let baseCode = n.code.toUpperCase().replace(/#+$/, '').trim();
+        let isHashVariantOfPlan = n.code.includes('#') && explicitPlanItems.has(`${n.planId}___${baseCode}`);
+
+        let isRotorPacket = n.partType && n.partType.toLowerCase().includes("роторен пакет");
+        
+        if (typeStr.includes("тяло") || typeStr.includes("тела")) n.bucket = 'tiela';
+        else if (typeStr.includes("преден") || typeStr.includes("предни") || typeStr.includes("преденкапак")) n.bucket = 'predni';
+        else if (typeStr.includes("заден") || typeStr.includes("задни") || typeStr.includes("заденкапак")) n.bucket = 'zadni';
+        else if (typeStr.includes("мпр")) n.bucket = 'mpr';
+        else if (isRotorPacket && typeStr.includes("11")) n.bucket = 'small_rotors_var11';
+        else if (isRotorPacket && typeStr.includes("25")) n.bucket = 'small_rotors_var25';
+        else if (typeStr.includes("пакет")) n.bucket = 'small_rotors';
+        else if (typeStr.includes("статор") || typeStr.includes("трансформатор")) n.bucket = 'statori';
+        else if (typeStr.includes("ротор") && typeStr.includes("11")) n.bucket = 'var11';
+        else if (typeStr.includes("ротор") && typeStr.includes("25")) n.bucket = 'var25';
+        else if (typeStr.includes("лагер")) n.bucket = 'bearings';
+        else if (typeStr.includes("щифт")) n.bucket = 'small_pins';
+        else if (typeStr.includes("шпилк")) n.bucket = 'small_studs';
+        else if (typeStr.includes("макар") || n.code.toLowerCase().includes("мак.")) n.bucket = 'temp_spools';
+        else if (isDirectlyInPlan || isHashVariantOfPlan || typeStr.includes("резолвер") || n.code.startsWith("575") || n.code.toUpperCase().startsWith("H25") || n.code.toUpperCase().startsWith("DC25")) {
+            n.bucket = 'assembly';
+        } 
+        else {
+            n.bucket = 'small_others';
+        }
+        
+        masterData[n.bucket].push(n);
+    });
+    
+    let parentMap = {};
+    if (connections) {
+        connections.forEach(c => parentMap[c.from] = c.to);
+    }
+    
+    let spools = masterData['temp_spools'] || [];
+    spools.forEach(n => {
+        let currId = n.id;
+        let finalBucket = 'small_others';
+        while (parentMap[currId]) {
+            currId = parentMap[currId];
+            let pNode = mergedNodes[currId];
+            if (pNode && pNode.bucket && pNode.bucket !== 'temp_spools') {
+                finalBucket = pNode.bucket;
+                break;
+            }
+        }
+        n.bucket = finalBucket;
+        masterData[finalBucket].push(n);
+    });
+    delete masterData['temp_spools'];
+    
+    return masterData;
+}
+
+// --- HELPER FUNCTIONS ---
+function getBottomUpLevel(nodeId, childrenMap, calculatedLevels, visitedForLevel) {
+    if (calculatedLevels[nodeId]) return calculatedLevels[nodeId];
+    if (visitedForLevel.has(nodeId)) return 1; 
+    visitedForLevel.add(nodeId);
+    
+    const children = childrenMap[nodeId];
+    if (!children || children.length === 0) {
+        calculatedLevels[nodeId] = 1;
+        return 1;
+    }
+    
+    let maxChildLevel = 0;
+    children.forEach(childId => {
+        const childLevel = getBottomUpLevel(childId, childrenMap, calculatedLevels, visitedForLevel);
+        if (childLevel > maxChildLevel) maxChildLevel = childLevel;
+    });
+    calculatedLevels[nodeId] = maxChildLevel + 1; 
+    return calculatedLevels[nodeId];
+}
+
+function calculateOperationStates(node, children, allNodesMap) {
+    let allChildrenDone = true;
+    let allChildrenHavePieces = true;
+    let anyLocalChildLastOpStarted = false;
+
+    if (children.length > 0) {
+        allChildrenDone = children.every(cId => {
+            let chNode = allNodesMap[cId];
+            if(!chNode || !chNode.operations) return false;
+            if(chNode.operations.length === 0) return true; 
+            return chNode.operations.every(o => o.state === 'green');
+        });
+
+        allChildrenHavePieces = children.every(cId => {
+            let chNode = allNodesMap[cId];
+            if (!chNode) return false;
+            if (!chNode.operations || chNode.operations.length === 0) return true; 
+            let lastOp = chNode.operations[chNode.operations.length - 1]; 
+            return lastOp.completed > 0 || lastOp.state === 'green';
+        });
+
+        anyLocalChildLastOpStarted = children.some(cId => {
+            let chNode = allNodesMap[cId];
+            if (!chNode || !chNode.operations || chNode.operations.length === 0) return false;
+            if (chNode.bucket !== node.bucket) return false; 
+            let lastOp = chNode.operations[chNode.operations.length - 1]; 
+            return lastOp.state === 'blue' || lastOp.state === 'blue_0' || lastOp.completed > 0 || lastOp.state === 'green';
+        });
+    }
+
+    let stateMachine = [];
+    let hasActive = false;
+    let len = (node.operations && node.operations.length > 0) ? node.operations.length : 0;
+    
+    for (let i = 0; i < len; i++) {
+        let op = node.operations[i];
+        let state = '';
+        
+        if (op.state === 'green' || op.completed >= node.planQty) {
+            state = 'past';
+        } else if (op.state === 'blue' || op.completed > 0) {
+            state = 'active'; 
+            hasActive = true;
+        } else if (op.state === 'blue_0') {
+            state = 'active_0'; 
+            hasActive = true;
+        } else {
+            if (i === 0) {
+                if (children.length === 0) {
+                    state = 'waiting'; 
+                } else {
+                    if (allChildrenHavePieces) state = 'waiting'; 
+                    else if (anyLocalChildLastOpStarted) state = 'future'; 
+                    else state = 'hidden'; 
+                }
+            } else {
+                let prev = stateMachine[i - 1];
+                if (prev === 'past' || prev === 'active') {
+                    state = 'waiting'; 
+                } else if (prev === 'active_0') {
+                    state = 'future'; 
+                } else {
+                    state = 'hidden'; 
+                }
+            }
+        }
+        stateMachine.push(state);
+    }
+
+    return { allChildrenDone, stateMachine, hasActive };
+}
+
+// --- RENDERING ---
+function drawDashboard(jsonString) {
+    if (!jsonString) return;
+    const data = JSON.parse(jsonString);
+    if (data.error) { document.getElementById('error-box').innerText = data.error; return; }
+
+    document.getElementById('loading').style.display = 'none';
+    globalConnections = data.connections || [];
+    
+    domIdMap = {};
+    domIdCounter = 0;
+
+    const allNodesMap = {};
+    if (data.nodes) {
+        Object.values(data.nodes).forEach(bucket => {
+            if(Array.isArray(bucket)) bucket.forEach(n => allNodesMap[n.id] = n);
+        });
+    }
+    
+    const childMap = {}; 
+    const parentMap = {};
+    globalConnections.forEach(c => {
+        if (!childMap[c.to]) childMap[c.to] = [];
+        childMap[c.to].push(c.from);
+        parentMap[c.from] = c.to;
+    });
+
+    const renderFamilyBOMBucket = (nodeArray, containerId) => {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        if (!nodeArray || !Array.isArray(nodeArray) || nodeArray.length === 0) {
+            if (renderedHtmlCache[containerId] !== '') {
+                container.innerHTML = '';
+                renderedHtmlCache[containerId] = '';
+            }
+            return;
+        }
+
+        const plans = {};
+        nodeArray.forEach(n => {
+            if (!plans[n.planMonth]) plans[n.planMonth] = [];
+            plans[n.planMonth].push(n);
+        });
+        
+        let finalHTML = '';
+
+        for (const [planMonth, nodes] of Object.entries(plans)) {
+            const nodeIds = new Set(nodes.map(n => n.id));
+            const adj = {};
+            nodes.forEach(n => adj[n.id] = []);
+
+            const localConns = globalConnections.filter(c => nodeIds.has(c.from) && nodeIds.has(c.to));
+            localConns.forEach(c => {
+                let fromNode = nodes.find(n => n.id === c.from);
+                let toNode = nodes.find(n => n.id === c.to);
+                let isFromSpool = fromNode && fromNode.partType && fromNode.partType.trim().toLowerCase() === "макарички";
+                let isToSpool = toNode && toNode.partType && toNode.partType.trim().toLowerCase() === "макарички";
+                
+                if (isFromSpool !== isToSpool) {
+                    return; // Не ги групираме заедно, ако едното е макара, а другото не
+                }
+
+                adj[c.from].push(c.to);
+                adj[c.to].push(c.from); 
+            });
+            
+            const visited = new Set();
+            const families = [];
+
+            nodes.forEach(n => {
+                if (!visited.has(n.id)) {
+                    const familyNodes = [];
+                    const queue = [n.id];
+                    visited.add(n.id);
+
+                    while (queue.length > 0) {
+                        const curr = queue.shift();
+                        familyNodes.push(nodes.find(x => x.id === curr));
+                        adj[curr].forEach(neighbor => {
+                            if (!visited.has(neighbor)) {
+                                visited.add(neighbor);
+                                queue.push(neighbor);
+                            }
+                        });
+                    }
+                    families.push(familyNodes);
+                }
+            });
+            
+            families.sort((a, b) => {
+                let aHasSpool = a.some(n => n.partType && n.partType.trim().toLowerCase() === "макарички");
+                let bHasSpool = b.some(n => n.partType && n.partType.trim().toLowerCase() === "макарички");
+                if (aHasSpool && !bHasSpool) return 1;
+                if (!aHasSpool && bHasSpool) return -1;
+                return b.length - a.length; // по-големите семейства първи
+            });
+            
+            let planHTML = `<div class="plan-group"><div class="plan-label">ПЛАН: ${planMonth}</div>`;
+
+            families.forEach(famNodes => {
+                const childrenMap = {};
+                famNodes.forEach(n => childrenMap[n.id] = []);
+                
+                globalConnections.forEach(c => {
+                    if (childrenMap.hasOwnProperty(c.from) && childrenMap.hasOwnProperty(c.to)) {
+                        childrenMap[c.to].push(c.from); 
+                    }
+                });
+
+                const calculatedLevels = {};
+                const visitedForLevel = new Set(); 
+                
+                const levels = {};
+                famNodes.forEach(fn => {
+                    const lvl = getBottomUpLevel(fn.id, childrenMap, calculatedLevels, visitedForLevel);
+                    if (!levels[lvl]) levels[lvl] = [];
+                    levels[lvl].push(fn);
+                });
+                
+                let familyHTML = `<div class="family-row">`;
+                const sortedLevels = Object.keys(levels).map(Number).sort((a, b) => a - b);
+                
+                sortedLevels.forEach(lvl => {
+                    let colHTML = `<div class="bom-column">`;
+                    
+                    levels[lvl].sort((a, b) => {
+                        let aIsSpool = a.partType && a.partType.trim().toLowerCase() === "макарички";
+                        let bIsSpool = b.partType && b.partType.trim().toLowerCase() === "макарички";
+                        if (aIsSpool && !bIsSpool) return 1;
+                        if (!aIsSpool && bIsSpool) return -1;
+                        return 0;
+                    }).forEach(node => {
+                        colHTML += generateNodeHTML(node, parentMap, childMap, allNodesMap);
+                    });
+                    colHTML += `</div>`;
+                    familyHTML += colHTML;
+                });
+                familyHTML += `</div>`;
+                planHTML += familyHTML;
+            });
+            planHTML += `</div>`;
+            finalHTML += planHTML;
+        }
+
+        // DOM Rendering optimization: only update if changed
+        if (renderedHtmlCache[containerId] !== finalHTML) {
+            container.innerHTML = finalHTML;
+            renderedHtmlCache[containerId] = finalHTML;
+        }
+    };
+
+    renderFamilyBOMBucket(data.nodes.tiela || [], 'w-tiela');
+    renderFamilyBOMBucket(data.nodes.predni || [], 'w-predni');
+    renderFamilyBOMBucket(data.nodes.zadni || [], 'w-zadni');
+    renderFamilyBOMBucket(data.nodes.mpr || [], 'w-mpr');
+    
+    renderFamilyBOMBucket(data.nodes.rotors_var11 || data.nodes.var11 || [], 'w-var11');
+    renderFamilyBOMBucket(data.nodes.rotors_var25 || data.nodes.var25 || [], 'w-var25');
+    renderFamilyBOMBucket(data.nodes.bearings || [], 'w-bearings');
+    
+    renderFamilyBOMBucket(data.nodes.small_pins || [], 'w-small-pins');
+    renderFamilyBOMBucket(data.nodes.small_studs || [], 'w-small-studs');
+    renderFamilyBOMBucket(data.nodes.small_rotors || [], 'w-small-rotors');
+    renderFamilyBOMBucket(data.nodes.small_spools || [], 'w-small-spools'); 
+    renderFamilyBOMBucket(data.nodes.small_others || [], 'w-small-others');
+    
+    renderFamilyBOMBucket(data.nodes.small_rotors_var11 || [], 'w-temp-rotors-11');
+    renderFamilyBOMBucket(data.nodes.small_rotors_var25 || [], 'w-temp-rotors-25');
+    
+    renderFamilyBOMBucket(data.nodes.statori || [], 'w-statori');
+    renderFamilyBOMBucket(data.nodes.assembly || [], 'w-assembly');
+
+    function appendColumn(sourceId, targetWindowId, titleText) {
+        const winContainer = document.getElementById(targetWindowId);
+        const sourceContainer = document.getElementById(sourceId);
+        if (winContainer && sourceContainer && sourceContainer.innerHTML.trim() !== '') {
+            let lastRow = null;
+            const familyRows = winContainer.querySelectorAll('.family-row');
+            if (familyRows.length > 0) {
+                lastRow = familyRows[familyRows.length - 1];
+            } else {
+                const planGroup = document.createElement('div');
+                planGroup.className = 'plan-group';
+                lastRow = document.createElement('div');
+                lastRow.className = 'family-row';
+                planGroup.appendChild(lastRow);
+                winContainer.appendChild(planGroup);
+            }
+            
+            const colClass = 'appended-' + sourceId;
+            if (!lastRow.querySelector('.' + colClass)) {
+                if (lastRow.children.length > 0) {
+                    const spacer = document.createElement('div');
+                    spacer.style.width = "40px";
+                    lastRow.appendChild(spacer);
+                }
+                    
+                    // Нова колона
+                    const newCol = document.createElement('div');
+                    newCol.className = 'bom-column ' + colClass;
+                    if (titleText) {
+                        newCol.innerHTML = `<span class="lane-title" style="margin-bottom: 8px;">${titleText}</span>`;
+                    }
+                    
+                    // Взимаме всички детайли
+                    const nodes = sourceContainer.querySelectorAll('.vsm-node');
+                    
+                    if (sourceId === 'w-small-pins' || sourceId === 'w-small-studs') {
+                        const rowWrapper = document.createElement('div');
+                        rowWrapper.style.display = 'flex';
+                        rowWrapper.style.flexDirection = 'row';
+                        rowWrapper.style.gap = '20px';
+                        nodes.forEach(n => rowWrapper.appendChild(n));
+                        newCol.appendChild(rowWrapper);
+                    } else {
+                        nodes.forEach(n => newCol.appendChild(n));
+                    }
+                    
+                    // Добавяме колоната на същия ред
+                    lastRow.appendChild(newCol);
+                    
+                    // Скриваме оригиналния контейнер (ако е видим)
+                    const lane = sourceContainer.closest('.lane');
+                    if (lane) lane.style.display = 'none';
+                }
+            }
+        }
+
+    appendColumn('w-temp-rotors-11', 'w-var11', '');
+    appendColumn('w-temp-rotors-25', 'w-var25', '');
+    appendColumn('w-small-pins', 'w-var25', 'ЩИФТОВЕ');
+    
+    appendColumn('w-small-rotors', 'w-bearings', 'ПАКЕТИ');
+    appendColumn('w-small-studs', 'w-bearings', 'ШПИЛКИ');
+    appendColumn('w-small-others', 'w-bearings', 'ДРУГИ');
+
+    const studsContainer = document.getElementById('w-small-studs');
+    if (studsContainer) {
+        const smallDetailsWindow = studsContainer.closest('.window');
+        if (smallDetailsWindow) {
+            smallDetailsWindow.style.display = 'none';
+        }
+    }
+
+    setTimeout(() => {
+        drawArrows();
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+    }, 50);
+}
+
+function generateNodeHTML(node, parentMap, childMap, allNodesMap) {
+    let dId = getDomId(node.id);
+
+    const isRoot = !parentMap[node.id]; 
+    const rootMarker = isRoot ? '<span style="margin-right:4px; color:#fb923c;" title="Краен Детайл (План)">🔸</span>' : '';
+    const packageMarker = (node.packagedQty && node.packagedQty > 0) ? `<span style="margin-left:8px; font-weight:800; color:#d97706; background:#fef3c7; padding:2px 6px; border-radius:6px; font-size:0.9em; box-shadow:0 1px 2px rgba(0,0,0,0.1);" title="${node.packagedQty} бр. опаковани">📦 ${node.packagedQty}</span>` : '';
+    
+    let headerQty = 0;
+    let headerScrap = 0;
+
+    const formatHeaderQty = (c, p, scrap) => {
+        let scrapStr = (scrap && scrap > 0) ? `<span style="color:#ef4444; font-weight:bold;">(-${scrap})</span>` : '';
+        return c > p ? `${p}(+${c - p})${scrapStr}/${p}` : `${c}${scrapStr}/${p}`;
+    };
+
+    if (node.operations && node.operations.length > 0) {
+        let lastOp = node.operations[node.operations.length - 1];
+        headerQty = lastOp.completed || 0;
+        headerScrap = lastOp.scrapped || 0;
+    } else {
+        headerQty = node.warehouseQty || 0; 
+    }
+    
+    const drawingLinkHTML = (node.drawingUrl && node.drawingUrl.startsWith('http')) 
+        ? `<a href="${node.drawingUrl}" target="_blank" style="text-decoration:none; margin-left:6px;" title="Отвори чертеж">📐</a>` : '';
+        
+    let opsHTML = '';
+    let titleClass = 'title-gray';
+
+    let children = childMap[node.id] || [];
+    
+    const { allChildrenDone, stateMachine, hasActive } = calculateOperationStates(node, children, allNodesMap);
+
+    if (node.operations && node.operations.length > 0) {
+        let len = node.operations.length;
+        let allOpsDone = node.operations.every(o => o.state === 'green' || o.completed >= node.planQty);
+
+        const formatQty = (c, p, scrap) => {
+            let scrapStr = (scrap && scrap > 0) ? `<span style="color:#ef4444; font-weight:bold;">(-${scrap})</span>` : '';
+            return c > p ? `${p}(+${c - p})${scrapStr}/${p}` : `${c}${scrapStr}/${p}`;
+        };
+
+        const formatPast = (op) => `<span class="op-text op-past">${op.name} | ${formatQty(op.completed, node.planQty, op.scrapped)}</span>`;
+        const formatFuture = (op) => `<span class="op-text op-future">${op.name} | ${formatQty(0, node.planQty, op.scrapped)}</span>`;
+        const formatActive = (op) => {
+            let colorClass = (op.latestStatus === 'Започната') ? 'active' : 'waiting';
+            return `<span class="op-text op-focus ${colorClass}">${op.name} | ${formatQty(op.completed, node.planQty, op.scrapped)}</span>`;
+        };
+        const formatWaiting = (op) => `<span class="op-text op-focus waiting">${op.name} | ${formatQty(op.completed, node.planQty, op.scrapped)}</span>`;
+        const formatFinishedAll = (op) => `<span class="op-text op-finished-all">${op.name} | ${formatQty(op.completed, node.planQty, op.scrapped)}</span>`;
+
+        if (allOpsDone) {
+            titleClass = 'title-green';
+            opsHTML = ''; // Completely hide operations to save screen space when the part is fully ready
+        } else {
+            if (hasActive) titleClass = 'title-blue';
+
+            let pastHiddenArr = [];
+            let visibleOpsHtml = '';
+            let pastCount = stateMachine.filter(s => s === 'past').length;
+            let currentPastIndex = 0;
+
+            for (let i = 0; i < len; i++) {
+                let op = node.operations[i];
+                let state = stateMachine[i];
+
+                if (state === 'past') {
+                    currentPastIndex++;
+                    if (currentPastIndex < pastCount) {
+                        pastHiddenArr.push(formatPast(op)); 
+                    } else {
+                        if (visibleOpsHtml !== '') visibleOpsHtml += ' <span class="arr">➔</span> ';
+                        visibleOpsHtml += formatPast(op); 
+                    }
+                } else if (state === 'active' || state === 'active_0') {
+                    if (visibleOpsHtml !== '') visibleOpsHtml += ' <span class="arr">➔</span> ';
+                    visibleOpsHtml += formatActive(op);
+                } else if (state === 'waiting') {
+                    if (visibleOpsHtml !== '') visibleOpsHtml += ' <span class="arr">➔</span> ';
+                    visibleOpsHtml += formatWaiting(op);
+                } else if (state === 'future') {
+                    if (visibleOpsHtml === '') {
+                        visibleOpsHtml += `<span class="op-text op-future"><span class="arr">➔</span> ${op.name} | 0/${node.planQty}</span>`;
+                    } else {
+                        visibleOpsHtml += ' <span class="arr">➔</span> ' + formatFuture(op);
+                    }
+                }
+            }
+
+            let opsHTMLContent = '';
+            if(pastHiddenArr.length > 0) {
+                opsHTMLContent += `<span class="harmony-toggle" onclick="toggleHarmony('past_${dId}')" id="btn_past_${dId}">⋯</span> `;
+                opsHTMLContent += `<span id="hist_past_${dId}" class="hidden-history">${pastHiddenArr.join(' <span class="arr">➔</span> ')} <span class="arr">➔</span> </span>`;
+            }
+            
+            opsHTMLContent += visibleOpsHtml;
+
+            if (opsHTMLContent.trim() !== '') {
+                opsHTML = `<div class="vsm-ops">${opsHTMLContent}</div>`;
+            }
+        }
+    }
+    
+    if (children.length > 0 && allChildrenDone && isRoot && titleClass !== 'title-green') {
+        titleClass = 'title-yellow'; 
+    }
+
+    return `
+        <div class="vsm-node" id="card_${dId}" data-part-type="${node.partType || ''}">
+        <div class="vsm-header">
+            <span class="vsm-title ${titleClass}">${rootMarker}${node.displayName}${drawingLinkHTML}${packageMarker}</span>
+            <span class="vsm-qty">| ${formatHeaderQty(headerQty, node.planQty, headerScrap)}</span>
+        </div>
+        ${opsHTML !== '' ? opsHTML : ''}
+        </div>
+    `;
+}
+
+function drawArrows() {
+    const svg = document.getElementById('svg-overlay');
+    if (!svg) return;
+    
+    svg.style.height = document.documentElement.scrollHeight + "px";
+    svg.style.width = document.documentElement.scrollWidth + "px";
+    
+    let html = `<defs>
+        <marker id="arrow" viewBox="0 0 14 14" refX="10" refY="7" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 14 7 L 0 14 z" fill="#475569" /></marker>
+        <marker id="arrow-spool" viewBox="0 0 14 14" refX="10" refY="7" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 14 7 L 0 14 z" fill="#f3f3f3" /></marker>
+    </defs>`;
+    
+    globalConnections.forEach(conn => {
+        let childDId = domIdMap[conn.from];
+        let parentDId = domIdMap[conn.to];
+        if (!childDId || !parentDId) return;
+
+        const cardChild = document.getElementById(`card_${childDId}`);
+        const cardParent = document.getElementById(`card_${parentDId}`);
+        
+        if (cardChild && cardParent) {
+            const winChild = cardChild.closest('.window-body');
+            const winParent = cardParent.closest('.window-body');
+            if (winChild !== winParent) return;
+
+            const sourceTitle = cardChild.querySelector('.vsm-title');
+            const sourceQty = cardChild.querySelector('.vsm-qty');
+            const targetEl = cardParent.querySelector('.vsm-title');
+
+            if (sourceTitle && targetEl) {
+                const rsTitle = sourceTitle.getBoundingClientRect();
+                const rsQty = sourceQty ? sourceQty.getBoundingClientRect() : rsTitle;
+                const rt = targetEl.getBoundingClientRect();
+
+                const startX = rsQty.right + window.scrollX + 4;
+                const startY = rsTitle.top + window.scrollY + (rsTitle.height / 2);
+                const endX = rt.left - 6 + window.scrollX;
+                const endY = rt.top + window.scrollY + (rt.height / 2);
+                
+                const cpX = startX + (endX - startX) * 0.4;
+                
+                let fromType = cardChild.getAttribute('data-part-type');
+                let toType = cardParent.getAttribute('data-part-type');
+                let isFromSpool = fromType && fromType.trim().toLowerCase() === "макарички";
+                let isToSpool = toType && toType.trim().toLowerCase() === "макарички";
+                let isFromRotorPacket = fromType && fromType.trim().toLowerCase().includes("роторен пакет");
+                let isToRotorPacket = toType && toType.trim().toLowerCase().includes("роторен пакет");
+                let isFromPin = fromType && fromType.trim().toLowerCase().includes("щифт");
+                let isToPin = toType && toType.trim().toLowerCase().includes("щифт");
+
+                if ((isFromSpool && !isToSpool) || (isFromRotorPacket && !isToRotorPacket) || (isFromPin && !isToPin)) {
+                    let fromLower = conn.from.toLowerCase();
+                    let color = "#94a3b8"; // пастелно сиво (по подразбиране)
+                    
+                    if (fromLower.includes("отстъп")) color = "#60a5fa"; 
+                    else if (fromLower.includes("процеп")) color = "#f87171"; 
+                    else if (fromLower.includes("напудрена")) color = "#fb923c"; 
+                    else if (fromLower.includes("едн. чел.")) color = "#4ade80"; 
+                    else if (fromLower.includes("двуст")) color = "#c084fc"; 
+                    else if (fromLower.includes("11")) color = "#facc15"; // жълто за вар 11
+                    else if (fromLower.includes("25")) color = "#2dd4bf"; // тюркоаз за вар 25
+                    else if (fromLower.includes("мулти")) color = "#f472b6"; // розово за мулти
+                    else if (fromLower.includes("nr")) color = "#a3e635"; // светлозелено за NR
+                    else color = "#818cf8"; // пастелно индиго
+                    
+                    let shape = 'circle';
+                    if (isFromRotorPacket) shape = 'triangle';
+                    if (isFromPin) shape = 'diamond';
+                    
+                    const renderShape = (cx, cy) => {
+                        if (shape === 'circle') return `<circle cx="${cx}" cy="${cy}" r="5" fill="${color}" />`;
+                        if (shape === 'triangle') return `<polygon points="${cx},${cy-6} ${cx-5},${cy+5} ${cx+5},${cy+5}" fill="${color}" />`;
+                        if (shape === 'diamond') return `<polygon points="${cx},${cy-6} ${cx-5},${cy} ${cx},${cy+6} ${cx+5},${cy}" fill="${color}" />`;
+                        return "";
+                    };
+                    
+                    let targetOffsetY = -10;
+                    if (shape === 'triangle') targetOffsetY = -22; // По-нагоре
+                    if (shape === 'diamond') targetOffsetY = 2;   // По-надолу
+                    
+                    html += renderShape(startX + 8, startY);
+                    html += renderShape(endX - 12, endY + targetOffsetY);
+                } else {
+                    let strokeColor = "#475569";
+                    let markerId = "url(#arrow)";
+                    html += `<path d="M ${startX} ${startY} C ${cpX} ${startY}, ${cpX} ${endY}, ${endX} ${endY}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-dasharray="3,3" marker-end="${markerId}" />`;
+                }
+            }
+        }
+    });
+
+    svg.innerHTML = html;
+}
+
+window.addEventListener('resize', () => requestAnimationFrame(drawArrows));
+

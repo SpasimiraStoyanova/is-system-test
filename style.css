@@ -1,0 +1,102 @@
+/* ТЪМНА ПРОМИШЛЕНА ТЕМА */
+:root {
+  --bg-color: #0f172a; 
+  --card-bg: transparent; 
+  --text-main: #f8fafc; 
+  --text-muted: #94a3b8;
+  --border-color: #334155; 
+  --header-bg: #1e293b;
+}
+
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; box-sizing: border-box; }
+
+body { font-family: 'Sofia Sans', sans-serif; background-color: var(--bg-color); margin: 8px; color: var(--text-main); overflow: auto; }
+
+#loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); display: flex; align-items: center; justify-content: center; z-index: 1000; font-weight: 800; font-size: 24px; letter-spacing: 2px; flex-direction: column; text-align: center; padding: 20px;}
+#error-box { color: #ef4444; margin-top: 20px; font-size: 18px; max-width: 800px; word-wrap: break-word; }
+#svg-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; }
+
+/* СТРУКТУРА НА ТАБЛОТО */
+.layout-wrapper { display: flex; flex-direction: column; gap: 12px; min-height: 95vh; position: relative; z-index: 10; min-width: max-content; padding-right: 12px; padding-bottom: 20px;}
+
+.top-section { display: flex; gap: 12px; min-width: max-content; flex: 1; }
+.left-zone { display: flex; flex-direction: row; gap: 12px; min-width: max-content; flex: auto; }
+.right-zone { display: flex; flex-direction: column; min-width: 350px; flex: auto; }
+
+.bottom-section { display: flex; gap: 12px; min-width: max-content; flex: 1.5; }
+
+/* ПРОЗОРЦИ */
+.window { background: var(--header-bg); border: 1px solid var(--border-color); border-radius: 6px; display: flex; flex-direction: column; box-shadow: 0 8px 20px rgba(0,0,0,0.4); flex: 1; min-width: max-content; overflow: hidden; }
+
+.window-header { 
+  color: #f8fafc; padding: 10px 14px; font-size: 14px; font-weight: 900; 
+  letter-spacing: 1.5px; text-transform: uppercase; 
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex; align-items: center;
+}
+
+.window-body { padding: 12px; display: flex; flex-direction: column; gap: 16px; flex-grow: 1; }
+
+/* ЗОНИ И ЛЕНТИ */
+.lane { padding-bottom: 6px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 4px; border: none; }
+.lane:last-child { margin-bottom: 0; padding-bottom: 0; }
+
+.columns-mode { flex-direction: row !important; gap: 20px; }
+.col-lane { padding-right: 14px; display: flex; flex-direction: column; gap: 6px; flex: 1; border: none; }
+.col-lane:last-child { padding-right: 0; }
+
+.lane-title { font-size: 12px; font-weight: 900; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; display: inline-block; letter-spacing: 1px;}
+
+.plan-group { border-left: 3px solid #475569; padding-left: 12px; margin-bottom: 8px; display: flex; flex-direction: column; }
+.plan-label { font-size: 13px; font-weight: 800; color: #f8fafc; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px;}
+.family-row { display: flex; flex-direction: row; gap: 30px; padding: 5px 0; border-bottom: none; align-items: center; }
+.family-row:last-child { border-bottom: none; padding-bottom: 0; }
+.bom-column { display: flex; flex-direction: column; gap: 14px; justify-content: center; position: relative; z-index: 2;}
+
+.tooltip-container { position: relative; display: inline-block; }
+.material-warning-trigger { cursor: pointer; font-size: 14px; font-weight: bold; color: #ef4444; margin-left: 2px; user-select: none; }
+.vsm-tooltip { display: none; position: absolute; left: 50%; bottom: 125%; transform: translateX(-50%); background: #020617; color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; font-weight: 800; z-index: 110; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 1px solid #ef4444; }
+.vsm-tooltip::before { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border-width: 5px; border-style: solid; border-color: #020617 transparent transparent transparent; }
+
+/* ВИЗУАЛИЗАЦИЯ НА ДЕТАЙЛИТЕ */
+.vsm-node { display: flex; flex-direction: column; gap: 2px; padding: 0; width: max-content; background: transparent; border: none; }
+.vsm-header { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; border: none; padding-bottom: 2px; margin-bottom: 0px;}
+
+.vsm-title { font-size: 16px; font-weight: 900; letter-spacing: 0.5px; }
+.title-green { color: #22c55e !important; }      
+.title-blue { color: #60a5fa !important; }      
+.title-yellow { color: #facc15 !important; text-shadow: 0 0 10px rgba(250,204,21,0.3); } 
+.title-gray { color: #cbd5e1 !important; }      
+
+.vsm-qty { font-size: 14px; font-weight: 800; color: #64748b; }
+
+/* ОПЕРАЦИИ */
+.vsm-ops { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.op-text { white-space: normal; font-family: 'Sofia Sans', sans-serif; line-height: 1.2; word-wrap: break-word; max-width: 160px; display: inline-block; }
+
+/* Завършена операция (малка и зелена) */
+.op-past { font-size: 13px; font-weight: 600; color: #22c55e; opacity: 0.9; }
+
+/* Текуща операция (голяма) */
+.op-focus { font-size: 18px; font-weight: 900; letter-spacing: 0.5px; }
+.op-focus.active { color: #60a5fa; text-shadow: 0 0 8px rgba(59,130,246,0.4); } /* Започната (Синя) */
+.op-focus.waiting { color: #94a3b8; } /* Още не е започната, но е готова за старт (Сива) */
+
+/* Следваща операция (малка и сива) */
+.op-future { font-size: 11px; font-weight: 500; color: #64748b; opacity: 0.7; }
+
+/* Всички операции са приключили (голямо зелено) */
+.op-finished-all { font-size: 18px; font-weight: 900; color: #22c55e; text-shadow: 0 0 8px rgba(34,197,94,0.4); }
+
+/* БУТОНИ ЗА РАЗГЪВАНЕ */
+.harmony-toggle { 
+    color: #64748b; font-weight: 900; font-size: 16px; cursor: pointer; 
+    user-select: none; transition: all 0.2s; padding: 0 6px; 
+    background: rgba(255,255,255,0.05); border-radius: 4px; display: inline-block;
+}
+.harmony-toggle:hover { color: #60a5fa; background: rgba(255,255,255,0.1); }
+.hidden-history { display: none !important; }
+
+.arr { color: #475569; font-weight: bold; font-size: 12px; margin: 0 2px;}
+.machine-view .hide-on-machine { display: none !important; }
