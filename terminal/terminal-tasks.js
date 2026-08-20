@@ -42,8 +42,8 @@ async function loadTasks(isSilent = false) {
           client.from('marshruti').select('*').limit(100000), client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(2000), 
           client.from('sklad').select('*').limit(100000), client.from('Номенклатура').select('*').limit(100000),
           client.from('sklad_bufferi').select('*').limit(100000),
-          client.from('computed_sklad_gp').select('*').limit(100000),
-          client.from('computed_sklad_wip').select('*').limit(100000)
+          client.from('inventory_gp').select('*').limit(100000),
+          client.from('inventory_wip').select('*').limit(100000)
       ]);
 
       if (plansRes.error) throw plansRes.error; if (bomRes.error) throw bomRes.error;
