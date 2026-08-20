@@ -376,195 +376,73 @@ function buildForm(data = null) {
   });
 }
 
-function openAddModal() { isEditMode = false; editingIndex = null; document.getElementById('modalTitle').innerHTML = '➕ Добавяне: ' + tableConfigs[currentTab].label.replace(/[^а-яА-Я ]/g, '').trim(); buildForm(); document.getElementById('modalBackdrop').style.display = 'flex'; }
-function openEditModal(index) { isEditMode = true; editingIndex = index; document.getElementById('modalTitle').innerHTML = '✏️ Редакция: ' + tableConfigs[currentTab].label.replace(/[^а-яА-Я ]/g, '').trim(); buildForm(globalRows[index]); document.getElementById('modalBackdrop').style.display = 'flex'; }
-function closeModal() { document.getElementById('modalBackdrop').style.display = 'none'; }
-
-async function fetchAll(table, orderCol) {
-    let allData = [];
-    let from = 0;
-    const step = 1000;
-    while(true) {
-        let query = client.from(table).select('*').range(from, from + step - 1);
-        if (orderCol) query = query.order(orderCol, {ascending: true});
-        let { data, error } = await query;
-        if (error || !data || data.length === 0) break;
-        allData = allData.concat(data);
-        if (data.length < step) break;
-        from += step;
-    }
-    return { data: allData };
-}
-
-async function computeSkladData(isGpTab) {
-    const [reportsRes, marshrutiRes, bomRes, nomRes, bufferRes, plansRes] = await Promise.all([
-        fetchAll('otcheti'),
-        fetchAll('marshruti'), // NO ORDER COL - causes PostgreSQL offset data loss
-        fetchAll('bom'),
+function openAddModal() { isEditMode = false; editingIndex = null; document.getElementById('modalTitle').innerHasync function computeSkladData(isGpTab) {
+    const table = isGpTab ? 'inventory_gp' : 'inventory_wip';
+    const [invRes, nomRes, bufferRes] = await Promise.all([
+        fetchAll(table),
         fetchAll('Номенклатура'),
-        fetchAll('sklad_bufferi'),
-        fetchAll('plan')
+        fetchAll('sklad_bufferi')
     ]);
     
-    let routesByDetail = {};
-    (marshrutiRes.data || []).forEach(r => {
-        let code = String(r['Код на детайла']).trim().toLowerCase();
-        if(!routesByDetail[code]) routesByDetail[code] = [];
-        routesByDetail[code].push(r);
-    });
-    
-    let completedOps = {}; let scrappedOps = {}; let grossCompletedOps = {}; let manualOps = {}; let savedQty = {};
-    
-    let sortedReports = (reportsRes.data || []).map(r => {
-        r._ts = new Date(r['Време Старт'] || r['Дата']).getTime();
-        return r;
-    }).sort((a,b) => a._ts - b._ts);
-    
-
-    
-    let allCombinedReports = sortedReports;
-    
-    allCombinedReports.forEach(r => {
-        let code = String(r['ID Детайл']).trim().toLowerCase();
-        let op = String(r['Операция']).trim().toLowerCase();
-        let key = code + '_' + op;
-        let qty = parseFloat(r['Количество']) || 0;
-        
-        if (r['Статус'] === 'Брак') { scrappedOps[key] = (scrappedOps[key]||0) + qty; } 
-        else if (r['Статус'] === 'Отчетено') {
-            if (op === 'възстановен') {
-                savedQty[code] = (savedQty[code] || 0) + qty;
-            }
-            completedOps[key] = (completedOps[key]||0) + qty;
-            let isManual = (r['Оператор'] === 'СИСТЕМА (Ръчно добавен)' || (r['Оператор'] === 'СИСТЕМА (Корекция наличност)' && qty > 0));
-            if (isManual) {
-                manualOps[key] = (manualOps[key]||0) + qty;
-            } else if (r['Оператор'] !== 'СИСТЕМА (Експедиция)' && !(r['Оператор'] === 'СИСТЕМА (Корекция наличност)' && qty < 0) && op !== 'възстановен' && !op.startsWith('вложен в ')) {
-                grossCompletedOps[key] = (grossCompletedOps[key]||0) + qty;
-            }
-        }
-    });
-    
-    let trueDoneOps = {}; let grossTrueDoneOps = {}; let shippedQty = {}; let grossStartedOps = {};
-    
-    Object.keys(routesByDetail).forEach(code => {
-        let routes = routesByDetail[code];
-        routes.sort((a, b) => (parseFloat(a['№ Операция']) || 0) - (parseFloat(b['№ Операция']) || 0));
-        if(routes.length === 0) return;
-        
-        for (let i = routes.length - 2; i >= 0; i--) {
-            let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
-            let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
-            
-            let requiredFromMe = (grossCompletedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
-            grossCompletedOps[opKey] = Math.max(grossCompletedOps[opKey] || 0, requiredFromMe);
-            
-            let manualRequiredFromMe = manualOps[nextOpKey] || 0;
-            manualOps[opKey] = (manualOps[opKey] || 0) + manualRequiredFromMe;
-            
-            let trueRequired = (completedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
-            completedOps[opKey] = Math.max(completedOps[opKey] || 0, trueRequired);
-        }
-        
-        let lastOpKey = code + '_' + String(routes[routes.length-1]['Име на операция']).trim().toLowerCase();
-        trueDoneOps[lastOpKey] = completedOps[lastOpKey] || 0;
-        grossTrueDoneOps[lastOpKey] = grossCompletedOps[lastOpKey] || 0;
-        
-        for(let i = routes.length - 2; i >= 0; i--) {
-            let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
-            let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
-            
-            let bucket = (grossCompletedOps[opKey] || 0) - (grossCompletedOps[nextOpKey] || 0) - (scrappedOps[nextOpKey] || 0);
-            if (bucket < 0) bucket = 0;
-            grossTrueDoneOps[opKey] = (grossTrueDoneOps[nextOpKey] || 0) + bucket;
-            
-            let trueBucket = (completedOps[opKey] || 0) - (completedOps[nextOpKey] || 0) - (scrappedOps[nextOpKey] || 0);
-            if (trueBucket < 0) trueBucket = 0;
-            trueDoneOps[opKey] = (trueDoneOps[nextOpKey] || 0) + trueBucket;
-        }
-        
-        let firstOpKey = code + '_' + String(routes[0]['Име на операция']).trim().toLowerCase();
-        grossStartedOps[firstOpKey] = (grossCompletedOps[firstOpKey] || 0) + (scrappedOps[firstOpKey] || 0);
-        
-        shippedQty[code] = Math.max(0, (grossTrueDoneOps[lastOpKey] || 0) - (trueDoneOps[lastOpKey] || 0));
-    });
-    
-    let totalShippedCache = {};
-    function getTotalShipped(item, visited = new Set()) {
-        let lc = item.toLowerCase();
-        if(totalShippedCache[lc] !== undefined) return totalShippedCache[lc];
-        if(visited.has(lc)) return 0; visited.add(lc);
-        let direct = shippedQty[lc] || 0; let indirect = 0;
-        let parents = (bomRes.data || []).filter(b => String(b['ID Компонент']).trim().toLowerCase() === lc);
-        parents.forEach(p => {
-            let parentCode = String(p['ID Родител']).trim().toLowerCase();
-            if(parentCode !== lc) {
-                let parentRoutes = routesByDetail[parentCode];
-                let parentConsumed = 0;
-                if (parentRoutes && parentRoutes.length > 0) {
-                    let lastOpKey = parentCode + '_' + String(parentRoutes[parentRoutes.length-1]['Име на операция']).trim().toLowerCase();
-                    parentConsumed = grossTrueDoneOps[lastOpKey] || 0;
-                } else {
-                    parentConsumed = getTotalShipped(parentCode, new Set(visited));
-                }
-                indirect += parentConsumed * (parseFloat(p['Количество'])||1);
-            }
+    let bufferMap = {};
+    if (bufferRes.data) {
+        bufferRes.data.forEach(b => {
+            bufferMap[String(b['ID Детайл']).trim().toLowerCase()] = parseFloat(b['Буфер']) || 0;
         });
-        totalShippedCache[lc] = direct + indirect; return totalShippedCache[lc];
     }
     
-    let bufferMap = {}; (bufferRes.data || []).forEach(b => { bufferMap[String(b['ID Детайл']).trim().toLowerCase()] = parseFloat(b['Буфер']) || 0; });
-    let nomNameMap = {}; (nomRes.data || []).forEach(n => { nomNameMap[String(n['ID Детайл']).trim().toLowerCase()] = n['Вътрешно име'] || n['ID Детайл']; });
-    let planNames = {}; (plansRes.data || []).forEach(p => { planNames[String(p.id).trim()] = p['Вътрешно име'] || p.id; });
+    let nomNameMap = {};
+    if (nomRes.data) {
+        nomRes.data.forEach(n => {
+            nomNameMap[String(n['ID Детайл']).trim().toLowerCase()] = n['Вътрешно име'] || n['ID Детайл'];
+        });
+    }
     
     let rows = [];
-    Object.keys(routesByDetail).forEach(code => {
-        let routes = routesByDetail[code];
-        if(routes.length === 0) return;
-        let consumedByShipped = getTotalShipped(code);
-        routes.forEach((route, idx) => {
-            let opName = String(route['Име на операция']).trim();
-            let opKey = code + '_' + opName.toLowerCase();
-            let myGrossDone = (grossTrueDoneOps[opKey] || 0) + (manualOps[opKey] || 0);
-            let doneQty = Math.max(0, myGrossDone + (savedQty[code] || 0) - consumedByShipped);
-            
-            let availableStock = 0;
-            if (idx === routes.length - 1) {
-                if (isGpTab) availableStock = doneQty;
-            } else {
-                if (!isGpTab) {
-                    let nextOpKey = code + '_' + String(routes[idx+1]['Име на операция']).trim().toLowerCase();
-                    let nextOpDone = (grossTrueDoneOps[nextOpKey] || 0) + (manualOps[nextOpKey] || 0);
-                    let safeScrappedBetween = scrappedOps[nextOpKey] || 0;
-                    availableStock = Math.max(0, myGrossDone - nextOpDone - safeScrappedBetween);
-                }
+    (invRes.data || []).forEach(item => {
+        let code = String(item['ID Детайл']).trim().toLowerCase();
+        let qty = parseFloat(item['Количество']) || 0;
+        let buf = bufferMap[code] || 0;
+        let opName = isGpTab ? 'Готов детайл' : (item['Операция'] || '');
+        
+        if (qty > 0 || (buf > 0 && isGpTab)) {
+            rows.push({
+                "RawPlanId": "",
+                "ID Детайл": item['ID Детайл'],
+                "Име": nomNameMap[code] || item['ID Детайл'],
+                "Операция": opName,
+                "Оригинална Операция": opName,
+                "Общо": qty,
+                "Запазени": "0",
+                "Свободни": qty,
+                "Минимално количество/Буфер": buf
+            });
+        }
+    });
+    
+    if (isGpTab) {
+        Object.keys(bufferMap).forEach(code => {
+            let buf = bufferMap[code];
+            if (buf > 0 && !rows.some(r => String(r['ID Детайл']).trim().toLowerCase() === code)) {
+                rows.push({
+                    "RawPlanId": "",
+                    "ID Детайл": code.toUpperCase(),
+                    "Име": nomNameMap[code] || code,
+                    "Операция": "Готов детайл",
+                    "Оригинална Операция": "Готов детайл",
+                    "Общо": 0,
+                    "Запазени": "0",
+                    "Свободни": 0,
+                    "Минимално количество/Буфер": buf
+                });
             }
-            
-            let reservedSum = 0;
-            let reservedDetails = [];
-            
-            // Parents only consume fully finished pieces (from the last operation)
-            if (idx === routes.length - 1) {
-                let parents = (bomRes.data || []).filter(b => String(b['ID Компонент']).trim().toLowerCase() === code);
-                parents.forEach(p => {
-                    let pCode = String(p['ID Родител']).trim().toLowerCase();
-                    if (pCode !== code) {
-                        let pRoutes = routesByDetail[pCode];
-                        if (pRoutes && pRoutes.length > 0) {
-                            let firstOpKey = pCode + '_' + String(pRoutes[0]['Име на операция']).trim().toLowerCase();
-                            let lastOpKey = pCode + '_' + String(pRoutes[pRoutes.length-1]['Име на операция']).trim().toLowerCase();
-                            let pStarted = grossStartedOps[firstOpKey] || 0;
-                            let pFinished = grossTrueDoneOps[lastOpKey] || 0;
-                            
-                            let pReserved = pStarted - pFinished;
-                            
-                            // If it's a finished good, we must also account for fully shipped parents
-                            let mult = parseFloat(p['Количество']) || 1;
-                            
-                            // To know total consumed by this parent over all time:
-                            // The parent started `pStarted` pieces, so it consumed `pStarted * mult` pieces.
-                            // But wait! Is `Запазени` meant to be total historical consumption, or just current reservation?
-                            // Based on the user's expectation, a finished parent should NOT hold "reserved" pieces!
+        });
+    }
+    
+    return rows;
+}
+
+async function backflushSimulation(targetDetail, targetOp, targetQty) {              // Based on the user's expectation, a finished parent should NOT hold "reserved" pieces!
                             // "Запазени" should ONLY be pieces that the parent has started but NOT finished!
                             let actualReserved = pReserved * mult;
                             if (actualReserved > 0) {

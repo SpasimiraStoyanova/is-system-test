@@ -1,4 +1,4 @@
-body { font-family: 'Segoe UI', sans-serif; background-color: #f1f5f9; margin: 0; padding: 0; color: #1c1e21; overflow-x: hidden; }
+body { font-family: 'Segoe UI', sans-serif; background-color: #fff3cd; margin: 0; padding: 0; color: #1c1e21; overflow-x: hidden; }
 .container { padding: 15px; display: flex; flex-direction: column; align-items: center; }
 .app-header { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.05); box-sizing: border-box; position: sticky; top: 0; z-index: 100; }
 .profile-area { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px; border-radius: 8px; }

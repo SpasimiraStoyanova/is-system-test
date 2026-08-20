@@ -42,8 +42,8 @@ async function loadTasks(isSilent = false) {
           client.from('marshruti').select('*').limit(100000), client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(2000), 
           client.from('sklad').select('*').limit(100000), client.from('Номенклатура').select('*').limit(100000),
           client.from('sklad_bufferi').select('*').limit(100000),
-          client.from('computed_sklad_gp').select('*').limit(100000),
-          client.from('computed_sklad_wip').select('*').limit(100000)
+          client.from('inventory_gp').select('*').limit(100000),
+          client.from('inventory_wip').select('*').limit(100000)
       ]);
 
       if (plansRes.error) throw plansRes.error; if (bomRes.error) throw bomRes.error;
@@ -310,8 +310,18 @@ async function loadTasks(isSilent = false) {
                       let opKey = code + '_' + opName;
                       let displayName = String(route['Код на детайла']).trim();
                       
-                      let globalGross = (grossTrueDoneOps[opKey] || 0) + (manualOps[opKey] || 0);
-                      let globalNet = Math.max(0, globalGross + (savedQty[code] || 0) - consumedByShipped);
+                      let globalNet = 0;
+                      if (idx === routes.length - 1) {
+                          if (gpRes.data) {
+                              let f = gpRes.data.find(g => String(g['ID Детайл']).trim().toLowerCase() === code);
+                              if (f) globalNet = parseFloat(f['Количество']) || 0;
+                          }
+                      } else {
+                          if (wipRes.data) {
+                              let f = wipRes.data.find(w => String(w['ID Детайл']).trim().toLowerCase() === code && String(w['Операция']).trim().toLowerCase() === opName);
+                              if (f) globalNet = parseFloat(f['Количество']) || 0;
+                          }
+                      }
                       
                       let usedSoFar = alreadyAllocated[opKey] || 0;
                       let availableForThisPlan = Math.max(0, globalNet - usedSoFar);
@@ -352,12 +362,16 @@ async function loadTasks(isSilent = false) {
                       let prevDoneQty = planOpDoneQty[idx - 1] || 0;
                       
                       let prevOpKey = code + '_' + prevOpName;
-                      let prevGlobalGross = (grossTrueDoneOps[prevOpKey] || 0) + (manualOps[prevOpKey] || 0);
-                      let prevGlobalNet = Math.max(0, prevGlobalGross + (savedQty[code] || 0) - consumedByShipped);
+                      let prevGlobalNet = 0;
+                      if (wipRes.data) {
+                          let found = wipRes.data.find(w => String(w['ID Детайл']).trim().toLowerCase() === code && String(w['Операция']).trim().toLowerCase() === prevOpName);
+                          if (found) prevGlobalNet = parseFloat(found['Количество']) || 0;
+                      }
+                      
                       let prevUsedSoFar = alreadyAllocated[prevOpKey] || 0;
                       let prevUnallocated = Math.max(0, prevGlobalNet - prevUsedSoFar);
                       
-                      maxAllowed = Math.max(0, prevDoneQty - doneQty + prevUnallocated);
+                      maxAllowed = prevUnallocated;
                       displayMaxAllowed = maxAllowed;
                       if (maxAllowed <= 0) blockingReasons.push(`Оп. ${prevOpName} (няма завършени)`);
                   } else {
@@ -400,7 +414,11 @@ async function loadTasks(isSilent = false) {
                                   }
                               });
 
-                              let cFree = Math.max(0, (childGrossDone + (savedQty[cCode] || 0) + whStock) - childConsumed - childReserved);
+                              let cFree = 0;
+                              if (gpRes.data) {
+                                  let foundGp = gpRes.data.find(g => String(g['ID Детайл']).trim().toLowerCase() === cCode);
+                                  if (foundGp) cFree = parseFloat(foundGp['Количество']) || 0;
+                              }
                               let usedSoFar = alreadyAllocatedWarehouse[cCode] || 0;
                               let availableNow = Math.max(0, cFree - usedSoFar);
                               let sets = Math.floor(availableNow / multiplier);
