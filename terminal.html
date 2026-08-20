@@ -1,11 +1,11 @@
-п»ї<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="bg">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>MES РўРµСЂРјРёРЅР°Р»</title>
+    <title>MES Терминал</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="terminal/terminal.css?v=2">
+    <link rel="stylesheet" href="terminal/terminal.css?v=3">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
@@ -24,52 +24,52 @@
   </head>
   <body>
     <div class="app-header">
-      <div class="profile-area" onclick="setupProfile()" title="РќР°СЃС‚СЂРѕР№РєРё РЅР° РїСЂРѕС„РёР»Р°">
+      <div class="profile-area" onclick="setupProfile()" title="Настройки на профила">
         <img src="icon.png" style="height: 38px; width: 38px; border-radius: 8px; object-fit: cover; box-shadow: 0 2px 5px rgba(0,0,0,0.15); margin-right: 5px;" onerror="this.style.display='none'">
-        <div><div style="font-weight:900; color:#1e3a8a; font-size: 1.1em;">РРЎ-РЎРРЎРўР•РњРЎ (РўР•РЎРў)</div><div class="operator-name" id="uiOperatorName">РћРџР•Р РђРўРћР </div></div>
+        <div><div style="font-weight:900; color:#1e3a8a; font-size: 1.1em;">ИС-СИСТЕМС (ТЕСТ)</div><div class="operator-name" id="uiOperatorName">ОПЕРАТОР</div></div>
       </div>
       <div class="action-buttons">
-        <button class="btn-check btn-monitor" onclick="window.location.href='index.html'">рџ“є РњРћРќРРўРћР </button>
-        <button class="btn-check btn-out" onclick="processCheckIn('РР·Р»РёР·Р°РЅРµ')">рџ”ґ РР—РҐРћР”</button>
+        <button class="btn-check btn-monitor" onclick="window.location.href='index.html'">?? МОНИТОР</button>
+        <button class="btn-check btn-out" onclick="processCheckIn('Излизане')">?? ИЗХОД</button>
       </div>
     </div>
 
     <div id="bigLoginScreen" style="display: none; padding: 20px; align-items: center; justify-content: center; min-height: 75vh;">
       <div style="background: white; padding: 40px 20px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; border: 2px solid #e2e8f0; width: 100%; max-width: 450px;">
-          <div style="font-size: 5em; margin-bottom: 10px;">рџЏ­</div>
-          <h2 style="color: #1e293b; margin-top: 0; font-size: 1.8em;">Р—РґСЂР°РІРµР№С‚Рµ!</h2>
-          <p style="color: #64748b; margin-bottom: 35px; font-size: 1.1em; font-weight: 600;">РћС‚Р±РµР»РµР¶РµС‚Рµ РЅР°С‡Р°Р»РѕС‚Рѕ РЅР° СЃРјСЏРЅР°С‚Р° СЃРё, Р·Р° РґР° РѕС‚РєР»СЋС‡РёС‚Рµ СЂР°Р±РѕС‚РЅРёСЏ РїР»РѕС‚ СЃСЉСЃ Р·Р°РґР°С‡РёС‚Рµ.</p>
-          <button onclick="processCheckIn('Р’Р»РёР·Р°РЅРµ')" style="background-color: #16a34a; color: white; width: 100%; padding: 25px 20px; font-size: 1.4em; font-weight: 900; border: none; border-radius: 16px; cursor: pointer; box-shadow: 0 8px 20px rgba(22, 163, 74, 0.35); transition: transform 0.1s;">рџџў Р’РҐРћР” Р—Рђ РЎРњРЇРќРђ</button>
+          <div style="font-size: 5em; margin-bottom: 10px;">??</div>
+          <h2 style="color: #1e293b; margin-top: 0; font-size: 1.8em;">Здравейте!</h2>
+          <p style="color: #64748b; margin-bottom: 35px; font-size: 1.1em; font-weight: 600;">Отбележете началото на смяната си, за да отключите работния плот със задачите.</p>
+          <button onclick="processCheckIn('Влизане')" style="background-color: #16a34a; color: white; width: 100%; padding: 25px 20px; font-size: 1.4em; font-weight: 900; border: none; border-radius: 16px; cursor: pointer; box-shadow: 0 8px 20px rgba(22, 163, 74, 0.35); transition: transform 0.1s;">?? ВХОД ЗА СМЯНА</button>
       </div>
     </div>
 
     <div id="mainAppContent" style="display: none;">
-        <div class="machine-bar" onclick="changeMachine()">Р Р°Р±РѕС‚РЅРѕ РјСЏСЃС‚Рѕ: <span class="machine-title" id="uiMachineName">Р’РЎРР§РљР</span> вњЏпёЏ</div>
+        <div class="machine-bar" onclick="changeMachine()">Работно място: <span class="machine-title" id="uiMachineName">ВСИЧКИ</span> ??</div>
         
         <div class="task-filters">
-            <button class="t-filter-btn" id="filter_all" onclick="setTaskFilter('all')">Р’СЃРёС‡РєРё</button>
-            <button class="t-filter-btn active" id="filter_ready" onclick="setTaskFilter('ready')">рџџў РњРѕРіР°</button>
-            <button class="t-filter-btn" id="filter_taken" onclick="setTaskFilter('taken')">вЏі РџРѕРµС‚Рё Р·Р°РґР°С‡Рё</button>
+            <button class="t-filter-btn" id="filter_all" onclick="setTaskFilter('all')">Всички</button>
+            <button class="t-filter-btn active" id="filter_ready" onclick="setTaskFilter('ready')">?? Мога</button>
+            <button class="t-filter-btn" id="filter_taken" onclick="setTaskFilter('taken')">? Поети задачи</button>
         </div>
         
         <div class="container">
             <div id="tasksContainer">
-                <div id="loadingMsg" style="text-align:center; padding: 40px; font-weight:bold; color:#64748b; font-size: 1.2em;">РўСЉСЂСЃРµРЅРµ РЅР° Р·Р°РґР°С‡Рё... рџ”„</div>
+                <div id="loadingMsg" style="text-align:center; padding: 40px; font-weight:bold; color:#64748b; font-size: 1.2em;">Търсене на задачи... ??</div>
             </div>
         </div>
 
-        <button class="history-toggle-btn" onclick="toggleHistory()">рџ•’</button>
+        <button class="history-toggle-btn" onclick="toggleHistory()">??</button>
         <div class="local-history" id="historyPanel">
-          <button onclick="toggleHistory()" style="position: absolute; top: 10px; right: 10px; background: transparent; border: none; font-size: 16px; color: #94a3b8; font-weight: bold;">вњ–</button>
-          <h4>рџ•’ РСЃС‚РѕСЂРёСЏ РЅР° С‚РѕР·Рё С‚РµР»РµС„РѕРЅ</h4>
-          <ul id="historyList" class="history-list"><li class="history-item" style="color:#94a3b8; text-align:center;">РќСЏРјР° СЃРєРѕСЂРѕС€РЅРё РґРµР№СЃС‚РІРёСЏ</li></ul>
+          <button onclick="toggleHistory()" style="position: absolute; top: 10px; right: 10px; background: transparent; border: none; font-size: 16px; color: #94a3b8; font-weight: bold;">?</button>
+          <h4>?? История на този телефон</h4>
+          <ul id="historyList" class="history-list"><li class="history-item" style="color:#94a3b8; text-align:center;">Няма скорошни действия</li></ul>
         </div>
 
-        <button onclick="toggleMessages()" style="position: fixed; bottom: 85px; right: 15px; background: #2563eb; color: white; border: none; border-radius: 50%; width: 55px; height: 55px; font-size: 24px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); cursor: pointer; z-index: 9001; display: flex; justify-content: center; align-items: center;">рџ“¬</button>
+        <button onclick="toggleMessages()" style="position: fixed; bottom: 85px; right: 15px; background: #2563eb; color: white; border: none; border-radius: 50%; width: 55px; height: 55px; font-size: 24px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); cursor: pointer; z-index: 9001; display: flex; justify-content: center; align-items: center;">??</button>
         <div class="local-history" id="messagesPanel" style="bottom: 150px; display: none; z-index: 9002;">
-          <button onclick="toggleMessages()" style="position: absolute; top: 10px; right: 10px; background: transparent; border: none; font-size: 16px; color: #94a3b8; font-weight: bold;">вњ–</button>
-          <h4>рџ“¬ Р’СЃРёС‡РєРё СЃСЉРѕР±С‰РµРЅРёСЏ</h4>
-          <ul id="messagesList" class="history-list"><li class="history-item" style="color:#94a3b8; text-align:center;">Р—Р°СЂРµР¶РґР°РЅРµ...</li></ul>
+          <button onclick="toggleMessages()" style="position: absolute; top: 10px; right: 10px; background: transparent; border: none; font-size: 16px; color: #94a3b8; font-weight: bold;">?</button>
+          <h4>?? Всички съобщения</h4>
+          <ul id="messagesList" class="history-list"><li class="history-item" style="color:#94a3b8; text-align:center;">Зареждане...</li></ul>
         </div>
     </div>
 

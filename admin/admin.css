@@ -4,7 +4,7 @@ body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; b
 .nav-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .tab-btn { background: transparent; border: none; padding: 10px 16px; font-weight: 700; font-size: 0.9em; color: #64748b; cursor: pointer; border-radius: 6px; transition: all 0.2s; white-space: nowrap; }
 .tab-btn:hover { background-color: #f1f5f9; color: #0f172a; }
-.tab-btn.active { background-color: #e0e7ff; color: #4338ca; }
+.tab-btn.active { background-color: #fef08a; color: #a16207; }
 .main-container { max-width: 98%; margin: 20px auto; padding: 0 15px; box-sizing: border-box; }
 .controls-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 15px; flex-wrap: wrap; }
 .search-box { flex: 1; max-width: 400px; min-width: 250px; }
