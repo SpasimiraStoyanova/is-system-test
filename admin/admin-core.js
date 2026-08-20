@@ -462,38 +462,7 @@ async function computeSkladData(isGpTab) {
     return rows;
 }
 
-async function backflushSimulation(targetDetail, targetOp, targetQty) {              // Based on the user's expectation, a finished parent should NOT hold "reserved" pieces!
-                            // "Запазени" should ONLY be pieces that the parent has started but NOT finished!
-                            let actualReserved = pReserved * mult;
-                            if (actualReserved > 0) {
-                                reservedSum += actualReserved;
-                                let pName = nomNameMap[pCode] || pCode;
-                                reservedDetails.push(`${actualReserved} бр. за ${pName}`);
-                            }
-                        }
-                    }
-                });
-            }
-            let reservedStr = reservedSum > 0 ? `${reservedSum} (${reservedDetails.join(', ')})` : "0";
-            let freeStock = Math.max(0, availableStock - reservedSum);
-            
-            if (availableStock > 0 || (bufferMap[code] > 0 && isGpTab && idx === routes.length - 1)) {
-                rows.push({
-                    "RawPlanId": "",
-                    "ID Детайл": route['Код на детайла'],
-                    "Име": nomNameMap[code] || route['Код на детайла'],
-                    "Операция": opName,
-                    "Оригинална Операция": opName,
-                    "Общо": availableStock,
-                    "Запазени": reservedStr,
-                    "Свободни": freeStock,
-                    "Минимално количество/Буфер": bufferMap[code] || 0
-                });
-            }
-        });
-    });
-    return rows;
-}
+
 
 async function backflushSimulation(targetDetail, targetOp, targetQty) {
     if (targetQty === 0) return [];
