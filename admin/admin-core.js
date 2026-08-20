@@ -376,7 +376,27 @@ function buildForm(data = null) {
   });
 }
 
-function openAddModal() { isEditMode = false; editingIndex = null; document.getElementById('modalTitle').innerHasync function computeSkladData(isGpTab) {
+function openAddModal() { isEditMode = false; editingIndex = null; document.getElementById('modalTitle').innerHTML = '➕ Добавяне: ' + tableConfigs[currentTab].label.replace(/[^а-яА-Я ]/g, '').trim(); buildForm(); document.getElementById('modalBackdrop').style.display = 'flex'; }
+function openEditModal(index) { isEditMode = true; editingIndex = index; document.getElementById('modalTitle').innerHTML = '✏️ Редакция: ' + tableConfigs[currentTab].label.replace(/[^а-яА-Я ]/g, '').trim(); buildForm(globalRows[index]); document.getElementById('modalBackdrop').style.display = 'flex'; }
+function closeModal() { document.getElementById('modalBackdrop').style.display = 'none'; }
+
+async function fetchAll(table, orderCol) {
+    let allData = [];
+    let from = 0;
+    const step = 1000;
+    while(true) {
+        let query = client.from(table).select('*').range(from, from + step - 1);
+        if (orderCol) query = query.order(orderCol, {ascending: true});
+        let { data, error } = await query;
+        if (error || !data || data.length === 0) break;
+        allData = allData.concat(data);
+        if (data.length < step) break;
+        from += step;
+    }
+    return { data: allData };
+}
+
+async function computeSkladData(isGpTab) {
     const table = isGpTab ? 'inventory_gp' : 'inventory_wip';
     const [invRes, nomRes, bufferRes] = await Promise.all([
         fetchAll(table),
