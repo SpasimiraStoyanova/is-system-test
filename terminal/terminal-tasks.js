@@ -42,8 +42,8 @@ async function loadTasks(isSilent = false) {
           client.from('marshruti').select('*').limit(100000), client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(2000), 
           client.from('sklad').select('*').limit(100000), client.from('Номенклатура').select('*').limit(100000),
           client.from('sklad_bufferi').select('*').limit(100000),
-          client.from('inventory_gp').select('*').limit(100000),
-          client.from('inventory_wip').select('*').limit(100000)
+          client.from('computed_sklad_gp').select('*').limit(100000),
+          client.from('computed_sklad_wip').select('*').limit(100000)
       ]);
 
       if (plansRes.error) throw plansRes.error; if (bomRes.error) throw bomRes.error;
@@ -310,25 +310,26 @@ async function loadTasks(isSilent = false) {
                       let opKey = code + '_' + opName;
                       let displayName = String(route['Код на детайла']).trim();
                       
-                      let globalGross = consumedByShipped;
-                      if (gpRes.data) {
-                          let f = gpRes.data.find(g => String(g['ID Детайл']).trim().toLowerCase() === code);
-                          if (f) globalGross += parseFloat(f['Количество']) || 0;
-                      }
-                      for (let j = idx; j < routes.length; j++) {
-                          let jOpName = String(routes[j]['Име на операция']).trim().toLowerCase();
-                          if (wipRes.data) {
-                              let f = wipRes.data.find(w => String(w['ID Детайл']).trim().toLowerCase() === code && String(w['Операция']).trim().toLowerCase() === jOpName);
-                              if (f) globalGross += parseFloat(f['Количество']) || 0;
-                          }
-                      }
+                      let globalGross = (grossTrueDoneOps[opKey] || 0) + (manualOps[opKey] || 0);
+                      let globalNet = Math.max(0, globalGross + (savedQty[code] || 0) - consumedByShipped);
                       
                       let usedSoFar = alreadyAllocated[opKey] || 0;
-                      let availableForThisPlan = Math.max(0, globalGross - usedSoFar);
+                      let availableForThisPlan = Math.max(0, globalNet - usedSoFar);
                       
                       let planTarget = Math.max(opBlueTarget, opGreenTarget);
                       let deficit = Math.max(0, planTarget - consumedByParents[code]);
                       let allocatedFromWh = Math.min(deficit, availableForThisPlan);
+                      
+                      let planKey = isBuffer ? opKey : (opKey + '_' + pId);
+                      let explicitGross = explicitPlanGrossCompleted[planKey] || 0;
+                      
+                      let totalExplicitSubsequentScrap = 0;
+                      for (let j = idx + 1; j < routes.length; j++) {
+                          let nextOpKey = code + '_' + String(routes[j]['Име на операция']).trim().toLowerCase();
+                          let nextPlanKey = isBuffer ? nextOpKey : (nextOpKey + '_' + pId);
+                          totalExplicitSubsequentScrap += (explicitPlanScrapped[nextPlanKey] || 0);
+                      }
+                      let explicitNet = Math.max(0, explicitGross - totalExplicitSubsequentScrap);
                       
                       let doneQty = consumedByParents[code] + allocatedFromWh;
                       if (doneQty < 0) doneQty = 0;
@@ -348,6 +349,7 @@ async function loadTasks(isSilent = false) {
                   if (idx > 0) {
                       let prevRoute = routes[idx - 1]; 
                       let prevOpName = String(prevRoute['Име на операция']).trim().toLowerCase();
+                      let prevDoneQty = planOpDoneQty[idx - 1] || 0;
                       
                       let prevWip = 0;
                       if (wipRes.data) {
@@ -367,7 +369,7 @@ async function loadTasks(isSilent = false) {
                           children.forEach(child => {
                               let cCode = String(child['ID Компонент']).trim().toLowerCase(); 
                               let multiplier = parseFloat(child['Количество']) || 1;
-
+                              
                               let cFree = 0;
                               if (gpRes.data) {
                                   let foundGp = gpRes.data.find(g => String(g['ID Детайл']).trim().toLowerCase() === cCode);
