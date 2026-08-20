@@ -420,7 +420,7 @@ async function loadTasks(isSilent = false) {
                         defaultQty: targetInput, maxAllowed: displayMaxAllowed, realMaxAllowed: maxAllowed, hasLimit: hasLimit, isBlocked: isBlocked, blockingReasons: blockingReasons, 
                         totalNeed: isBuffer ? opGreenTarget : opBlueTarget, pureQty: isBuffer ? opGreenTarget : opBlueTarget, 
                         totalDone: doneQty, totalScrapped: 0, isTaken: isTaken, isGreenCard: isBuffer,
-                        globalGrossAtLoad: globalNet, globalScrapAtLoad: (scrappedOps[opKey] || 0)
+                        globalGrossAtLoad: globalGross, globalScrapAtLoad: (scrappedOps[opKey] || 0)
                     });
                 }
             });
