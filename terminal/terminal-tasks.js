@@ -113,120 +113,27 @@ async function loadTasks(isSilent = false) {
           planRoots[groupKey][rootItem] = (planRoots[groupKey][rootItem] || 0) + targetQty;
       });
 
-      let completedOps = {};
-      let scrappedOps = {};
-      let grossCompletedOps = {};
-      let manualOps = {};
-      let explicitPlanGrossCompleted = {};
-      let explicitPlanScrapped = {};
-      let savedQty = {};
-
-      let sortedReports = reportsRes.data.map(r => {
-          r._ts = new Date(r['Време Старт'] || r['Дата']).getTime();
-          return r;
-      }).sort((a,b) => a._ts - b._ts);
-
-      sortedReports.forEach(r => {
-          let code = String(r['ID Детайл']).trim().toLowerCase();
-          let op = String(r['Операция']).trim().toLowerCase();
-          let key = code + '_' + op;
-          let qty = parseFloat(r['Количество']) || 0;
-          
-          let rawPId = String(r['ID План'] || '').trim();
-          let pId = planNameToId[rawPId] || rawPId;
-          let planKey = pId ? (key + '_' + pId) : key;
-          
-          if (r['Статус'] === 'Брак') { 
-              scrappedOps[key] = (scrappedOps[key]||0) + qty; 
-              if (pId) explicitPlanScrapped[planKey] = (explicitPlanScrapped[planKey] || 0) + qty;
-          } 
-          else if (r['Статус'] === 'Отчетено') { 
-              if (op === 'възстановен') {
-                  savedQty[code] = (savedQty[code] || 0) + qty;
-              }
-              completedOps[key] = (completedOps[key]||0) + qty; 
-              let isManual = (r['Оператор'] === 'СИСТЕМА (Ръчно добавен)' || (r['Оператор'] === 'СИСТЕМА (Корекция наличност)' && qty > 0));
-              if (isManual) {
-                  manualOps[key] = (manualOps[key] || 0) + qty;
-              } else if (r['Оператор'] !== 'СИСТЕМА (Експедиция)' && !(r['Оператор'] === 'СИСТЕМА (Корекция наличност)' && qty < 0) && op !== 'възстановен' && !op.startsWith('вложен в ')) { 
-                  grossCompletedOps[key] = (grossCompletedOps[key] || 0) + qty; 
-                  if (pId) explicitPlanGrossCompleted[planKey] = (explicitPlanGrossCompleted[planKey] || 0) + qty;
-              }
-          }
-      });
-
-      let trueDoneOps = {}; let grossTrueDoneOps = {}; let shippedQty = {};
-      let grossStartedOps = {}; 
-      
-      Object.keys(globalRoutesByDetail).forEach(code => {
-          let routes = globalRoutesByDetail[code]; if(routes.length===0) return;
-          
-          for (let i = routes.length-2; i >= 0; i--) {
-              let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
-              let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
-              
-              let requiredFromMe = (grossCompletedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
-              grossCompletedOps[opKey] = Math.max(grossCompletedOps[opKey] || 0, requiredFromMe);
-              let manualRequiredFromMe = manualOps[nextOpKey] || 0;
-              manualOps[opKey] = (manualOps[opKey] || 0) + manualRequiredFromMe;
-              
-              let trueRequired = (completedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
-              completedOps[opKey] = Math.max(completedOps[opKey] || 0, trueRequired);
-          }
-          
-          let lastOpKey = code + '_' + String(routes[routes.length-1]['Име на операция']).trim().toLowerCase();
-          trueDoneOps[lastOpKey] = completedOps[lastOpKey] || 0;
-          grossTrueDoneOps[lastOpKey] = grossCompletedOps[lastOpKey] || 0;
-          
-          for (let i = routes.length-2; i >= 0; i--) {
-              let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
-              let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
-              
-              let bucket = (grossCompletedOps[opKey] || 0) - (grossCompletedOps[nextOpKey] || 0) - (scrappedOps[nextOpKey] || 0);
-              if (bucket < 0) bucket = 0;
-              grossTrueDoneOps[opKey] = (grossTrueDoneOps[nextOpKey] || 0) + bucket;
-              
-              let trueBucket = (completedOps[opKey] || 0) - (completedOps[nextOpKey] || 0) - (scrappedOps[nextOpKey] || 0);
-              if (trueBucket < 0) trueBucket = 0;
-              trueDoneOps[opKey] = (trueDoneOps[nextOpKey] || 0) + trueBucket;
-          }
-          
-          let firstOpKey = code + '_' + String(routes[0]['Име на операция']).trim().toLowerCase();
-          grossStartedOps[firstOpKey] = (grossCompletedOps[firstOpKey] || 0) + (scrappedOps[firstOpKey] || 0);
-          
-          shippedQty[code] = Math.max(0, (grossTrueDoneOps[lastOpKey]||0) - (trueDoneOps[lastOpKey]||0));
-      });
-
-      let totalShippedCache = {};
-      function getTotalShipped(item, visited = new Set()) {
-          let lc = item.toLowerCase();
-          if (totalShippedCache[lc] !== undefined) return totalShippedCache[lc];
-          if (visited.has(lc)) return 0;
-          visited.add(lc);
-          
-          let directShipped = shippedQty[lc] || 0;
-          let parents = globalBomData.filter(b => String(b['ID Компонент']).trim().toLowerCase() === lc);
-          let indirectShipped = 0;
-          parents.forEach(p => {
-              let parentCode = String(p['ID Родител']).trim().toLowerCase();
-              if (parentCode !== lc) {
-                  let parentRoutes = globalRoutesByDetail[parentCode];
-                  let parentConsumed = 0;
-                  if (parentRoutes && parentRoutes.length > 0) {
-                      let lastOpKey = parentCode + '_' + String(parentRoutes[parentRoutes.length-1]['Име на операция']).trim().toLowerCase();
-                      parentConsumed = grossTrueDoneOps[lastOpKey] || 0;
-                  } else {
-                      parentConsumed = getTotalShipped(parentCode, new Set(visited));
-                  }
-                  indirectShipped += parentConsumed * (parseFloat(p['Количество']) || 1);
+      let physicalStock = {}; 
+      if (gpRes.data) {
+          gpRes.data.forEach(r => {
+              let code = String(r['ID Детайл']).trim().toLowerCase();
+              let routes = globalRoutesByDetail[code];
+              if (routes && routes.length > 0) {
+                  let lastOp = String(routes[routes.length - 1]['Име на операция']).trim().toLowerCase();
+                  let key = code + '_' + lastOp;
+                  physicalStock[key] = (physicalStock[key] || 0) + (parseFloat(r['Количество']) || 0);
               }
           });
-          
-          totalShippedCache[lc] = directShipped + indirectShipped;
-          return totalShippedCache[lc];
+      }
+      if (wipRes.data) {
+          wipRes.data.forEach(r => {
+              let code = String(r['ID Детайл']).trim().toLowerCase();
+              let op = String(r['Операция']).trim().toLowerCase();
+              let key = code + '_' + op;
+              physicalStock[key] = (physicalStock[key] || 0) + (parseFloat(r['Количество']) || 0);
+          });
       }
 
-      let depths = {};
       let getDepth = (item, visited = new Set()) => {
           if (depths[item] !== undefined) return depths[item];
           if (visited.has(item)) return 0; 
@@ -240,17 +147,14 @@ async function loadTasks(isSilent = false) {
           });
           depths[item] = maxP + 1; return depths[item];
       };
+      let depths = {};
 
       globalTasks = [];
 
       let planIdsToProcess = Object.keys(planRoots).sort((a,b) => (groupEarliestId[a] || 0) - (groupEarliestId[b] || 0));
       planIdsToProcess.push('NONE');
       
-      let alreadyAllocated = {};
-      let alreadyAllocatedWarehouse = {};
-      
       planIdsToProcess.forEach(pId => {
-          let tempAllocatedWarehouse = {};
           let isBuffer = pId === 'NONE';
           let deficitBom = {};
           
@@ -262,181 +166,125 @@ async function loadTasks(isSilent = false) {
 
           let allItemsSet = new Set(Object.keys(deficitBom));
           globalBomData.forEach(b => { allItemsSet.add(String(b['ID Родител']).trim().toLowerCase()); allItemsSet.add(String(b['ID Компонент']).trim().toLowerCase()); });
-          if (isBuffer) {
-              Object.keys(bufferMap).forEach(code => allItemsSet.add(code));
-          }
+          if (isBuffer) Object.keys(bufferMap).forEach(code => allItemsSet.add(code));
           
           let allItemsArray = Array.from(allItemsSet);
           allItemsArray.forEach(item => getDepth(item));
           allItemsArray.sort((a, b) => (depths[a] || 0) - (depths[b] || 0));
 
-          let blueTargets = {};
-          allItemsArray.forEach(item => {
-              if (isBuffer) return;
-              let target = deficitBom[item] || 0;
-              blueTargets[item] = target; 
-              let deficit = target;
-              if (deficit > 0) {
-                  let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === item);
-                  children.forEach(c => {
-                      let childName = String(c['ID Компонент']).trim().toLowerCase(); 
-                      let multiplier = parseFloat(c['Количество']) || 1;
-                      deficitBom[childName] = (deficitBom[childName] || 0) + (deficit * multiplier);
-                  });
-              }
-          });
-          
-          let consumedByParents = {};
-          allItemsArray.forEach(item => { consumedByParents[item] = 0; });
-
           allItemsArray.forEach((code, nodeIndex) => {
               let routes = globalRoutesByDetail[code] || []; 
               if(routes.length === 0) return;
               
-              let blueTarget = isBuffer ? 0 : (blueTargets[code] || 0);
-              let greenTarget = isBuffer ? (bufferMap[code] || 0) : 0;
-                  let opBlueTarget = blueTarget;
-                  let opGreenTarget = greenTarget;
-    
-                  if (opBlueTarget <= 0 && opGreenTarget <= 0) return;
+              let target = isBuffer ? (bufferMap[code] || 0) : (deficitBom[code] || 0);
+              if (target <= 0) return;
+              
+              let currentTarget = target;
+              
+              for (let i = routes.length - 1; i >= 0; i--) {
+                  let route = routes[i];
+                  let opName = String(route['Име на операция']).trim().toLowerCase();
+                  let opKey = code + '_' + opName;
                   
-                  let consumedByShipped = getTotalShipped(code);
-                  let finalDoneQtyForChildren = 0;
-                  let planOpDoneQty = [];
-    
-                  routes.forEach((route, idx) => {
-                      let displayOpName = String(route['Име на операция']).trim();
-                      let opName = displayOpName.toLowerCase(); 
-                      let opKey = code + '_' + opName;
-                      let displayName = String(route['Код на детайла']).trim();
+                  let availableHere = physicalStock[opKey] || 0;
+                  let taken = Math.min(currentTarget, availableHere);
+                  if (taken > 0) {
+                      physicalStock[opKey] -= taken;
+                  }
+                  
+                  let shortage = currentTarget - taken;
+                  
+                  if (shortage > 0) {
+                      let maxAllowed = 0;
+                      let hasLimit = true;
+                      let blockingReasons = [];
+                      let displayMaxAllowed = 0;
                       
-                      let globalGross = (grossTrueDoneOps[opKey] || 0) + (manualOps[opKey] || 0);
-                      let globalNet = Math.max(0, globalGross + (savedQty[code] || 0) - consumedByShipped);
-                      
-                      let usedSoFar = alreadyAllocated[opKey] || 0;
-                      let availableForThisPlan = Math.max(0, globalNet - usedSoFar);
-                      
-                      let planTarget = Math.max(opBlueTarget, opGreenTarget);
-                      let deficit = Math.max(0, planTarget - consumedByParents[code]);
-                      let allocatedFromWh = Math.min(deficit, availableForThisPlan);
-                      
-                      let planKey = isBuffer ? opKey : (opKey + '_' + pId);
-                      let explicitGross = explicitPlanGrossCompleted[planKey] || 0;
-                      
-                      let totalExplicitSubsequentScrap = 0;
-                      for (let j = idx + 1; j < routes.length; j++) {
-                          let nextOpKey = code + '_' + String(routes[j]['Име на операция']).trim().toLowerCase();
-                          let nextPlanKey = isBuffer ? nextOpKey : (nextOpKey + '_' + pId);
-                          totalExplicitSubsequentScrap += (explicitPlanScrapped[nextPlanKey] || 0);
-                      }
-                      let explicitNet = Math.max(0, explicitGross - totalExplicitSubsequentScrap);
-                      
-                      let doneQty = consumedByParents[code] + allocatedFromWh;
-                      if (doneQty < 0) doneQty = 0;
-                      
-                      alreadyAllocated[opKey] = usedSoFar + allocatedFromWh;
-                      if (idx === 0) finalDoneQtyForChildren = doneQty;
-                      
-                      planOpDoneQty[idx] = doneQty;
-                      
-                      if (isBuffer) {
-                          if (doneQty >= opGreenTarget) return;
+                      if (i > 0) {
+                          let prevRoute = routes[i - 1]; 
+                          let prevOpName = String(prevRoute['Име на операция']).trim().toLowerCase();
+                          maxAllowed = physicalStock[code + '_' + prevOpName] || 0;
+                          displayMaxAllowed = maxAllowed;
+                          if (maxAllowed < shortage) blockingReasons.push(`Липсва наличност на предходна операция (${String(prevRoute['Име на операция']).trim()})`);
                       } else {
-                          if (doneQty >= opBlueTarget) return;
+                          let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
+                          if (children.length === 0) { 
+                              hasLimit = false; maxAllowed = Infinity; displayMaxAllowed = Infinity; 
+                          } else {
+                              let minSets = Infinity;
+                              let rawMinSets = Infinity;
+                              children.forEach(child => {
+                                  let cCode = String(child['ID Компонент']).trim().toLowerCase(); 
+                                  let multiplier = parseFloat(child['Количество']) || 1;
+                                  let childRoutes = globalRoutesByDetail[cCode] || [];
+                                  let childAvail = 0;
+                                  if (childRoutes.length > 0) {
+                                      let lastChildOp = String(childRoutes[childRoutes.length - 1]['Име на операция']).trim().toLowerCase();
+                                      childAvail = physicalStock[cCode + '_' + lastChildOp] || 0;
+                                  }
+                                  let sets = Math.floor(childAvail / multiplier);
+                                  if (sets < minSets) { minSets = sets; blockingReasons.push(`${cCode} (${childAvail} налични)`); }
+                                  if (sets < rawMinSets) rawMinSets = sets;
+                              });
+                              maxAllowed = minSets;
+                              displayMaxAllowed = rawMinSets;
+                              if (maxAllowed === Infinity) hasLimit = false;
+                              if (maxAllowed < shortage && blockingReasons.length > 0) blockingReasons.push(`Липсващи компоненти`);
+                          }
                       }
-                  
-                  let maxAllowed = 0; let hasLimit = true; let blockingReasons = []; let displayMaxAllowed = 0;
-                  if (idx > 0) {
-                      let prevRoute = routes[idx - 1]; 
-                      let prevOpName = String(prevRoute['Име на операция']).trim().toLowerCase();
-                      let prevDoneQty = planOpDoneQty[idx - 1] || 0;
                       
-                      let prevWip = 0;
-                      if (wipRes.data) {
-                          let found = wipRes.data.find(w => String(w['ID Детайл']).trim().toLowerCase() === code && String(w['Операция']).trim().toLowerCase() === prevOpName);
-                          if (found) prevWip = parseFloat(found['Количество']) || 0;
+                      let isTaken = takenOps[opKey] === true;
+                      if (maxAllowed < 0) maxAllowed = 0; 
+                      let isBlocked = hasLimit && maxAllowed <= 0; 
+                      let machineName = route['Машина'] || '';
+                      
+                      let matchMachine = false;
+                      if (!currentMachine || currentMachine.trim() === "" || isTaken) {
+                          matchMachine = true;
+                      } else {
+                          let selectedMachines = currentMachine.split(',').map(m => m.toLowerCase().trim()); 
+                          matchMachine = selectedMachines.some(m => machineName.toLowerCase().includes(m));
                       }
-                      
-                      maxAllowed = prevWip;
-                      displayMaxAllowed = maxAllowed;
-                      if (maxAllowed <= 0) blockingReasons.push(`Оп. ${prevOpName} (няма завършени)`);
-                  } else {
-                      let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
-                      if (children.length === 0) { hasLimit = false; maxAllowed = Infinity; displayMaxAllowed = Infinity; } 
-                      else {
-                          let minSets = Infinity;
-                          let rawMinSets = Infinity;
-                          children.forEach(child => {
-                              let cCode = String(child['ID Компонент']).trim().toLowerCase(); 
-                              let multiplier = parseFloat(child['Количество']) || 1;
-                              
-                              let cFree = 0;
-                              if (gpRes.data) {
-                                  let foundGp = gpRes.data.find(g => String(g['ID Детайл']).trim().toLowerCase() === cCode);
-                                  if (foundGp) cFree = parseFloat(foundGp['Количество']) || 0;
-                              }
-                              let usedSoFar = alreadyAllocatedWarehouse[cCode] || 0;
-                              let availableNow = Math.max(0, cFree - usedSoFar);
-                              let sets = Math.floor(availableNow / multiplier);
-                              let rawSets = Math.floor(cFree / multiplier);
-                              if (sets < minSets) { minSets = sets; blockingReasons.push(`${cCode} (${availableNow} налични)`); }
-                              if (rawSets < rawMinSets) { rawMinSets = rawSets; }
+
+                      if (matchMachine) {
+                          blockingReasons = [...new Set(blockingReasons)];
+                          let safeIdBase = (pId + '_' + code + '_n' + nodeIndex + '_op' + i).replace(/[^a-zA-Z0-9а-яА-Я_]/g, '_');
+                          
+                          let targetInput = shortage;
+                          if (hasLimit && targetInput > maxAllowed) targetInput = maxAllowed;
+                          if (targetInput <= 0 && !hasLimit) targetInput = 1;
+                          if (targetInput <= 0 && isBlocked) targetInput = 0;
+                          
+                          let displayName = String(route['Код на детайла']).trim();
+                          let displayOpName = String(route['Име на операция']).trim();
+                          
+                          globalTasks.push({ 
+                              id: safeIdBase + (isBuffer ? '_green' : '_blue'), 
+                              plan_id: isBuffer ? null : pId, 
+                              plan_name: isBuffer ? "БУФЕРИ" : (planNames[pId] || pId),
+                              name: displayName, internalName: namesMap[code] || '', op: displayOpName, opNum: parseInt(route['№ Операция']) || 0, next_op: i < routes.length - 1 ? String(routes[i+1]['Име на операция']).trim() : "Готово", 
+                              machine: machineName, drawing_link: route['Линк към чертеж'], sop_link: route['Линк към СОП'], desc: route['Описание'], 
+                              type: i === routes.length - 1 ? "ЗЕЛЕНА" : "СИНЯ", 
+                              defaultQty: targetInput, maxAllowed: displayMaxAllowed, realMaxAllowed: maxAllowed, hasLimit: hasLimit, isBlocked: isBlocked, blockingReasons: blockingReasons, 
+                              totalNeed: shortage, pureQty: shortage, 
+                              totalDone: 0, totalScrapped: 0, isTaken: isTaken, isGreenCard: isBuffer,
+                              globalGrossAtLoad: 0, globalScrapAtLoad: 0
                           });
-                          maxAllowed = minSets;
-                          displayMaxAllowed = rawMinSets;
-                          if (maxAllowed === Infinity) { hasLimit = false; } 
-                          if (maxAllowed <= 0 && blockingReasons.length > 0) blockingReasons.push(`Липсващи компоненти`);
                       }
                   }
-
-                  let isTaken = takenOps[opKey] === true;
-                  if (maxAllowed < 0) maxAllowed = 0; let isBlocked = hasLimit && maxAllowed <= 0; let machineName = route['Машина'] || '';
-                  if (currentMachine && currentMachine.trim() !== "" && !isTaken) { let selectedMachines = currentMachine.split(',').map(m => m.toLowerCase().trim()); let match = selectedMachines.some(m => machineName.toLowerCase().includes(m)); if (!match) return; }
-
-                  blockingReasons = [...new Set(blockingReasons)];
-                  let safeIdBase = (pId + '_' + code + '_n' + nodeIndex + '_op' + idx).replace(/[^a-zA-Z0-9а-яА-Я_]/g, '_');
-                  let taskDeficit = isBuffer ? Math.max(0, opGreenTarget - doneQty) : Math.max(0, opBlueTarget - doneQty);
                   
-                  if (taskDeficit > 0) {
-                      let targetInput = taskDeficit;
-                      if (hasLimit && targetInput > maxAllowed) targetInput = maxAllowed;
-                      if (targetInput <= 0 && !hasLimit) targetInput = 1;
-                      if (targetInput <= 0 && isBlocked) targetInput = 0;
-                      
-                    if (idx === 0) {
-                        let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
-                        children.forEach(child => {
-                            let cCode = String(child['ID Компонент']).trim().toLowerCase();
-                            let multiplier = parseFloat(child['Количество']) || 1;
-                            tempAllocatedWarehouse[cCode] = (tempAllocatedWarehouse[cCode] || 0) + (targetInput * multiplier);
-                        });
-                    }
-                    
-                    globalTasks.push({ 
-                        id: safeIdBase + (isBuffer ? '_green' : '_blue'), 
-                        plan_id: isBuffer ? null : pId, 
-                        plan_name: isBuffer ? "БУФЕРИ" : (planNames[pId] || pId),
-                        name: displayName, internalName: namesMap[code] || '', op: displayOpName, opNum: parseInt(route['№ Операция']) || 0, next_op: idx < routes.length - 1 ? String(routes[idx+1]['Име на операция']).trim() : "Готово", 
-                        machine: machineName, drawing_link: route['Линк към чертеж'], sop_link: route['Линк към СОП'], desc: route['Описание'], 
-                        type: idx === routes.length - 1 ? "ЗЕЛЕНА" : "СИНЯ", 
-                        defaultQty: targetInput, maxAllowed: displayMaxAllowed, realMaxAllowed: maxAllowed, hasLimit: hasLimit, isBlocked: isBlocked, blockingReasons: blockingReasons, 
-                        totalNeed: isBuffer ? opGreenTarget : opBlueTarget, pureQty: isBuffer ? opGreenTarget : opBlueTarget, 
-                        totalDone: doneQty, totalScrapped: 0, isTaken: isTaken, isGreenCard: isBuffer,
-                        globalGrossAtLoad: globalGross, globalScrapAtLoad: (scrappedOps[opKey] || 0)
-                    });
-                }
-            });
-            
-            let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
-            children.forEach(c => {
-                let cCode = String(c['ID Компонент']).trim().toLowerCase(); 
-                let multiplier = parseFloat(c['Количество']) || 1;
-                consumedByParents[cCode] = (consumedByParents[cCode] || 0) + (finalDoneQtyForChildren * multiplier);
-            });
-        });
-        Object.keys(tempAllocatedWarehouse).forEach(k => {
-            alreadyAllocatedWarehouse[k] = (alreadyAllocatedWarehouse[k] || 0) + tempAllocatedWarehouse[k];
-        });
+                  currentTarget = shortage;
+              }
+              
+              if (currentTarget > 0) {
+                  let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
+                  children.forEach(c => {
+                      let cCode = String(c['ID Компонент']).trim().toLowerCase(); 
+                      let multiplier = parseFloat(c['Количество']) || 1;
+                      deficitBom[cCode] = (deficitBom[cCode] || 0) + (currentTarget * multiplier);
+                  });
+              }
+          });
       });
       
       globalTasks.sort((a, b) => {
