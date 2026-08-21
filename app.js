@@ -386,7 +386,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
             let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
             let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
             
-            let requiredFromMe = (grossCompletedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
+            let requiredFromMe = (grossCompletedOps[nextOpKey] || 0) + (manualOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
             let whatINeedNormally = Math.max(0, requiredFromMe - (manualOps[opKey] || 0));
             grossCompletedOps[opKey] = Math.max(grossCompletedOps[opKey] || 0, whatINeedNormally);
             
