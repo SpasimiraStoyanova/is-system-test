@@ -376,10 +376,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         }
     });
 
-    let trueDoneOps = {};
-    let grossTrueDoneOps = {};
     let shippedQty = {};
-    let grossStartedOps = {}; 
 
     Object.keys(staticCache.routesByDetail).forEach(code => {
         let routes = staticCache.routesByDetail[code];
@@ -393,34 +390,13 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
             let whatINeedNormally = Math.max(0, requiredFromMe - (manualOps[opKey] || 0));
             grossCompletedOps[opKey] = Math.max(grossCompletedOps[opKey] || 0, whatINeedNormally);
             
-            let manualRequiredFromMe = (manualOps[nextOpKey] || 0);
-            manualOps[opKey] = (manualOps[opKey] || 0) + manualRequiredFromMe;
-            
-            let trueRequired = (completedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
-            completedOps[opKey] = Math.max(completedOps[opKey] || 0, trueRequired);
         }
         
         let lastOpKey = code + '_' + String(routes[routes.length - 1]['Име на операция']).trim().toLowerCase();
-        trueDoneOps[lastOpKey] = (completedOps[lastOpKey] || 0) + (savedQty[code] || 0);
-        grossTrueDoneOps[lastOpKey] = (grossCompletedOps[lastOpKey] || 0) + (savedQty[code] || 0);
+        let finalTrueDone = (completedOps[lastOpKey] || 0) + (savedQty[code] || 0);
+        let finalGrossTrueDone = (grossCompletedOps[lastOpKey] || 0) + (savedQty[code] || 0);
         
-        for (let i = routes.length - 2; i >= 0; i--) {
-            let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
-            let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
-            
-            let bucket = (grossCompletedOps[opKey] || 0) - (grossCompletedOps[nextOpKey] || 0) - (scrappedOps[nextOpKey] || 0);
-            if (bucket < 0) bucket = 0;
-            grossTrueDoneOps[opKey] = (grossTrueDoneOps[nextOpKey] || 0) + bucket;
-            
-            let trueBucket = (completedOps[opKey] || 0) - (completedOps[nextOpKey] || 0) - (scrappedOps[nextOpKey] || 0);
-            if (trueBucket < 0) trueBucket = 0;
-            trueDoneOps[opKey] = (trueDoneOps[nextOpKey] || 0) + trueBucket;
-        }
-        
-        let firstOpKey = code + '_' + String(routes[0]['Име на операция']).trim().toLowerCase();
-        grossStartedOps[firstOpKey] = (grossCompletedOps[firstOpKey] || 0) + (scrappedOps[firstOpKey] || 0);
-        
-        shippedQty[code] = Math.max(0, (grossTrueDoneOps[lastOpKey] || 0) - (trueDoneOps[lastOpKey] || 0));
+        shippedQty[code] = Math.max(0, finalGrossTrueDone - finalTrueDone);
     });
 
     let totalShippedCache = {};
@@ -440,7 +416,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 let parentConsumed = 0;
                 if (parentRoutes && parentRoutes.length > 0) {
                     let lastOpKey = parentCode + '_' + String(parentRoutes[parentRoutes.length-1]['Име на операция']).trim().toLowerCase();
-                    parentConsumed = grossTrueDoneOps[lastOpKey] || 0;
+                    parentConsumed = (grossCompletedOps[lastOpKey] || 0) + (savedQty[parentCode] || 0);
                 } else {
                     parentConsumed = getTotalShipped(parentCode, new Set(visited));
                 }
@@ -521,7 +497,10 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 let opName = String(route['Име на операция']).trim();
                 let opKey = code.toLowerCase() + '_' + opName.toLowerCase();
                 
-                let globalGross = (grossTrueDoneOps[opKey] || 0) + (manualOps[opKey] || 0);
+                let globalGross = (grossCompletedOps[opKey] || 0) + (manualOps[opKey] || 0);
+                if (idx === partRoutes.length - 1) {
+                    globalGross += (savedQty[code] || 0);
+                }
                 let globalNet = Math.max(0, globalGross - consumedByShipped);
                 
                 let usedSoFar = alreadyAllocated[opKey] || 0;
