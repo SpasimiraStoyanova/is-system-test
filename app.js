@@ -315,6 +315,8 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
     if (plansData) {
         plansData.forEach(p => {
             if (p['Вътрешно име']) planNameToId[String(p['Вътрешно име']).trim()] = String(p.id);
+            let m = (p['Месец'] && p['Година']) ? `${p['Месец']} ${p['Година']}` : '';
+            if (m) planNameToId[m] = String(p.id);
             planNameToId[String(p.id)] = String(p.id);
         });
     }
