@@ -393,10 +393,19 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
             let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
             let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
             
-            let requiredFromMe = (grossCompletedOps[nextOpKey] || 0) + (manualOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
-            let myCurrentTotal = (grossCompletedOps[opKey] || 0) + (manualOps[opKey] || 0);
+            // NORMAL reports consume WIP. So requiredFromMe is only normal reports and scrap.
+            let requiredFromMe = (grossCompletedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
+            
+            // My normal completed items that provide WIP.
+            let myCurrentTotal = (grossCompletedOps[opKey] || 0);
+            
+            // Shortfall if downstream normal reports consumed more than I have.
             let shortfall = Math.max(0, requiredFromMe - myCurrentTotal);
-            grossCompletedOps[opKey] = (grossCompletedOps[opKey] || 0) + shortfall;
+            
+            // Manual reports downstream DO NOT consume WIP, they spawn out of thin air. 
+            // So they must be unconditionally added to my gross (to pretend they passed through me).
+            // But we must NOT add it if myCurrentTotal already includes it? Wait, manualOps are specific to the operation.
+            grossCompletedOps[opKey] = (grossCompletedOps[opKey] || 0) + shortfall + (manualOps[nextOpKey] || 0);
             
         }
         
