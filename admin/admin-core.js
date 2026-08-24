@@ -467,77 +467,17 @@ async function computeSkladData(isGpTab) {
 async function backflushSimulation(targetDetail, targetOp, targetQty) {
     if (targetQty === 0) return [];
     
-    // 1. Fetch bom and routes
-    const [bomRes, routeRes] = await Promise.all([
-        client.from('bom').select('*'),
-        client.from('marshruti').select('*')
-    ]);
-    
-    let routesByDet = {};
-    (routeRes.data || []).forEach(r => {
-        let lc = String(r['Код на детайла']).trim().toLowerCase();
-        if (!routesByDet[lc]) routesByDet[lc] = [];
-        routesByDet[lc].push(r);
-    });
-    Object.values(routesByDet).forEach(arr => arr.sort((a, b) => (parseFloat(a['№ Операция'])||0) - (parseFloat(b['№ Операция'])||0)));
-
-    let bomByParent = {};
-    (bomRes.data || []).forEach(b => {
-        let p = String(b['ID Родител']).trim().toLowerCase();
-        if (!bomByParent[p]) bomByParent[p] = [];
-        bomByParent[p].push(b);
-    });
-
-    let otchetiInserts = [];
     let now = new Date().toISOString();
-
-    function simulate(itemCode, qty, stopAtOp) {
-        let lc = itemCode.trim().toLowerCase();
-        
-        let children = bomByParent[lc] || [];
-        if (children.length > 0) {
-            children.forEach(child => {
-                let cCode = String(child['ID Компонент']).trim();
-                let cQty = (parseFloat(child['Количество']) || 1) * qty;
-                simulate(cCode, cQty, null); 
-            });
-        } else {
-            if (!routesByDet[lc] || routesByDet[lc].length === 0) {
-                otchetiInserts.push({
-                    "ID План": null, "ID Детайл": itemCode.trim(), "Операция": "Доставка", "Количество": qty, 
-                    "Статус": "Отчетено", "Оператор": "💉 СИСТЕМА (Виртуална компенсация)", "Дата": now
-                });
-                return;
-            }
-        }
-        
-        let routes = routesByDet[lc] || [];
-        if (routes.length === 0) return;
-        
-        for (let route of routes) {
-            let opName = String(route['Име на операция']).trim();
-            otchetiInserts.push({
-                "ID План": null,
-                "ID Детайл": itemCode.trim(),
-                "Операция": opName,
-                "Количество": qty,
-                "Статус": "Отчетено",
-                "Оператор": "💉 СИСТЕМА (Виртуална компенсация)", 
-                "Дата": now
-            });
-            if (stopAtOp && opName.toLowerCase() === stopAtOp.trim().toLowerCase()) {
-                break;
-            }
-        }
-    }
-
-    simulate(targetDetail, targetQty, targetOp);
     
-    if (otchetiInserts.length > 0) {
-        otchetiInserts[otchetiInserts.length - 1]["Оператор"] = "💉 СИСТЕМА (Ръчно добавен)";
-    }
-    
-    return otchetiInserts;
+    return [{
+        "ID План": null,
+        "ID Детайл": targetDetail.trim(),
+        "Операция": targetOp ? targetOp.trim() : "Готов детайл",
+        "Количество": targetQty,
+        "Статус": "Отчетено",
+        "Оператор": "💉 СИСТЕМА (Ръчно добавен)",
+        "Дата": now
+    }];
 }
 
 async function saveForm(e) {
