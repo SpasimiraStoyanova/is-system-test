@@ -372,20 +372,20 @@ function appendMaterialConsumptionInserts(taskData, val, startedAt, insertsArray
     let normName = _norm(taskData.name);
     let lcName = String(taskData.name).trim().toLowerCase();
     let cRoutes = globalRoutesByDetail[lcName] || globalRoutesByDetail[Object.keys(globalRoutesByDetail).find(k => _norm(k) === normName)] || [];
-    let isLastOp = false;
+    let isFirstOp = false;
     
     if (cRoutes.length > 0) {
-        let lastOp = cRoutes[cRoutes.length - 1];
-        if (_norm(lastOp['Име на операция']) === _norm(taskData.op)) {
-            isLastOp = true;
+        let firstOp = cRoutes[0];
+        if (_norm(firstOp['Име на операция']) === _norm(taskData.op)) {
+            isFirstOp = true;
         }
     } else {
-        isLastOp = true;
+        isFirstOp = true;
     }
 
     let debugChildrenLen = -1;
 
-    if (isLastOp) {
+    if (isFirstOp) {
         let children = globalBomData.filter(b => _norm(b['ID Родител']) === normName);
         debugChildrenLen = children.length;
         for (let child of children) {
