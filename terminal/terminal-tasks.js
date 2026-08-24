@@ -221,6 +221,8 @@ async function loadTasks(isSilent = false) {
                                   if (childRoutes.length > 0) {
                                       let lastChildOp = String(childRoutes[childRoutes.length - 1]['Име на операция']).trim().toLowerCase();
                                       childAvail = physicalStock[cCode + '_' + lastChildOp] || 0;
+                                  } else {
+                                      childAvail = getSkladQty(cCode);
                                   }
                                   let sets = Math.floor(childAvail / multiplier);
                                   if (sets < minSets) { minSets = sets; blockingReasons.push(`${cCode} (${childAvail} налични)`); }
