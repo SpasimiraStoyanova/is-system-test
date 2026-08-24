@@ -333,6 +333,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
     }).sort((a, b) => a._ts - b._ts);
 
     let scrappedOps = {};
+    let scrappedComponent = {};
     let grossCompletedOps = {};
 
     let allCombinedReports = sortedReports;
@@ -352,6 +353,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         }
         
         if (r['Статус'] === 'Брак') {
+            scrappedComponent[code] = (scrappedComponent[code] || 0) + qty;
             scrappedOps[key] = (scrappedOps[key] || 0) + qty;
             let rawPId = String(r['ID План'] || '').trim();
             let pId = planNameToId[rawPId] || rawPId;
@@ -555,6 +557,8 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
     });
 
     Object.values(mergedNodes).forEach(n => {
+
+        n.totalScrappedAsComponent = scrappedComponent[n.code.toLowerCase()] || 0;
 
         let typeStr = (n.partType + " " + n.code).toLowerCase().replace(/[\s\.\-\_]+/g, '');
         
@@ -984,6 +988,8 @@ function generateNodeHTML(node, parentMap, childMap, allNodesMap) {
     const drawingLinkHTML = (node.drawingUrl && node.drawingUrl.startsWith('http')) 
         ? `<a href="${node.drawingUrl}" target="_blank" style="text-decoration:none; margin-left:6px;" title="Отвори чертеж">📐</a>` : '';
         
+    const componentScrapHTML = (node.totalScrappedAsComponent && node.totalScrappedAsComponent > 0) ? `<span style="margin-left:8px; color:#ef4444; font-weight:900; font-size:1em;" title="Бракувани като компонент">❌: ${node.totalScrappedAsComponent} бр.</span>` : '';
+        
     let opsHTML = '';
     let titleClass = 'title-gray';
 
@@ -1068,7 +1074,7 @@ function generateNodeHTML(node, parentMap, childMap, allNodesMap) {
     return `
         <div class="vsm-node" id="card_${dId}" data-part-type="${node.partType || ''}">
         <div class="vsm-header">
-            <span class="vsm-title ${titleClass}">${rootMarker}${node.displayName}${drawingLinkHTML}${packageMarker}</span>
+            <span class="vsm-title ${titleClass}">${rootMarker}${node.displayName}${drawingLinkHTML}${componentScrapHTML}${packageMarker}</span>
             <span class="vsm-qty">| ${formatHeaderQty(headerQty, node.planQty, headerScrap)}</span>
         </div>
         ${opsHTML !== '' ? opsHTML : ''}
