@@ -37,14 +37,14 @@ BEGIN
 
     -- Намираме предишната операция за този детайл
     SELECT LOWER(TRIM("Име на операция")) INTO prev_op FROM public.marshruti
-    WHERE LOWER(TRIM("Име на детайл")) = new_detail AND "№ по ред" < (
-          SELECT "№ по ред" FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY "№ по ред" DESC LIMIT 1
-      ) ORDER BY "№ по ред" DESC LIMIT 1;
+    WHERE LOWER(TRIM("Име на детайл")) = new_detail AND CAST(NULLIF("№ Операция", '') AS integer) < (
+          SELECT CAST(NULLIF("№ Операция", '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1
+      ) ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1;
 
     -- Проверяваме дали текущата операция е последна
     SELECT NOT EXISTS (
-        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = new_detail AND "№ по ред" > (
-              SELECT "№ по ред" FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY "№ по ред" DESC LIMIT 1
+        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = new_detail AND CAST(NULLIF("№ Операция", '') AS integer) > (
+              SELECT CAST(NULLIF("№ Операция", '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1
           )
     ) INTO is_last_op;
 
@@ -101,14 +101,16 @@ BEGIN
         RETURN OLD;
     END IF;
 
+    -- Намираме предишната операция за този детайл
     SELECT LOWER(TRIM("Име на операция")) INTO prev_op FROM public.marshruti
-    WHERE LOWER(TRIM("Име на детайл")) = old_detail AND "№ по ред" < (
-          SELECT "№ по ред" FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = old_detail AND LOWER(TRIM("Име на операция")) = old_op ORDER BY "№ по ред" DESC LIMIT 1
-      ) ORDER BY "№ по ред" DESC LIMIT 1;
+    WHERE LOWER(TRIM("Име на детайл")) = old_detail AND CAST(NULLIF("№ Операция", '') AS integer) < (
+          SELECT CAST(NULLIF("№ Операция", '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = old_detail AND LOWER(TRIM("Име на операция")) = old_op ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1
+      ) ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1;
 
+    -- Проверяваме дали текущата операция е последна
     SELECT NOT EXISTS (
-        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = old_detail AND "№ по ред" > (
-              SELECT "№ по ред" FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = old_detail AND LOWER(TRIM("Име на операция")) = old_op ORDER BY "№ по ред" DESC LIMIT 1
+        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = old_detail AND CAST(NULLIF("№ Операция", '') AS integer) > (
+              SELECT CAST(NULLIF("№ Операция", '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Име на детайл")) = old_detail AND LOWER(TRIM("Име на операция")) = old_op ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1
           )
     ) INTO is_last_op;
 
