@@ -224,11 +224,14 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
 
         allChildren.forEach(child => {
             let cName = String(child['ID Компонент']).trim();
+            let multiplier = parseFloat(child['Количество']) || 1; 
+            let qty = val * multiplier;
             if (!scrappedChildrenNames.includes(cName)) {
-                let multiplier = parseFloat(child['Количество']) || 1; let savedQty = val * multiplier;
                 let cRoutes = globalRoutesByDetail[cName] || []; 
                 let opToLog = "Възстановен"; 
-                inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Спасен)", "Количество": savedQty, "Операция": opToLog, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+                inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Спасен)", "Количество": qty, "Операция": opToLog, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+            } else {
+                inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Бракуван Компонент)", "Количество": qty, "Операция": "Бракуван в " + taskData.name, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt });
             }
         });
 
@@ -246,11 +249,14 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
             let inserts = [{ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt }];
             allChildren.forEach(child => {
                 let cName = String(child['ID Компонент']).trim();
+                let multiplier = parseFloat(child['Количество']) || 1; 
+                let qty = val * multiplier;
                 if (!scrappedChildrenNames.includes(cName)) {
-                    let multiplier = parseFloat(child['Количество']) || 1; let savedQty = val * multiplier;
                     let cRoutes = globalRoutesByDetail[cName] || []; 
                     let opToLog = "Възстановен"; 
-                    inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Спасен)", "Количество": savedQty, "Операция": opToLog, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+                    inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Спасен)", "Количество": qty, "Операция": opToLog, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+                } else {
+                    inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Бракуван Компонент)", "Количество": qty, "Операция": "Бракуван в " + taskData.name, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt });
                 }
             });
             

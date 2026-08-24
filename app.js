@@ -353,13 +353,16 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         }
         
         if (r['Статус'] === 'Брак') {
-            scrappedComponent[code] = (scrappedComponent[code] || 0) + qty;
-            scrappedOps[key] = (scrappedOps[key] || 0) + qty;
-            let rawPId = String(r['ID План'] || '').trim();
-            let pId = planNameToId[rawPId] || rawPId;
-            if (pId) {
-                let planKey = key + '_' + pId;
-                scrappedOps[planKey] = (scrappedOps[planKey] || 0) + qty;
+            if (r['Оператор'] === 'СИСТЕМА (Бракуван Компонент)') {
+                scrappedComponent[code] = (scrappedComponent[code] || 0) + qty;
+            } else {
+                scrappedOps[key] = (scrappedOps[key] || 0) + qty;
+                let rawPId = String(r['ID План'] || '').trim();
+                let pId = planNameToId[rawPId] || rawPId;
+                if (pId) {
+                    let planKey = key + '_' + pId;
+                    scrappedOps[planKey] = (scrappedOps[planKey] || 0) + qty;
+                }
             }
         } 
         else if (r['Статус'] === 'Отчетено') {
