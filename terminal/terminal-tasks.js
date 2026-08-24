@@ -157,10 +157,12 @@ async function loadTasks(isSilent = false) {
       planIdsToProcess.forEach(pId => {
           let isBuffer = pId === 'NONE';
           let deficitBom = {};
+          let originalBom = {};
           
           if (!isBuffer && planRoots[pId]) {
               Object.keys(planRoots[pId]).forEach(root => {
                   deficitBom[root] = (deficitBom[root] || 0) + planRoots[pId][root];
+                  originalBom[root] = (originalBom[root] || 0) + planRoots[pId][root];
               });
           }
 
@@ -171,6 +173,18 @@ async function loadTasks(isSilent = false) {
           let allItemsArray = Array.from(allItemsSet);
           allItemsArray.forEach(item => getDepth(item));
           allItemsArray.sort((a, b) => (depths[a] || 0) - (depths[b] || 0));
+          
+          allItemsArray.forEach(code => {
+              let currentOrigTarget = isBuffer ? (bufferMap[code] || 0) : (originalBom[code] || 0);
+              if (currentOrigTarget > 0) {
+                  let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
+                  children.forEach(c => {
+                      let cCode = String(c['ID Компонент']).trim().toLowerCase(); 
+                      let multiplier = parseFloat(c['Количество']) || 1;
+                      originalBom[cCode] = (originalBom[cCode] || 0) + (currentOrigTarget * multiplier);
+                  });
+              }
+          });
 
           allItemsArray.forEach((code, nodeIndex) => {
               let routes = globalRoutesByDetail[code] || []; 
@@ -269,7 +283,7 @@ async function loadTasks(isSilent = false) {
                               type: i === routes.length - 1 ? "ЗЕЛЕНА" : "СИНЯ", 
                               defaultQty: targetInput, maxAllowed: displayMaxAllowed, realMaxAllowed: maxAllowed, hasLimit: hasLimit, isBlocked: isBlocked, blockingReasons: blockingReasons, 
                               totalNeed: shortage, pureQty: shortage, 
-                              totalDone: target - shortage, totalScrapped: 0, isTaken: isTaken, isGreenCard: isBuffer,
+                              totalDone: (isBuffer ? (bufferMap[code] || 0) : (originalBom[code] || 0)) - shortage, totalScrapped: 0, isTaken: isTaken, isGreenCard: isBuffer,
                               globalGrossAtLoad: 0, globalScrapAtLoad: 0
                           });
                       }
