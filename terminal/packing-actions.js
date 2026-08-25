@@ -60,6 +60,10 @@ async function finishPackingTask(taskId, btn) {
                 const { error } = await client.from('otcheti').insert(inserts);
                 if (error) throw error;
                 
+                if (val >= taskData.target) {
+                    await client.from('plan').update({ 'Статус': '📦 Опакован' }).eq('id', taskData.plan_id);
+                }
+                
                 addLogToHistory('ОПАКОВАНЕ (Кашон ' + boxNum + ')', val, taskId); 
                 Swal.fire({ icon: 'success', title: 'Успешно!', text: 'Опаковани: ' + val + ' бр. в Кашон № ' + boxNum, timer: 2000, showConfirmButton: false }).then(() => { loadTasks(); });
             } catch(err) { 
