@@ -151,59 +151,3 @@ CREATE TRIGGER trg_otcheti_delete
 BEFORE DELETE ON public.otcheti
 FOR EACH ROW
 EXECUTE FUNCTION public.process_inventory_on_delete_otchet();
-- -   1 .    !	 ∑  ë ∞   ∞   µ     ∞   !  ∞  ±  ª  Q!   ∞ !  ∞    ∑  ∞    ê! U  U ª  U V Q!  ( A u d i t   L o g s )  
- C R E A T E   T A B L E   I F   N O T   E X I S T S   p u b l i c . a u d i t _ l o g s   (  
-         i d   b i g i n t   g e n e r a t e d   b y   d e f a u l t   a s   i d e n t i t y   p r i m a r y   k e y ,  
-         t a b l e _ n a m e   t e x t   n o t   n u l l ,  
-         a c t i o n _ t y p e   t e x t   n o t   n u l l ,  
-         o l d _ d a t a   j s o n b ,  
-         n e w _ d a t a   j s o n b ,  
-         c h a n g e d _ a t   t i m e s t a m p   w i t h   t i m e   z o n e   d e f a u l t   n o w ( )  
- ) ;  
-  
- - -    _ U ∑   U ª !  ∞  X µ     ∞    ! Q!!  T Q   ë ∞   !!  µ !  ∞ !   (  ∑  ∞    ë ∞    X U ∂  µ    R ë X Q    W ∞   µ  ª !	!    ë ∞    V Q   ∑  ∞ ! µ  ∂  ë ∞ )  
- A L T E R   T A B L E   p u b l i c . a u d i t _ l o g s   E N A B L E   R O W   L E V E L   S E C U R I T Y ;  
- D R O P   P O L I C Y   I F   E X I S T S   " E n a b l e   r e a d   a c c e s s   f o r   a l l   u s e r s "   O N   p u b l i c . a u d i t _ l o g s ;  
- C R E A T E   P O L I C Y   " E n a b l e   r e a d   a c c e s s   f o r   a l l   u s e r s "   O N   p u b l i c . a u d i t _ l o g s   F O R   S E L E C T   U S I N G   ( t r u e ) ;  
-  
- - -   2 .    !	 ∑  ë ∞   ∞   µ     ∞   !S  Q  µ !! ∞  ª   ∞ !  ∞   ! !S  T!   Q!- ! ! Q V µ ! 
- C R E A T E   O R   R E P L A C E   F U N C T I O N   p u b l i c . a u d i t _ l o g _ t r i g g e r ( )  
- R E T U R N S   t r i g g e r   A S   $ $  
- B E G I N  
-         I F   T G _ O P   =   ' D E L E T E '   T H E N  
-                 I N S E R T   I N T O   p u b l i c . a u d i t _ l o g s   ( t a b l e _ n a m e ,   a c t i o n _ t y p e ,   o l d _ d a t a ,   c h a n g e d _ a t )  
-                 V A L U E S   ( T G _ T A B L E _ N A M E ,   T G _ O P ,   r o w _ t o _ j s o n ( O L D ) : : j s o n b ,   n o w ( ) ) ;  
-                 R E T U R N   O L D ;  
-         E L S I F   T G _ O P   =   ' U P D A T E '   T H E N  
-                 - -      ∞  W Q!  ∞  X µ   ! ∞  X U   ∞  T U   Q X ∞   ! µ  ∞  ª   ∞    W! U X!  ∞       ë ∞    Q!  µ  
-                 I F   r o w _ t o _ j s o n ( O L D ) : : j s o n b   I S   D I S T I N C T   F R O M   r o w _ t o _ j s o n ( N E W ) : : j s o n b   T H E N  
-                         I N S E R T   I N T O   p u b l i c . a u d i t _ l o g s   ( t a b l e _ n a m e ,   a c t i o n _ t y p e ,   o l d _ d a t a ,   n e w _ d a t a ,   c h a n g e d _ a t )  
-                         V A L U E S   ( T G _ T A B L E _ N A M E ,   T G _ O P ,   r o w _ t o _ j s o n ( O L D ) : : j s o n b ,   r o w _ t o _ j s o n ( N E W ) : : j s o n b ,   n o w ( ) ) ;  
-                 E N D   I F ;  
-                 R E T U R N   N E W ;  
-         E L S I F   T G _ O P   =   ' I N S E R T '   T H E N  
-                 I N S E R T   I N T O   p u b l i c . a u d i t _ l o g s   ( t a b l e _ n a m e ,   a c t i o n _ t y p e ,   n e w _ d a t a ,   c h a n g e d _ a t )  
-                 V A L U E S   ( T G _ T A B L E _ N A M E ,   T G _ O P ,   r o w _ t o _ j s o n ( N E W ) : : j s o n b ,   n o w ( ) ) ;  
-                 R E T U R N   N E W ;  
-         E N D   I F ;  
-         R E T U R N   N U L L ;  
- E N D ;  
- $ $   L A N G U A G E   p l p g s q l   S E C U R I T Y   D E F I N E R ;  
-  
- - -   3 .      ∞  T ∞ !!  ∞   µ     ∞   ! ! Q V µ ! ∞    T!	 X   Q ∑  ± ! ∞   Q!  µ   !  ∞  ±  ª  Q!   Q 
- D O   $ $  
- D E C L A R E  
-         t   t e x t ;  
- B E G I N  
-         F O R   t   I N   S E L E C T   u n n e s t ( A R R A Y [ ' p l a n ' ,   ' m a r s h r u t i ' ,   ' b o m ' ,   '  \ U X µ   T ª  ∞ ! !S! ∞ ' ,   ' s k l a d ' ] )  
-         L O O P  
-                 E X E C U T E   f o r m a t ( ' D R O P   T R I G G E R   I F   E X I S T S   t r g _ a u d i t _ l o g   O N   p u b l i c . % I ' ,   t ) ;  
-                 E X E C U T E   f o r m a t ( ' C R E A T E   T R I G G E R   t r g _ a u d i t _ l o g   A F T E R   I N S E R T   O R   U P D A T E   O R   D E L E T E   O N   p u b l i c . % I   F O R   E A C H   R O W   E X E C U T E   F U N C T I O N   p u b l i c . a u d i t _ l o g _ t r i g g e r ( ) ' ,   t ) ;  
-         E N D   L O O P ;  
- E N D ;  
- $ $ ;  
-  
- - -   4 .      U ±  ∞   µ   Q    U  Q   T U ª  U  Q 
- A L T E R   T A B L E   p u b l i c . m a r s h r u t i   A D D   C O L U M N   I F   N O T   E X I S T S   "  ò  !! !!S T!   Q!   ∑  ∞    U!!  ∞  !  µ "   t e x t ;  
- A L T E R   T A B L E   p u b l i c . b o m   A D D   C O L U M N   I F   N O T   E X I S T S   "    ª  ∞  V ∞   ! µ     ∞    [ W.   2  "   n u m e r i c ;  
- 
