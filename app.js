@@ -628,6 +628,36 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
     });
     delete masterData['temp_spools'];
     
+    // [HIDE FULLY PACKED NODES AND THEIR CHILDREN]
+    let multiParentMap = {};
+    Object.values(mergedNodes).forEach(n => multiParentMap[n.id] = []);
+    if (connections) {
+        connections.forEach(c => {
+            if (multiParentMap[c.from]) multiParentMap[c.from].push(c.to);
+        });
+    }
+
+    let hiddenNodes = new Set();
+    
+    allNodes.forEach(n => {
+        let parents = multiParentMap[n.id] || [];
+        let isRoot = parents.length === 0;
+        
+        if (isRoot) {
+            if (n.packagedQty > 0 && n.packagedQty >= n.planQty) {
+                hiddenNodes.add(n.id);
+            }
+        } else {
+            if (parents.length > 0 && parents.every(pid => hiddenNodes.has(pid))) {
+                hiddenNodes.add(n.id);
+            }
+        }
+    });
+
+    Object.keys(masterData).forEach(bucket => {
+        masterData[bucket] = masterData[bucket].filter(n => !hiddenNodes.has(n.id));
+    });
+    
     return masterData;
 }
 

@@ -717,10 +717,15 @@ window.openLogisticsModal = function() {
     let plansMap = {};
     globalRows.forEach(row => {
         let key = row['Месец'] + ' ' + row['Година'];
-        if (!plansMap[key]) plansMap[key] = { name: key, month: row['Месец'], year: row['Година'], total: 0, done: 0, packed: 0 };
+        if (!plansMap[key]) plansMap[key] = { name: key, month: row['Месец'], year: row['Година'], total: 0, done: 0, packed: 0, fullyPacked: true };
         
         plansMap[key].total++;
-        if (row['Статус'] === 'Завършен') plansMap[key].done++;
+        if (row['Статус'] === 'Завършен') {
+            plansMap[key].done++;
+            let target = parseFloat(row['Целево количество']) || 0;
+            let packed = parseFloat(row['__total_packed']) || 0;
+            if (packed < target) plansMap[key].fullyPacked = false;
+        }
         if (row['Статус'] === 'Опакован') plansMap[key].packed++;
     });
 
@@ -739,7 +744,7 @@ window.openLogisticsModal = function() {
                         <div style="color:#0284c7;">📦 Опаковани: <b>${p.packed}</b> бр.</div>
                     </div>
                     <div style="display:flex; flex-direction:column; gap:8px;">
-                        <button class="btn-primary" ${p.done === 0 ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''} onclick="window.massLogisticsAction('${p.month}', '${p.year}', 'Завършен', '🚚 Изпратен')" style="background:#f59e0b; min-width:200px;">🚚 Изпрати Завършените</button>
+                        <button class="btn-primary" ${p.done === 0 || !p.fullyPacked ? 'disabled style="opacity:0.5;cursor:not-allowed;" title="Всички завършени детайли трябва да са 100% опаковани!"' : ''} onclick="window.massLogisticsAction('${p.month}', '${p.year}', 'Завършен', '🚚 Изпратен')" style="background:#f59e0b; min-width:200px;">🚚 Изпрати Завършените</button>
                     </div>
                 </div>
             </div>`;
@@ -751,20 +756,44 @@ window.openLogisticsModal = function() {
 };
 
 window.massLogisticsAction = async function(month, year, fromStatus, toStatus) {
-    const res = await Swal.fire({ title: 'Сигурни ли сте?', text: `Искате ли да промените всички детайли от статус '${fromStatus}' на '${toStatus}' за Месец ${month} / ${year}?`, icon: 'question', showCancelButton: true, confirmButtonText: 'Да, продължи', cancelButtonText: 'Отказ' });
+    const res = await Swal.fire({ title: 'Сигурни ли сте?', text: `Искате ли да изпратите (експедирате) всички завършени детайли за Месец ${month} / ${year}? Това ще извади наличностите им от склада!`, icon: 'warning', showCancelButton: true, confirmButtonText: 'Да, изпрати', cancelButtonText: 'Отказ' });
     if (!res.isConfirmed) return;
 
     try {
-        Swal.fire({title: 'Обновяване...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
+        Swal.fire({title: 'Изпращане...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
         
-        const { data, error } = await client.from('plan')
-            .update({ 'Статус': toStatus })
-            .eq('Месец', month).eq('Година', year).eq('Статус', fromStatus)
-            .select('id');
+        // 1. Взимаме детайлите, които ще бъдат изпратени
+        const { data: detailsToShip, error: fetchErr } = await client.from('plan')
+            .select('id, "ID Детайл", "Целево количество"')
+            .eq('Месец', month).eq('Година', year).eq('Статус', fromStatus);
             
-        if (error) throw error;
+        if (fetchErr) throw fetchErr;
         
-        Swal.fire({icon: 'success', title: 'Успешно!', text: `Обновени са ${data ? data.length : 0} записа.`, timer: 2000, showConfirmButton: false});
+        if (detailsToShip && detailsToShip.length > 0) {
+            // 2. Подготвяме отчетите за Експедиция
+            let otchetiInserts = detailsToShip.map(d => ({
+                "ID План": String(d.id),
+                "ID Детайл": String(d["ID Детайл"]).trim(),
+                "Операция": "Експедиция",
+                "Количество": parseFloat(d["Целево количество"]) || 0,
+                "Статус": "Изпратено",
+                "Оператор": "Система (Логистика)",
+                "Дата": new Date().toISOString()
+            }));
+            
+            // 3. Инсъртваме отчетите (Това ще извика тригера и ще извади от склада)
+            const { error: insErr } = await client.from('otcheti').insert(otchetiInserts);
+            if (insErr) throw insErr;
+        }
+
+        // 4. Обновяваме статуса в плана
+        const { error: updErr } = await client.from('plan')
+            .update({ 'Статус': toStatus })
+            .eq('Месец', month).eq('Година', year).eq('Статус', fromStatus);
+            
+        if (updErr) throw updErr;
+        
+        Swal.fire({icon: 'success', title: 'Успешно!', text: `Изпратени са ${detailsToShip ? detailsToShip.length : 0} записа.`, timer: 2000, showConfirmButton: false});
         
         document.getElementById('logisticsModalBackdrop').style.display = 'none';
         loadCurrentTableData();
