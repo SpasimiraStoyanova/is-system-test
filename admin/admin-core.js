@@ -720,11 +720,11 @@ window.openLogisticsModal = function() {
         if (!plansMap[key]) plansMap[key] = { name: key, month: row['Месец'], year: row['Година'], total: 0, done: 0, packed: 0, fullyPacked: true };
         
         plansMap[key].total++;
-        if (row['Статус'] === 'Завършен') {
+        if (row['Статус'] === 'Завършен' || row['Статус'] === '📦 Опакован') {
             plansMap[key].done++;
             let target = parseFloat(row['Целево количество']) || 0;
             let packed = parseFloat(row['__total_packed']) || 0;
-            if (packed >= target) {
+            if (packed >= target || row['Статус'] === '📦 Опакован') {
                 plansMap[key].packed++; // Отчитаме го като логически опакован
             } else {
                 plansMap[key].fullyPacked = false;
@@ -747,7 +747,7 @@ window.openLogisticsModal = function() {
                         <div style="color:#0284c7;">📦 От тях 100% опаковани: <b>${p.packed}</b> бр.</div>
                     </div>
                     <div style="display:flex; flex-direction:column; gap:8px;">
-                        <button class="btn-primary" ${p.done === 0 || !p.fullyPacked ? 'disabled style="opacity:0.5;cursor:not-allowed;" title="Всички завършени детайли трябва да са 100% опаковани!"' : ''} onclick="window.massLogisticsAction('${p.month}', '${p.year}', 'Завършен', '🚚 Изпратен')" style="background:#f59e0b; min-width:200px;">🚚 Изпрати План ${p.month}/${p.year}</button>
+                        <button class="btn-primary" ${p.done === 0 || !p.fullyPacked ? 'disabled style="opacity:0.5;cursor:not-allowed;" title="Всички завършени детайли трябва да са 100% опаковани!"' : ''} onclick="window.massLogisticsAction('${p.month}', '${p.year}')" style="background:#f59e0b; min-width:200px;">🚚 Изпрати План ${p.month}/${p.year}</button>
                     </div>
                 </div>
             </div>`;
@@ -758,7 +758,7 @@ window.openLogisticsModal = function() {
     document.getElementById('logisticsModalBackdrop').style.display = 'flex';
 };
 
-window.massLogisticsAction = async function(month, year, fromStatus, toStatus) {
+window.massLogisticsAction = async function(month, year) {
     const res = await Swal.fire({ title: 'Сигурни ли сте?', text: `Искате ли да изпратите (експедирате) всички завършени детайли за Месец ${month} / ${year}? Това ще извади наличностите им от склада!`, icon: 'warning', showCancelButton: true, confirmButtonText: 'Да, изпрати', cancelButtonText: 'Отказ' });
     if (!res.isConfirmed) return;
 
@@ -768,7 +768,7 @@ window.massLogisticsAction = async function(month, year, fromStatus, toStatus) {
         // 1. Взимаме детайлите, които ще бъдат изпратени
         const { data: detailsToShip, error: fetchErr } = await client.from('plan')
             .select('id, "ID Детайл", "Целево количество"')
-            .eq('Месец', month).eq('Година', year).eq('Статус', fromStatus);
+            .eq('Месец', month).eq('Година', year).in('Статус', ['Завършен', '📦 Опакован']);
             
         if (fetchErr) throw fetchErr;
         
@@ -789,10 +789,10 @@ window.massLogisticsAction = async function(month, year, fromStatus, toStatus) {
             if (insErr) throw insErr;
         }
 
-        // 4. Обновяваме статуса в плана
+        // 4. Обновяваме статуса им на '🚚 Изпратен'
         const { error: updErr } = await client.from('plan')
-            .update({ 'Статус': toStatus })
-            .eq('Месец', month).eq('Година', year).eq('Статус', fromStatus);
+            .update({ 'Статус': '🚚 Изпратен' })
+            .eq('Месец', month).eq('Година', year).in('Статус', ['Завършен', '📦 Опакован']);
             
         if (updErr) throw updErr;
         
