@@ -804,3 +804,65 @@ window.massLogisticsAction = async function(month, year, fromStatus, toStatus) {
         Swal.fire('Грешка', err.message, 'error');
     }
 };
+
+function openAuditModal() {
+    document.getElementById('auditModalBackdrop').style.display = 'flex';
+    fetchAuditLogs();
+}
+
+async function fetchAuditLogs() {
+    let container = document.getElementById('auditContent');
+    container.innerHTML = '<div style="text-align:center; padding:20px; color:#64748b;">Зареждане на историята... ⏳</div>';
+    
+    let tableFilter = document.getElementById('auditTableFilter').value;
+    
+    try {
+        let query = client.from('audit_logs').select('*').order('changed_at', { ascending: false }).limit(200);
+        
+        if (tableFilter !== 'all') {
+            query = query.eq('table_name', tableFilter);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        if (!data || data.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:#64748b;">Няма записани промени за тази таблица.</div>';
+            return;
+        }
+        
+        let html = '<table style="width:100%; border-collapse:collapse; background:white; font-size:0.9em; box-shadow:0 1px 3px rgba(0,0,0,0.1);">';
+        html += '<thead style="background:#e2e8f0; color:#475569;"><tr><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:150px;">Време</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:120px;">Таблица</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:center; width:80px;">Действие</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left;">Детайли</th></tr></thead><tbody>';
+        
+        data.forEach(log => {
+            let dateStr = new Date(log.changed_at).toLocaleString('bg-BG');
+            let actionBadge = log.action_type === 'DELETE' ? '<span style="background:#fee2e2; color:#b91c1c; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ИЗТРИВАНЕ</span>' : '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">РЕДАКЦИЯ</span>';
+            
+            let detailsHtml = '';
+            if (log.action_type === 'DELETE') {
+                detailsHtml = `<div style="color:#64748b;"><b>Изтрит запис:</b> ${JSON.stringify(log.old_data)}</div>`;
+            } else {
+                let changesHtml = [];
+                for (let key in log.new_data) {
+                    if (log.old_data[key] !== log.new_data[key]) {
+                        changesHtml.push(`<div><b>${key}:</b> <span style="text-decoration:line-through; color:#ef4444;">${log.old_data[key]}</span> ➡️ <span style="color:#16a34a;">${log.new_data[key]}</span></div>`);
+                    }
+                }
+                detailsHtml = changesHtml.length > 0 ? changesHtml.join('') : '<span style="color:#94a3b8;">Няма промяна в полетата</span>';
+            }
+            
+            html += `<tr>
+                <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
+                <td style="padding:10px; border:1px solid #e2e8f0; font-weight:bold; color:#1e293b;">${log.table_name}</td>
+                <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${actionBadge}</td>
+                <td style="padding:10px; border:1px solid #e2e8f0; font-family:monospace;">${detailsHtml}</td>
+            </tr>`;
+        });
+        
+        html += '</tbody></table>';
+        container.innerHTML = html;
+        
+    } catch (err) {
+        container.innerHTML = '<div style="text-align:center; padding:20px; color:#ef4444;">Грешка: ' + err.message + '</div>';
+    }
+}
