@@ -209,43 +209,56 @@ async function loadTasks(isSilent = false) {
                   let shortage = currentTarget - taken;
                   
                   if (shortage > 0) {
-                      let maxAllowed = 0;
-                      let hasLimit = true;
+                      let maxAllowed = Infinity;
+                      let displayMaxAllowed = Infinity;
+                      let hasLimit = false;
                       let blockingReasons = [];
-                      let displayMaxAllowed = 0;
                       
+                      // 1. Check previous operation availability
                       if (i > 0) {
+                          hasLimit = true;
                           let prevRoute = routes[i - 1]; 
                           let prevOpName = String(prevRoute['Име на операция']).trim().toLowerCase();
                           maxAllowed = physicalStock[code + '_' + prevOpName] || 0;
                           displayMaxAllowed = maxAllowed;
                           if (maxAllowed < shortage) blockingReasons.push(`Липсва наличност на предходна операция (${String(prevRoute['Име на операция']).trim()})`);
-                      } else {
-                          let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
-                          if (children.length === 0) { 
-                              hasLimit = false; maxAllowed = Infinity; displayMaxAllowed = Infinity; 
-                          } else {
-                              let minSets = Infinity;
-                              let rawMinSets = Infinity;
-                              children.forEach(child => {
-                                  let cCode = String(child['ID Компонент']).trim().toLowerCase(); 
-                                  let multiplier = parseFloat(child['Количество']) || 1;
-                                  let childRoutes = globalRoutesByDetail[cCode] || [];
-                                  let childAvail = 0;
-                                  if (childRoutes.length > 0) {
-                                      let lastChildOp = String(childRoutes[childRoutes.length - 1]['Име на операция']).trim().toLowerCase();
-                                      childAvail = physicalStock[cCode + '_' + lastChildOp] || 0;
-                                  } else {
-                                      childAvail = getSkladQty(cCode);
-                                  }
-                                  let sets = Math.floor(childAvail / multiplier);
-                                  if (sets < minSets) { minSets = sets; blockingReasons.push(`${cCode} (${childAvail} налични)`); }
-                                  if (sets < rawMinSets) rawMinSets = sets;
-                              });
-                              maxAllowed = minSets;
-                              displayMaxAllowed = rawMinSets;
-                              if (maxAllowed === Infinity) hasLimit = false;
-                              if (maxAllowed < shortage && blockingReasons.length > 0) blockingReasons.push(`Липсващи компоненти`);
+                      }
+
+                      // 2. Check BOM availability for THIS specific operation
+                      let isLastOp = (i === routes.length - 1);
+                      let currentOpNum = parseInt(route['№ Операция']) || 0;
+                      let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
+                      
+                      let relevantChildren = children.filter(c => {
+                          let opNum = c['Влага се на Оп. №'] ? parseFloat(c['Влага се на Оп. №']) : 0;
+                          if (opNum > 0) return opNum === currentOpNum;
+                          return isLastOp;
+                      });
+
+                      if (relevantChildren.length > 0) {
+                          hasLimit = true;
+                          let minSets = Infinity;
+                          let rawMinSets = Infinity;
+                          relevantChildren.forEach(child => {
+                              let cCode = String(child['ID Компонент']).trim().toLowerCase(); 
+                              let multiplier = parseFloat(child['Количество']) || 1;
+                              let childRoutes = globalRoutesByDetail[cCode] || [];
+                              let childAvail = 0;
+                              if (childRoutes.length > 0) {
+                                  let lastChildOp = String(childRoutes[childRoutes.length - 1]['Име на операция']).trim().toLowerCase();
+                                  childAvail = physicalStock[cCode + '_' + lastChildOp] || 0;
+                              } else {
+                                  childAvail = getSkladQty(cCode);
+                              }
+                              let sets = Math.floor(childAvail / multiplier);
+                              if (sets < minSets) { minSets = sets; blockingReasons.push(`${cCode} (${childAvail} налични)`); }
+                              if (sets < rawMinSets) rawMinSets = sets;
+                          });
+                          
+                          if (minSets < maxAllowed) maxAllowed = minSets;
+                          if (rawMinSets < displayMaxAllowed) displayMaxAllowed = rawMinSets;
+                          if (maxAllowed < shortage) {
+                              if (!blockingReasons.includes(`Липсващи компоненти`)) blockingReasons.push(`Липсващи компоненти`);
                           }
                       }
                       
