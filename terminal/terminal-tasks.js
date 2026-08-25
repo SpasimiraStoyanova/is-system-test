@@ -281,6 +281,7 @@ async function loadTasks(isSilent = false) {
                               name: displayName, internalName: namesMap[code] || '', op: displayOpName, opNum: parseInt(route['№ Операция']) || 0, next_op: i < routes.length - 1 ? String(routes[i+1]['Име на операция']).trim() : "Готово", 
                               machine: machineName, drawing_link: route['Линк към чертеж'], sop_link: route['Линк към СОП'], desc: route['Описание'], 
                               type: i === routes.length - 1 ? "ЗЕЛЕНА" : "СИНЯ", 
+                              dropoff: route['Инструкция за оставяне'],
                               defaultQty: targetInput, maxAllowed: displayMaxAllowed, realMaxAllowed: maxAllowed, hasLimit: hasLimit, isBlocked: isBlocked, blockingReasons: blockingReasons, 
                               totalNeed: shortage, pureQty: shortage, 
                               totalDone: (isBuffer ? (bufferMap[code] || 0) : (originalBom[code] || 0)) - shortage, totalScrapped: 0, isTaken: isTaken, isGreenCard: isBuffer,
@@ -336,6 +337,7 @@ function renderTasks(tasks) {
     let linkHtml = t.drawing_link && t.drawing_link.startsWith('http') ? `<a href="${t.drawing_link}" target="_blank">${partCode} 🔗</a>` : partCode;
     var sopHtml = (t.sop_link && t.sop_link.startsWith('http')) ? `<a href="${t.sop_link}" target="_blank" style="display:inline-block; margin-bottom:12px; background:#f59e0b; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-weight:bold; font-size:12px;">📑 Отвори СОП</a>` : '';
     var descHtml = t.desc ? `<div style="background-color: #fef9c3; border-left: 4px solid #eab308; padding: 10px; margin-bottom: 12px; font-size: 13px; color: #854d0e; font-weight: 700; border-radius: 4px;">💡 ${t.desc}</div>` : '';
+    var dropoffHtml = t.dropoff ? `<div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 10px; margin-bottom: 12px; font-size: 13px; color: #166534; font-weight: 700; border-radius: 4px;">📍 Остави на: ${t.dropoff}</div>` : '';
     var bomBadgeHtml = ''; var actionButtonHtml = ''; var inputMaxHtml = t.hasLimit ? `max="${t.maxAllowed}"` : '';
     
     let remainingQty = Math.max(0, t.pureQty);
@@ -361,7 +363,7 @@ function renderTasks(tasks) {
       <div class="card" id="card_${t.id}" style="${borderStyle}">
         <div class="task-header">${labelHtml}<div style="display:flex; gap: 6px;">${displayNeedHtml}</div></div>
         <div class="detail-info"><div class="internal-name">${linkHtml}</div>${internalNameHtml}</div>
-        ${sopHtml} ${descHtml}
+        ${sopHtml} ${descHtml} ${dropoffHtml}
         <div class="route-flow"><span class="op-active">▶ ${t.op}</span><span class="route-arrow">➔</span><span class="op-pending">${t.next_op}</span></div>
         ${bomBadgeHtml}
         <div id="free_state_${t.id}" style="${freeStateStyle}">${actionButtonHtml}</div>
