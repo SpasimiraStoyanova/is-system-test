@@ -44,7 +44,7 @@ BEGIN
             UPDATE public.inventory_wip SET "Количество" = GREATEST(0, "Количество" - new_qty) WHERE LOWER(TRIM("ID Детайл")) = new_detail AND LOWER(TRIM("Операция")) = prev_op;
             IF NOT FOUND THEN INSERT INTO public.inventory_wip ("ID Детайл", "Операция", "Количество") VALUES (new_detail, prev_op, 0); END IF;
         ELSE
-            FOR child_record IN SELECT LOWER(TRIM("ID Част")) as child_id, COALESCE("Количество", 1) as req_qty FROM public.bom WHERE LOWER(TRIM("ID Детайл")) = new_detail
+            FOR child_record IN SELECT LOWER(TRIM("ID Компонент")) as child_id, COALESCE("Количество", 1) as req_qty FROM public.bom WHERE LOWER(TRIM("ID Родител")) = new_detail
             LOOP
                 UPDATE public.inventory_gp SET "Количество" = GREATEST(0, "Количество" - (new_qty * child_record.req_qty)) WHERE LOWER(TRIM("ID Детайл")) = child_record.child_id;
                 IF NOT FOUND THEN INSERT INTO public.inventory_gp ("ID Детайл", "Количество") VALUES (child_record.child_id, 0); END IF;
@@ -121,7 +121,7 @@ BEGIN
             UPDATE public.inventory_wip SET "Количество" = "Количество" + old_qty WHERE LOWER(TRIM("ID Детайл")) = old_detail AND LOWER(TRIM("Операция")) = prev_op;
             IF NOT FOUND THEN INSERT INTO public.inventory_wip ("ID Детайл", "Операция", "Количество") VALUES (old_detail, prev_op, old_qty); END IF;
         ELSE
-            FOR child_record IN SELECT LOWER(TRIM("ID Част")) as child_id, COALESCE("Количество", 1) as req_qty FROM public.bom WHERE LOWER(TRIM("ID Детайл")) = old_detail
+            FOR child_record IN SELECT LOWER(TRIM("ID Компонент")) as child_id, COALESCE("Количество", 1) as req_qty FROM public.bom WHERE LOWER(TRIM("ID Родител")) = old_detail
             LOOP
                 UPDATE public.inventory_gp SET "Количество" = "Количество" + (old_qty * child_record.req_qty) WHERE LOWER(TRIM("ID Детайл")) = child_record.child_id;
                 IF NOT FOUND THEN INSERT INTO public.inventory_gp ("ID Детайл", "Количество") VALUES (child_record.child_id, (old_qty * child_record.req_qty)); END IF;
