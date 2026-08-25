@@ -421,8 +421,8 @@ async function computeSkladData(isGpTab) {
     let packingData = [];
     if (isGpTab) {
         let pRes = await client.from('otcheti')
-            .select('ID Детайл, Количество, Операция')
-            .ilike('Операция', 'Опаковане%')
+            .select('*')
+            .ilike('Операция', '%Опаковане%')
             .eq('Статус', 'Отчетено')
             .limit(100000);
         if (pRes.data) packingData = pRes.data;
