@@ -739,8 +739,7 @@ window.openLogisticsModal = function() {
                         <div style="color:#0284c7;">📦 Опаковани: <b>${p.packed}</b> бр.</div>
                     </div>
                     <div style="display:flex; flex-direction:column; gap:8px;">
-                        <button class="btn-primary" ${p.done === 0 ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''} onclick="window.massLogisticsAction('${p.month}', '${p.year}', 'Завършен', 'Опакован')" style="background:#0284c7; min-width:200px;">📦 Опаковай Завършените</button>
-                        <button class="btn-primary" ${p.packed === 0 ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''} onclick="window.massLogisticsAction('${p.month}', '${p.year}', 'Опакован', '🚚 Изпратен')" style="background:#f59e0b; min-width:200px;">🚚 Изпрати Опакованите</button>
+                        <button class="btn-primary" ${p.done === 0 ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''} onclick="window.massLogisticsAction('${p.month}', '${p.year}', 'Завършен', '🚚 Изпратен')" style="background:#f59e0b; min-width:200px;">🚚 Изпрати Завършените</button>
                     </div>
                 </div>
             </div>`;
