@@ -724,9 +724,12 @@ window.openLogisticsModal = function() {
             plansMap[key].done++;
             let target = parseFloat(row['Целево количество']) || 0;
             let packed = parseFloat(row['__total_packed']) || 0;
-            if (packed < target) plansMap[key].fullyPacked = false;
+            if (packed >= target) {
+                plansMap[key].packed++; // Отчитаме го като логически опакован
+            } else {
+                plansMap[key].fullyPacked = false;
+            }
         }
-        if (row['Статус'] === 'Опакован') plansMap[key].packed++;
     });
 
     let html = '';
@@ -737,14 +740,14 @@ window.openLogisticsModal = function() {
     } else {
         plansList.forEach(p => {
             html += `<div style="background:white; border:1px solid #e2e8f0; border-radius:8px; padding:15px; margin-bottom:15px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-                <div style="font-weight:bold; font-size:1.1em; margin-bottom:10px; color:#334155;">📅 План: Месец ${p.month} / ${p.year} (Общо ${p.total} детайла)</div>
+                <div style="font-weight:bold; font-size:1.1em; margin-bottom:10px; color:#334155;">📅 План: Месец ${p.month} / ${p.year} (Общо ${p.total} реда детайли)</div>
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="font-size:0.95em;">
-                        <div style="color:#059669; margin-bottom:4px;">🟢 Завършени: <b>${p.done}</b> бр.</div>
-                        <div style="color:#0284c7;">📦 Опаковани: <b>${p.packed}</b> бр.</div>
+                        <div style="color:#059669; margin-bottom:4px;">🟢 Завършени детайли: <b>${p.done}</b> бр.</div>
+                        <div style="color:#0284c7;">📦 От тях 100% опаковани: <b>${p.packed}</b> бр.</div>
                     </div>
                     <div style="display:flex; flex-direction:column; gap:8px;">
-                        <button class="btn-primary" ${p.done === 0 || !p.fullyPacked ? 'disabled style="opacity:0.5;cursor:not-allowed;" title="Всички завършени детайли трябва да са 100% опаковани!"' : ''} onclick="window.massLogisticsAction('${p.month}', '${p.year}', 'Завършен', '🚚 Изпратен')" style="background:#f59e0b; min-width:200px;">🚚 Изпрати Завършените</button>
+                        <button class="btn-primary" ${p.done === 0 || !p.fullyPacked ? 'disabled style="opacity:0.5;cursor:not-allowed;" title="Всички завършени детайли трябва да са 100% опаковани!"' : ''} onclick="window.massLogisticsAction('${p.month}', '${p.year}', 'Завършен', '🚚 Изпратен')" style="background:#f59e0b; min-width:200px;">🚚 Изпрати План ${p.month}/${p.year}</button>
                     </div>
                 </div>
             </div>`;
