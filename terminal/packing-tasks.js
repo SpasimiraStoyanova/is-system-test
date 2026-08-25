@@ -49,7 +49,7 @@ async function loadTasks(isSilent = false) {
           let targetQty = parseFloat(plan['Целево количество']) || 0;
           let monthYear = (plan['Месец'] && plan['Година']) ? (plan['Месец'] + ' ' + plan['Година']) : '';
           
-          let groupKey = monthYear || planId; 
+          let groupKey = planId; 
           
           if (nomRes.data) {
               let translated = nomRes.data.find(n => String(n['Вътрешно име']).trim() === rootItem);
