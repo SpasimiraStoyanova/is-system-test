@@ -842,15 +842,18 @@ async function fetchAuditLogs() {
             else actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">РЕДАКЦИЯ</span>';
             
             let detailsHtml = '';
+            let oldData = log.old_data || {};
+            let newData = log.new_data || {};
+            
             if (log.action_type === 'DELETE') {
-                detailsHtml = `<div style="color:#64748b;"><b>Изтрит запис:</b> ${JSON.stringify(log.old_data)}</div>`;
+                detailsHtml = `<div style="color:#64748b;"><b>Изтрит запис:</b> ${JSON.stringify(oldData)}</div>`;
             } else if (log.action_type === 'INSERT') {
-                detailsHtml = `<div style="color:#166534;"><b>Нов запис:</b> ${JSON.stringify(log.new_data)}</div>`;
+                detailsHtml = `<div style="color:#166534;"><b>Нов запис:</b> ${JSON.stringify(newData)}</div>`;
             } else {
                 let changesHtml = [];
-                for (let key in log.new_data) {
-                    if (log.old_data[key] !== log.new_data[key]) {
-                        changesHtml.push(`<div><b>${key}:</b> <span style="text-decoration:line-through; color:#ef4444;">${log.old_data[key]}</span> ➡️ <span style="color:#16a34a;">${log.new_data[key]}</span></div>`);
+                for (let key in newData) {
+                    if (oldData[key] !== newData[key]) {
+                        changesHtml.push(`<div><b>${key}:</b> <span style="text-decoration:line-through; color:#ef4444;">${oldData[key]}</span> ➡️ <span style="color:#16a34a;">${newData[key]}</span></div>`);
                     }
                 }
                 detailsHtml = changesHtml.length > 0 ? changesHtml.join('') : '<span style="color:#94a3b8;">Няма промяна в полетата</span>';
