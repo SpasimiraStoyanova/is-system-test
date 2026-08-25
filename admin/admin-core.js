@@ -836,11 +836,16 @@ async function fetchAuditLogs() {
         
         data.forEach(log => {
             let dateStr = new Date(log.changed_at).toLocaleString('bg-BG');
-            let actionBadge = log.action_type === 'DELETE' ? '<span style="background:#fee2e2; color:#b91c1c; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ИЗТРИВАНЕ</span>' : '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">РЕДАКЦИЯ</span>';
+            let actionBadge = '';
+            if (log.action_type === 'DELETE') actionBadge = '<span style="background:#fee2e2; color:#b91c1c; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ИЗТРИВАНЕ</span>';
+            else if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ДОБАВЯНЕ</span>';
+            else actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">РЕДАКЦИЯ</span>';
             
             let detailsHtml = '';
             if (log.action_type === 'DELETE') {
                 detailsHtml = `<div style="color:#64748b;"><b>Изтрит запис:</b> ${JSON.stringify(log.old_data)}</div>`;
+            } else if (log.action_type === 'INSERT') {
+                detailsHtml = `<div style="color:#166534;"><b>Нов запис:</b> ${JSON.stringify(log.new_data)}</div>`;
             } else {
                 let changesHtml = [];
                 for (let key in log.new_data) {
