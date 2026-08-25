@@ -2,12 +2,18 @@
 
 async function finishPackingTask(taskId, btn) {
     let taskData = globalTasks.find(t => t.id === taskId);
-    if (!taskData) return;
+    if (!taskData) {
+        Swal.fire('Грешка', 'Задачата не е намерена в паметта! (ID: ' + taskId + ')', 'error');
+        return;
+    }
 
     let qtyInput = document.getElementById('qty_' + taskId);
     let boxInput = document.getElementById('box_' + taskId);
 
-    if (!qtyInput || !boxInput) return;
+    if (!qtyInput || !boxInput) {
+        Swal.fire('Грешка', 'Полетата за въвеждане не са намерени в HTML!', 'error');
+        return;
+    }
 
     let val = parseFloat(qtyInput.value);
     let boxNum = boxInput.value.trim();
