@@ -418,6 +418,33 @@ async function computeSkladData(isGpTab) {
         });
     }
     
+    let packingData = [];
+    if (isGpTab) {
+        let pRes = await client.from('otcheti')
+            .select('ID Детайл, Количество, Операция')
+            .ilike('Операция', 'Опаковане%')
+            .eq('Статус', 'Отчетено')
+            .limit(100000);
+        if (pRes.data) packingData = pRes.data;
+    }
+    
+    let packedByDetail = {};
+    let packedDetailsByBox = {};
+    packingData.forEach(p => {
+        let code = String(p['ID Детайл']).trim().toLowerCase();
+        let qty = parseFloat(p['Количество']) || 0;
+        let op = String(p['Операция']);
+        let boxMatch = op.match(/Кашон №\s*(.+)/i);
+        let box = boxMatch ? boxMatch[1].trim() : 'Неизвестен';
+        
+        if (!packedByDetail[code]) {
+            packedByDetail[code] = 0;
+            packedDetailsByBox[code] = {};
+        }
+        packedByDetail[code] += qty;
+        packedDetailsByBox[code][box] = (packedDetailsByBox[code][box] || 0) + qty;
+    });
+
     let rows = [];
     (invRes.data || []).forEach(item => {
         let code = String(item['ID Детайл']).trim().toLowerCase();
@@ -425,7 +452,19 @@ async function computeSkladData(isGpTab) {
         let buf = bufferMap[code] || 0;
         let opName = isGpTab ? 'Готов детайл' : (item['Операция'] || '');
         
-        if (qty > 0 || (buf > 0 && isGpTab)) {
+        let reservedQty = packedByDetail[code] || 0;
+        let freeQty = Math.max(0, qty - reservedQty);
+        
+        let reservedStr = "0";
+        if (reservedQty > 0) {
+            let boxTexts = [];
+            Object.keys(packedDetailsByBox[code]).forEach(b => {
+                boxTexts.push(`${packedDetailsByBox[code][b]} бр в Кашон №${b}`);
+            });
+            reservedStr = boxTexts.join(', ');
+        }
+
+        if (qty > 0 || (buf > 0 && isGpTab) || reservedQty > 0) {
             rows.push({
                 "RawPlanId": "",
                 "ID Детайл": item['ID Детайл'],
@@ -433,8 +472,8 @@ async function computeSkladData(isGpTab) {
                 "Операция": opName,
                 "Оригинална Операция": opName,
                 "Общо": qty,
-                "Запазени": "0",
-                "Свободни": qty,
+                "Запазени": reservedStr,
+                "Свободни": freeQty,
                 "Минимално количество/Буфер": buf
             });
         }
