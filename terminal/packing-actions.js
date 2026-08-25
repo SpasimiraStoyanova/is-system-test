@@ -71,7 +71,7 @@ async function finishPackingTask(taskId, btn) {
     });
 }
 
-let localHistoryData = [];
+
 function updateHistoryUI() {
     var list = document.getElementById('historyList');
     if (!list) return;
