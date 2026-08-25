@@ -109,7 +109,9 @@ async function loadTasks(isSilent = false) {
               
               let availableToPack = Math.max(0, totalCompleted - totalPackaged);
               
-              if (availableToPack > 0) {
+              let remainingTarget = Math.max(0, targetQty - totalPackaged);
+              
+              if (availableToPack > 0 && remainingTarget > 0) {
                   globalTasks.push({
                       id: 'pack_' + code + '_' + planIdMap[groupKey],
                       plan_id: planIdMap[groupKey],
@@ -117,7 +119,7 @@ async function loadTasks(isSilent = false) {
                       name: code.toUpperCase(),
                       internalName: namesMap[code] || '',
                       available: availableToPack,
-                      target: targetQty
+                      target: remainingTarget
                   });
               }
           });
