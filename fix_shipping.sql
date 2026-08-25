@@ -29,13 +29,13 @@ BEGIN
     END IF;
 
     SELECT LOWER(TRIM("Име на операция")) INTO prev_op FROM public.marshruti
-    WHERE LOWER(TRIM("Код на детайла")) = new_detail AND CAST(NULLIF("№ Операция", '') AS integer) < (
-          SELECT CAST(NULLIF("№ Операция", '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1
-      ) ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1;
+    WHERE LOWER(TRIM("Код на детайла")) = new_detail AND CAST(NULLIF(TRIM("№ Операция"), '') AS integer) < (
+          SELECT CAST(NULLIF(TRIM("№ Операция"), '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF(TRIM("№ Операция"), '') AS integer) DESC LIMIT 1
+      ) ORDER BY CAST(NULLIF(TRIM("№ Операция"), '') AS integer) DESC LIMIT 1;
 
     SELECT NOT EXISTS (
-        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND CAST(NULLIF("№ Операция", '') AS integer) > (
-              SELECT CAST(NULLIF("№ Операция", '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1
+        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND CAST(NULLIF(TRIM("№ Операция"), '') AS integer) > (
+              SELECT CAST(NULLIF(TRIM("№ Операция"), '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF(TRIM("№ Операция"), '') AS integer) DESC LIMIT 1
           )
     ) INTO is_last_op;
 
@@ -98,13 +98,13 @@ BEGIN
     END IF;
 
     SELECT LOWER(TRIM("Име на операция")) INTO prev_op FROM public.marshruti
-    WHERE LOWER(TRIM("Код на детайла")) = old_detail AND CAST(NULLIF("№ Операция", '') AS integer) < (
-          SELECT CAST(NULLIF("№ Операция", '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = old_detail AND LOWER(TRIM("Име на операция")) = old_op ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1
-      ) ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1;
+    WHERE LOWER(TRIM("Код на детайла")) = old_detail AND CAST(NULLIF(TRIM("№ Операция"), '') AS integer) < (
+          SELECT CAST(NULLIF(TRIM("№ Операция"), '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = old_detail AND LOWER(TRIM("Име на операция")) = old_op ORDER BY CAST(NULLIF(TRIM("№ Операция"), '') AS integer) DESC LIMIT 1
+      ) ORDER BY CAST(NULLIF(TRIM("№ Операция"), '') AS integer) DESC LIMIT 1;
 
     SELECT NOT EXISTS (
-        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = old_detail AND CAST(NULLIF("№ Операция", '') AS integer) > (
-              SELECT CAST(NULLIF("№ Операция", '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = old_detail AND LOWER(TRIM("Име на операция")) = old_op ORDER BY CAST(NULLIF("№ Операция", '') AS integer) DESC LIMIT 1
+        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = old_detail AND CAST(NULLIF(TRIM("№ Операция"), '') AS integer) > (
+              SELECT CAST(NULLIF(TRIM("№ Операция"), '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = old_detail AND LOWER(TRIM("Име на операция")) = old_op ORDER BY CAST(NULLIF(TRIM("№ Операция"), '') AS integer) DESC LIMIT 1
           )
     ) INTO is_last_op;
 
