@@ -473,6 +473,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
     allNodes.forEach(n => n.consumedByParents = 0);
     let alreadyAllocated = {};
     let alreadyAllocatedNormal = {};
+    let alreadyAllocatedChildren = {};
     let alreadyAllocatedWarehouse = {};
     
     let getMultiplier = (childCode, parentCode) => {
@@ -511,14 +512,6 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 let doneQty = n.consumedByParents + allocatedFromWh;
                 alreadyAllocated[opKey] = usedSoFar + allocatedFromWh;
                 
-                let normalGross = grossCompletedOps[opKey] || 0;
-                if (idx === partRoutes.length - 1) normalGross += (savedQty[code] || 0);
-                let normalNet = Math.max(0, normalGross - consumedByShipped);
-                let usedSoFarNormal = alreadyAllocatedNormal[opKey] || 0;
-                let availableNormal = Math.max(0, normalNet - usedSoFarNormal);
-                let allocatedNormal = isLastNode ? availableNormal : Math.min(deficit, availableNormal);
-                alreadyAllocatedNormal[opKey] = usedSoFarNormal + allocatedNormal;
-                
                 let opState = 'gray';
                 let latestStatus = opStatusMap[opKey];
                 if (doneQty >= n.planQty) opState = 'green';
@@ -530,7 +523,23 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 
                 n.operations.push({ name: opName, completed: doneQty, state: opState, scrapped: scrappedOps[planOpKey] || 0, latestStatus: latestStatus });
                 
-                if (idx === 0) finalDoneQtyForChildren = n.consumedByParents + allocatedNormal; 
+                if (idx === 0) {
+                    let totalManual = 0;
+                    partRoutes.forEach(r => {
+                        let rKey = code.toLowerCase() + '_' + String(r['Име на операция']).trim().toLowerCase();
+                        totalManual += (manualOps[rKey] || 0);
+                    });
+                    
+                    let trueGlobalGross = (grossCompletedOps[opKey] || 0) + totalManual + (savedQty[code] || 0);
+                    let trueGlobalNet = Math.max(0, trueGlobalGross - consumedByShipped);
+                    
+                    let usedSoFarChildren = alreadyAllocatedChildren[code.toLowerCase()] || 0;
+                    let availableChildren = Math.max(0, trueGlobalNet - usedSoFarChildren);
+                    let allocatedChildren = isLastNode ? availableChildren : Math.min(deficit, availableChildren);
+                    alreadyAllocatedChildren[code.toLowerCase()] = usedSoFarChildren + allocatedChildren;
+                    
+                    finalDoneQtyForChildren = n.consumedByParents + allocatedChildren;
+                } 
             });
         } else {
             let globalWarehouse = n.warehouseQty + (completedOps[code + '_възстановен'] || 0);
