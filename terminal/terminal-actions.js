@@ -153,12 +153,8 @@ async function finishTask(taskId, btn) {
           let startedAt = window['startTime_' + taskId] || new Date().toISOString();
           let inserts = [{ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt }];
           
-          if (typeof appendMaterialConsumptionInserts === 'function') appendMaterialConsumptionInserts(taskData, val, startedAt, inserts);
-
           const { error } = await client.from('otcheti').insert(inserts);
           if(error) throw error;
-          
-          if (typeof executeSkladUpdates === 'function') await executeSkladUpdates(inserts);
           
           addLogToHistory('ГОТОВО', val, taskId); activeTaskId = null; 
           Swal.fire({ icon: 'success', title: 'Браво!', text: 'Отчетени: ' + val + ' бр.', timer: 1500, showConfirmButton: false }).then(() => { loadTasks(); });
@@ -166,8 +162,6 @@ async function finishTask(taskId, btn) {
           if (!navigator.onLine || err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('fetch')) {
               let startedAt = window['startTime_' + taskId] || new Date().toISOString();
               let inserts = [{ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt }];
-              
-              if (typeof appendMaterialConsumptionInserts === 'function') appendMaterialConsumptionInserts(taskData, val, startedAt, inserts);
               
               if (taskData.hasLimit) { taskData.maxAllowed -= val; if (taskData.maxAllowed < 0) taskData.maxAllowed = 0; }
               saveToOfflineQueue(inserts, taskId, 'Отчетени: ' + val + ' бр.');
@@ -235,12 +229,8 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
             }
         });
 
-        if (typeof appendMaterialConsumptionInserts === 'function') appendMaterialConsumptionInserts(taskData, val, startedAt, inserts);
-
         const { error } = await client.from('otcheti').insert(inserts);
         if (error) throw error; 
-        
-        if (typeof executeSkladUpdates === 'function') await executeSkladUpdates(inserts);
         
         addLogToHistory('БРАК', val, taskData.id); Swal.close(); activeTaskId = null; loadTasks(); 
     } catch(err) { 
@@ -259,8 +249,6 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
                     inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Бракуван Компонент)", "Количество": qty, "Операция": "Бракуван в " + taskData.name, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt });
                 }
             });
-            
-            if (typeof appendMaterialConsumptionInserts === 'function') appendMaterialConsumptionInserts(taskData, val, startedAt, inserts);
             
             if (taskData.hasLimit) { taskData.maxAllowed -= val; if (taskData.maxAllowed < 0) taskData.maxAllowed = 0; }
             saveToOfflineQueue(inserts, taskData.id, 'БРАК: ' + val + ' бр.');
