@@ -232,7 +232,7 @@ async function loadTasks(isSilent = false) {
                       let relevantChildren = children.filter(c => {
                           let opNum = c['Влага се на Оп. №'] ? parseFloat(c['Влага се на Оп. №']) : 0;
                           if (opNum > 0) return opNum === currentOpNum;
-                          return isLastOp;
+                          return (i === 0);
                       });
 
                       if (relevantChildren.length > 0) {

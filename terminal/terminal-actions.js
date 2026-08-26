@@ -367,14 +367,20 @@ function appendMaterialConsumptionInserts(taskData, val, startedAt, insertsArray
     let lcName = String(taskData.name).trim().toLowerCase();
     let cRoutes = globalRoutesByDetail[lcName] || globalRoutesByDetail[Object.keys(globalRoutesByDetail).find(k => _norm(k) === normName)] || [];
     let isLastOp = false;
+    let isFirstOp = false;
     
     if (cRoutes.length > 0) {
         let lastOp = cRoutes[cRoutes.length - 1];
         if (_norm(lastOp['Име на операция']) === _norm(taskData.op)) {
             isLastOp = true;
         }
+        let firstOp = cRoutes[0];
+        if (_norm(firstOp['Име на операция']) === _norm(taskData.op)) {
+            isFirstOp = true;
+        }
     } else {
         isLastOp = true;
+        isFirstOp = true;
     }
 
     let children = globalBomData.filter(b => _norm(b['ID Родител']) === normName);
@@ -388,8 +394,8 @@ function appendMaterialConsumptionInserts(taskData, val, startedAt, insertsArray
                 consumeNow = true;
             }
         } else {
-            // Default behavior: consume at the last operation
-            if (isLastOp) {
+            // Default behavior: consume at the first operation
+            if (isFirstOp) {
                 consumeNow = true;
             }
         }
