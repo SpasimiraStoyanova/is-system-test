@@ -389,8 +389,14 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         let routes = staticCache.routesByDetail[code];
         if (routes.length === 0) return;
         
-        // Removed backward accumulation loop to prevent artificial inflation
-        // Operations now strictly show exactly what was reported on them
+        // BACKFLUSH MANUAL OPS ONLY
+        // This ensures injected parts are visually represented as having passed prior operations,
+        // so they properly display on previous steps and trigger child consumption on the first step.
+        for (let i = routes.length - 2; i >= 0; i--) {
+            let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
+            let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
+            manualOps[opKey] = (manualOps[opKey] || 0) + (manualOps[nextOpKey] || 0);
+        }
         
         let lastOpKey = code + '_' + String(routes[routes.length - 1]['Име на операция']).trim().toLowerCase();
         let finalTrueDone = (completedOps[lastOpKey] || 0) + (savedQty[code] || 0);
@@ -472,8 +478,6 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
 
     allNodes.forEach(n => n.consumedByParents = 0);
     let alreadyAllocated = {};
-    let alreadyAllocatedNormal = {};
-    let alreadyAllocatedChildren = {};
     let alreadyAllocatedWarehouse = {};
     
     let getMultiplier = (childCode, parentCode) => {
@@ -523,23 +527,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 
                 n.operations.push({ name: opName, completed: doneQty, state: opState, scrapped: scrappedOps[planOpKey] || 0, latestStatus: latestStatus });
                 
-                if (idx === 0) {
-                    let totalManual = 0;
-                    partRoutes.forEach(r => {
-                        let rKey = code.toLowerCase() + '_' + String(r['Име на операция']).trim().toLowerCase();
-                        totalManual += (manualOps[rKey] || 0);
-                    });
-                    
-                    let trueGlobalGross = (grossCompletedOps[opKey] || 0) + totalManual + (savedQty[code] || 0);
-                    let trueGlobalNet = Math.max(0, trueGlobalGross - consumedByShipped);
-                    
-                    let usedSoFarChildren = alreadyAllocatedChildren[code.toLowerCase()] || 0;
-                    let availableChildren = Math.max(0, trueGlobalNet - usedSoFarChildren);
-                    let allocatedChildren = isLastNode ? availableChildren : Math.min(deficit, availableChildren);
-                    alreadyAllocatedChildren[code.toLowerCase()] = usedSoFarChildren + allocatedChildren;
-                    
-                    finalDoneQtyForChildren = n.consumedByParents + allocatedChildren;
-                } 
+                if (idx === 0) finalDoneQtyForChildren = doneQty;
             });
         } else {
             let globalWarehouse = n.warehouseQty + (completedOps[code + '_възстановен'] || 0);
