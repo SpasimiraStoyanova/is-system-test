@@ -767,22 +767,34 @@ window.massLogisticsAction = async function(month, year) {
         
         // 1. Взимаме детайлите, които ще бъдат изпратени
         const { data: detailsToShip, error: fetchErr } = await client.from('plan')
-            .select('id, "ID Детайл", "Целево количество"')
+            .select('id, "Вътрешно име", "Целево количество"')
             .eq('Месец', month).eq('Година', year).in('Статус', ['Завършен', '📦 Опакован']);
             
         if (fetchErr) throw fetchErr;
         
         if (detailsToShip && detailsToShip.length > 0) {
+            const nomRes = await client.from('Номенклатура').select('*');
+            const nomMap = {};
+            if (!nomRes.error && nomRes.data) {
+                nomRes.data.forEach(n => {
+                    if (n['Вътрешно име']) nomMap[n['Вътрешно име']] = n['ID Детайл'];
+                    if (n['ID Детайл']) nomMap[n['ID Детайл']] = n['ID Детайл'];
+                });
+            }
+
             // 2. Подготвяме отчетите за Експедиция
-            let otchetiInserts = detailsToShip.map(d => ({
-                "ID План": String(d.id),
-                "ID Детайл": String(d["ID Детайл"]).trim(),
-                "Операция": "Експедиция",
-                "Количество": parseFloat(d["Целево количество"]) || 0,
-                "Статус": "Изпратено",
-                "Оператор": "Система (Логистика)",
-                "Дата": new Date().toISOString()
-            }));
+            let otchetiInserts = detailsToShip.map(d => {
+                let idDetail = nomMap[d["Вътрешно име"]] || d["Вътрешно име"];
+                return {
+                    "ID План": String(d.id),
+                    "ID Детайл": String(idDetail).trim(),
+                    "Операция": "Експедиция",
+                    "Количество": parseFloat(d["Целево количество"]) || 0,
+                    "Статус": "Изпратено",
+                    "Оператор": "Система (Логистика)",
+                    "Дата": new Date().toISOString()
+                };
+            });
             
             // 3. Инсъртваме отчетите (Това ще извика тригера и ще извади от склада)
             const { error: insErr } = await client.from('otcheti').insert(otchetiInserts);
