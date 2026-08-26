@@ -103,7 +103,7 @@ async function loadCurrentTableData() {
                   r['ID Детайл'] = nomMap[r['Вътрешно име']] || r['Вътрешно име']; 
               });
           }
-          const packRes = await client.from('otcheti').select('*').ilike('Операция', 'Опаковане - Кашон №%').eq('Статус', 'Отчетено');
+          const packRes = await client.from('otcheti').select('*').ilike('Операция', 'Опаковане - Кашон №%').in('Статус', ['Отчетено', 'Изпратено']);
           if (!packRes.error && packRes.data) {
               const packMap = {};
               packRes.data.forEach(p => {
@@ -799,6 +799,18 @@ window.massLogisticsAction = async function(month, year) {
             // 3. Инсъртваме отчетите (Това ще извика тригера и ще извади от склада)
             const { error: insErr } = await client.from('otcheti').insert(otchetiInserts);
             if (insErr) throw insErr;
+            
+            // 3.5. Обновяваме статуса на всички записи за 'Опаковане' свързани с тези планове на 'Изпратено',
+            // за да изчезнат от колоната 'Запазени'
+            const planIds = detailsToShip.map(d => String(d.id));
+            if (planIds.length > 0) {
+                const { error: updPackErr } = await client.from('otcheti')
+                    .update({ 'Статус': 'Изпратено' })
+                    .in('ID План', planIds)
+                    .ilike('Операция', '%Опаковане%')
+                    .eq('Статус', 'Отчетено');
+                if (updPackErr) console.error("Грешка при изпращане на кашоните:", updPackErr);
+            }
         }
 
         // 4. Обновяваме статуса им на '🚚 Изпратен'
