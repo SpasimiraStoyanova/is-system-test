@@ -123,6 +123,17 @@ async function loadCurrentTableData() {
                   }
               });
           }
+          rows.sort((a, b) => {
+              const statusWeight = (status) => {
+                  let s = String(status || '').trim().toLowerCase();
+                  if (s === 'изпратен' || s === 'завършен') return 1;
+                  return 0;
+              };
+              let weightA = statusWeight(a['Статус']);
+              let weightB = statusWeight(b['Статус']);
+              if (weightA !== weightB) return weightA - weightB;
+              return parseInt(b.id || 0) - parseInt(a.id || 0);
+          });
 
       } else if (currentTab === 'otcheti') {
           const planRes = await client.from('plan').select('id, "Вътрешно име", "Месец", "Година"');
