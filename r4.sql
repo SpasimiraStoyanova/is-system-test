@@ -1,0 +1,1 @@
+﻿UPDATE public.sklad SET "Изразходено" = '0', "Остатък" = COALESCE("Начална наличност", 0) + CAST(COALESCE(NULLIF("Доставено", ''), '0') AS numeric);

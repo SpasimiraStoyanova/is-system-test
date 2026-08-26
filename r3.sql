@@ -1,0 +1,1 @@
+﻿TRUNCATE TABLE public.inventory_wip RESTART IDENTITY;

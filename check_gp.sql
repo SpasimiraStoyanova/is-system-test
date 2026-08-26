@@ -1,0 +1,1 @@
+﻿SELECT * FROM public.inventory_gp;

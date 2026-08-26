@@ -61,24 +61,9 @@
 
             Object.keys(routesByDetail).forEach(code => {
                 let routes = routesByDetail[code];
-                for (let i = routes.length - 2; i >= 0; i--) {
-                    let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
-                    let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
-                    grossCompletedOps[opKey] = Math.max(grossCompletedOps[opKey] || 0, grossCompletedOps[nextOpKey] || 0);
-                    completedOps[opKey] = Math.max(completedOps[opKey] || 0, completedOps[nextOpKey] || 0);
-                }
-                
                 let lastOpKey = code + '_' + String(routes[routes.length - 1]['Име на операция']).trim().toLowerCase();
                 trueDoneOps[lastOpKey] = completedOps[lastOpKey] || 0;
                 grossTrueDoneOps[lastOpKey] = grossCompletedOps[lastOpKey] || 0;
-                
-                for (let i = routes.length - 2; i >= 0; i--) {
-                    let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
-                    let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
-                    let bucket = (grossCompletedOps[opKey] || 0) - (grossCompletedOps[nextOpKey] || 0);
-                    if (bucket < 0) bucket = 0;
-                    grossTrueDoneOps[opKey] = (grossTrueDoneOps[nextOpKey] || 0) + bucket;
-                }
                 
                 let firstOpKey = code + '_' + String(routes[0]['Име на операция']).trim().toLowerCase();
                 grossStartedOps[firstOpKey] = grossCompletedOps[firstOpKey] || 0;

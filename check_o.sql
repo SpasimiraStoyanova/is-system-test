@@ -1,0 +1,1 @@
+﻿SELECT "ID Детайл", "Количество", "Операция", "Статус", "Дата" FROM public.otcheti ORDER BY id DESC LIMIT 5;

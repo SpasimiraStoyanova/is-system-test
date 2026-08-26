@@ -1,0 +1,1 @@
+﻿SELECT * FROM public.otcheti WHERE LOWER(TRIM("ID Детайл")) = 'пл. 6 отв.';

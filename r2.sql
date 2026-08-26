@@ -1,0 +1,1 @@
+﻿TRUNCATE TABLE public.inventory_gp RESTART IDENTITY;

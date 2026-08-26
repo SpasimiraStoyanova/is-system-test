@@ -1,0 +1,1 @@
+﻿SELECT pg_get_functiondef('process_inventory_on_otchet'::regproc);

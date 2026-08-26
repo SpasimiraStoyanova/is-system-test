@@ -1,0 +1,1 @@
+﻿SELECT "Изразходено", "Остатък" FROM public.sklad WHERE LOWER(TRIM("ID Детайл")) = 'ламела роторна вар.25';

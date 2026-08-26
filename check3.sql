@@ -1,0 +1,1 @@
+﻿SELECT 'BOM_COUNT', COUNT(*) FROM public.bom WHERE LOWER(TRIM("ID Родител")) = 'роторен пак. вар. 25';

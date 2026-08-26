@@ -389,25 +389,8 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         let routes = staticCache.routesByDetail[code];
         if (routes.length === 0) return;
         
-        for (let i = routes.length - 2; i >= 0; i--) {
-            let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
-            let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
-            
-            // NORMAL reports consume WIP. So requiredFromMe is only normal reports and scrap.
-            let requiredFromMe = (grossCompletedOps[nextOpKey] || 0) + (scrappedOps[nextOpKey] || 0);
-            
-            // My normal completed items that provide WIP.
-            let myCurrentTotal = (grossCompletedOps[opKey] || 0);
-            
-            // Shortfall if downstream normal reports consumed more than I have.
-            let shortfall = Math.max(0, requiredFromMe - myCurrentTotal);
-            
-            // Manual reports downstream DO NOT consume WIP, they spawn out of thin air. 
-            // So they must be unconditionally added to my gross (to pretend they passed through me).
-            // But we must NOT add it if myCurrentTotal already includes it? Wait, manualOps are specific to the operation.
-            grossCompletedOps[opKey] = (grossCompletedOps[opKey] || 0) + shortfall + (manualOps[nextOpKey] || 0);
-            
-        }
+        // Removed backward accumulation loop to prevent artificial inflation
+        // Operations now strictly show exactly what was reported on them
         
         let lastOpKey = code + '_' + String(routes[routes.length - 1]['Име на операция']).trim().toLowerCase();
         let finalTrueDone = (completedOps[lastOpKey] || 0) + (savedQty[code] || 0);
@@ -489,8 +472,9 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
 
     allNodes.forEach(n => n.consumedByParents = 0);
     let alreadyAllocated = {};
+    let alreadyAllocatedNormal = {};
     let alreadyAllocatedWarehouse = {};
-
+    
     let getMultiplier = (childCode, parentCode) => {
         let pNameLower = parentCode.toLowerCase();
         let cNameLower = childCode.toLowerCase();
@@ -525,8 +509,15 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 
                 let allocatedFromWh = isLastNode ? availableForThisNode : Math.min(deficit, availableForThisNode);
                 let doneQty = n.consumedByParents + allocatedFromWh;
-                
                 alreadyAllocated[opKey] = usedSoFar + allocatedFromWh;
+                
+                let normalGross = grossCompletedOps[opKey] || 0;
+                if (idx === partRoutes.length - 1) normalGross += (savedQty[code] || 0);
+                let normalNet = Math.max(0, normalGross - consumedByShipped);
+                let usedSoFarNormal = alreadyAllocatedNormal[opKey] || 0;
+                let availableNormal = Math.max(0, normalNet - usedSoFarNormal);
+                let allocatedNormal = isLastNode ? availableNormal : Math.min(deficit, availableNormal);
+                alreadyAllocatedNormal[opKey] = usedSoFarNormal + allocatedNormal;
                 
                 let opState = 'gray';
                 let latestStatus = opStatusMap[opKey];
@@ -539,7 +530,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 
                 n.operations.push({ name: opName, completed: doneQty, state: opState, scrapped: scrappedOps[planOpKey] || 0, latestStatus: latestStatus });
                 
-                if (idx === 0) finalDoneQtyForChildren = doneQty; 
+                if (idx === 0) finalDoneQtyForChildren = n.consumedByParents + allocatedNormal; 
             });
         } else {
             let globalWarehouse = n.warehouseQty + (completedOps[code + '_възстановен'] || 0);

@@ -1,0 +1,1 @@
+﻿SELECT "Код на детайла", "Име на операция", "№ Операция" FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = 'пл. 6 отв.';
