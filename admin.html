@@ -125,11 +125,13 @@
                 <label style="font-weight: bold; color: #475569;">Таблица:</label>
                 <select id="auditTableFilter" onchange="fetchAuditLogs()" style="padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;">
                     <option value="all">Всички</option>
-                    <option value="plan">Месечен план</option>
+                    <option value="plan">Работен План</option>
                     <option value="marshruti">Маршрутни карти</option>
-                    <option value="bom">Разбивка (BOM)</option>
+                    <option value="bom">Спецификации (BOM)</option>
                     <option value="Номенклатура">Номенклатура</option>
-                    <option value="sklad">Склад материали</option>
+                    <option value="sklad">Склад Материали</option>
+                    <option value="inventory_gp">Склад Готови Детайли</option>
+                    <option value="inventory_wip">Склад Полуфабрикати</option>
                 </select>
                 <button onclick="fetchAuditLogs()" class="btn-primary" style="background-color: #3b82f6; padding: 8px 16px;">🔄 Обнови</button>
             </div>
