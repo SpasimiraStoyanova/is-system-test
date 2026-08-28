@@ -597,7 +597,18 @@ async function saveForm(e) {
   }
 
   let payload = {};
-  config.fields.forEach(f => { const el = document.getElementById('inp_' + f.name); if (el && !f.readonly && !(isEditMode && f.readonlyOnEdit)) { let val = el.value; if (f.type === 'number') val = parseFloat(val) || 0; payload[f.name] = val; } });
+  config.fields.forEach(f => { 
+      const el = document.getElementById('inp_' + f.name); 
+      if (el && !f.readonly && !(isEditMode && f.readonlyOnEdit)) { 
+          let val = el.value; 
+          if (f.type === 'number') {
+              val = parseFloat(val) || 0; 
+          } else if (f.type === 'date' && val === "") {
+              val = null;
+          }
+          payload[f.name] = val; 
+      } 
+  });
   try {
     if (currentTab === 'plan' && payload['Статус'] === '🚚 Изпратен') {
         let oldStatus = isEditMode ? globalRows[editingIndex]['Статус'] : null;
