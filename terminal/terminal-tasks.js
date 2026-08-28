@@ -251,13 +251,13 @@ async function loadTasks(isSilent = false) {
                               let cCode = String(child['ID Компонент']).trim().toLowerCase(); 
                               let multiplier = parseFloat(child['Количество']) || 1;
                               let childRoutes = globalRoutesByDetail[cCode] || [];
-                              let childAvail = 0;
+                              let wipAvail = 0;
+                              let skladAvail = getSkladQty(cCode);
                               if (childRoutes.length > 0) {
                                   let lastChildOp = String(childRoutes[childRoutes.length - 1]['Име на операция']).trim().toLowerCase();
-                                  childAvail = physicalStock[cCode + '_' + lastChildOp] || 0;
-                              } else {
-                                  childAvail = getSkladQty(cCode);
+                                  wipAvail = physicalStock[cCode + '_' + lastChildOp] || 0;
                               }
+                              let childAvail = wipAvail + skladAvail;
                               let sets = Math.floor(childAvail / multiplier);
                               if (sets < minSets) { minSets = sets; blockingReasons.push(`${cCode} (${childAvail} налични)`); }
                               if (sets < rawMinSets) rawMinSets = sets;
@@ -276,7 +276,27 @@ async function loadTasks(isSilent = false) {
                           let type = nomItem ? String(nomItem['Тип']).trim().toLowerCase() : '';
                           if (type !== 'материал' || i === 0) {
                               let qty = parseFloat(child['Количество']) || 1;
-                              let loc = nomItem ? String(nomItem['Местоположение'] || '').trim() : '';
+                              
+                              let childRoutes = globalRoutesByDetail[cCode] || [];
+                              let wipAvail = 0;
+                              let skladAvail = getSkladQty(cCode);
+                              let lastChildDropoff = '';
+                              if (childRoutes.length > 0) {
+                                  let lastOpObj = childRoutes[childRoutes.length - 1];
+                                  wipAvail = physicalStock[cCode + '_' + String(lastOpObj['Име на операция']).trim().toLowerCase()] || 0;
+                                  lastChildDropoff = String(lastOpObj['Инструкция за оставяне'] || '').trim();
+                              }
+                              
+                              let locTexts = [];
+                              if (wipAvail > 0) {
+                                  locTexts.push(`${wipAvail}бр. ${lastChildDropoff ? 'в ' + lastChildDropoff : 'в Буфер'}`);
+                              }
+                              if (skladAvail > 0) {
+                                  locTexts.push(`${skladAvail}бр. в Склад`);
+                              }
+                              if (locTexts.length === 0) locTexts.push(`0бр. налични`);
+                              let loc = locTexts.join(' / ');
+                              
                               itemsToFetch.push({ code: String(child['ID Компонент']).trim(), qty: qty, loc: loc, type: type });
                           }
                       });
@@ -387,7 +407,7 @@ function renderTasks(tasks) {
     var fetchHtml = '';
     if (t.itemsToFetch && t.itemsToFetch.length > 0) {
         fetchHtml += `<div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 10px; margin-bottom: 12px; font-size: 13px; color: #92400e; font-weight: 700; border-radius: 4px;">`;
-        fetchHtml += `<div style="margin-bottom:5px;">🛒 <b>Вземи от склада:</b></div>`;
+        fetchHtml += `<div style="margin-bottom:5px;">🛒 <b>Вземи компоненти:</b></div>`;
         fetchHtml += `<ul style="margin: 0; padding-left: 20px;">`;
         t.itemsToFetch.forEach(item => {
             let locStr = item.loc ? ` (📍 ${item.loc})` : '';
