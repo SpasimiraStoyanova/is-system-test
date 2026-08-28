@@ -384,6 +384,15 @@ function renderTasks(tasks) {
   
   let visibleTasks = tasks;
 
+  // Bulletproof safeguard for edge cases
+  visibleTasks.forEach(t => {
+      if (t.hasLimit && Number(t.maxAllowed) <= 0) {
+          t.isBlocked = true;
+          if (!t.blockingReasons) t.blockingReasons = [];
+          if (t.blockingReasons.length === 0) t.blockingReasons.push('Наличност: 0');
+      }
+  });
+
   let filteredTasks = visibleTasks;
   if (currentTaskFilter === 'ready') filteredTasks = visibleTasks.filter(t => !t.isBlocked);
   else if (currentTaskFilter === 'taken') filteredTasks = visibleTasks.filter(t => t.isTaken);
