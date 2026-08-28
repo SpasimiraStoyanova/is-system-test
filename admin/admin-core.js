@@ -435,7 +435,9 @@ async function computeSkladData(isGpTab) {
     }
     
     let routeMap = {};
+    let lastDropoffMap = {};
     if (routeRes.data) {
+        let routeGroups = {};
         routeRes.data.forEach(r => {
             let code = String(r['Код на детайла']).trim().toLowerCase();
             let op = String(r['Име на операция']).trim().toLowerCase();
@@ -443,6 +445,16 @@ async function computeSkladData(isGpTab) {
             if (dropoff) {
                 if (!routeMap[code]) routeMap[code] = {};
                 routeMap[code][op] = dropoff;
+            }
+            if (!routeGroups[code]) routeGroups[code] = [];
+            routeGroups[code].push(r);
+        });
+        Object.keys(routeGroups).forEach(code => {
+            let ops = routeGroups[code];
+            ops.sort((a, b) => (parseInt(a['№ Операция']) || 0) - (parseInt(b['№ Операция']) || 0));
+            let lastOpDropoff = String(ops[ops.length - 1]['Инструкция за оставяне'] || '').trim();
+            if (lastOpDropoff) {
+                lastDropoffMap[code] = lastOpDropoff;
             }
         });
     }
@@ -496,7 +508,7 @@ async function computeSkladData(isGpTab) {
         let loc = '';
         let opKey = String(item['Операция'] || '').trim().toLowerCase();
         if (isGpTab) {
-            loc = nomLocMap[code] || 'Склад Готови Детайли';
+            loc = nomLocMap[code] || lastDropoffMap[code] || 'Склад Готови Детайли';
         } else {
             loc = (routeMap[code] && routeMap[code][opKey]) ? routeMap[code][opKey] : 'Буфер';
         }
@@ -525,6 +537,7 @@ async function computeSkladData(isGpTab) {
                     "RawPlanId": "",
                     "ID Детайл": code.toUpperCase(),
                     "Име": nomNameMap[code] || code,
+                    "Локация": nomLocMap[code] || lastDropoffMap[code] || 'Склад Готови Детайли',
                     "Операция": "Готов детайл",
                     "Оригинална Операция": "Готов детайл",
                     "Общо": 0,
