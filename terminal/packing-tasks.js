@@ -166,7 +166,7 @@ function renderTasks(tasks) {
             <input type="text" id="box_${t.id}" class="box-input" placeholder="Въведи номер на кашон">
             
             <label style="font-weight: bold; color: #475569; display: block; margin-bottom: 5px;">Брой детайли в кашона</label>
-            <input type="number" id="qty_${t.id}" class="box-input" value="${t.available}" max="${t.available}" inputmode="numeric" style="margin-bottom:15px;">
+            <input type="number" id="qty_${t.id}" min="1" class="box-input" value="${t.available}" max="${t.available}" inputmode="numeric" style="margin-bottom:15px;">
             
             <button class="btn" id="btn_${t.id}" onclick="finishPackingTask('${t.id}', this)" style="background-color: #2563eb; width: 100%; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);">✅ ОТЧЕТИ ОПАКОВАНЕ</button>
         </div>
