@@ -26,6 +26,23 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    -- Обработка на Експедиция (Изпращане на детайли)
+    IF new_op = 'експедиция' THEN
+        -- Вадим от Готови Детайли (GP)
+        UPDATE public.inventory_gp SET "Количество" = GREATEST(0, "Количество" - new_qty) WHERE LOWER(TRIM("ID Детайл")) = new_detail;
+        RETURN NEW;
+    END IF;
+
+    -- Обработка на Опаковане в кашон
+    IF new_op LIKE 'опаковане - кашон%' THEN
+        -- Вадим от Готови Детайли (GP)
+        UPDATE public.inventory_gp SET "Количество" = GREATEST(0, "Количество" - new_qty) WHERE LOWER(TRIM("ID Детайл")) = new_detail;
+        -- Добавяме в WIP под името на кашона (за да се знае в кой кашон е)
+        UPDATE public.inventory_wip SET "Количество" = "Количество" + new_qty WHERE LOWER(TRIM("ID Детайл")) = new_detail AND LOWER(TRIM("Операция")) = new_op;
+        IF NOT FOUND THEN INSERT INTO public.inventory_wip ("ID Детайл", "Операция", "Количество") VALUES (new_detail, new_op, new_qty); END IF;
+        RETURN NEW;
+    END IF;
+
     -- Намираме номера на текущата операция
     SELECT CAST(NULLIF(CAST("№ Операция" AS text), '') AS numeric) INTO current_op_num
     FROM public.marshruti
@@ -129,6 +146,24 @@ BEGIN
 
     -- Игнорираме ръчните корекции
     IF old_operator ILIKE '%ръчна корек%' THEN
+        RETURN OLD;
+    END IF;
+
+    -- Обработка на Експедиция (Изпращане на детайли)
+    IF old_op = 'експедиция' THEN
+        -- Връщаме в Готови Детайли (GP)
+        UPDATE public.inventory_gp SET "Количество" = "Количество" + old_qty WHERE LOWER(TRIM("ID Детайл")) = old_detail;
+        IF NOT FOUND THEN INSERT INTO public.inventory_gp ("ID Детайл", "Количество") VALUES (old_detail, old_qty); END IF;
+        RETURN OLD;
+    END IF;
+
+    -- Обработка на Опаковане в кашон
+    IF old_op LIKE 'опаковане - кашон%' THEN
+        -- Връщаме в Готови Детайли (GP)
+        UPDATE public.inventory_gp SET "Количество" = "Количество" + old_qty WHERE LOWER(TRIM("ID Детайл")) = old_detail;
+        IF NOT FOUND THEN INSERT INTO public.inventory_gp ("ID Детайл", "Количество") VALUES (old_detail, old_qty); END IF;
+        -- Вадим от WIP на кашона
+        UPDATE public.inventory_wip SET "Количество" = GREATEST(0, "Количество" - old_qty) WHERE LOWER(TRIM("ID Детайл")) = old_detail AND LOWER(TRIM("Операция")) = old_op;
         RETURN OLD;
     END IF;
 
