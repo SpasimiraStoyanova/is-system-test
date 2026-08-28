@@ -35,7 +35,7 @@ function switchTab(tabKey) {
   const pdfBtn = document.getElementById('pdfBtn'); const logBtn = document.getElementById('logisticsBtn'); const mrpBtn = document.getElementById('mrpBtn'); const sidebar = document.getElementById('personnelSidebar');
   
   addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`; 
-  addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_gp' && tabKey !== 'sklad_wip') ? 'none' : 'flex';
+  addBtn.style.display = (config.readOnlyTab) ? 'none' : 'flex';
   if (pdfBtn) pdfBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
   if (logBtn) logBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
   if (mrpBtn) mrpBtn.style.display = (tabKey === 'porachki') ? 'flex' : 'none';
@@ -202,8 +202,8 @@ function renderDynamicTable(itemsToRender = null) {
           headerRow.appendChild(th); 
       });
       
-      if (!config.readOnlyTab || currentTab === 'sklad_gp' || currentTab === 'sklad_wip') { 
-          const thActions = document.createElement('th'); thActions.innerText = 'Действия'; thActions.style.textAlign = 'center'; 
+      if (!config.readOnlyTab) { 
+          const thActions = document.createElement('th'); thActions.innerText = 'Действие'; thActions.style.textAlign = 'center'; 
           headerRow.appendChild(thActions); 
       }
       thead.appendChild(headerRow);
@@ -211,7 +211,7 @@ function renderDynamicTable(itemsToRender = null) {
 
   tbody.innerHTML = '';
   
-  if (currentRenderedRows.length === 0) { tbody.innerHTML = `<tr><td colspan="${config.fields.length + (config.readOnlyTab && currentTab !== 'sklad_gp' && currentTab !== 'sklad_wip' ? 0 : 2)}" style="text-align:center; padding:40px;">Няма данни.</td></tr>`; table.style.display = 'table'; return; }
+  if (currentRenderedRows.length === 0) { tbody.innerHTML = `<tr><td colspan="${config.fields.length + (config.readOnlyTab ? 0 : 2)}" style="text-align:center; padding:40px;">Няма данни.</td></tr>`; table.style.display = 'table'; return; }
 
   currentRenderedRows.forEach((item) => {
     const row = document.createElement('tr'); const trueIndex = globalRows.indexOf(item);
@@ -262,7 +262,7 @@ function renderDynamicTable(itemsToRender = null) {
       }
       row.appendChild(td);
     });
-      if (!config.readOnlyTab || currentTab === 'sklad_gp' || currentTab === 'sklad_wip') {
+      if (!config.readOnlyTab) {
           const tdActions = document.createElement('td'); tdActions.style.textAlign = 'center';
           tdActions.innerHTML = `<button class="action-btn btn-edit" onclick="openEditModal(${trueIndex})">✏️</button><button class="action-btn btn-delete" onclick="deleteItem(${trueIndex})">🗑️</button>`;
           row.appendChild(tdActions);
