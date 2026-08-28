@@ -32,12 +32,13 @@ function switchTab(tabKey) {
   globalColumnFilters = {}; document.getElementById('tableHead').innerHTML = '';
   
   const config = tableConfigs[tabKey]; const addBtn = document.getElementById('addNewBtn');
-  const pdfBtn = document.getElementById('pdfBtn'); const logBtn = document.getElementById('logisticsBtn'); const sidebar = document.getElementById('personnelSidebar');
+  const pdfBtn = document.getElementById('pdfBtn'); const logBtn = document.getElementById('logisticsBtn'); const mrpBtn = document.getElementById('mrpBtn'); const sidebar = document.getElementById('personnelSidebar');
   
   addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`; 
   addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_gp' && tabKey !== 'sklad_wip') ? 'none' : 'flex';
   if (pdfBtn) pdfBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
   if (logBtn) logBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
+  if (mrpBtn) mrpBtn.style.display = (tabKey === 'porachki') ? 'flex' : 'none';
 
   // Тук прехвърлихме показването на папките само когато сме в менюто Персонал
   if (tabKey === 'personal') { sidebar.style.display = 'block'; loadPersonnelSidebar(); } else { sidebar.style.display = 'none'; }
@@ -639,6 +640,21 @@ async function saveForm(e) {
         }
     }
 
+    if (currentTab === 'porachki' && payload['Статус'] === 'Прието') {
+        let oldStatus = isEditMode ? globalRows[editingIndex]['Статус'] : null;
+        if (oldStatus !== 'Прието') {
+            let itemCode = payload['Материал'];
+            let qty = parseFloat(payload['Количество']) || 0;
+            
+            // fetch current from sklad
+            const { data: skData, error: skErr } = await client.from('sklad').select('Доставено').eq('ID Детайл', itemCode);
+            if (!skErr && skData && skData.length > 0) {
+                let currentDostaveno = parseFloat(skData[0]['Доставено']) || 0;
+                await client.from('sklad').update({ 'Доставено': currentDostaveno + qty }).eq('ID Детайл', itemCode);
+            }
+        }
+    }
+
     if (isEditMode) { 
         const row = globalRows[editingIndex]; 
         const keyVal = row[config.key]; 
@@ -838,6 +854,135 @@ window.massLogisticsAction = async function(month, year) {
     } catch(err) {
         Swal.fire('Грешка', err.message, 'error');
     }
+};
+
+window.openMrpModal = async function() {
+    try {
+        Swal.fire({title: 'Анализ на нуждите...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
+        
+        const { data: plans, error: planErr } = await client.from('plan').select('*').eq('Статус', 'Активен');
+        if (planErr) throw planErr;
+        
+        const { data: bomList, error: bomErr } = await client.from('bom').select('*');
+        if (bomErr) throw bomErr;
+        
+        const { data: skladList, error: skladErr } = await client.from('sklad').select('*');
+        if (skladErr) throw skladErr;
+        
+        const bomMap = {};
+        bomList.forEach(b => {
+            let parent = b['ID Родител']?.trim()?.toLowerCase();
+            if (!bomMap[parent]) bomMap[parent] = [];
+            bomMap[parent].push({ child: b['ID Компонент']?.trim()?.toLowerCase(), qty: parseFloat(b['Количество']) || 1 });
+        });
+        
+        const skladMap = {};
+        skladList.forEach(s => {
+            skladMap[s['ID Детайл']?.trim()?.toLowerCase()] = {
+                name: s['ID Детайл'],
+                stock: parseFloat(s['Остатък']) || 0,
+                min: parseFloat(s['Минимално количество']) || 0
+            };
+        });
+        
+        let totalDemands = {};
+        
+        function explode(itemId, qty) {
+            if(!itemId) return;
+            let key = itemId.trim().toLowerCase();
+            if (bomMap[key] && bomMap[key].length > 0) {
+                bomMap[key].forEach(childNode => {
+                    explode(childNode.child, qty * childNode.qty);
+                });
+            } else {
+                if (!totalDemands[key]) totalDemands[key] = 0;
+                totalDemands[key] += qty;
+            }
+        }
+        
+        plans.forEach(p => {
+            let planItem = p['ID Детайл'] || p['Вътрешно име'];
+            let planQty = parseFloat(p['Целево количество']) || 0;
+            explode(planItem, planQty);
+        });
+        
+        let deficits = [];
+        for (let itemKey in totalDemands) {
+            let demand = totalDemands[itemKey];
+            let sk = skladMap[itemKey];
+            
+            if (sk) { 
+                let stock = sk.stock;
+                let min = sk.min;
+                let free = stock - demand;
+                
+                if (free < min) {
+                    deficits.push({
+                        item: sk.name,
+                        stock: stock,
+                        demand: demand,
+                        free: free,
+                        min: min,
+                        missing: min - free
+                    });
+                }
+            }
+        }
+        
+        let html = '';
+        if (deficits.length === 0) {
+            html = `<div style="text-align:center; padding: 40px; font-size:1.2em; color:#059669; font-weight:bold;">✅ Няма критични липси! Всички материали са над минимума.</div>`;
+        } else {
+            html = `<table class="minimal-table" style="width:100%; text-align:left; border-collapse:collapse;">
+                <thead><tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">
+                    <th style="padding:10px;">Материал</th>
+                    <th style="padding:10px; text-align:center;">Наличност</th>
+                    <th style="padding:10px; text-align:center;">Нужно за Планове</th>
+                    <th style="padding:10px; text-align:center;">Свободно</th>
+                    <th style="padding:10px; text-align:center;">Минимум</th>
+                    <th style="padding:10px; text-align:center;">Действие</th>
+                </tr></thead>
+                <tbody>`;
+            deficits.sort((a,b) => b.missing - a.missing).forEach(d => {
+                html += `<tr style="border-bottom:1px solid #e2e8f0;">
+                    <td style="padding:10px; font-weight:bold; color:#0f172a;">${d.item}</td>
+                    <td style="padding:10px; text-align:center;">${d.stock}</td>
+                    <td style="padding:10px; text-align:center; color:#d97706;">${d.demand}</td>
+                    <td style="padding:10px; text-align:center; color:#ef4444; font-weight:bold;">${d.free}</td>
+                    <td style="padding:10px; text-align:center;">${d.min}</td>
+                    <td style="padding:10px; text-align:center;">
+                        <button class="btn-primary" onclick="window.createOrderForDeficit('${d.item}', ${d.missing})" style="background:#3b82f6; padding: 4px 10px; font-size: 0.85em;">➕ Поръчай</button>
+                    </td>
+                </tr>`;
+            });
+            html += `</tbody></table>`;
+        }
+        
+        Swal.close();
+        document.getElementById('mrpContent').innerHTML = html;
+        document.getElementById('mrpModalBackdrop').style.display = 'flex';
+        
+    } catch(err) {
+        Swal.fire('Грешка при анализа', err.message, 'error');
+    }
+};
+
+window.createOrderForDeficit = function(item, recommendedQty) {
+    document.getElementById('mrpModalBackdrop').style.display = 'none';
+    
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        if(btn.innerText.includes('Поръчки')) btn.click();
+    });
+    
+    setTimeout(() => {
+        openAddModal();
+        setTimeout(() => {
+            let itemInput = document.getElementById('inp_Материал');
+            let qtyInput = document.getElementById('inp_Количество');
+            if(itemInput) itemInput.value = item;
+            if(qtyInput) qtyInput.value = recommendedQty;
+        }, 300);
+    }, 100);
 };
 
 function openAuditModal() {
