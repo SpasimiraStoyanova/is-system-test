@@ -202,7 +202,7 @@ function renderDynamicTable(itemsToRender = null) {
           headerRow.appendChild(th); 
       });
       
-      if (!config.readOnlyTab) { 
+      if (!config.readOnlyTab && currentTab !== 'sklad') { 
           const thActions = document.createElement('th'); thActions.innerText = 'Действие'; thActions.style.textAlign = 'center'; 
           headerRow.appendChild(thActions); 
       }
@@ -211,7 +211,7 @@ function renderDynamicTable(itemsToRender = null) {
 
   tbody.innerHTML = '';
   
-  if (currentRenderedRows.length === 0) { tbody.innerHTML = `<tr><td colspan="${config.fields.length + (config.readOnlyTab ? 0 : 2)}" style="text-align:center; padding:40px;">Няма данни.</td></tr>`; table.style.display = 'table'; return; }
+  if (currentRenderedRows.length === 0) { tbody.innerHTML = `<tr><td colspan="${config.fields.length + (config.readOnlyTab || currentTab === 'sklad' ? 0 : 2)}" style="text-align:center; padding:40px;">Няма данни.</td></tr>`; table.style.display = 'table'; return; }
 
   currentRenderedRows.forEach((item) => {
     const row = document.createElement('tr'); const trueIndex = globalRows.indexOf(item);
@@ -262,7 +262,7 @@ function renderDynamicTable(itemsToRender = null) {
       }
       row.appendChild(td);
     });
-      if (!config.readOnlyTab) {
+      if (!config.readOnlyTab && currentTab !== 'sklad') {
           const tdActions = document.createElement('td'); tdActions.style.textAlign = 'center';
           tdActions.innerHTML = `<button class="action-btn btn-edit" onclick="openEditModal(${trueIndex})">✏️</button><button class="action-btn btn-delete" onclick="deleteItem(${trueIndex})">🗑️</button>`;
           row.appendChild(tdActions);
