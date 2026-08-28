@@ -137,15 +137,40 @@ async function initialFetch() {
 async function fetchDynamicData() {
     let plansQuery = client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', 'Опакован']);
     
-    const [plansRes, reportsRes, skladRes] = await Promise.all([
-        fetchAll('plan'), // I will just fetch all plans for now and filter in JS, or keep plansQuery
+    const [plansRes, reportsRes, skladRes, auditRes] = await Promise.all([
+        fetchAll('plan'),
         fetchAll('otcheti'),
-        fetchAll('sklad')
+        fetchAll('sklad'),
+        client.from('audit_logs').select('*').in('table_name', ['inventory_gp', 'inventory_wip']).in('action_type', ['MANUAL_ADJUSTMENT', 'UPDATE', 'DELETE'])
     ]);
 
-    // Better: keep plan limited since it's filtered, but if plan can grow > 1000, we should fetchAll and filter
     let activePlans = (plansRes.data || []).filter(p => ['Активен', 'Завършен', 'Опакован'].includes(p['Статус']));
     let realReports = (reportsRes.data || []).filter(r => r['Оператор'] !== '💉 СИСТЕМА (Виртуална компенсация)');
+    
+    let auditLogs = auditRes.data || [];
+    let fakeReports = auditLogs.map(log => {
+        let det = log.new_data['ID Детайл'] || log.old_data['ID Детайл'] || '';
+        let op = log.new_data['Операция'] || log.old_data['Операция'] || 'готов детайл';
+        let qty = 0;
+        
+        if (log.action_type === 'DELETE') {
+            qty = -(parseFloat(log.old_data['Количество']) || 0);
+        } else {
+            qty = parseFloat(log.new_data['Разлика']) || 0;
+        }
+        
+        return {
+            'ID Детайл': det,
+            'Операция': op,
+            'Количество': qty,
+            'Статус': 'Отчетено',
+            'Оператор': 'СИСТЕМА (Ръчно добавен)',
+            'Дата': log.created_at
+        };
+    });
+    
+    realReports = realReports.concat(fakeReports);
+
     return {
         plansData: activePlans,
         reportsData: realReports,
