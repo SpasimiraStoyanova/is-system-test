@@ -589,14 +589,23 @@ async function saveForm(e) {
                   let tName = currentTab === 'sklad_gp' ? 'inventory_gp' : 'inventory_wip';
                   let opName = (currentTab === 'sklad_gp') ? 'Готов детайл' : op;
                   
-                  let { data: currData } = await client.from(tName).select('Количество').eq('ID Детайл', det).eq('Операция', opName);
+                  let query = client.from(tName).select('Количество').eq('ID Детайл', det);
+                  if (currentTab === 'sklad_wip') query = query.eq('Операция', opName);
+                  let { data: currData } = await query;
+                  
                   let currentStock = currData && currData.length > 0 ? parseFloat(currData[0]['Количество']) || 0 : 0;
                   let newTotal = currentStock + qty;
                   
-                  let { error: upsertErr } = await client.from(tName).upsert([{ "ID Детайл": det, "Операция": opName, "Количество": newTotal }], { onConflict: 'ID Детайл, Операция' });
+                  let payload = { "ID Детайл": det, "Количество": newTotal };
+                  if (currentTab === 'sklad_wip') payload["Операция"] = opName;
+                  
+                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: currentTab === 'sklad_gp' ? 'ID Детайл' : 'ID Детайл, Операция' });
                   if (upsertErr) throw upsertErr;
                   
-                  await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: { "ID Детайл": det, "Операция": opName, "Разлика": qty, "Ново Количество": newTotal } }]);
+                  let auditNewData = { "ID Детайл": det, "Разлика": qty, "Ново Количество": newTotal };
+                  if (currentTab === 'sklad_wip') auditNewData["Операция"] = opName;
+                  
+                  await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
               }
               
               if (bufferQty !== 0) {
@@ -627,14 +636,23 @@ async function saveForm(e) {
                   let tName = currentTab === 'sklad_gp' ? 'inventory_gp' : 'inventory_wip';
                   let opName = currentTab === 'sklad_gp' ? 'Готов детайл' : op;
                   
-                  let { data: currData } = await client.from(tName).select('Количество').eq('ID Детайл', det).eq('Операция', opName);
+                  let query = client.from(tName).select('Количество').eq('ID Детайл', det);
+                  if (currentTab === 'sklad_wip') query = query.eq('Операция', opName);
+                  let { data: currData } = await query;
+                  
                   let currentStock = currData && currData.length > 0 ? parseFloat(currData[0]['Количество']) || 0 : 0;
                   let newTotal = currentStock + diff;
                   
-                  let { error: upsertErr } = await client.from(tName).upsert([{ "ID Детайл": det, "Операция": opName, "Количество": newTotal }], { onConflict: 'ID Детайл, Операция' });
+                  let payload = { "ID Детайл": det, "Количество": newTotal };
+                  if (currentTab === 'sklad_wip') payload["Операция"] = opName;
+                  
+                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: currentTab === 'sklad_gp' ? 'ID Детайл' : 'ID Детайл, Операция' });
                   if (upsertErr) throw upsertErr;
                   
-                  await client.from('audit_logs').insert([{ table_name: tName, action_type: 'UPDATE', old_data: { "Количество": oldQty }, new_data: { "ID Детайл": det, "Операция": opName, "Разлика": diff, "Ново Количество": newTotal } }]);
+                  let auditNewData = { "ID Детайл": det, "Разлика": diff, "Ново Количество": newTotal };
+                  if (currentTab === 'sklad_wip') auditNewData["Операция"] = opName;
+                  
+                  await client.from('audit_logs').insert([{ table_name: tName, action_type: 'UPDATE', old_data: { "Количество": oldQty }, new_data: auditNewData }]);
               }
               
               
@@ -784,9 +802,16 @@ async function deleteItem(index) {
               Swal.fire({title: 'Записване...', allowOutsideClick: false, didOpen: () => Swal.showLoading()}); 
               let tName = currentTab === 'sklad_gp' ? 'inventory_gp' : 'inventory_wip';
               let opName = currentTab === 'sklad_gp' ? (row['Оригинална Операция'] || row['Операция']) : row['Операция'];
-              const { error } = await client.from(tName).delete().eq('ID Детайл', row['ID Детайл']).eq('Операция', opName);
+              
+              let query = client.from(tName).delete().eq('ID Детайл', row['ID Детайл']);
+              if (currentTab === 'sklad_wip') query = query.eq('Операция', opName);
+              const { error } = await query;
+              
               if (error) throw error; 
-              await client.from('audit_logs').insert([{ table_name: tName, action_type: 'DELETE', old_data: { "Количество": row['Общо'] }, new_data: { "ID Детайл": row['ID Детайл'], "Операция": opName, "Ново Количество": 0 } }]);
+              
+              let auditNewData = { "ID Детайл": row['ID Детайл'], "Ново Количество": 0 };
+              if (currentTab === 'sklad_wip') auditNewData["Операция"] = opName;
+              await client.from('audit_logs').insert([{ table_name: tName, action_type: 'DELETE', old_data: { "Количество": row['Общо'] }, new_data: auditNewData }]);
               Swal.fire({icon: 'success', title: 'Изтрито!', timer: 1000, showConfirmButton: false}); 
               loadCurrentTableData(); 
           } catch(err) { Swal.fire('Грешка', err.message, 'error'); } 
