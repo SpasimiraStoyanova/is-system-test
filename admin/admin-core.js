@@ -713,7 +713,8 @@ async function saveForm(e) {
             
             // Вместо mailto, директно отваряме Gmail (понеже видях, че ползвате Gmail)
             let gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${recipient}&su=${subject}&body=${body}`;
-            window.open(gmailUrl, '_blank');
+            // Отваряме в нов, по-малък прозорец (popup), за да не изгубите админ панела
+            window.open(gmailUrl, 'GmailPopup', 'width=800,height=600,left=200,top=100,scrollbars=yes');
         }
     }
     closeModal(); loadCurrentTableData();
