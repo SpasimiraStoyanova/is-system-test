@@ -415,12 +415,14 @@ function renderTasks(tasks) {
     
     var fetchHtml = '';
     if (t.itemsToFetch && t.itemsToFetch.length > 0) {
+        let actualDefaultQty = t.defaultQty > 0 ? t.defaultQty : 1;
         fetchHtml += `<div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 10px; margin-bottom: 12px; font-size: 13px; color: #92400e; font-weight: 700; border-radius: 4px;">`;
-        fetchHtml += `<div style="margin-bottom:5px;">🛒 <b>Вземи компоненти:</b></div>`;
+        fetchHtml += `<div style="margin-bottom:5px;">🛒 <b>Вземи компоненти (за ${actualDefaultQty} бр.):</b></div>`;
         fetchHtml += `<ul style="margin: 0; padding-left: 20px;">`;
         t.itemsToFetch.forEach(item => {
             let locStr = item.loc ? ` (📍 ${item.loc})` : '';
-            fetchHtml += `<li>${item.code} - ${item.qty} бр. ${locStr}</li>`;
+            let totalNeeded = item.qty * actualDefaultQty;
+            fetchHtml += `<li>${item.code} - ${totalNeeded} бр.${locStr}</li>`;
         });
         fetchHtml += `</ul></div>`;
     }
