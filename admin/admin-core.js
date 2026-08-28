@@ -710,7 +710,10 @@ async function saveForm(e) {
             let orderQty = payload['Количество'] || 0;
             let subject = encodeURIComponent("Поръчка на материал: " + materialName);
             let body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция:\nМатериал: ${materialName}\nКоличество: ${orderQty} бр.\n\nМоля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,`);
-            window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
+            
+            // Вместо mailto, директно отваряме Gmail (понеже видях, че ползвате Gmail)
+            let gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${recipient}&su=${subject}&body=${body}`;
+            window.open(gmailUrl, '_blank');
         }
     }
     closeModal(); loadCurrentTableData();
