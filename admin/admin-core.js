@@ -658,10 +658,14 @@ async function saveForm(e) {
             let qty = parseFloat(payload['Количество']) || 0;
             
             // fetch current from sklad
-            const { data: skData, error: skErr } = await client.from('sklad').select('Доставено').eq('ID Детайл', itemCode);
+            const { data: skData, error: skErr } = await client.from('sklad').select('Доставено, Остатък').eq('ID Детайл', itemCode);
             if (!skErr && skData && skData.length > 0) {
                 let currentDostaveno = parseFloat(skData[0]['Доставено']) || 0;
-                await client.from('sklad').update({ 'Доставено': currentDostaveno + qty }).eq('ID Детайл', itemCode);
+                let currentOstatuk = parseFloat(skData[0]['Остатък']) || 0;
+                await client.from('sklad').update({ 
+                    'Доставено': currentDostaveno + qty,
+                    'Остатък': currentOstatuk + qty
+                }).eq('ID Детайл', itemCode);
             }
         }
     }
@@ -696,6 +700,19 @@ async function saveForm(e) {
         }
     } 
     else { const { error } = await client.from(config.table).insert([payload]); if (error) throw error; Swal.fire({icon: 'success', title: 'Успешно добавено!', timer: 1000, showConfirmButton: false}); }
+    
+    if (currentTab === 'porachki') {
+        let isNewOrder = !isEditMode;
+        let isChangedToPorachano = isEditMode && payload['Статус'] === 'Поръчано' && globalRows[editingIndex]['Статус'] !== 'Поръчано';
+        if (isNewOrder || isChangedToPorachano) {
+            let recipient = payload['Имейл на доставчик'] || '';
+            let materialName = payload['Материал'] || '';
+            let orderQty = payload['Количество'] || 0;
+            let subject = encodeURIComponent("Поръчка на материал: " + materialName);
+            let body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция:\nМатериал: ${materialName}\nКоличество: ${orderQty} бр.\n\nМоля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,`);
+            window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
+        }
+    }
     closeModal(); loadCurrentTableData();
   } catch (err) { Swal.fire('Грешка', err.message, 'error'); } finally { btn.innerText = 'Запази запис'; btn.disabled = false; }
 }
