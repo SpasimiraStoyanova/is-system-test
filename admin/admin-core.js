@@ -410,10 +410,11 @@ async function fetchAll(table, orderCol) {
 
 async function computeSkladData(isGpTab) {
     const table = isGpTab ? 'inventory_gp' : 'inventory_wip';
-    const [invRes, nomRes, bufferRes] = await Promise.all([
+    const [invRes, nomRes, bufferRes, routeRes] = await Promise.all([
         fetchAll(table),
         fetchAll('Номенклатура'),
-        fetchAll('sklad_bufferi')
+        fetchAll('sklad_bufferi'),
+        fetchAll('marshruti')
     ]);
     
     let bufferMap = {};
@@ -424,9 +425,25 @@ async function computeSkladData(isGpTab) {
     }
     
     let nomNameMap = {};
+    let nomLocMap = {};
     if (nomRes.data) {
         nomRes.data.forEach(n => {
-            nomNameMap[String(n['ID Детайл']).trim().toLowerCase()] = n['Вътрешно име'] || n['ID Детайл'];
+            let c = String(n['ID Детайл']).trim().toLowerCase();
+            nomNameMap[c] = n['Вътрешно име'] || n['ID Детайл'];
+            nomLocMap[c] = String(n['Местоположение'] || '').trim();
+        });
+    }
+    
+    let routeMap = {};
+    if (routeRes.data) {
+        routeRes.data.forEach(r => {
+            let code = String(r['Код на детайла']).trim().toLowerCase();
+            let op = String(r['Име на операция']).trim().toLowerCase();
+            let dropoff = String(r['Инструкция за оставяне'] || '').trim();
+            if (dropoff) {
+                if (!routeMap[code]) routeMap[code] = {};
+                routeMap[code][op] = dropoff;
+            }
         });
     }
     
@@ -476,11 +493,20 @@ async function computeSkladData(isGpTab) {
             reservedStr = boxTexts.join(', ');
         }
 
+        let loc = '';
+        let opKey = String(item['Операция'] || '').trim().toLowerCase();
+        if (isGpTab) {
+            loc = nomLocMap[code] || 'Склад Готови Детайли';
+        } else {
+            loc = (routeMap[code] && routeMap[code][opKey]) ? routeMap[code][opKey] : 'Буфер';
+        }
+
         if (qty > 0 || (buf > 0 && isGpTab) || reservedQty > 0) {
             rows.push({
                 "RawPlanId": "",
                 "ID Детайл": item['ID Детайл'],
                 "Име": nomNameMap[code] || item['ID Детайл'],
+                "Локация": loc,
                 "Операция": opName,
                 "Оригинална Операция": opName,
                 "Общо": qty,
