@@ -27,19 +27,19 @@ BEGIN
     END IF;
 
     -- Намираме номера на текущата операция
-    SELECT CAST(NULLIF("№ Операция", '') AS numeric) INTO current_op_num
+    SELECT CAST(NULLIF(CAST("№ Операция" AS text), '') AS numeric) INTO current_op_num
     FROM public.marshruti
     WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op
     LIMIT 1;
 
     -- Намираме предишната операция
     SELECT LOWER(TRIM("Име на операция")) INTO prev_op FROM public.marshruti
-    WHERE LOWER(TRIM("Код на детайла")) = new_detail AND CAST(NULLIF("№ Операция", '') AS numeric) < current_op_num
-    ORDER BY CAST(NULLIF("№ Операция", '') AS numeric) DESC LIMIT 1;
+    WHERE LOWER(TRIM("Код на детайла")) = new_detail AND CAST(NULLIF(CAST("№ Операция" AS text), '') AS numeric) < current_op_num
+    ORDER BY CAST(NULLIF(CAST("№ Операция" AS text), '') AS numeric) DESC LIMIT 1;
 
     -- Проверяваме дали е последна
     SELECT NOT EXISTS (
-        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND CAST(NULLIF("№ Операция", '') AS numeric) > current_op_num
+        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND CAST(NULLIF(CAST("№ Операция" AS text), '') AS numeric) > current_op_num
     ) INTO is_last_op;
 
     -- СТЪПКА 1: Вадим от предишната операция (ако има такава)
@@ -49,21 +49,35 @@ BEGIN
             IF NOT FOUND THEN INSERT INTO public.inventory_wip ("ID Детайл", "Операция", "Количество") VALUES (new_detail, prev_op, 0); END IF;
         END IF;
 
-        -- СТЪПКА 1.5: Вадим децата от БОМ за тази операция
+        -- СТЪПКА 1.5: Вадим децата от БОМ (или Номенклатура) за тази операция
         FOR child_record IN 
-            SELECT LOWER(TRIM(b."ID Компонент")) as child_id, 
-                   COALESCE(b."Количество", 1) as req_qty,
-                   LOWER(TRIM(n."Тип")) as child_type
-            FROM public.bom b
-            LEFT JOIN public."Номенклатура" n ON LOWER(TRIM(n."ID Детайл")) = LOWER(TRIM(b."ID Компонент"))
-            WHERE LOWER(TRIM(b."ID Родител")) = new_detail 
-              AND (b."Влага се на Оп. №" = current_op_num OR (b."Влага се на Оп. №" IS NULL AND prev_op IS NULL))
+            WITH bom_children AS (
+                SELECT LOWER(TRIM(b."ID Компонент")) as child_id, 
+                       COALESCE(b."Количество", 1) as req_qty,
+                       LOWER(TRIM(n."Тип")) as child_type
+                FROM public.bom b
+                LEFT JOIN public."Номенклатура" n ON LOWER(TRIM(n."ID Детайл")) = LOWER(TRIM(b."ID Компонент"))
+                WHERE LOWER(TRIM(b."ID Родител")) = new_detail 
+                  AND (CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric) = current_op_num OR (CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric) IS NULL AND prev_op IS NULL))
+            ),
+            nom_children AS (
+                SELECT LOWER(TRIM("ID Родител")) as child_id,
+                       COALESCE(CAST(NULLIF(CAST("Разходна норма" AS text), '') AS numeric), 1) as req_qty,
+                       'материал' as child_type
+                FROM public."Номенклатура"
+                WHERE LOWER(TRIM("ID Детайл")) = new_detail
+                  AND "ID Родител" IS NOT NULL AND TRIM("ID Родител") != ''
+                  AND prev_op IS NULL
+            )
+            SELECT * FROM bom_children
+            UNION ALL
+            SELECT * FROM nom_children WHERE child_id NOT IN (SELECT child_id FROM bom_children)
         LOOP
             IF child_record.child_type = 'материал' THEN
                 -- Вадим от Склад Материали (sklad)
                 UPDATE public.sklad 
-                SET "Изразходено" = CAST(CAST(COALESCE(NULLIF("Изразходено", ''), '0') AS numeric) + (new_qty * child_record.req_qty) AS text),
-                    "Остатък" = COALESCE("Начална наличност", 0) + CAST(COALESCE(NULLIF("Доставено", ''), '0') AS numeric) - (CAST(COALESCE(NULLIF("Изразходено", ''), '0') AS numeric) + (new_qty * child_record.req_qty))
+                SET "Изразходено" = CAST(CAST(COALESCE(NULLIF(CAST("Изразходено" AS text), ''), '0') AS numeric) + (new_qty * child_record.req_qty) AS text),
+                    "Остатък" = COALESCE("Начална наличност", 0) + CAST(COALESCE(NULLIF(CAST("Доставено" AS text), ''), '0') AS numeric) - (CAST(COALESCE(NULLIF(CAST("Изразходено" AS text), ''), '0') AS numeric) + (new_qty * child_record.req_qty))
                 WHERE LOWER(TRIM("ID Детайл")) = child_record.child_id;
             ELSE
                 -- Вадим от Склад Готови Детайли (inventory_gp)
@@ -119,19 +133,19 @@ BEGIN
     END IF;
 
     -- Намираме номера на текущата операция
-    SELECT CAST(NULLIF("№ Операция", '') AS numeric) INTO current_op_num
+    SELECT CAST(NULLIF(CAST("№ Операция" AS text), '') AS numeric) INTO current_op_num
     FROM public.marshruti
     WHERE LOWER(TRIM("Код на детайла")) = old_detail AND LOWER(TRIM("Име на операция")) = old_op
     LIMIT 1;
 
     -- Намираме предишната операция
     SELECT LOWER(TRIM("Име на операция")) INTO prev_op FROM public.marshruti
-    WHERE LOWER(TRIM("Код на детайла")) = old_detail AND CAST(NULLIF("№ Операция", '') AS numeric) < current_op_num
-    ORDER BY CAST(NULLIF("№ Операция", '') AS numeric) DESC LIMIT 1;
+    WHERE LOWER(TRIM("Код на детайла")) = old_detail AND CAST(NULLIF(CAST("№ Операция" AS text), '') AS numeric) < current_op_num
+    ORDER BY CAST(NULLIF(CAST("№ Операция" AS text), '') AS numeric) DESC LIMIT 1;
 
     -- Проверяваме дали е последна
     SELECT NOT EXISTS (
-        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = old_detail AND CAST(NULLIF("№ Операция", '') AS numeric) > current_op_num
+        SELECT 1 FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = old_detail AND CAST(NULLIF(CAST("№ Операция" AS text), '') AS numeric) > current_op_num
     ) INTO is_last_op;
 
     -- СТЪПКА 1: Вадим от текущата операция (освен ако не е било Брак!)
@@ -150,21 +164,35 @@ BEGIN
             IF NOT FOUND THEN INSERT INTO public.inventory_wip ("ID Детайл", "Операция", "Количество") VALUES (old_detail, prev_op, old_qty); END IF;
         END IF;
 
-        -- Връщаме децата от БОМ за тази операция
+        -- Връщаме децата от БОМ (или Номенклатура) за тази операция
         FOR child_record IN 
-            SELECT LOWER(TRIM(b."ID Компонент")) as child_id, 
-                   COALESCE(b."Количество", 1) as req_qty,
-                   LOWER(TRIM(n."Тип")) as child_type
-            FROM public.bom b
-            LEFT JOIN public."Номенклатура" n ON LOWER(TRIM(n."ID Детайл")) = LOWER(TRIM(b."ID Компонент"))
-            WHERE LOWER(TRIM(b."ID Родител")) = old_detail 
-              AND (b."Влага се на Оп. №" = current_op_num OR (b."Влага се на Оп. №" IS NULL AND prev_op IS NULL))
+            WITH bom_children AS (
+                SELECT LOWER(TRIM(b."ID Компонент")) as child_id, 
+                       COALESCE(b."Количество", 1) as req_qty,
+                       LOWER(TRIM(n."Тип")) as child_type
+                FROM public.bom b
+                LEFT JOIN public."Номенклатура" n ON LOWER(TRIM(n."ID Детайл")) = LOWER(TRIM(b."ID Компонент"))
+                WHERE LOWER(TRIM(b."ID Родител")) = old_detail 
+                  AND (CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric) = current_op_num OR (CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric) IS NULL AND prev_op IS NULL))
+            ),
+            nom_children AS (
+                SELECT LOWER(TRIM("ID Родител")) as child_id,
+                       COALESCE(CAST(NULLIF(CAST("Разходна норма" AS text), '') AS numeric), 1) as req_qty,
+                       'материал' as child_type
+                FROM public."Номенклатура"
+                WHERE LOWER(TRIM("ID Детайл")) = old_detail
+                  AND "ID Родител" IS NOT NULL AND TRIM("ID Родител") != ''
+                  AND prev_op IS NULL
+            )
+            SELECT * FROM bom_children
+            UNION ALL
+            SELECT * FROM nom_children WHERE child_id NOT IN (SELECT child_id FROM bom_children)
         LOOP
             IF child_record.child_type = 'материал' THEN
                 -- Връщаме в Склад Материали (sklad)
                 UPDATE public.sklad 
-                SET "Изразходено" = CAST(GREATEST(0, CAST(COALESCE(NULLIF("Изразходено", ''), '0') AS numeric) - (old_qty * child_record.req_qty)) AS text),
-                    "Остатък" = COALESCE("Начална наличност", 0) + CAST(COALESCE(NULLIF("Доставено", ''), '0') AS numeric) - GREATEST(0, CAST(COALESCE(NULLIF("Изразходено", ''), '0') AS numeric) - (old_qty * child_record.req_qty))
+                SET "Изразходено" = CAST(GREATEST(0, CAST(COALESCE(NULLIF(CAST("Изразходено" AS text), ''), '0') AS numeric) - (old_qty * child_record.req_qty)) AS text),
+                    "Остатък" = COALESCE("Начална наличност", 0) + CAST(COALESCE(NULLIF(CAST("Доставено" AS text), ''), '0') AS numeric) - GREATEST(0, CAST(COALESCE(NULLIF(CAST("Изразходено" AS text), ''), '0') AS numeric) - (old_qty * child_record.req_qty))
                 WHERE LOWER(TRIM("ID Детайл")) = child_record.child_id;
             ELSE
                 -- Връщаме в Склад Готови Детайли (inventory_gp)

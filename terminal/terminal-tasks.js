@@ -50,6 +50,9 @@ async function loadTasks(isSilent = false) {
       if (routesRes.error) throw routesRes.error; if (reportsRes.error) throw reportsRes.error;
       if (gpRes.error) throw gpRes.error; if (wipRes.error) throw wipRes.error;
 
+      if (gpRes.error) throw gpRes.error; if (wipRes.error) throw wipRes.error;
+
+      globalNomData = nomRes.data || [];
       let namesMap = {}; if (nomRes.data) nomRes.data.forEach(n => { let code = String(n['ID Детайл']).trim().toLowerCase(); namesMap[code] = n['Вътрешно име'] || ''; });
       
       let bufferMap = {};
@@ -260,10 +263,33 @@ async function loadTasks(isSilent = false) {
                               if (sets < rawMinSets) rawMinSets = sets;
                           });
                           
-                          if (minSets < maxAllowed) maxAllowed = minSets;
                           if (rawMinSets < displayMaxAllowed) displayMaxAllowed = rawMinSets;
                           if (maxAllowed < shortage) {
                               if (!blockingReasons.includes(`Липсващи компоненти`)) blockingReasons.push(`Липсващи компоненти`);
+                          }
+                      }
+                      
+                      let itemsToFetch = [];
+                      relevantChildren.forEach(child => {
+                          let cCode = String(child['ID Компонент']).trim().toLowerCase();
+                          let nomItem = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === cCode);
+                          let type = nomItem ? String(nomItem['Тип']).trim().toLowerCase() : '';
+                          if (type !== 'материал' || i === 0) {
+                              let qty = parseFloat(child['Количество']) || 1;
+                              let loc = nomItem ? String(nomItem['Местоположение'] || '').trim() : '';
+                              itemsToFetch.push({ code: String(child['ID Компонент']).trim(), qty: qty, loc: loc, type: type });
+                          }
+                      });
+                      
+                      if (i === 0) {
+                          let rootNom = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === code);
+                          if (rootNom && rootNom['ID Родител'] && String(rootNom['ID Родител']).trim() !== '') {
+                              let parentCode = String(rootNom['ID Родител']).trim().toLowerCase();
+                              if (!itemsToFetch.some(item => item.code.toLowerCase() === parentCode)) {
+                                  let pNom = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === parentCode);
+                                  let loc = pNom ? String(pNom['Местоположение'] || '').trim() : '';
+                                  itemsToFetch.push({ code: String(rootNom['ID Родител']).trim(), qty: parseFloat(rootNom['Разходна норма']) || 1, loc: loc, type: 'материал' });
+                              }
                           }
                       }
                       
@@ -303,7 +329,8 @@ async function loadTasks(isSilent = false) {
                               defaultQty: targetInput, maxAllowed: displayMaxAllowed, realMaxAllowed: maxAllowed, hasLimit: hasLimit, isBlocked: isBlocked, blockingReasons: blockingReasons, 
                               totalNeed: shortage, pureQty: shortage, 
                               totalDone: (originalBom[code] || 0) - shortage, totalScrapped: 0, isTaken: isTaken, isGreenCard: isBuffer,
-                              globalGrossAtLoad: 0, globalScrapAtLoad: 0
+                              globalGrossAtLoad: 0, globalScrapAtLoad: 0,
+                              itemsToFetch: itemsToFetch
                           });
                       }
                   }
@@ -356,6 +383,19 @@ function renderTasks(tasks) {
     var sopHtml = (t.sop_link && t.sop_link.startsWith('http')) ? `<a href="${t.sop_link}" target="_blank" style="display:inline-block; margin-bottom:12px; background:#f59e0b; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-weight:bold; font-size:12px;">📑 Отвори СОП</a>` : '';
     var descHtml = t.desc ? `<div style="background-color: #fef9c3; border-left: 4px solid #eab308; padding: 10px; margin-bottom: 12px; font-size: 13px; color: #854d0e; font-weight: 700; border-radius: 4px;">💡 ${t.desc}</div>` : '';
     var dropoffHtml = t.dropoff ? `<div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 10px; margin-bottom: 12px; font-size: 13px; color: #166534; font-weight: 700; border-radius: 4px;">📍 Остави на: ${t.dropoff}</div>` : '';
+    
+    var fetchHtml = '';
+    if (t.itemsToFetch && t.itemsToFetch.length > 0) {
+        fetchHtml += `<div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 10px; margin-bottom: 12px; font-size: 13px; color: #92400e; font-weight: 700; border-radius: 4px;">`;
+        fetchHtml += `<div style="margin-bottom:5px;">🛒 <b>Вземи от склада:</b></div>`;
+        fetchHtml += `<ul style="margin: 0; padding-left: 20px;">`;
+        t.itemsToFetch.forEach(item => {
+            let locStr = item.loc ? ` (📍 ${item.loc})` : '';
+            fetchHtml += `<li>${item.code} - ${item.qty} бр. ${locStr}</li>`;
+        });
+        fetchHtml += `</ul></div>`;
+    }
+    
     var bomBadgeHtml = ''; var actionButtonHtml = ''; var inputMaxHtml = t.hasLimit ? `max="${t.maxAllowed}"` : '';
     
     let remainingQty = Math.max(0, t.pureQty);
@@ -381,11 +421,14 @@ function renderTasks(tasks) {
       <div class="card" id="card_${t.id}" style="${borderStyle}">
         <div class="task-header">${labelHtml}<div style="display:flex; gap: 6px;">${displayNeedHtml}</div></div>
         <div class="detail-info"><div class="internal-name">${linkHtml}</div>${internalNameHtml}</div>
-        ${sopHtml} ${descHtml} ${dropoffHtml}
+        ${sopHtml}
         <div class="route-flow"><span class="op-active">▶ ${t.op}</span><span class="route-arrow">➔</span><span class="op-pending">${t.next_op}</span></div>
         ${bomBadgeHtml}
         <div id="free_state_${t.id}" style="${freeStateStyle}">${actionButtonHtml}</div>
         <div id="focus_state_${t.id}" style="${focusStateStyle}">
+          ${fetchHtml}
+          ${descHtml}
+          ${dropoffHtml}
           <div style="background-color: #f8fafc; padding: 15px; border-radius: 12px; margin-top: 5px; border: 2px solid #bae6fd;">
             <p style="color: #0369a1; font-weight: 900; text-align:center; margin-top:0; font-size: 1.1em;">🟢 В ПРОЦЕС НА РАБОТА</p>
             <div style="display:flex; justify-content:space-between; margin-bottom: 5px; font-size: 0.85em; font-weight:bold; color: #64748b;"><span>Готови до момента:</span><span>${t.totalDone} бр.</span></div>
