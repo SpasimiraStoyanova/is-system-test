@@ -256,6 +256,10 @@ function renderDynamicTable(itemsToRender = null) {
           if (item['__packaged_info']) td.innerHTML += item['__packaged_info'];
           row.appendChild(td); return;
       }
+      if ((currentTab === 'sklad_gp' || currentTab === 'sklad_wip') && (f.name === 'Общо' || f.name === 'Минимално количество/Буфер') && typeof val === 'number' && val < 0) {
+          td.innerHTML = `<span style="color:#dc2626; font-weight:bold;">${val}</span>`;
+          row.appendChild(td); return;
+      }
       td.innerText = val; 
       if (currentTab === 'plan' && f.name === 'Вътрешно име' && item['__packaged_info']) {
           td.innerHTML = val + item['__packaged_info'];
@@ -582,6 +586,18 @@ async function saveForm(e) {
               const bufferQty = parseFloat(document.getElementById('inp_skladQtyBuffer').value) || 0;
               if (!det || !op || (qty === 0 && bufferQty === 0)) throw new Error("Моля, въведете поне едно количество (физическо или буфер).");
               
+              if (qty < 0 || bufferQty < 0) {
+                  let existing = globalRows.find(r => String(r['ID Детайл']).trim().toLowerCase() === det.toLowerCase() && (currentTab === 'sklad_gp' || String(r['Операция']).trim().toLowerCase() === op.toLowerCase()));
+                  let currentAvail = existing ? (parseFloat(existing['Общо']) || 0) : 0;
+                  let currentBuf = existing ? (parseFloat(existing['Минимално количество/Буфер']) || 0) : 0;
+                  
+                  if (qty < 0 && Math.abs(qty) > currentAvail) {
+                      throw new Error(`Не може да извадите ${Math.abs(qty)} бр. Налични са само ${currentAvail} бр.!`);
+                  }
+                  if (bufferQty < 0 && Math.abs(bufferQty) > currentBuf) {
+                      throw new Error(`Не може да извадите ${Math.abs(bufferQty)} бр. от буфера. Налични са само ${currentBuf} бр.!`);
+                  }
+              }
               if (qty !== 0) {
                   Swal.fire({title: 'Симулация на история...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
                   let inserts = await backflushSimulation(det, op, qty);
