@@ -349,8 +349,8 @@ function buildForm(data = null) {
                 <div id="skladDetailDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; max-height:200px; overflow-y:auto; background:white; border:1px solid #cbd5e1; border-radius:4px; z-index:1000; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"></div>
             </div>
             <div class="form-group"><label>Операция:</label><select id="inp_skladOp" class="form-input" required><option value="">-- Въведете детайл първо --</option></select></div>
-            <div class="form-group"><label>Количество за добавяне (физическо):</label><input type="number" id="inp_skladQty" class="form-input" step="any" min="0" value="0" required></div>
-            <div class="form-group"><label>Количество за добавяне (буфер):</label><input type="number" id="inp_skladQtyBuffer" class="form-input" step="any" min="0" value="0" required></div>
+            <div class="form-group"><label>Количество (физическо):</label><input type="number" id="inp_skladQty" class="form-input" step="any" value="0" required></div>
+            <div class="form-group"><label>Количество (буфер):</label><input type="number" id="inp_skladQtyBuffer" class="form-input" step="any" value="0" required></div>
           `;
           
           if (globalNomenclatureCodes.length === 0) {
@@ -366,7 +366,7 @@ function buildForm(data = null) {
             <div class="form-group"><label>Операция:</label><input type="text" id="inp_skladOp" class="form-input" readonly style="background:#f1f5f9; color:#64748b;"><input type="hidden" id="inp_skladRealOp"></div>
             <div class="form-group"><label>Текуща наличност:</label><input type="number" id="inp_skladOldQty" class="form-input" readonly style="background:#f1f5f9; color:#64748b;"></div>
             <div class="form-group"><label>НОВА наличност:</label><input type="number" id="inp_skladQty" class="form-input" step="any" required></div>
-            <div class="form-group"><label>Буфер (Минимално количество):</label><input type="number" id="inp_skladBuffer" class="form-input" step="any" min="0" required></div>
+            <div class="form-group"><label>Буфер (Минимално количество):</label><input type="number" id="inp_skladBuffer" class="form-input" step="any" required></div>
           `;
           document.getElementById('inp_skladDetail').value = data['ID Детайл'] || '';
           document.getElementById('inp_skladOp').value = data['Операция'] || '';
@@ -543,7 +543,7 @@ async function saveForm(e) {
               const bufferQty = parseFloat(document.getElementById('inp_skladQtyBuffer').value) || 0;
               if (!det || !op || (qty === 0 && bufferQty === 0)) throw new Error("Моля, въведете поне едно количество (физическо или буфер).");
               
-              if (qty > 0) {
+              if (qty !== 0) {
                   Swal.fire({title: 'Симулация на история...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
                   let inserts = await backflushSimulation(det, op, qty);
                   if (inserts.length > 0) {
@@ -552,7 +552,7 @@ async function saveForm(e) {
                   }
               }
               
-              if (bufferQty > 0) {
+              if (bufferQty !== 0) {
                   Swal.fire({title: 'Запазване на буфер...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
                   let currentBuffer = 0;
                   const { data: bufData } = await client.from('sklad_bufferi').select('Буфер').eq('ID Детайл', det);
