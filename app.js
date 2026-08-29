@@ -137,44 +137,23 @@ async function initialFetch() {
 async function fetchDynamicData() {
     let plansQuery = client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', 'Опакован']);
     
-    const [plansRes, reportsRes, skladRes, auditRes] = await Promise.all([
+    const [plansRes, reportsRes, skladRes, invGpRes, invWipRes] = await Promise.all([
         fetchAll('plan'),
         fetchAll('otcheti'),
         fetchAll('sklad'),
-        client.from('audit_logs').select('*').in('table_name', ['inventory_gp', 'inventory_wip']).in('action_type', ['MANUAL_ADJUSTMENT', 'UPDATE', 'DELETE'])
+        fetchAll('inventory_gp'),
+        fetchAll('inventory_wip')
     ]);
 
     let activePlans = (plansRes.data || []).filter(p => ['Активен', 'Завършен', 'Опакован'].includes(p['Статус']));
     let realReports = (reportsRes.data || []).filter(r => r['Оператор'] !== '💉 СИСТЕМА (Виртуална компенсация)');
     
-    let auditLogs = auditRes.data || [];
-    let fakeReports = auditLogs.map(log => {
-        let det = log.new_data['ID Детайл'] || log.old_data['ID Детайл'] || '';
-        let op = log.new_data['Операция'] || log.old_data['Операция'] || 'готов детайл';
-        let qty = 0;
-        
-        if (log.action_type === 'DELETE') {
-            qty = -(parseFloat(log.old_data['Количество']) || 0);
-        } else {
-            qty = parseFloat(log.new_data['Разлика']) || 0;
-        }
-        
-        return {
-            'ID Детайл': det,
-            'Операция': op,
-            'Количество': qty,
-            'Статус': 'Отчетено',
-            'Оператор': 'СИСТЕМА (Ръчно добавен)',
-            'Дата': log.created_at
-        };
-    });
-    
-    realReports = realReports.concat(fakeReports);
-
     return {
         plansData: activePlans,
         reportsData: realReports,
-        skladData: skladRes.data || []
+        skladData: skladRes.data || [],
+        invGpData: invGpRes.data || [],
+        invWipData: invWipRes.data || []
     };
 }
 
@@ -193,7 +172,7 @@ async function loadData() {
         }
 
         const { mergedNodes, connections, explicitPlanItems } = buildBOMTree(dynamicData.plansData, dynamicData.skladData);
-        const masterData = categorizeParts(mergedNodes, dynamicData.reportsData, explicitPlanItems, connections, dynamicData.plansData);
+        const masterData = categorizeParts(mergedNodes, dynamicData.reportsData, explicitPlanItems, connections, dynamicData.plansData, dynamicData.invGpData, dynamicData.invWipData);
 
         drawDashboard(JSON.stringify({ nodes: masterData, connections: connections }));
 
@@ -335,7 +314,7 @@ function buildBOMTree(plansData, skladData) {
     return { mergedNodes, connections, explicitPlanItems };
 }
 
-function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connections, plansData) {
+function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connections, plansData, invGpData, invWipData) {
     let planNameToId = {};
     if (plansData) {
         plansData.forEach(p => {
@@ -350,6 +329,24 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
     let opStatusMap = {}; 
     let savedQty = {};
     let manualOps = {};
+    
+    let invGpMap = {};
+    if (invGpData) {
+        invGpData.forEach(r => {
+            let code = String(r['ID Детайл']).trim().toLowerCase();
+            invGpMap[code] = (invGpMap[code] || 0) + (parseFloat(r['Количество']) || 0);
+        });
+    }
+
+    let invWipMap = {};
+    if (invWipData) {
+        invWipData.forEach(r => {
+            let code = String(r['ID Детайл']).trim().toLowerCase();
+            let op = String(r['Операция']).trim().toLowerCase();
+            if (!invWipMap[code]) invWipMap[code] = {};
+            invWipMap[code][op] = (invWipMap[code][op] || 0) + (parseFloat(r['Количество']) || 0);
+        });
+    }
     
     // Performance optimization: compute timestamps once before sorting (O(N) instead of O(N log N))
     let sortedReports = reportsData.map(r => {
@@ -410,54 +407,6 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
 
     let shippedQty = {};
 
-    Object.keys(staticCache.routesByDetail).forEach(code => {
-        let routes = staticCache.routesByDetail[code];
-        if (routes.length === 0) return;
-        
-        // BACKFLUSH MANUAL OPS ONLY
-        // This ensures injected parts are visually represented as having passed prior operations,
-        // so they properly display on previous steps and trigger child consumption on the first step.
-        for (let i = routes.length - 2; i >= 0; i--) {
-            let opKey = code + '_' + String(routes[i]['Име на операция']).trim().toLowerCase();
-            let nextOpKey = code + '_' + String(routes[i+1]['Име на операция']).trim().toLowerCase();
-            manualOps[opKey] = (manualOps[opKey] || 0) + (manualOps[nextOpKey] || 0);
-        }
-        
-        let lastOpKey = code + '_' + String(routes[routes.length - 1]['Име на операция']).trim().toLowerCase();
-        let finalTrueDone = (completedOps[lastOpKey] || 0) + (savedQty[code] || 0);
-        let finalGrossTrueDone = (grossCompletedOps[lastOpKey] || 0) + (savedQty[code] || 0);
-        
-        shippedQty[code] = Math.max(0, finalGrossTrueDone - finalTrueDone);
-    });
-
-    let totalShippedCache = {};
-    function getTotalShipped(item, visited = new Set()) {
-        let lc = item.toLowerCase();
-        if (totalShippedCache[lc] !== undefined) return totalShippedCache[lc];
-        if (visited.has(lc)) return 0;
-        visited.add(lc);
-        
-        let directShipped = shippedQty[lc] || 0;
-        let parents = staticCache.bomData.filter(b => String(b['ID Компонент']).trim().toLowerCase() === lc);
-        let indirectShipped = 0;
-        parents.forEach(p => {
-            let parentCode = String(p['ID Родител']).trim().toLowerCase();
-            if (parentCode !== lc) {
-                let parentRoutes = staticCache.routesByDetail[parentCode];
-                let parentConsumed = 0;
-                if (parentRoutes && parentRoutes.length > 0) {
-                    let firstOpKey = parentCode + '_' + String(parentRoutes[0]['Име на операция']).trim().toLowerCase();
-                    parentConsumed = (grossCompletedOps[firstOpKey] || 0) + (savedQty[parentCode] || 0);
-                } else {
-                    parentConsumed = getTotalShipped(parentCode, new Set(visited));
-                }
-                indirectShipped += parentConsumed * (parseFloat(p['Количество']) || 1);
-            }
-        });
-        
-        totalShippedCache[lc] = directShipped + indirectShipped;
-        return totalShippedCache[lc];
-    }
 
     let masterData = {
         tiela: [], predni: [], zadni: [], mpr: [], statori: [], assembly: [],
@@ -518,7 +467,6 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         let isLastNode = isLastNodeMap[n.id];
         let code = n.code;
         let partRoutes = staticCache.routesByDetail[code.toLowerCase()] || [];
-        let consumedByShipped = getTotalShipped(code);
         let finalDoneQtyForChildren = 0; 
         
         let deficit = Math.max(0, n.planQty - n.consumedByParents);
@@ -528,11 +476,14 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 let opName = String(route['Име на операция']).trim();
                 let opKey = code.toLowerCase() + '_' + opName.toLowerCase();
                 
-                let globalGross = (grossCompletedOps[opKey] || 0) + (manualOps[opKey] || 0);
-                if (idx === partRoutes.length - 1) {
-                    globalGross += (savedQty[code] || 0);
+                let globalPhysicalPassed = (invGpMap[code.toLowerCase()] || 0);
+                for (let j = idx + 1; j < partRoutes.length; j++) {
+                    globalPhysicalPassed += (invWipMap[code.toLowerCase()]?.[String(partRoutes[j]['Име на операция']).trim().toLowerCase()] || 0);
                 }
-                let globalNet = Math.max(0, globalGross - consumedByShipped);
+                if (idx === partRoutes.length - 1) {
+                    globalPhysicalPassed += (savedQty[code.toLowerCase()] || 0);
+                }
+                let globalNet = globalPhysicalPassed; // Physical tables already reflect shipped quantities (they are removed from GP)
                 
                 let usedSoFar = alreadyAllocated[opKey] || 0;
                 let availableForThisNode = Math.max(0, globalNet - usedSoFar);
