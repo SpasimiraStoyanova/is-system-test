@@ -477,7 +477,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 let opKey = code.toLowerCase() + '_' + opName.toLowerCase();
                 
                 let globalPhysicalPassed = (invGpMap[code.toLowerCase()] || 0);
-                for (let j = idx + 1; j < partRoutes.length; j++) {
+                for (let j = idx; j < partRoutes.length; j++) {
                     globalPhysicalPassed += (invWipMap[code.toLowerCase()]?.[String(partRoutes[j]['Име на операция']).trim().toLowerCase()] || 0);
                 }
                 if (idx === partRoutes.length - 1) {
