@@ -590,21 +590,52 @@ async function saveForm(e) {
                   let opName = (currentTab === 'sklad_gp') ? 'готов детайл' : op.trim().toLowerCase();
                   let cleanDet = det.toLowerCase();
                   
+                  // СМАРТ МАРШРУТИЗИРАНЕ: Проверяваме коя е последната операция
+                  try {
+                      let { data: routesData, error: routesErr } = await client.from('marshruti').select('*').eq('Код на детайла', cleanDet);
+                      if (!routesErr && routesData && routesData.length > 0) {
+                          let maxOpNum = -1;
+                          let lastOpName = '';
+                          routesData.forEach(r => {
+                              let num = parseInt(r['№ Операция']) || 0;
+                              if (num > maxOpNum) {
+                                  maxOpNum = num;
+                                  lastOpName = String(r['Име на операция']).trim().toLowerCase();
+                              }
+                          });
+                          
+                          let enteredOp = op.trim().toLowerCase();
+                          if (enteredOp !== '' && enteredOp !== 'готов детайл') {
+                              if (enteredOp === lastOpName) {
+                                  // Автоматично пращаме в Готови Детайли!
+                                  tName = 'inventory_gp';
+                                  opName = 'готов детайл';
+                              } else {
+                                  // Автоматично пращаме в Полуфабрикати!
+                                  tName = 'inventory_wip';
+                                  opName = enteredOp;
+                              }
+                          }
+                      }
+                  } catch (routeCheckErr) {
+                      console.warn("Грешка при проверка на смарт маршрутизирането:", routeCheckErr);
+                  }
+                  
                   let query = client.from(tName).select('Количество').eq('ID Детайл', cleanDet);
-                  if (currentTab === 'sklad_wip') query = query.eq('Операция', opName);
+                  if (tName === 'inventory_wip') query = query.eq('Операция', opName);
                   let { data: currData } = await query;
                   
                   let currentStock = currData && currData.length > 0 ? parseFloat(currData[0]['Количество']) || 0 : 0;
                   let newTotal = currentStock + qty;
                   
                   let payload = { "ID Детайл": cleanDet, "Количество": newTotal };
-                  if (currentTab === 'sklad_wip') payload["Операция"] = opName;
+                  if (tName === 'inventory_wip') payload["Операция"] = opName;
                   
-                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: currentTab === 'sklad_gp' ? 'ID Детайл' : 'ID Детайл, Операция' });
+                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: tName === 'inventory_gp' ? 'ID Детайл' : 'ID Детайл, Операция' });
                   if (upsertErr) throw upsertErr;
                   
                   let auditNewData = { "ID Детайл": cleanDet, "Разлика": qty, "Ново Количество": newTotal };
-                  if (currentTab === 'sklad_wip') auditNewData["Операция"] = opName;
+                  if (tName === 'inventory_wip') auditNewData["Операция"] = opName;
                   
                   await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
               }
