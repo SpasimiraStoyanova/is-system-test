@@ -908,42 +908,47 @@ function drawDashboard(jsonString) {
             }
             
             const colClass = 'appended-' + sourceId;
-            if (!lastRow.querySelector('.' + colClass)) {
+            let existingCol = lastRow.querySelector('.' + colClass);
+            
+            if (!existingCol) {
                 if (lastRow.children.length > 0) {
                     const spacer = document.createElement('div');
                     spacer.style.width = "40px";
                     lastRow.appendChild(spacer);
                 }
                     
-                    // Нова колона
-                    const newCol = document.createElement('div');
-                    newCol.className = 'bom-column ' + colClass;
-                    if (titleText) {
-                        newCol.innerHTML = `<span class="lane-title" style="margin-bottom: 8px;">${titleText}</span>`;
-                    }
-                    
-                    // Взимаме всички детайли
-                    const nodes = sourceContainer.querySelectorAll('.vsm-node');
-                    
-                    if (sourceId === 'w-small-pins' || sourceId === 'w-small-studs') {
-                        const rowWrapper = document.createElement('div');
-                        rowWrapper.style.display = 'flex';
-                        rowWrapper.style.flexDirection = 'row';
-                        rowWrapper.style.gap = '20px';
-                        nodes.forEach(n => rowWrapper.appendChild(n));
-                        newCol.appendChild(rowWrapper);
-                    } else {
-                        nodes.forEach(n => newCol.appendChild(n));
-                    }
-                    
-                    // Добавяме колоната на същия ред
-                    lastRow.appendChild(newCol);
-                    
-                    // Скриваме оригиналния контейнер (ако е видим)
-                    const lane = sourceContainer.closest('.lane');
-                    if (lane) lane.style.display = 'none';
+                // Нова колона
+                existingCol = document.createElement('div');
+                existingCol.className = 'bom-column ' + colClass;
+                if (titleText) {
+                    existingCol.innerHTML = `<span class="lane-title" style="margin-bottom: 8px;">${titleText}</span>`;
                 }
+                lastRow.appendChild(existingCol);
+            } else {
+                let titleNode = existingCol.querySelector('.lane-title');
+                existingCol.innerHTML = '';
+                if (titleNode) existingCol.appendChild(titleNode);
             }
+            
+            // Взимаме всички детайли
+            const nodes = sourceContainer.querySelectorAll('.vsm-node');
+            
+            if (sourceId === 'w-small-pins' || sourceId === 'w-small-studs') {
+                const rowWrapper = document.createElement('div');
+                rowWrapper.style.display = 'flex';
+                rowWrapper.style.flexDirection = 'row';
+                rowWrapper.style.gap = '20px';
+                nodes.forEach(n => rowWrapper.appendChild(n));
+                existingCol.appendChild(rowWrapper);
+            } else {
+                nodes.forEach(n => existingCol.appendChild(n));
+            }
+            
+            // Скриваме оригиналния контейнер (ако е видим)
+            const lane = sourceContainer.closest('.lane');
+            if (lane) lane.style.display = 'none';
+            
+            renderedHtmlCache[sourceId] = '';
         }
 
     appendColumn('w-temp-rotors-11', 'w-var11', '');
