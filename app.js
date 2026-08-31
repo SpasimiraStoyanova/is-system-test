@@ -950,6 +950,7 @@ function drawDashboard(jsonString) {
             
             renderedHtmlCache[sourceId] = '';
         }
+    }
 
     appendColumn('w-temp-rotors-11', 'w-var11', '');
     appendColumn('w-temp-rotors-25', 'w-var25', '');
