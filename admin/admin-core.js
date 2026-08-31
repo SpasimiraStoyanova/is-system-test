@@ -592,7 +592,7 @@ async function saveForm(e) {
                   
                   // СМАРТ МАРШРУТИЗИРАНЕ: Проверяваме коя е последната операция
                   try {
-                      let { data: routesData, error: routesErr } = await client.from('marshruti').select('*').eq('Код на детайла', cleanDet);
+                      let { data: routesData, error: routesErr } = await client.from('marshruti').select('*').ilike('Код на детайла', cleanDet);
                       if (!routesErr && routesData && routesData.length > 0) {
                           let maxOpNum = -1;
                           let lastOpName = '';
