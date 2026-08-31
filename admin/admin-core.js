@@ -156,7 +156,7 @@ async function loadCurrentTableData() {
           rows = await computeSkladData(false);
       }
       
-      if (currentTab === 'sklad' || currentTab === 'sklad_gp' || currentTab === 'sklad_wip') {
+      if (currentTab === 'sklad') {
           const nomRes = await client.from('Номенклатура').select('*');
           if (!nomRes.error && nomRes.data) {
               const nomMap = {};
