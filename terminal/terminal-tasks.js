@@ -63,7 +63,24 @@ async function loadTasks(isSilent = false) {
           });
       }
 
-      globalBomData = bomRes.data || []; globalRoutesByDetail = {};
+      globalBomData = bomRes.data || []; 
+      
+      // Виртуални (фантомни) BOM връзки за резолвери, чиито капаци не се сглобяват при нас
+      const phantoms = [
+          { parent: "575-91001-9", child: "Ф63.4 204J", qty: 1 },
+          { parent: "H25-F1E", child: "Кв. Фл. 22108201Е", qty: 1 },
+          { parent: "575-60021", child: "Капак с китайски отливки", qty: 1 }
+      ];
+      phantoms.forEach(p => {
+          globalBomData.push({
+              "ID Детайл": p.parent,
+              "ID Родител": p.parent,
+              "ID Компонент": p.child,
+              "Количество": p.qty
+          });
+      });
+      
+      globalRoutesByDetail = {};
       routesRes.data.forEach(r => { let code = String(r['Код на детайла']).trim().toLowerCase(); if(!globalRoutesByDetail[code]) globalRoutesByDetail[code] = []; globalRoutesByDetail[code].push(r); });
       Object.keys(globalRoutesByDetail).forEach(code => globalRoutesByDetail[code].sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция'])));
 
