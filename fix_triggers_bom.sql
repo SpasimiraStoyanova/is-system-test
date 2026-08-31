@@ -75,7 +75,7 @@ BEGIN
                 FROM public.bom b
                 LEFT JOIN public."Номенклатура" n ON LOWER(TRIM(n."ID Детайл")) = LOWER(TRIM(b."ID Компонент"))
                 WHERE LOWER(TRIM(b."ID Родител")) = new_detail 
-                  AND (CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric) = current_op_num OR (CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric) IS NULL AND prev_op IS NULL))
+                  AND (CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric) = current_op_num OR (COALESCE(CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric), 0) = 0 AND prev_op IS NULL))
             ),
             nom_children AS (
                 SELECT LOWER(TRIM("ID Родител")) as child_id,
@@ -208,7 +208,7 @@ BEGIN
                 FROM public.bom b
                 LEFT JOIN public."Номенклатура" n ON LOWER(TRIM(n."ID Детайл")) = LOWER(TRIM(b."ID Компонент"))
                 WHERE LOWER(TRIM(b."ID Родител")) = old_detail 
-                  AND (CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric) = current_op_num OR (CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric) IS NULL AND prev_op IS NULL))
+                  AND (CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric) = current_op_num OR (COALESCE(CAST(NULLIF(CAST(b."Влага се на Оп. №" AS text), '') AS numeric), 0) = 0 AND prev_op IS NULL))
             ),
             nom_children AS (
                 SELECT LOWER(TRIM("ID Родител")) as child_id,
