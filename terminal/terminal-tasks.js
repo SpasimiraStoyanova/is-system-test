@@ -152,6 +152,24 @@ async function loadTasks(isSilent = false) {
       };
       let depths = {};
 
+      let globalPlanItems = new Set();
+      Object.keys(planRoots).forEach(pId => {
+          Object.keys(planRoots[pId]).forEach(root => globalPlanItems.add(root));
+      });
+      Object.keys(bufferMap).forEach(root => globalPlanItems.add(root));
+      let planItemsAdded = true;
+      while(planItemsAdded) {
+          planItemsAdded = false;
+          globalBomData.forEach(b => {
+              let parent = String(b['ID Родител']).trim().toLowerCase();
+              let child = String(b['ID Компонент']).trim().toLowerCase();
+              if (globalPlanItems.has(parent) && !globalPlanItems.has(child)) {
+                  globalPlanItems.add(child);
+                  planItemsAdded = true;
+              }
+          });
+      }
+
       globalTasks = [];
 
       let planIdsToProcess = Object.keys(planRoots).sort((a,b) => (groupEarliestId[a] || 0) - (groupEarliestId[b] || 0));
@@ -437,6 +455,8 @@ async function loadTasks(isSilent = false) {
 
       // DEEP PUSH: Generate tasks for parents of ready details
       deepPushParents.forEach(parentCode => {
+          if (!globalPlanItems.has(parentCode)) return;
+          
           let parentNom = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === parentCode);
           let isResolver = parentNom && String(parentNom['Тип']).trim().toLowerCase().includes('резолвер');
           if (!isResolver) {
