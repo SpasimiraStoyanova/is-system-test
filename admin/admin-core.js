@@ -155,6 +155,19 @@ async function loadCurrentTableData() {
       } else if (currentTab === 'sklad_wip') {
           rows = await computeSkladData(false);
       }
+      
+      if (currentTab === 'sklad' || currentTab === 'sklad_gp' || currentTab === 'sklad_wip') {
+          const nomRes = await client.from('Номенклатура').select('*');
+          if (!nomRes.error && nomRes.data) {
+              const nomMap = {};
+              nomRes.data.forEach(n => { nomMap[String(n['ID Детайл']).trim().toLowerCase()] = n['Мерна единица'] || n['Единици']; });
+              rows.forEach(r => {
+                  let code = String(r['ID Детайл']).trim().toLowerCase();
+                  if (nomMap[code]) r['Мерна единица'] = nomMap[code];
+              });
+          }
+      }
+
       globalRows = rows; filterTable();
   } catch (err) { document.getElementById('loadingLayout').innerHTML = '❌ Грешка: ' + err.message; }
 }
