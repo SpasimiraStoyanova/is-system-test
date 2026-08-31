@@ -816,7 +816,27 @@ async function saveForm(e) {
             Swal.fire({icon: 'success', title: 'Успешно запазено!', timer: 1000, showConfirmButton: false}); 
         }
     } 
-    else { const { error } = await client.from(config.table).insert([payload]); if (error) throw error; Swal.fire({icon: 'success', title: 'Успешно добавено!', timer: 1000, showConfirmButton: false}); }
+    else { 
+        let inserts = [payload];
+        
+        if (currentTab === 'plan') {
+            const phantoms = {
+                "575-91001-9": "Ф63.4 204J",
+                "h25-f1e": "Кв. Фл. 22108201Е",
+                "575-60021": "Капак с китайски отливки"
+            };
+            let code = String(payload['Вътрешно име'] || '').trim().toLowerCase();
+            if (phantoms[code]) {
+                let phantomPayload = { ...payload };
+                phantomPayload['Вътрешно име'] = phantoms[code];
+                inserts.push(phantomPayload);
+            }
+        }
+
+        const { error } = await client.from(config.table).insert(inserts); 
+        if (error) throw error; 
+        Swal.fire({icon: 'success', title: 'Успешно добавено!', timer: 1000, showConfirmButton: false}); 
+    }
     
     if (currentTab === 'porachki') {
         let isNewOrder = !isEditMode;
