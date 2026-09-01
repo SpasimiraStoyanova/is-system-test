@@ -608,9 +608,9 @@ function renderTasks(tasks) {
     let badgeStyle = t.isGreenCard ? 'background-color:#16a34a;' : '';
 
     if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") {
-        borderStyle = 'border-left: 6px solid #9333ea;';
-        labelHtml = `<span class="plan-label" style="color: #9333ea; font-weight: 900;">⚠️ ${t.plan_name}</span>`;
-        badgeStyle = 'background-color:#9333ea;';
+        borderStyle = 'border-left: 6px solid #6b21a8;';
+        labelHtml = `<span class="plan-label" style="color: #6b21a8; font-weight: 900;">⚠️ ${t.plan_name}</span>`;
+        badgeStyle = 'background-color:#6b21a8;';
     }
 
     let partCode = t.name; let internalNameHtml = t.internalName ? `<div class="detail-code">${t.internalName}</div>` : '';
