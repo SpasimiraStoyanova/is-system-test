@@ -215,15 +215,14 @@ async function loadTasks(isSilent = false) {
           });
 
           allItemsArray.forEach((code, nodeIndex) => {
-              let routes = globalRoutesByDetail[code] || []; 
-              if(routes.length === 0) return;
-              
               let target = deficitBom[code] || 0;
               if (target <= 0) return;
               
               let currentTarget = target;
+              let routes = globalRoutesByDetail[code] || []; 
               
-              for (let i = routes.length - 1; i >= 0; i--) {
+              if (routes.length > 0) {
+                  for (let i = routes.length - 1; i >= 0; i--) {
                   let route = routes[i];
                   let opName = String(route['Име на операция']).trim().toLowerCase();
                   let opKey = code + '_' + opName;
@@ -376,6 +375,7 @@ async function loadTasks(isSilent = false) {
                   }
                   
                   currentTarget = shortage;
+              }
               }
               
               if (currentTarget > 0) {

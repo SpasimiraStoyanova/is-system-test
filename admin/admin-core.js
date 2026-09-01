@@ -1044,20 +1044,7 @@ window.openMrpModal = async function() {
         const { data: bomList, error: bomErr } = await client.from('bom').select('*');
         if (bomErr) throw bomErr;
         
-        // Виртуални (фантомни) BOM връзки за резолвери, чиито капаци не се сглобяват при нас
-        const phantoms = [
-            { parent: "575-91001-9", child: "Ф63.4 204J", qty: 1 },
-            { parent: "H25-F1E", child: "Кв. Фл. 22108201Е", qty: 1 },
-            { parent: "575-60021", child: "Капак с китайски отливки", qty: 1 }
-        ];
-        phantoms.forEach(p => {
-            bomList.push({
-                "ID Детайл": p.parent,
-                "ID Родител": p.parent,
-                "ID Компонент": p.child,
-                "Количество": p.qty
-            });
-        });
+
         
         const { data: skladList, error: skladErr } = await client.from('sklad').select('*');
         if (skladErr) throw skladErr;
