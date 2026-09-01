@@ -658,11 +658,12 @@ function renderTasks(tasks) {
       <div class="card" id="card_${t.id}" style="${borderStyle}">
         <div class="task-header">${labelHtml}<div style="display:flex; gap: 6px;">${displayNeedHtml}</div></div>
         <div class="detail-info"><div class="internal-name">${linkHtml}</div>${internalNameHtml}</div>
-        ${sopHtml}
         <div class="route-flow"><span class="op-active">▶ ${t.op}</span><span class="route-arrow">➔</span><span class="op-pending">${t.next_op}</span></div>
-        ${bomBadgeHtml}
+        ${t.isBlocked ? bomBadgeHtml : ''}
         <div id="free_state_${t.id}" style="${freeStateStyle}">${actionButtonHtml}</div>
         <div id="focus_state_${t.id}" style="${focusStateStyle}">
+          ${!t.isBlocked ? bomBadgeHtml : ''}
+          ${sopHtml}
           ${fetchHtml}
           ${descHtml}
           ${dropoffHtml}
