@@ -35,11 +35,8 @@ BEGIN
 
     -- Обработка на Опаковане в кашон
     IF new_op LIKE 'опаковане - кашон%' THEN
-        -- Вадим от Готови Детайли (GP)
-        UPDATE public.inventory_gp SET "Количество" = GREATEST(0, "Количество" - new_qty) WHERE LOWER(TRIM("ID Детайл")) = new_detail;
-        -- Добавяме в WIP под името на кашона (за да се знае в кой кашон е)
-        UPDATE public.inventory_wip SET "Количество" = "Количество" + new_qty WHERE LOWER(TRIM("ID Детайл")) = new_detail AND LOWER(TRIM("Операция")) = new_op;
-        IF NOT FOUND THEN INSERT INTO public.inventory_wip ("ID Детайл", "Операция", "Количество") VALUES (new_detail, new_op, new_qty); END IF;
+        -- Опаковането не трябва да вади от Готови Детайли (GP), нито да слага в WIP.
+        -- Детайлът си остава в Склад Готови Детайли, просто е отбелязано, че е в кашон.
         RETURN NEW;
     END IF;
 
@@ -159,11 +156,7 @@ BEGIN
 
     -- Обработка на Опаковане в кашон
     IF old_op LIKE 'опаковане - кашон%' THEN
-        -- Връщаме в Готови Детайли (GP)
-        UPDATE public.inventory_gp SET "Количество" = "Количество" + old_qty WHERE LOWER(TRIM("ID Детайл")) = old_detail;
-        IF NOT FOUND THEN INSERT INTO public.inventory_gp ("ID Детайл", "Количество") VALUES (old_detail, old_qty); END IF;
-        -- Вадим от WIP на кашона
-        UPDATE public.inventory_wip SET "Количество" = GREATEST(0, "Количество" - old_qty) WHERE LOWER(TRIM("ID Детайл")) = old_detail AND LOWER(TRIM("Операция")) = old_op;
+        -- Опаковането не пипа наличностите, следователно и триенето на опаковане не ги пипа.
         RETURN OLD;
     END IF;
 
