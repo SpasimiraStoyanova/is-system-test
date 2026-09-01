@@ -100,6 +100,8 @@ async function loadTasks(isSilent = false) {
 
       globalTasks = [];
 
+      let taskCounter = 0;
+
       Object.keys(planRoots).forEach(groupKey => {
           Object.keys(planRoots[groupKey]).forEach(code => {
               let targetQty = planRoots[groupKey][code];
@@ -113,7 +115,7 @@ async function loadTasks(isSilent = false) {
               
               if (availableToPack > 0 && remainingTarget > 0) {
                   globalTasks.push({
-                      id: 'pack_' + code + '_' + planIdMap[groupKey],
+                      id: 'packTask_' + (++taskCounter),
                       plan_id: planIdMap[groupKey],
                       plan_name: planNames[groupKey],
                       name: code.toUpperCase(),

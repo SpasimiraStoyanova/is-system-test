@@ -506,6 +506,7 @@ ALTER TABLE public.plan OWNER TO postgres;
 
 CREATE TABLE public.sklad (
     "ID Детайл" text,
+    "Мерна единица" text,
     "Начална наличност" bigint,
     "Доставено" text,
     "Изразходено" text,
