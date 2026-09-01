@@ -605,6 +605,14 @@ function renderTasks(tasks) {
   filteredTasks.forEach(function(t) {
     let borderStyle = t.isGreenCard ? 'border-left: 6px solid #16a34a;' : 'border-left: 6px solid #3b82f6;';
     let labelHtml = t.isGreenCard ? `<span class="plan-label" style="color: #16a34a;">ЗЕЛЕНА КАРТА: ${t.plan_name}</span>` : `<span class="plan-label">ПЛАН: ${t.plan_name}</span>`;
+    let badgeStyle = t.isGreenCard ? 'background-color:#16a34a;' : '';
+
+    if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") {
+        borderStyle = 'border-left: 6px solid #9333ea;';
+        labelHtml = `<span class="plan-label" style="color: #9333ea; font-weight: 900;">⚠️ ${t.plan_name}</span>`;
+        badgeStyle = 'background-color:#9333ea;';
+    }
+
     let partCode = t.name; let internalNameHtml = t.internalName ? `<div class="detail-code">${t.internalName}</div>` : '';
     let linkHtml = t.drawing_link && t.drawing_link.startsWith('http') ? `<a href="${t.drawing_link}" target="_blank">${partCode} 🔗</a>` : partCode;
     var sopHtml = (t.sop_link && t.sop_link.startsWith('http')) ? `<a href="${t.sop_link}" target="_blank" style="display:inline-block; margin-bottom:12px; background:#f59e0b; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-weight:bold; font-size:12px;">📑 Отвори СОП</a>` : '';
@@ -628,7 +636,7 @@ function renderTasks(tasks) {
     var bomBadgeHtml = ''; var actionButtonHtml = ''; var inputMaxHtml = t.hasLimit ? `max="${t.maxAllowed}"` : '';
     
     let remainingQty = Math.max(0, t.pureQty);
-    let displayNeedHtml = `<span class="qty-badge" style="${t.isGreenCard ? 'background-color:#16a34a;' : ''}">${remainingQty} бр.</span>`;
+    let displayNeedHtml = `<span class="qty-badge" style="${badgeStyle}">${remainingQty} бр.</span>`;
 
     if (t.isBlocked) {
         let reasonsText = t.blockingReasons.length > 0 ? t.blockingReasons.join(', ') : "Предходни детайли";
