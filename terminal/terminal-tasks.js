@@ -369,7 +369,7 @@ async function loadTasks(isSilent = false) {
                           
                           let scrapAllowance = 0;
                           if (!isBuffer && i === 0 && bufferScrapMap[code] > 0) {
-                              let baseQtyForScrap = originalBom[code] || shortage;
+                              let baseQtyForScrap = shortage;
                               scrapAllowance = Math.ceil(baseQtyForScrap * (bufferScrapMap[code] / 100));
                               if (!isBlocked && scrapAllowance > 0) {
                                   let desiredTotal = shortage + scrapAllowance;
