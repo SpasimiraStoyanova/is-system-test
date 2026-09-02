@@ -57,6 +57,18 @@ async function loadTasks(isSilent = false) {
       
       let bufferMap = {};
       let bufferScrapMap = {};
+      
+      if (nomRes.data) {
+          nomRes.data.forEach(n => {
+              let code = String(n['ID Детайл']).trim().toLowerCase();
+              let type = String(n['Тип'] || '').trim().toLowerCase();
+              
+              if (!type.includes('резолвер')) {
+                  bufferScrapMap[code] = 20;
+              }
+          });
+      }
+
       if (bufferRes && bufferRes.data) {
           bufferRes.data.forEach(b => {
               let bKey = String(b['ID Детайл']).trim().toLowerCase();
