@@ -147,10 +147,10 @@ async function loadTasks(isSilent = false) {
       let physicalStock = {}; 
       if (gpRes.data) {
           gpRes.data.forEach(r => {
-              let code = String(r['ID Детайл']).trim().toLowerCase();
+              let code = normalizeStr(r['ID Детайл']);
               let routes = globalRoutesByDetail[code];
               if (routes && routes.length > 0) {
-                  let lastOp = String(routes[routes.length - 1]['Име на операция']).trim().toLowerCase();
+                  let lastOp = normalizeStr(routes[routes.length - 1]['Име на операция']);
                   let key = code + '_' + lastOp;
                   physicalStock[key] = (physicalStock[key] || 0) + (parseFloat(r['Количество']) || 0);
               }
@@ -158,8 +158,8 @@ async function loadTasks(isSilent = false) {
       }
       if (wipRes.data) {
           wipRes.data.forEach(r => {
-              let code = String(r['ID Детайл']).trim().toLowerCase();
-              let op = String(r['Операция']).trim().toLowerCase();
+              let code = normalizeStr(r['ID Детайл']);
+              let op = normalizeStr(r['Операция']);
               let key = code + '_' + op;
               physicalStock[key] = (physicalStock[key] || 0) + (parseFloat(r['Количество']) || 0);
           });
@@ -291,7 +291,7 @@ async function loadTasks(isSilent = false) {
               // Note: looping forwards is necessary so operations claim pieces sequentially
               for (let i = routes.length - 1; i >= 0; i--) {
                   let route = routes[i];
-                  let opName = String(route['Име на операция']).trim().toLowerCase();
+                  let opName = normalizeStr(route['Име на операция']);
                   let opKey = code + '_' + opName;
                   
                   let availableHere = physicalStock[opKey] || 0; // Pieces that FINISHED this operation
@@ -357,7 +357,7 @@ async function loadTasks(isSilent = false) {
                               if (sets < rawMinSets) rawMinSets = sets;
                               
                               // Build itemsToFetch
-                              let nomItem = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === cCode);
+                              let nomItem = globalNomData.find(n => normalizeStr(n['ID Детайл']) === cCode);
                               let type = nomItem ? String(nomItem['Тип']).trim().toLowerCase() : '';
                               if (type !== 'материал' || i === 0) {
                                   let lastChildDropoff = '';
@@ -422,7 +422,9 @@ async function loadTasks(isSilent = false) {
                               }
                           });
                           if (!pIdForCard && Object.keys(bufferMap).includes(code)) {
-                              pNameForCard = "БУФЕРИ";
+                              if (currentOrigTarget === 0) {
+                                  pNameForCard = "БУФЕРИ";
+                              }
                           }
 
                           let safeIdBase = (code + '_n' + nodeIndex + '_op' + i).replace(/[^a-zA-Z0-9а-яА-Я_]/g, '_');
