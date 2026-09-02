@@ -16,19 +16,29 @@ async function loadTasks(isSilent = false) {
   if (!isSilent) container.innerHTML = '<div id="loadingMsg" style="text-align:center; padding: 40px; font-weight:bold; color:#64748b; font-size: 1.2em;">Търсене на задачи за опаковане... 🔄</div>';
   
   try {
-      const [plansRes, routesRes, reportsRes, nomRes] = await Promise.all([
+      const [plansRes, routesRes, reportsRes, nomRes, gpRes] = await Promise.all([
           client.from('plan').select('*').in('Статус', ['Активен', 'Завършен']).limit(100000), 
           client.from('marshruti').select('*').limit(100000), 
           client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(100000), 
-          client.from('Номенклатура').select('*').limit(100000)
+          client.from('Номенклатура').select('*').limit(100000),
+          client.from('inventory_gp').select('*').limit(100000)
       ]);
 
       if (plansRes.error) throw plansRes.error;
       if (routesRes.error) throw routesRes.error; 
       if (reportsRes.error) throw reportsRes.error;
+      if (gpRes.error) throw gpRes.error;
 
       let namesMap = {}; 
       if (nomRes.data) nomRes.data.forEach(n => { let code = String(n['ID Детайл']).trim().toLowerCase(); namesMap[code] = n['Вътрешно име'] || ''; });
+
+      let gpStock = {};
+      if (gpRes.data) {
+          gpRes.data.forEach(row => {
+              let code = String(row['id_detail']).trim().toLowerCase();
+              gpStock[code] = (gpStock[code] || 0) + (parseFloat(row['free']) || 0);
+          });
+      }
 
       let globalRoutesByDetail = {};
       routesRes.data.forEach(r => { 
@@ -106,12 +116,10 @@ async function loadTasks(isSilent = false) {
           Object.keys(planRoots[groupKey]).forEach(code => {
               let targetQty = planRoots[groupKey][code];
               
-              let totalCompleted = completedFinalOps[code] || 0;
-              let totalPackaged = packagedQty[code] || 0;
+              let availableToPack = gpStock[code] || 0;
               
-              let availableToPack = Math.max(0, totalCompleted - totalPackaged);
-              
-              let remainingTarget = Math.max(0, targetQty - totalPackaged);
+              let explicitPackaged = explicitPlanPackagedQty[code + '_' + planIdMap[groupKey]] || 0;
+              let remainingTarget = Math.max(0, targetQty - explicitPackaged);
               
               if (availableToPack > 0 && remainingTarget > 0) {
                   globalTasks.push({
@@ -168,7 +176,7 @@ function renderTasks(tasks) {
             <input type="text" id="box_${t.id}" class="box-input" placeholder="Въведи номер на кашон">
             
             <label style="font-weight: bold; color: #475569; display: block; margin-bottom: 5px;">Брой детайли в кашона</label>
-            <input type="number" id="qty_${t.id}" min="1" class="box-input" value="${t.available}" max="${t.available}" inputmode="numeric" style="margin-bottom:15px;">
+            <input type="number" id="qty_${t.id}" min="1" class="box-input" value="${Math.min(t.available, t.target)}" max="${Math.min(t.available, t.target)}" inputmode="numeric" style="margin-bottom:15px;">
             
             <button class="btn" id="btn_${t.id}" onclick="finishPackingTask('${t.id}', this)" style="background-color: #2563eb; width: 100%; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);">✅ ОТЧЕТИ ОПАКОВАНЕ</button>
         </div>
