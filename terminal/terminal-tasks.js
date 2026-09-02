@@ -366,15 +366,15 @@ async function loadTasks(isSilent = false) {
                                   let desiredTotal = shortage + scrapAllowance;
                                   
                                   if (hasLimit) {
-                                      maxAllowed = Math.min(maxAllowed, desiredTotal);
-                                      displayMaxAllowed = maxAllowed;
+                                      displayMaxAllowed = Math.min(displayMaxAllowed, desiredTotal);
+                                      maxAllowed = displayMaxAllowed; // ensure they match
                                   } else {
-                                      maxAllowed = desiredTotal;
                                       displayMaxAllowed = desiredTotal;
+                                      maxAllowed = desiredTotal;
                                       hasLimit = true;
                                   }
                                   
-                                  targetInput = maxAllowed;
+                                  targetInput = displayMaxAllowed;
                               }
                           }
                           
