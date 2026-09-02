@@ -276,6 +276,7 @@ async function loadTasks(isSilent = false) {
       allItemsArray.forEach((code, nodeIndex) => {
           let currentPureTarget = pureBom[code] || 0;
           let currentScrapTarget = scrapBom[code] || 0;
+          let currentOrigTarget = originalBom[code] || 0;
           
           if (currentPureTarget <= 0 && currentScrapTarget <= 0) return; // Nothing to do for this component
           
@@ -452,7 +453,7 @@ async function loadTasks(isSilent = false) {
                               dropoff: route['Инструкция за оставяне'],
                               defaultQty: targetInput, maxAllowed: displayMaxAllowed, realMaxAllowed: maxAllowed, hasLimit: hasLimit, isBlocked: isBlocked, blockingReasons: blockingReasons, 
                               totalNeed: totalShortage, pureQty: pureShortage, scrapAllowance: scrapShortage,
-                              totalDone: (originalBom[code] || 0) - pureShortage, totalScrapped: 0, isTaken: isTaken, isGreenCard: (pNameForCard === 'БУФЕРИ'),
+                              totalDone: (currentOrigTarget > 0 ? currentOrigTarget : pureBom[code]) - pureShortage, totalScrapped: 0, isTaken: isTaken, isGreenCard: (pNameForCard === 'БУФЕРИ'),
                               globalGrossAtLoad: 0, globalScrapAtLoad: 0,
                               itemsToFetch: itemsToFetch
                           });
@@ -473,6 +474,7 @@ async function loadTasks(isSilent = false) {
                   let multiplier = parseFloat(c['Количество']) || 1;
                   pureBom[cCode] = (pureBom[cCode] || 0) + (currentPureTarget * multiplier);
                   scrapBom[cCode] = (scrapBom[cCode] || 0) + (currentScrapTarget * multiplier);
+                  originalBom[cCode] = (originalBom[cCode] || 0) + (currentOrigTarget * multiplier);
               });
           }
       });
