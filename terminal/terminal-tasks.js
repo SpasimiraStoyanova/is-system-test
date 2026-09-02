@@ -58,15 +58,15 @@ async function loadTasks(isSilent = false) {
       if (gpRes.error) throw gpRes.error; if (wipRes.error) throw wipRes.error;
 
       globalNomData = nomRes.data || [];
-      let namesMap = {}; if (nomRes.data) nomRes.data.forEach(n => { let code = String(n['ID Детайл']).trim().toLowerCase(); namesMap[code] = n['Вътрешно име'] || ''; });
+      let namesMap = {}; if (nomRes.data) nomRes.data.forEach(n => { let code = normalizeStr(n['ID Детайл']); namesMap[code] = n['Вътрешно име'] || ''; });
       
       let bufferMap = {};
       let bufferScrapMap = {};
       
       if (nomRes.data) {
           nomRes.data.forEach(n => {
-              let code = String(n['ID Детайл']).trim().toLowerCase();
-              let type = String(n['Тип'] || '').trim().toLowerCase();
+              let code = normalizeStr(n['ID Детайл']);
+              let type = normalizeStr(n['Тип'] || '');
               
               if (!type.includes('резолвер')) {
                   bufferScrapMap[code] = 20;
@@ -76,7 +76,7 @@ async function loadTasks(isSilent = false) {
 
       if (bufferRes && bufferRes.data) {
           bufferRes.data.forEach(b => {
-              let bKey = String(b['ID Детайл']).trim().toLowerCase();
+              let bKey = normalizeStr(b['ID Детайл']);
               let bufVal = parseFloat(b['Буфер']) || 0;
               let scrapVal = parseFloat(b['% Брак']) || 0;
               if (bufVal > 0) bufferMap[bKey] = bufVal;
@@ -87,13 +87,13 @@ async function loadTasks(isSilent = false) {
       globalBomData = bomRes.data || []; 
       
       globalRoutesByDetail = {};
-      routesRes.data.forEach(r => { let code = String(r['Код на детайла']).trim().toLowerCase(); if(!globalRoutesByDetail[code]) globalRoutesByDetail[code] = []; globalRoutesByDetail[code].push(r); });
+      routesRes.data.forEach(r => { let code = normalizeStr(r['Код на детайла']); if(!globalRoutesByDetail[code]) globalRoutesByDetail[code] = []; globalRoutesByDetail[code].push(r); });
       Object.keys(globalRoutesByDetail).forEach(code => globalRoutesByDetail[code].sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция'])));
 
       let takenOps = {}; 
       reportsRes.data.forEach(r => {
-          let code = String(r['ID Детайл']).trim().toLowerCase();
-          let op = String(r['Операция']).trim().toLowerCase();
+          let code = normalizeStr(r['ID Детайл']);
+          let op = normalizeStr(r['Операция']);
           let key = code + '_' + op; 
           
           if (r['Статус'] === 'Брак' || r['Статус'] === 'Отчетено' || r['Статус'] === 'Прекъсната') {
@@ -189,8 +189,8 @@ async function loadTasks(isSilent = false) {
       while(planItemsAdded) {
           planItemsAdded = false;
           globalBomData.forEach(b => {
-              let parent = String(b['ID Родител']).trim().toLowerCase();
-              let child = String(b['ID Компонент']).trim().toLowerCase();
+              let parent = normalizeStr(b['ID Родител']);
+              let child = normalizeStr(b['ID Компонент']);
               if (globalPlanItems.has(parent) && !globalPlanItems.has(child)) {
                   globalPlanItems.add(child);
                   planItemsAdded = true;
@@ -358,7 +358,7 @@ async function loadTasks(isSilent = false) {
                               
                               // Build itemsToFetch
                               let nomItem = globalNomData.find(n => normalizeStr(n['ID Детайл']) === cCode);
-                              let type = nomItem ? String(nomItem['Тип']).trim().toLowerCase() : '';
+                              let type = nomItem ? normalizeStr(nomItem['Тип']) : '';
                               if (type !== 'материал' || i === 0) {
                                   let lastChildDropoff = '';
                                   if (childRoutes.length > 0) {
@@ -386,13 +386,13 @@ async function loadTasks(isSilent = false) {
                       }
                       
                       if (i === 0) {
-                          let rootNom = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === code);
-                          if (rootNom && rootNom['ID Родител'] && String(rootNom['ID Родител']).trim() !== '') {
-                              let parentCode = String(rootNom['ID Родител']).trim().toLowerCase();
-                              if (!itemsToFetch.some(item => item.code.toLowerCase() === parentCode)) {
-                                  let pNom = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === parentCode);
+                          let rootNom = globalNomData.find(n => normalizeStr(n['ID Детайл']) === code);
+                          if (rootNom && rootNom['ID Родител'] && normalizeStr(rootNom['ID Родител']) !== '') {
+                              let parentCode = normalizeStr(rootNom['ID Родител']);
+                              if (parentCode) {
+                                  let pNom = globalNomData.find(n => normalizeStr(n['ID Детайл']) === parentCode);
                                   let loc = pNom ? String(pNom['Местоположение'] || '').trim() : '';
-                                  itemsToFetch.push({ code: String(rootNom['ID Родител']).trim(), qty: parseFloat(rootNom['Разходна норма']) || 1, loc: loc, type: 'материал' });
+                                  itemsToFetch.push({ code: normalizeStr(rootNom['ID Родител']), qty: parseFloat(rootNom['Разходна норма']) || 1, loc: loc, type: 'материал' });
                               }
                           }
                       }
