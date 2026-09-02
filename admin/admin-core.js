@@ -297,11 +297,12 @@ function renderDynamicTable(itemsToRender = null) {
 }
 
 function filterTable() { 
-    const q = document.getElementById('searchInput').value.toLowerCase().trim(); 
+    const normalizeStr = (str) => String(str || '').replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
+    const q = normalizeStr(document.getElementById('searchInput').value); 
     let f = globalRows;
     
     if (q) {
-        f = f.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)));
+        f = f.filter(r => Object.values(r).some(v => normalizeStr(v).includes(q)));
     }
     
     Object.keys(globalColumnFilters).forEach(col => {
@@ -312,7 +313,7 @@ function filterTable() {
                 if ((col === 'Време' || col === 'Дата') && val) {
                      try { let pVal = val; if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z'; val = new Date(pVal).toLocaleString('bg-BG'); } catch(e) {}
                 }
-                return String(val || '').toLowerCase().includes(colQ);
+                return normalizeStr(val).includes(colQ);
             });
         }
     });

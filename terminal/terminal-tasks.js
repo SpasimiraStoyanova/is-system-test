@@ -1,5 +1,10 @@
 function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
 
+function normalizeStr(str) {
+    if (!str) return '';
+    return String(str).replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
+}
+
 async function changeMachine(isInitial = false) {
     Swal.fire({ title: 'Зареждане...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     try {
@@ -100,7 +105,7 @@ async function loadTasks(isSilent = false) {
       });
 
       let skladData = skladRes.data || [];
-      let getSkladQty = (code) => { let c = code.toLowerCase(); let item = skladData.find(s => String(s['ID Детайл']).trim().toLowerCase() === c); return item ? (parseFloat(item['Остатък']) || 0) : 0; };
+      let getSkladQty = (code) => { let c = normalizeStr(code); let item = skladData.find(s => normalizeStr(s['ID Детайл']) === c); return item ? (parseFloat(item['Остатък']) || 0) : 0; };
 
       let planRoots = {}; 
       let planNames = {};
@@ -164,11 +169,11 @@ async function loadTasks(isSilent = false) {
           if (depths[item] !== undefined) return depths[item];
           if (visited.has(item)) return 0; 
           visited.add(item);
-          let parents = globalBomData.filter(b => String(b['ID Компонент']).trim().toLowerCase() === item);
+          let parents = globalBomData.filter(b => normalizeStr(b['ID Компонент']) === item);
           if (parents.length === 0) { depths[item] = 0; return 0; }
           let maxP = -1;
           parents.forEach(p => {
-              let pCode = String(p['ID Родител']).trim().toLowerCase();
+              let pCode = normalizeStr(p['ID Родител']);
               if (pCode !== item) { let d = getDepth(pCode, new Set(visited)); if (d > maxP) maxP = d; }
           });
           depths[item] = maxP + 1; return depths[item];
@@ -266,7 +271,7 @@ async function loadTasks(isSilent = false) {
       });
       
       let allItemsSet = new Set(Object.keys(pureBom));
-      globalBomData.forEach(b => { allItemsSet.add(String(b['ID Родител']).trim().toLowerCase()); allItemsSet.add(String(b['ID Компонент']).trim().toLowerCase()); });
+      globalBomData.forEach(b => { allItemsSet.add(normalizeStr(b['ID Родител'])); allItemsSet.add(normalizeStr(b['ID Компонент'])); });
       Object.keys(bufferMap).forEach(code => allItemsSet.add(code));
       
       let allItemsArray = Array.from(allItemsSet);
@@ -314,7 +319,7 @@ async function loadTasks(isSilent = false) {
                       if (i > 0) {
                           hasLimit = true;
                           let prevRoute = routes[i - 1]; 
-                          let prevOpName = String(prevRoute['Име на операция']).trim().toLowerCase();
+                          let prevOpName = normalizeStr(prevRoute['Име на операция']);
                           maxAllowed = physicalStock[code + '_' + prevOpName] || 0;
                           displayMaxAllowed = maxAllowed;
                           if (maxAllowed < totalShortage) blockingReasons.push(`Липсва наличност на предходна операция (${String(prevRoute['Име на операция']).trim()})`);
@@ -323,7 +328,7 @@ async function loadTasks(isSilent = false) {
                       // 2. Check BOM availability for THIS specific operation
                       let isLastOp = (i === routes.length - 1);
                       let currentOpNum = parseInt(route['№ Операция']) || 0;
-                      let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
+                      let children = globalBomData.filter(b => normalizeStr(b['ID Родител']) === code);
                       
                       let relevantChildren = children.filter(c => {
                           let opNum = c['Влага се на Оп. №'] ? parseFloat(c['Влага се на Оп. №']) : 0;
@@ -337,13 +342,13 @@ async function loadTasks(isSilent = false) {
                           let minSets = Infinity;
                           let rawMinSets = Infinity;
                           relevantChildren.forEach(child => {
-                              let cCode = String(child['ID Компонент']).trim().toLowerCase(); 
+                              let cCode = normalizeStr(child['ID Компонент']); 
                               let multiplier = parseFloat(child['Количество']) || 1;
                               let childRoutes = globalRoutesByDetail[cCode] || [];
                               let wipAvail = 0;
                               let skladAvail = getSkladQty(cCode);
                               if (childRoutes.length > 0) {
-                                  let lastChildOp = String(childRoutes[childRoutes.length - 1]['Име на операция']).trim().toLowerCase();
+                                  let lastChildOp = normalizeStr(childRoutes[childRoutes.length - 1]['Име на операция']);
                                   wipAvail = physicalStock[cCode + '_' + lastChildOp] || 0;
                               }
                               let childAvail = wipAvail + skladAvail;
@@ -468,9 +473,9 @@ async function loadTasks(isSilent = false) {
           
           // Now cascade to children
           if (currentPureTarget > 0 || currentScrapTarget > 0) {
-              let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
+              let children = globalBomData.filter(b => normalizeStr(b['ID Родител']) === code);
               children.forEach(c => {
-                  let cCode = String(c['ID Компонент']).trim().toLowerCase(); 
+                  let cCode = normalizeStr(c['ID Компонент']);
                   let multiplier = parseFloat(c['Количество']) || 1;
                   pureBom[cCode] = (pureBom[cCode] || 0) + (currentPureTarget * multiplier);
                   scrapBom[cCode] = (scrapBom[cCode] || 0) + (currentScrapTarget * multiplier);
