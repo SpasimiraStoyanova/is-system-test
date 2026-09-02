@@ -368,6 +368,7 @@ function buildForm(data = null) {
             <div class="form-group"><label>Операция:</label><select id="inp_skladOp" class="form-input" required><option value="">-- Въведете детайл първо --</option></select></div>
             <div class="form-group"><label>Количество (физическо):</label><input type="number" id="inp_skladQty" class="form-input" step="any" value="0" required></div>
             <div class="form-group"><label>Количество (буфер):</label><input type="number" id="inp_skladQtyBuffer" class="form-input" step="any" value="0" required></div>
+            <div class="form-group"><label>Процент Брак (%):</label><input type="number" id="inp_skladScrap" class="form-input" step="any" min="0" placeholder="Без промяна"></div>
           `;
           
           if (globalNomenclatureCodes.length === 0) {
@@ -384,6 +385,7 @@ function buildForm(data = null) {
             <div class="form-group"><label>Текуща наличност:</label><input type="number" id="inp_skladOldQty" class="form-input" readonly style="background:#f1f5f9; color:#64748b;"></div>
             <div class="form-group"><label>НОВА наличност:</label><input type="number" id="inp_skladQty" class="form-input" step="any" required></div>
             <div class="form-group"><label>Буфер (Минимално количество):</label><input type="number" id="inp_skladBuffer" class="form-input" step="any" required></div>
+            <div class="form-group"><label>Процент Брак (%):</label><input type="number" id="inp_skladScrap" class="form-input" step="any" min="0" required></div>
           `;
           document.getElementById('inp_skladDetail').value = data['ID Детайл'] || '';
           document.getElementById('inp_skladOp').value = data['Операция'] || '';
@@ -391,6 +393,7 @@ function buildForm(data = null) {
           document.getElementById('inp_skladOldQty').value = data['Общо'] || 0;
           document.getElementById('inp_skladQty').value = data['Общо'] || 0;
           document.getElementById('inp_skladBuffer').value = data['Минимално количество/Буфер'] || 0;
+          document.getElementById('inp_skladScrap').value = data['% Брак'] || 0;
       }
       return;
   }
@@ -435,9 +438,12 @@ async function computeSkladData(isGpTab) {
     ]);
     
     let bufferMap = {};
+    let bufferScrapMap = {};
     if (bufferRes.data) {
         bufferRes.data.forEach(b => {
-            bufferMap[String(b['ID Детайл']).trim().toLowerCase()] = parseFloat(b['Буфер']) || 0;
+            let code = String(b['ID Детайл']).trim().toLowerCase();
+            bufferMap[code] = parseFloat(b['Буфер']) || 0;
+            bufferScrapMap[code] = parseFloat(b['% Брак']) || 0;
         });
     }
     
@@ -508,6 +514,7 @@ async function computeSkladData(isGpTab) {
         let code = String(item['ID Детайл']).trim().toLowerCase();
         let qty = parseFloat(item['Количество']) || 0;
         let buf = bufferMap[code] || 0;
+        let scrap = bufferScrapMap[code] || 0;
         let opName = isGpTab ? 'Готов детайл' : (item['Операция'] || '');
         
         let reservedQty = packedByDetail[code] || 0;
@@ -541,7 +548,8 @@ async function computeSkladData(isGpTab) {
                 "Общо": qty,
                 "Запазени": reservedStr,
                 "Свободни": freeQty,
-                "Минимално количество/Буфер": buf
+                "Минимално количество/Буфер": buf,
+                "% Брак": scrap
             });
         }
     });
@@ -549,6 +557,7 @@ async function computeSkladData(isGpTab) {
     if (isGpTab) {
         Object.keys(bufferMap).forEach(code => {
             let buf = bufferMap[code];
+            let scrap = bufferScrapMap[code] || 0;
             if (buf > 0 && !rows.some(r => String(r['ID Детайл']).trim().toLowerCase() === code)) {
                 rows.push({
                     "RawPlanId": "",
@@ -560,7 +569,8 @@ async function computeSkladData(isGpTab) {
                     "Общо": 0,
                     "Запазени": "0",
                     "Свободни": 0,
-                    "Минимално количество/Буфер": buf
+                    "Минимално количество/Буфер": buf,
+                    "% Брак": scrap
                 });
             }
         });
@@ -583,56 +593,15 @@ async function saveForm(e) {
               const op = document.getElementById('inp_skladOp').value.trim();
               const qty = parseFloat(document.getElementById('inp_skladQty').value) || 0;
               const bufferQty = parseFloat(document.getElementById('inp_skladQtyBuffer').value) || 0;
-              if (!det || !op || (qty === 0 && bufferQty === 0)) throw new Error("Моля, въведете поне едно количество (физическо или буфер).");
+              const scrapInput = document.getElementById('inp_skladScrap').value;
+              const scrap = parseFloat(scrapInput) || 0;
+              if (!det || !op || (qty === 0 && bufferQty === 0 && scrapInput === "")) throw new Error("Моля, въведете поне едно количество (физическо, буфер) или % брак.");
               
-              if (qty < 0 || bufferQty < 0) {
-                  let existing = globalRows.find(r => String(r['ID Детайл']).trim().toLowerCase() === det.toLowerCase() && (currentTab === 'sklad_gp' || String(r['Операция']).trim().toLowerCase() === op.toLowerCase()));
-                  let currentAvail = existing ? (parseFloat(existing['Общо']) || 0) : 0;
-                  let currentBuf = existing ? (parseFloat(existing['Минимално количество/Буфер']) || 0) : 0;
-                  
-                  if (qty < 0 && Math.abs(qty) > currentAvail) {
-                      throw new Error(`Не може да извадите ${Math.abs(qty)} бр. Налични са само ${currentAvail} бр.!`);
-                  }
-                  if (bufferQty < 0 && Math.abs(bufferQty) > currentBuf) {
-                      throw new Error(`Не може да извадите ${Math.abs(bufferQty)} бр. от буфера. Налични са само ${currentBuf} бр.!`);
-                  }
-              }
               if (qty !== 0) {
                   Swal.fire({title: 'Записване на наличности...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
                   let tName = currentTab === 'sklad_gp' ? 'inventory_gp' : 'inventory_wip';
                   let opName = (currentTab === 'sklad_gp') ? 'готов детайл' : op.trim().toLowerCase();
                   let cleanDet = det.toLowerCase();
-                  
-                  // СМАРТ МАРШРУТИЗИРАНЕ: Проверяваме коя е последната операция
-                  try {
-                      let { data: routesData, error: routesErr } = await client.from('marshruti').select('*').ilike('Код на детайла', cleanDet);
-                      if (!routesErr && routesData && routesData.length > 0) {
-                          let maxOpNum = -1;
-                          let lastOpName = '';
-                          routesData.forEach(r => {
-                              let num = parseInt(r['№ Операция']) || 0;
-                              if (num > maxOpNum) {
-                                  maxOpNum = num;
-                                  lastOpName = String(r['Име на операция']).trim().toLowerCase();
-                              }
-                          });
-                          
-                          let enteredOp = op.trim().toLowerCase();
-                          if (enteredOp !== '' && enteredOp !== 'готов детайл') {
-                              if (enteredOp === lastOpName) {
-                                  // Автоматично пращаме в Готови Детайли!
-                                  tName = 'inventory_gp';
-                                  opName = 'готов детайл';
-                              } else {
-                                  // Автоматично пращаме в Полуфабрикати!
-                                  tName = 'inventory_wip';
-                                  opName = enteredOp;
-                              }
-                          }
-                      }
-                  } catch (routeCheckErr) {
-                      console.warn("Грешка при проверка на смарт маршрутизирането:", routeCheckErr);
-                  }
                   
                   let query = client.from(tName).select('Количество').eq('ID Детайл', cleanDet);
                   if (tName === 'inventory_wip') query = query.eq('Операция', opName);
@@ -653,16 +622,19 @@ async function saveForm(e) {
                   await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
               }
               
-              if (bufferQty !== 0) {
+              if (bufferQty !== 0 || scrapInput !== "") {
                   Swal.fire({title: 'Запазване на буфер...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
                   let currentBuffer = 0;
-                  const { data: bufData } = await client.from('sklad_bufferi').select('Буфер').eq('ID Детайл', det);
+                  let currentScrap = 0;
+                  const { data: bufData } = await client.from('sklad_bufferi').select('Буфер, "% Брак"').eq('ID Детайл', det);
                   if (bufData && bufData.length > 0) {
                       currentBuffer = parseFloat(bufData[0]['Буфер']) || 0;
+                      currentScrap = parseFloat(bufData[0]['% Брак']) || 0;
                   }
                   const newBufferTotal = currentBuffer + bufferQty;
+                  const newScrap = scrapInput !== "" ? parseFloat(scrapInput) : currentScrap;
                   await client.from('sklad_bufferi').delete().eq('ID Детайл', det);
-                  const { error: bufError } = await client.from('sklad_bufferi').insert([{ "ID Детайл": det, "Операция": op, "Буфер": newBufferTotal }]);
+                  const { error: bufError } = await client.from('sklad_bufferi').insert([{ "ID Детайл": det, "Операция": op, "Буфер": newBufferTotal, "% Брак": newScrap }]);
                   if (bufError) throw bufError;
               }
               
@@ -674,6 +646,7 @@ async function saveForm(e) {
               const oldQty = parseFloat(document.getElementById('inp_skladOldQty').value) || 0;
               const newQty = parseFloat(document.getElementById('inp_skladQty').value) || 0;
               const newBuffer = parseFloat(document.getElementById('inp_skladBuffer').value) || 0;
+              const newScrap = parseFloat(document.getElementById('inp_skladScrap').value) || 0;
               const diff = newQty - oldQty;
               
               if (diff !== 0) {

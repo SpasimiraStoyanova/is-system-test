@@ -56,10 +56,12 @@ async function loadTasks(isSilent = false) {
       let namesMap = {}; if (nomRes.data) nomRes.data.forEach(n => { let code = String(n['ID Детайл']).trim().toLowerCase(); namesMap[code] = n['Вътрешно име'] || ''; });
       
       let bufferMap = {};
+      let bufferScrapMap = {};
       if (bufferRes && bufferRes.data) {
           bufferRes.data.forEach(b => {
               let bKey = String(b['ID Детайл']).trim().toLowerCase();
               bufferMap[bKey] = parseFloat(b['Буфер']) || 0;
+              bufferScrapMap[bKey] = parseFloat(b['% Брак']) || 0;
           });
       }
 
@@ -357,6 +359,16 @@ async function loadTasks(isSilent = false) {
                           let displayName = String(route['Код на детайла']).trim();
                           let displayOpName = String(route['Име на операция']).trim();
                           
+                          let scrapAllowance = 0;
+                          if (!isBuffer && i === 0 && bufferScrapMap[code] > 0) {
+                              scrapAllowance = Math.round(shortage * (bufferScrapMap[code] / 100));
+                              if (!isBlocked && scrapAllowance > 0) {
+                                  displayMaxAllowed = (parseInt(displayMaxAllowed) || shortage) + scrapAllowance;
+                                  maxAllowed = maxAllowed + scrapAllowance;
+                                  targetInput = targetInput + scrapAllowance;
+                              }
+                          }
+                          
                           globalTasks.push({ 
                               id: safeIdBase + (isBuffer ? '_green' : '_blue'), 
                               plan_id: isBuffer ? null : pId, 
@@ -366,7 +378,7 @@ async function loadTasks(isSilent = false) {
                               type: i === routes.length - 1 ? "ЗЕЛЕНА" : "СИНЯ", 
                               dropoff: route['Инструкция за оставяне'],
                               defaultQty: targetInput, maxAllowed: displayMaxAllowed, realMaxAllowed: maxAllowed, hasLimit: hasLimit, isBlocked: isBlocked, blockingReasons: blockingReasons, 
-                              totalNeed: shortage, pureQty: shortage, 
+                              totalNeed: shortage, pureQty: shortage, scrapAllowance: scrapAllowance,
                               totalDone: (originalBom[code] || 0) - shortage, totalScrapped: 0, isTaken: isTaken, isGreenCard: isBuffer,
                               globalGrossAtLoad: 0, globalScrapAtLoad: 0,
                               itemsToFetch: itemsToFetch
@@ -637,6 +649,7 @@ function renderTasks(tasks) {
     
     let remainingQty = Math.max(0, t.pureQty);
     let displayNeedHtml = `<span class="qty-badge" style="${badgeStyle}">${remainingQty} бр.</span>`;
+    if (t.scrapAllowance > 0) displayNeedHtml += `<span class="qty-badge" style="background-color: #bae6fd; color: #0369a1; border: 2px solid #7dd3fc; margin-left: 5px;">+${t.scrapAllowance} бр. (Брак)</span>`;
 
     if (t.isBlocked) {
         let reasonsText = t.blockingReasons.length > 0 ? t.blockingReasons.join(', ') : "Предходни детайли";

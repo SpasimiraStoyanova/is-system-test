@@ -151,8 +151,17 @@ async function finishTask(taskId, btn) {
           }
 
           let startedAt = window['startTime_' + taskId] || new Date().toISOString();
-          let inserts = [{ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt }];
-          
+          let inserts = [];
+          if (taskData.scrapAllowance && taskData.scrapAllowance > 0 && val > taskData.pureQty) {
+              let excess = val - taskData.pureQty;
+              let normalQty = taskData.pureQty;
+              if (normalQty > 0) {
+                  inserts.push({ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": normalQty, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+              }
+              inserts.push({ "ID План": "СВРЪХПРОИЗВОДСТВО", "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": excess, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+          } else {
+              inserts.push({ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+          }
           const { error } = await client.from('otcheti').insert(inserts);
           if(error) throw error;
           
@@ -161,8 +170,17 @@ async function finishTask(taskId, btn) {
       } catch(err) { 
           if (!navigator.onLine || err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('fetch')) {
               let startedAt = window['startTime_' + taskId] || new Date().toISOString();
-              let inserts = [{ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt }];
-              
+              let inserts = [];
+              if (taskData.scrapAllowance && taskData.scrapAllowance > 0 && val > taskData.pureQty) {
+                  let excess = val - taskData.pureQty;
+                  let normalQty = taskData.pureQty;
+                  if (normalQty > 0) {
+                      inserts.push({ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": normalQty, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+                  }
+                  inserts.push({ "ID План": "СВРЪХПРОИЗВОДСТВО", "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": excess, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+              } else {
+                  inserts.push({ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+              }
               if (taskData.hasLimit) { taskData.maxAllowed -= val; if (taskData.maxAllowed < 0) taskData.maxAllowed = 0; }
               saveToOfflineQueue(inserts, taskId, 'Отчетени: ' + val + ' бр.');
           } else {
