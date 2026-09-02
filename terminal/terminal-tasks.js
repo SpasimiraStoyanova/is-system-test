@@ -106,6 +106,9 @@ async function loadTasks(isSilent = false) {
       let planNames = {};
       let groupEarliestId = {};
       let planNameToId = {};
+      let groupTotalTargets = {};
+      let groupScrapDetails = {};
+      
       plansRes.data.forEach(plan => {
           if (String(plan['Статус']).trim() === 'Изпратен') return;
           let planId = String(plan.id).trim(); 
@@ -117,7 +120,9 @@ async function loadTasks(isSilent = false) {
           
           if (!groupEarliestId[groupKey] || parseInt(planId) < groupEarliestId[groupKey]) {
               groupEarliestId[groupKey] = parseInt(planId);
+              groupScrapDetails[groupKey] = plan['scrap_details']; // jsonb column
           }
+          groupTotalTargets[groupKey] = (groupTotalTargets[groupKey] || 0) + targetQty;
           
           if (plan['Вътрешно име']) planNameToId[String(plan['Вътрешно име']).trim()] = planId;
           planNameToId[planId] = planId;
@@ -193,10 +198,27 @@ async function loadTasks(isSilent = false) {
       let planIdsToProcess = Object.keys(planRoots).sort((a,b) => (groupEarliestId[a] || 0) - (groupEarliestId[b] || 0));
       planIdsToProcess.push('NONE');
       
+      let scrapUpdatesToSave = {};
+
       planIdsToProcess.forEach(pId => {
           let isBuffer = pId === 'NONE';
           let deficitBom = {};
           let originalBom = {};
+          
+          let savedMap = null;
+          let currentTargetTotal = groupTotalTargets[pId] || 0;
+          
+          if (!isBuffer) {
+              if (groupScrapDetails[pId] && groupScrapDetails[pId].target === currentTargetTotal && groupScrapDetails[pId].map) {
+                  savedMap = groupScrapDetails[pId].map;
+              } else {
+                  savedMap = {};
+                  let earliestId = groupEarliestId[pId];
+                  if (earliestId) {
+                      scrapUpdatesToSave[earliestId] = { target: currentTargetTotal, map: savedMap };
+                  }
+              }
+          }
           
           if (!isBuffer && planRoots[pId]) {
               Object.keys(planRoots[pId]).forEach(root => {
@@ -381,8 +403,14 @@ async function loadTasks(isSilent = false) {
                           
                           let scrapAllowance = 0;
                           if (!isBuffer && i === 0 && bufferScrapMap[code] > 0) {
-                              let baseQtyForScrap = shortage;
-                              scrapAllowance = Math.ceil(baseQtyForScrap * (bufferScrapMap[code] / 100));
+                              if (savedMap && savedMap[code] !== undefined) {
+                                  scrapAllowance = savedMap[code];
+                              } else {
+                                  let baseQtyForScrap = shortage;
+                                  scrapAllowance = Math.ceil(baseQtyForScrap * (bufferScrapMap[code] / 100));
+                                  if (savedMap) savedMap[code] = scrapAllowance;
+                              }
+                              
                               if (!isBlocked && scrapAllowance > 0) {
                                   let desiredTotal = shortage + scrapAllowance;
                                   
