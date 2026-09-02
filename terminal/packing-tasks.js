@@ -35,8 +35,8 @@ async function loadTasks(isSilent = false) {
       let gpStock = {};
       if (gpRes.data) {
           gpRes.data.forEach(row => {
-              let code = String(row['id_detail']).trim().toLowerCase();
-              gpStock[code] = (gpStock[code] || 0) + (parseFloat(row['free']) || 0);
+              let code = String(row['ID Детайл']).trim().toLowerCase();
+              gpStock[code] = (gpStock[code] || 0) + (parseFloat(row['Количество']) || 0);
           });
       }
 
@@ -116,7 +116,8 @@ async function loadTasks(isSilent = false) {
           Object.keys(planRoots[groupKey]).forEach(code => {
               let targetQty = planRoots[groupKey][code];
               
-              let availableToPack = gpStock[code] || 0;
+              let totalPackaged = packagedQty[code] || 0;
+              let availableToPack = Math.max(0, (gpStock[code] || 0) - totalPackaged);
               
               let explicitPackaged = explicitPlanPackagedQty[code + '_' + planIdMap[groupKey]] || 0;
               let remainingTarget = Math.max(0, targetQty - explicitPackaged);
