@@ -537,7 +537,7 @@ async function computeSkladData(isGpTab) {
             loc = (routeMap[code] && routeMap[code][opKey]) ? routeMap[code][opKey] : 'Буфер';
         }
 
-        if (qty > 0 || (buf > 0 && isGpTab) || reservedQty > 0) {
+        if (qty > 0 || ((buf > 0 || scrap > 0) && isGpTab) || reservedQty > 0) {
             rows.push({
                 "RawPlanId": "",
                 "ID Детайл": item['ID Детайл'],
@@ -558,7 +558,7 @@ async function computeSkladData(isGpTab) {
         Object.keys(bufferMap).forEach(code => {
             let buf = bufferMap[code];
             let scrap = bufferScrapMap[code] || 0;
-            if (buf > 0 && !rows.some(r => String(r['ID Детайл']).trim().toLowerCase() === code)) {
+            if ((buf > 0 || scrap > 0) && !rows.some(r => String(r['ID Детайл']).trim().toLowerCase() === code)) {
                 rows.push({
                     "RawPlanId": "",
                     "ID Детайл": code.toUpperCase(),
