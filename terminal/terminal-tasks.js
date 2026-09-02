@@ -206,12 +206,18 @@ async function loadTasks(isSilent = false) {
           
           allItemsArray.forEach(code => {
               let currentOrigTarget = originalBom[code] || 0;
+              let parentScrap = bufferScrapMap[code] || 0;
+              
               if (currentOrigTarget > 0) {
                   let children = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === code);
                   children.forEach(c => {
                       let cCode = String(c['ID Компонент']).trim().toLowerCase(); 
                       let multiplier = parseFloat(c['Количество']) || 1;
                       originalBom[cCode] = (originalBom[cCode] || 0) + (currentOrigTarget * multiplier);
+                      
+                      if (parentScrap > 0) {
+                          bufferScrapMap[cCode] = Math.max(bufferScrapMap[cCode] || 0, parentScrap);
+                      }
                   });
               }
           });
