@@ -596,8 +596,13 @@ async function loadTasks(isSilent = false) {
       
 
       globalTasks.sort((a, b) => {
-          let aPlanWeight = a.isGreenCard ? Infinity : (groupEarliestId[a.plan_id] || 0);
-          let bPlanWeight = b.isGreenCard ? Infinity : (groupEarliestId[b.plan_id] || 0);
+          let getWeight = (t) => {
+              if (t.plan_name === "БУФЕРИ") return Infinity;
+              if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") return 9999999;
+              return groupEarliestId[t.plan_id] || 0;
+          };
+          let aPlanWeight = getWeight(a);
+          let bPlanWeight = getWeight(b);
           if (aPlanWeight !== bPlanWeight) return aPlanWeight - bPlanWeight;
           return a.opNum - b.opNum;
       });
