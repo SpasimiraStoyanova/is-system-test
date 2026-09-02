@@ -476,65 +476,7 @@ async function loadTasks(isSilent = false) {
               });
           }
       });
-      
-      // WIP SWEEP: Generate tasks for orphaned WIP (СВРЪХПРОИЗВОДСТВО)
-      Object.keys(physicalStock).forEach(stockKey => {
-          let leftover = physicalStock[stockKey];
-          if (leftover > 0) {
-              let lastUnderscore = stockKey.lastIndexOf('_');
-              if (lastUnderscore !== -1) {
-                  let code = stockKey.substring(0, lastUnderscore);
-                  let currentOpName = stockKey.substring(lastUnderscore + 1);
-                  
-                  let routes = globalRoutesByDetail[code] || [];
-                  if (routes.length > 0) {
-                      let currentOpIndex = routes.findIndex(r => String(r['Име на операция']).trim().toLowerCase() === currentOpName);
-                      
-                      // 1. WIP Sweep: Generate task for the next operation if it's not the final step
-                      if (currentOpIndex !== -1 && currentOpIndex < routes.length - 1) {
-                          let nextOpIndex = currentOpIndex + 1;
-                          let nextRoute = routes[nextOpIndex];
-                          
-                          let machineName = nextRoute['Машина'] || '';
-                          let matchMachine = false;
-                          
-                          let takenOpsKey = code + '_' + String(nextRoute['Име на операция']).trim().toLowerCase();
-                          let isTaken = takenOps[takenOpsKey] === true;
-                          
-                          if (!currentMachine || currentMachine.trim() === "" || isTaken) {
-                              matchMachine = true;
-                          } else {
-                              let selectedMachines = currentMachine.split(',').map(m => m.toLowerCase().trim()); 
-                              matchMachine = selectedMachines.some(m => machineName.toLowerCase().includes(m));
-                          }
-                          
-                          if (matchMachine) {
-                              let displayOpName = String(nextRoute['Име на операция']).trim();
-                              let displayName = String(nextRoute['Код на детайла']).trim();
-                              
-                              let safeIdBase = ('WIP_' + code + '_op' + nextOpIndex).replace(/[^a-zA-Z0-9а-яА-Я_]/g, '_');
-                              
-                              globalTasks.push({ 
-                                  id: safeIdBase + '_green', 
-                                  plan_id: null, 
-                                  plan_name: "СВРЪХПРОИЗВОДСТВО",
-                                  name: displayName, internalName: namesMap[code] || '', op: displayOpName, opNum: parseInt(nextRoute['№ Операция']) || 0, 
-                                  next_op: nextOpIndex < routes.length - 1 ? String(routes[nextOpIndex+1]['Име на операция']).trim() : "Готово", 
-                                  machine: machineName, drawing_link: nextRoute['Линк към чертеж'], sop_link: nextRoute['Линк към СОП'], desc: nextRoute['Описание'], 
-                                  type: nextOpIndex === routes.length - 1 ? "ЗЕЛЕНА" : "СИНЯ", 
-                                  dropoff: nextRoute['Инструкция за оставяне'],
-                                  defaultQty: leftover, maxAllowed: leftover, realMaxAllowed: leftover, hasLimit: true, isBlocked: false, blockingReasons: [], 
-                                  totalNeed: leftover, pureQty: leftover, 
-                                  totalDone: 0, totalScrapped: 0, isTaken: isTaken, isGreenCard: true,
-                                  globalGrossAtLoad: 0, globalScrapAtLoad: 0,
-                                  itemsToFetch: []
-                              });
-                          }
-                      }
-                  }
-              }
-          }
-      });
+      // WIP SWEEP Removed as per user request
 
       // Save any new scrap configurations asynchronously
       if (Object.keys(scrapUpdatesToSave).length > 0) {
