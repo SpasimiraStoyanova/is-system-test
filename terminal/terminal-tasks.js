@@ -547,7 +547,12 @@ async function loadTasks(isSilent = false) {
           let getWeight = (t) => {
               if (t.plan_name === "БУФЕРИ") return Infinity;
               if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") return 9999999;
-              return groupEarliestId[t.plan_id] || 0;
+              let baseWeight = groupEarliestId[t.plan_id] || 0;
+              // Scrap-only cards (no pure quantity left) go after all normal cards
+              if (t.pureQty <= 0 && t.scrapAllowance > 0) {
+                  baseWeight += 5000000;
+              }
+              return baseWeight;
           };
           let aPlanWeight = getWeight(a);
           let bPlanWeight = getWeight(b);
