@@ -60,8 +60,10 @@ async function loadTasks(isSilent = false) {
       if (bufferRes && bufferRes.data) {
           bufferRes.data.forEach(b => {
               let bKey = String(b['ID Детайл']).trim().toLowerCase();
-              bufferMap[bKey] = parseFloat(b['Буфер']) || 0;
-              bufferScrapMap[bKey] = parseFloat(b['% Брак']) || 0;
+              let bufVal = parseFloat(b['Буфер']) || 0;
+              let scrapVal = parseFloat(b['% Брак']) || 0;
+              if (bufVal > 0) bufferMap[bKey] = bufVal;
+              if (scrapVal > 0) bufferScrapMap[bKey] = scrapVal;
           });
       }
 
