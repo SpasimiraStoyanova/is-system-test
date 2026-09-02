@@ -543,9 +543,9 @@ function renderTasks(tasks) {
     let actionButtonShadow = 'rgba(37, 99, 235, 0.2)';
 
     if (isScrapOnly && !t.isGreenCard) {
-        borderStyle = 'border-left: 6px solid #0ea5e9;'; // Sky 500
-        actionButtonBg = '#0ea5e9';
-        actionButtonShadow = 'rgba(14, 165, 233, 0.2)';
+        borderStyle = 'border-left: 6px solid #38bdf8;'; // Sky 400 (lighter)
+        actionButtonBg = '#38bdf8';
+        actionButtonShadow = 'rgba(56, 189, 248, 0.2)';
     }
 
     if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") {
@@ -580,7 +580,7 @@ function renderTasks(tasks) {
     
     let remainingQty = Math.max(0, t.pureQty);
     let displayNeedHtml = `<span class="qty-badge" style="${badgeStyle}">${remainingQty} бр.</span>`;
-    if (t.scrapAllowance > 0) displayNeedHtml += `<span class="qty-badge" style="background-color: #bae6fd; color: #0369a1; border: 2px solid #7dd3fc; margin-left: 5px;">+${t.scrapAllowance} бр. (Брак)</span>`;
+    if (t.scrapAllowance > 0) displayNeedHtml += `<span class="qty-badge" style="background-color: #bae6fd; color: #0369a1; border: 2px solid #7dd3fc; margin-left: 5px;">+${t.scrapAllowance} бр.</span>`;
 
     if (t.isBlocked) {
         let reasonsText = t.blockingReasons.length > 0 ? t.blockingReasons.join(', ') : "Предходни детайли";
