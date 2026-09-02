@@ -361,11 +361,20 @@ async function loadTasks(isSilent = false) {
                           
                           let scrapAllowance = 0;
                           if (!isBuffer && i === 0 && bufferScrapMap[code] > 0) {
-                              scrapAllowance = Math.round(shortage * (bufferScrapMap[code] / 100));
+                              scrapAllowance = Math.ceil(shortage * (bufferScrapMap[code] / 100));
                               if (!isBlocked && scrapAllowance > 0) {
-                                  displayMaxAllowed = (parseInt(displayMaxAllowed) || shortage) + scrapAllowance;
-                                  maxAllowed = maxAllowed + scrapAllowance;
-                                  targetInput = targetInput + scrapAllowance;
+                                  let desiredTotal = shortage + scrapAllowance;
+                                  
+                                  if (hasLimit) {
+                                      maxAllowed = Math.min(maxAllowed, desiredTotal);
+                                      displayMaxAllowed = maxAllowed;
+                                  } else {
+                                      maxAllowed = desiredTotal;
+                                      displayMaxAllowed = desiredTotal;
+                                      hasLimit = true;
+                                  }
+                                  
+                                  targetInput = maxAllowed;
                               }
                           }
                           
