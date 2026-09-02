@@ -588,10 +588,23 @@ function renderTasks(tasks) {
     let labelHtml = t.isGreenCard ? `<span class="plan-label" style="color: #16a34a;">ЗЕЛЕНА КАРТА: ${t.plan_name}</span>` : `<span class="plan-label">ПЛАН: ${t.plan_name}</span>`;
     let badgeStyle = t.isGreenCard ? 'background-color:#16a34a;' : '';
 
+    let isScrapOnly = (t.pureQty <= 0 && t.scrapAllowance > 0);
+    
+    let actionButtonBg = '#2563eb';
+    let actionButtonShadow = 'rgba(37, 99, 235, 0.2)';
+
+    if (isScrapOnly && !t.isGreenCard) {
+        borderStyle = 'border-left: 6px solid #0ea5e9;'; // Sky 500
+        actionButtonBg = '#0ea5e9';
+        actionButtonShadow = 'rgba(14, 165, 233, 0.2)';
+    }
+
     if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") {
         borderStyle = 'border-left: 6px solid #7dd3fc;';
         labelHtml = `<span class="plan-label" style="color: #0284c7; font-weight: 900;">⚠️ ${t.plan_name}</span>`;
         badgeStyle = 'background-color:#bae6fd; color: #0c4a6e;';
+        actionButtonBg = '#0ea5e9';
+        actionButtonShadow = 'rgba(14, 165, 233, 0.2)';
     }
 
     let partCode = t.name; let internalNameHtml = t.internalName ? `<div class="detail-code">${t.internalName}</div>` : '';
@@ -626,10 +639,10 @@ function renderTasks(tasks) {
         actionButtonHtml = `<button disabled style="background-color: #94a3b8; color: white; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 800; border: none; border-radius: 10px;">🛑 БЛОКИРАНА ЗАДАЧА</button>`;
     } else if (t.hasLimit) {
         bomBadgeHtml = `<div style="background-color: #dcfce7; border: 1px solid #bbf7d0; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; color: #166534; font-weight: 800; text-align: center;">📦 Възможни: ${t.maxAllowed} бр.</div>`;
-        actionButtonHtml = `<button onclick="claimCurrentTaskDOM('${t.id}')" style="background-color: #2563eb; color: white; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 800; border: none; border-radius: 10px; cursor:pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">🚀 ПОЕМИ ЗАДАЧА</button>`;
+        actionButtonHtml = `<button onclick="claimCurrentTaskDOM('${t.id}')" style="background-color: ${actionButtonBg}; color: white; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 800; border: none; border-radius: 10px; cursor:pointer; box-shadow: 0 4px 6px -1px ${actionButtonShadow};">🚀 ПОЕМИ ЗАДАЧА</button>`;
     } else {
         bomBadgeHtml = `<div style="background-color: #e0e7ff; border: 1px solid #c7d2fe; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; color: #3730a3; font-weight: 800; text-align: center;">⚡ Първа стъпка (свободно производство)</div>`;
-        actionButtonHtml = `<button onclick="claimCurrentTaskDOM('${t.id}')" style="background-color: #2563eb; color: white; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 800; border: none; border-radius: 10px; cursor:pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">🚀 ПОЕМИ ЗАДАЧА</button>`;
+        actionButtonHtml = `<button onclick="claimCurrentTaskDOM('${t.id}')" style="background-color: ${actionButtonBg}; color: white; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 800; border: none; border-radius: 10px; cursor:pointer; box-shadow: 0 4px 6px -1px ${actionButtonShadow};">🚀 ПОЕМИ ЗАДАЧА</button>`;
     }
 
     let isFocused = t.isTaken || (typeof activeTaskId !== 'undefined' && t.id === activeTaskId);
