@@ -419,9 +419,7 @@ async function loadTasks(isSilent = false) {
           });
       });
       
-      // WIP SWEEP & DEEP PUSH: Generate tasks for orphaned overproduction (СВРЪХПРОИЗВОДСТВО)
-      let deepPushParents = new Set();
-      
+      // WIP SWEEP: Generate tasks for orphaned WIP (СВРЪХПРОИЗВОДСТВО)
       Object.keys(physicalStock).forEach(stockKey => {
           let leftover = physicalStock[stockKey];
           if (leftover > 0) {
@@ -474,128 +472,13 @@ async function loadTasks(isSilent = false) {
                                   itemsToFetch: []
                               });
                           }
-                      } 
-                      // 2. Collect for Deep Push if it IS the final step (ready detail)
-                      else if (currentOpIndex === routes.length - 1) {
-                          let parents = globalBomData.filter(b => String(b['ID Компонент']).trim().toLowerCase() === code);
-                          parents.forEach(p => deepPushParents.add(String(p['ID Родител']).trim().toLowerCase()));
                       }
                   }
               }
           }
       });
 
-      // DEEP PUSH: Generate tasks for parents of ready details
-      deepPushParents.forEach(parentCode => {
-          if (!globalPlanItems.has(parentCode)) return;
-          
-          let parentNom = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === parentCode);
-          let isResolver = parentNom && String(parentNom['Тип']).trim().toLowerCase().includes('резолвер');
-          if (!isResolver) {
-              let parentRoutes = globalRoutesByDetail[parentCode] || [];
-              if (parentRoutes.length > 0) {
-                  let firstRoute = parentRoutes[0];
-                  let machineName = firstRoute['Машина'] || '';
-                  
-                  let matchMachine = false;
-                  let takenOpsKey = parentCode + '_' + String(firstRoute['Име на операция']).trim().toLowerCase();
-                  let isTaken = takenOps[takenOpsKey] === true;
-                  
-                  if (!currentMachine || currentMachine.trim() === "" || isTaken) {
-                      matchMachine = true;
-                  } else {
-                      let selectedMachines = currentMachine.split(',').map(m => m.toLowerCase().trim()); 
-                      matchMachine = selectedMachines.some(m => machineName.toLowerCase().includes(m));
-                  }
-                  
-                  if (matchMachine) {
-                      let allChildren = globalBomData.filter(b => String(b['ID Родител']).trim().toLowerCase() === parentCode);
-                      let currentOpNum = parseInt(firstRoute['№ Операция']) || 0;
-                      
-                      let relevantChildren = allChildren.filter(c => {
-                          let opNum = c['Влага се на Оп. №'] ? parseFloat(c['Влага се на Оп. №']) : 0;
-                          return (opNum > 0) ? (opNum === currentOpNum) : true; 
-                      });
-                      
-                      let displayMaxAllowed = Infinity;
-                      let blockingReasons = [];
-                      let itemsToFetch = [];
-                      
-                      relevantChildren.forEach(child => {
-                          let cCode = String(child['ID Компонент']).trim().toLowerCase();
-                          let cMult = parseFloat(child['Количество']) || 1;
-                          
-                          let cNom = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === cCode);
-                          let cType = cNom ? String(cNom['Тип']).trim().toLowerCase() : '';
-                          
-                          let childRoutes = globalRoutesByDetail[cCode] || [];
-                          let wipAvail = 0; let skladAvail = getSkladQty(cCode);
-                          let lastChildDropoff = '';
-                          if (childRoutes.length > 0) {
-                              let lastChildOp = String(childRoutes[childRoutes.length - 1]['Име на операция']).trim().toLowerCase();
-                              wipAvail = physicalStock[cCode + '_' + lastChildOp] || 0;
-                              lastChildDropoff = String(childRoutes[childRoutes.length - 1]['Инструкция за оставяне'] || '').trim();
-                          }
-                          
-                          if (cType !== 'материал') {
-                              let locTexts = [];
-                              if (wipAvail > 0) locTexts.push(`${wipAvail}бр. ${lastChildDropoff ? 'в ' + lastChildDropoff : 'в Буфер'}`);
-                              if (skladAvail > 0) locTexts.push(`${skladAvail}бр. в Склад`);
-                              if (locTexts.length === 0) locTexts.push(`0бр. налични`);
-                              itemsToFetch.push({ code: String(child['ID Компонент']).trim(), qty: cMult, loc: locTexts.join(' / '), type: cType });
-                              
-                              let childAvail = wipAvail + skladAvail;
-                              let sets = Math.floor(childAvail / cMult);
-                              if (sets < displayMaxAllowed) {
-                                  displayMaxAllowed = sets;
-                                  if (sets === 0) blockingReasons.push(`${cCode} (${childAvail} налични)`);
-                              }
-                          } else {
-                              let loc = cNom ? String(cNom['Местоположение'] || '').trim() : '';
-                              itemsToFetch.push({ code: cCode, qty: cMult, loc: loc, type: 'материал' });
-                          }
-                      });
-                      
-                      let parentNomObj = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === parentCode);
-                      if (parentNomObj && parentNomObj['ID Родител'] && String(parentNomObj['ID Родител']).trim() !== '') {
-                          let pMaterialCode = String(parentNomObj['ID Родител']).trim().toLowerCase();
-                          if (!itemsToFetch.some(item => item.code.toLowerCase() === pMaterialCode)) {
-                              let pNom = globalNomData.find(n => String(n['ID Детайл']).trim().toLowerCase() === pMaterialCode);
-                              let loc = pNom ? String(pNom['Местоположение'] || '').trim() : '';
-                              itemsToFetch.push({ code: String(parentNomObj['ID Родител']).trim(), qty: parseFloat(parentNomObj['Разходна норма']) || 1, loc: loc, type: 'материал' });
-                          }
-                      }
-                      
-                      let maxPossible = displayMaxAllowed;
-                      
-                      if (maxPossible > 0 && displayMaxAllowed !== Infinity) {
-                          let isBlocked = false; 
-                          let displayOpName = String(firstRoute['Име на операция']).trim();
-                          let displayName = String(firstRoute['Код на детайла']).trim();
-                          
-                          let safeIdBase = ('WIP_DEEP_' + parentCode + '_op0').replace(/[^a-zA-Z0-9а-яА-Я_]/g, '_');
-                          
-                          globalTasks.push({ 
-                              id: safeIdBase + '_green', 
-                              plan_id: null, 
-                              plan_name: "СВРЪХПРОИЗВОДСТВО",
-                              name: displayName, internalName: namesMap[parentCode] || '', op: displayOpName, opNum: parseInt(firstRoute['№ Операция']) || 0, 
-                              next_op: parentRoutes.length > 1 ? String(parentRoutes[1]['Име на операция']).trim() : "Готово", 
-                              machine: machineName, drawing_link: firstRoute['Линк към чертеж'], sop_link: firstRoute['Линк към СОП'], desc: firstRoute['Описание'], 
-                              type: parentRoutes.length === 1 ? "ЗЕЛЕНА" : "СИНЯ", 
-                              dropoff: firstRoute['Инструкция за оставяне'],
-                              defaultQty: maxPossible, maxAllowed: displayMaxAllowed, realMaxAllowed: displayMaxAllowed, hasLimit: true, isBlocked: isBlocked, blockingReasons: [], 
-                              totalNeed: maxPossible, pureQty: maxPossible, 
-                              totalDone: 0, totalScrapped: 0, isTaken: isTaken, isGreenCard: true,
-                              globalGrossAtLoad: 0, globalScrapAtLoad: 0,
-                              itemsToFetch: itemsToFetch
-                          });
-                      }
-                  }
-              }
-          }
-      });
-      
+
 
       globalTasks.sort((a, b) => {
           let getWeight = (t) => {
