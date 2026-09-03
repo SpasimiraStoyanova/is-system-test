@@ -223,6 +223,7 @@ async function loadTasks(isSilent = false) {
       let bufferPureBom = {};
       let bufferOriginalBom = {};
       let scrapActivated = {};
+      let componentPlanSources = {};
 
       planIdsToProcess.forEach(pId => {
           let isBuffer = pId === 'NONE';
@@ -257,6 +258,9 @@ async function loadTasks(isSilent = false) {
                   
                   planPureBom[root] = (planPureBom[root] || 0) + pureDeficit;
                   planOriginalBom[root] = (planOriginalBom[root] || 0) + targetQty;
+                  
+                  if (!componentPlanSources[root]) componentPlanSources[root] = new Set();
+                  componentPlanSources[root].add(planNames[pId] || pId);
                   
                   let scrapAllowance = 0;
                   if (bufferScrapMap[root] > 0) {
@@ -417,12 +421,17 @@ async function loadTasks(isSilent = false) {
                           blockingReasons = [...new Set(blockingReasons)];
                           let pIdForCard = null;
                           let pNameForCardBase = "КОМПОНЕНТ";
-                          Object.keys(planRoots).forEach(pid => {
-                              if (planRoots[pid] && planRoots[pid][code]) {
-                                  pIdForCard = pid;
-                                  pNameForCardBase = planNames[pid] || pid;
-                              }
-                          });
+                          
+                          if (componentPlanSources[code] && componentPlanSources[code].size > 0) {
+                              pNameForCardBase = Array.from(componentPlanSources[code]).join(', ');
+                          } else {
+                              Object.keys(planRoots).forEach(pid => {
+                                  if (planRoots[pid] && planRoots[pid][code]) {
+                                      pIdForCard = pid;
+                                      pNameForCardBase = planNames[pid] || pid;
+                                  }
+                              });
+                          }
 
                           let safeIdBase = (code + '_n' + nodeIndex + '_op' + i).replace(/[^a-zA-Z0-9а-яА-Я_]/g, '_');
                           let displayName = String(route['Код на детайла']).trim();
@@ -519,6 +528,11 @@ async function loadTasks(isSilent = false) {
                   planPureBom[cCode] = (planPureBom[cCode] || 0) + childPureTarget;
                   planScrapBom[cCode] = (planScrapBom[cCode] || 0) + childScrapTarget;
                   planOriginalBom[cCode] = (planOriginalBom[cCode] || 0) + ((planOriginalBom[code] || 0) * multiplier);
+                  
+                  if (!componentPlanSources[cCode]) componentPlanSources[cCode] = new Set();
+                  if (componentPlanSources[code]) {
+                      componentPlanSources[code].forEach(pn => componentPlanSources[cCode].add(pn));
+                  }
                   
                   bufferPureBom[cCode] = (bufferPureBom[cCode] || 0) + (currentBufferTarget * multiplier);
                   bufferOriginalBom[cCode] = (bufferOriginalBom[cCode] || 0) + ((bufferOriginalBom[code] || 0) * multiplier);
