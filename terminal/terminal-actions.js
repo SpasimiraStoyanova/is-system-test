@@ -240,7 +240,7 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
             let qty = val * multiplier;
             if (!scrappedChildrenNames.includes(cName)) {
                 let cRoutes = globalRoutesByDetail[cName] || []; 
-                let opToLog = "Възстановен"; 
+                let opToLog = cRoutes.length > 0 ? String(cRoutes[cRoutes.length - 1]['Име на операция']).trim() : "Готово"; 
                 inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Спасен)", "Количество": qty, "Операция": opToLog, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
             } else {
                 inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Бракуван Компонент)", "Количество": qty, "Операция": "Бракуван в " + taskData.name, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt });
@@ -261,7 +261,7 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
                 let qty = val * multiplier;
                 if (!scrappedChildrenNames.includes(cName)) {
                     let cRoutes = globalRoutesByDetail[cName] || []; 
-                    let opToLog = "Възстановен"; 
+                    let opToLog = cRoutes.length > 0 ? String(cRoutes[cRoutes.length - 1]['Име на операция']).trim() : "Готово"; 
                     inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Спасен)", "Количество": qty, "Операция": opToLog, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
                 } else {
                     inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Бракуван Компонент)", "Количество": qty, "Операция": "Бракуван в " + taskData.name, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt });

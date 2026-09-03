@@ -329,7 +329,6 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
 
     let completedOps = {};
     let opStatusMap = {}; 
-    let savedQty = {};
     let manualOps = {};
     
     let invGpMap = {};
@@ -390,9 +389,6 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
             }
         } 
         else if (r['Статус'] === 'Отчетено') {
-            if (op === 'възстановен') {
-                savedQty[code] = (savedQty[code] || 0) + qty;
-            }
             completedOps[key] = (completedOps[key] || 0) + qty;
             
             let isManual = (r['Оператор'] === 'СИСТЕМА (Ръчно добавен)' || r['Оператор'] === '💉 СИСТЕМА (Ръчно добавен)' || (r['Оператор'] === 'СИСТЕМА (Корекция наличност)' && qty > 0));
@@ -481,9 +477,6 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 let globalPhysicalPassed = (invGpMap[code.toLowerCase()] || 0);
                 for (let j = idx; j < partRoutes.length; j++) {
                     globalPhysicalPassed += (invWipMap[code.toLowerCase()]?.[String(partRoutes[j]['Име на операция']).trim().toLowerCase()] || 0);
-                }
-                if (idx === partRoutes.length - 1) {
-                    globalPhysicalPassed += (savedQty[code.toLowerCase()] || 0);
                 }
                 let globalNet = globalPhysicalPassed; // Physical tables already reflect shipped quantities (they are removed from GP)
                 
