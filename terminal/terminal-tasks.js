@@ -222,6 +222,7 @@ async function loadTasks(isSilent = false) {
       let planOriginalBom = {};
       let bufferPureBom = {};
       let bufferOriginalBom = {};
+      let scrapActivated = {};
 
       planIdsToProcess.forEach(pId => {
           let isBuffer = pId === 'NONE';
@@ -265,6 +266,7 @@ async function loadTasks(isSilent = false) {
                           scrapAllowance = Math.ceil(pureDeficit * (bufferScrapMap[root] / 100));
                           if (savedMap) savedMap[root] = scrapAllowance;
                       }
+                      scrapActivated[root] = true;
                   }
                   planScrapBom[root] = (planScrapBom[root] || 0) + scrapAllowance;
               });
@@ -497,8 +499,24 @@ async function loadTasks(isSilent = false) {
               children.forEach(c => {
                   let cCode = normalizeStr(c['ID Компонент']);
                   let multiplier = parseFloat(c['Количество']) || 1;
-                  planPureBom[cCode] = (planPureBom[cCode] || 0) + (currentPlanPureTarget * multiplier);
-                  planScrapBom[cCode] = (planScrapBom[cCode] || 0) + (currentPlanScrapTarget * multiplier);
+                  
+                  let childPureTarget = currentPlanPureTarget * multiplier;
+                  let childScrapTarget = currentPlanScrapTarget * multiplier;
+                  
+                  let isActivated = scrapActivated[code] === true;
+                  
+                  if (!isActivated && bufferScrapMap[cCode] > 0) {
+                      let newScrap = Math.ceil(childPureTarget * (bufferScrapMap[cCode] / 100));
+                      childScrapTarget += newScrap;
+                      isActivated = true;
+                  }
+                  
+                  if (isActivated) {
+                      scrapActivated[cCode] = true;
+                  }
+                  
+                  planPureBom[cCode] = (planPureBom[cCode] || 0) + childPureTarget;
+                  planScrapBom[cCode] = (planScrapBom[cCode] || 0) + childScrapTarget;
                   planOriginalBom[cCode] = (planOriginalBom[cCode] || 0) + ((planOriginalBom[code] || 0) * multiplier);
                   
                   bufferPureBom[cCode] = (bufferPureBom[cCode] || 0) + (currentBufferTarget * multiplier);
