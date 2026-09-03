@@ -221,6 +221,8 @@ async function loadTasks(isSilent = false) {
       let pureBom = {};
       let scrapBom = {};
       let originalBom = {};
+      let bufferOriginalBom = {};
+      let planOriginalBom = {};
 
       planIdsToProcess.forEach(pId => {
           let isBuffer = pId === 'NONE';
@@ -245,6 +247,7 @@ async function loadTasks(isSilent = false) {
                   let qty = bufferMap[root];
                   pureBom[root] = (pureBom[root] || 0) + qty;
                   originalBom[root] = (originalBom[root] || 0) + qty;
+                  bufferOriginalBom[root] = (bufferOriginalBom[root] || 0) + qty;
               });
           } else if (planRoots[pId]) {
               Object.keys(planRoots[pId]).forEach(root => {
@@ -255,6 +258,7 @@ async function loadTasks(isSilent = false) {
                   
                   pureBom[root] = (pureBom[root] || 0) + pureDeficit;
                   originalBom[root] = (originalBom[root] || 0) + targetQty;
+                  planOriginalBom[root] = (planOriginalBom[root] || 0) + targetQty;
                   
                   let scrapAllowance = 0;
                   if (bufferScrapMap[root] > 0) {
@@ -421,9 +425,16 @@ async function loadTasks(isSilent = false) {
                                   pNameForCard = planNames[pid] || pid;
                               }
                           });
-                          if (!pIdForCard && Object.keys(bufferMap).includes(code)) {
-                              if (currentOrigTarget === 0) {
+                          
+                          if ((bufferOriginalBom[code] || 0) > 0) {
+                              if ((planOriginalBom[code] || 0) === 0) {
                                   pNameForCard = "БУФЕРИ";
+                              } else {
+                                  if (pNameForCard === "КОМПОНЕНТ") {
+                                      pNameForCard = "ПЛАН + БУФЕР";
+                                  } else {
+                                      pNameForCard = pNameForCard + " (+ БУФЕР)";
+                                  }
                               }
                           }
 
@@ -482,6 +493,8 @@ async function loadTasks(isSilent = false) {
                   pureBom[cCode] = (pureBom[cCode] || 0) + (currentPureTarget * multiplier);
                   scrapBom[cCode] = (scrapBom[cCode] || 0) + (currentScrapTarget * multiplier);
                   originalBom[cCode] = (originalBom[cCode] || 0) + (currentOrigTarget * multiplier);
+                  bufferOriginalBom[cCode] = (bufferOriginalBom[cCode] || 0) + ((bufferOriginalBom[code] || 0) * multiplier);
+                  planOriginalBom[cCode] = (planOriginalBom[cCode] || 0) + ((planOriginalBom[code] || 0) * multiplier);
               });
           }
       });
