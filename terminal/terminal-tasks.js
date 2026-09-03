@@ -452,7 +452,8 @@ async function loadTasks(isSilent = false) {
                                   targetInput = displayMaxAllowedForThis;
                               }
                               
-                              let totalDone = (originalTarget > 0 ? originalTarget : (isScrapOnlyCard ? 0 : shortage)) - shortage;
+                              let totalDone = (originalTarget > 0 ? originalTarget : shortage) - shortage;
+                              if (totalDone < 0) totalDone = 0;
                               
                               globalTasks.push({ 
                                   id: safeIdBase + typeSuffix, 
