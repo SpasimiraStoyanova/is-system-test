@@ -604,9 +604,25 @@ async function saveForm(e) {
               
               if (qty !== 0) {
                   Swal.fire({title: 'Записване на наличности...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
-                  let tName = currentTab === 'sklad_gp' ? 'inventory_gp' : 'inventory_wip';
-                  let opName = (currentTab === 'sklad_gp') ? 'готов детайл' : op.trim().toLowerCase();
+                  
                   let cleanDet = det.toLowerCase();
+                  let opName = op.trim().toLowerCase();
+                  let tName = currentTab === 'sklad_gp' ? 'inventory_gp' : 'inventory_wip';
+                  
+                  const { data: routeData } = await client.from('marshruti').select('*').ilike('Код на детайла', cleanDet);
+                  if (routeData && routeData.length > 0) {
+                      routeData.sort((a,b) => (parseInt(a['№ Операция'])||0) - (parseInt(b['№ Операция'])||0));
+                      let lastOp = routeData[routeData.length - 1]['Име на операция'].trim().toLowerCase();
+                      
+                      if (opName === lastOp || opName === 'готов детайл') {
+                          tName = 'inventory_gp';
+                          opName = 'готов детайл';
+                      } else {
+                          tName = 'inventory_wip';
+                      }
+                  } else {
+                      if (currentTab === 'sklad_gp') opName = 'готов детайл';
+                  }
                   
                   let query = client.from(tName).select('Количество').eq('ID Детайл', cleanDet);
                   if (tName === 'inventory_wip') query = query.eq('Операция', opName);
