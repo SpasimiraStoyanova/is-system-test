@@ -581,7 +581,14 @@ function renderTasks(tasks) {
   var html = '';
   filteredTasks.forEach(function(t) {
     let borderStyle = t.isGreenCard ? 'border-left: 6px solid #16a34a;' : 'border-left: 6px solid #3b82f6;';
-    let labelHtml = t.isGreenCard ? `<span class="plan-label" style="color: #16a34a;">ЗЕЛЕНА КАРТА: ${t.plan_name}</span>` : `<span class="plan-label">ПЛАН: ${t.plan_name}</span>`;
+    let labelHtml = '';
+    if (t.isGreenCard) {
+        labelHtml = `<span class="plan-label" style="color: #16a34a;">ЗЕЛЕНА КАРТА: ${t.plan_name}</span>`;
+    } else if (t.plan_name === 'КОМПОНЕНТ') {
+        labelHtml = `<span class="plan-label">КОМПОНЕНТ</span>`;
+    } else {
+        labelHtml = `<span class="plan-label">ПЛАН: ${t.plan_name}</span>`;
+    }
     let badgeStyle = t.isGreenCard ? 'background-color:#16a34a;' : '';
 
     let isScrapOnly = (t.pureQty <= 0 && t.scrapAllowance > 0);
