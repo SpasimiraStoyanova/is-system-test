@@ -199,8 +199,7 @@ async function reportScrap(taskId, btn) {
   if (taskData.hasLimit && val > taskData.maxAllowed) { Swal.fire('Невъзможно', `Имаш материал само за ${taskData.maxAllowed} бр.!`, 'error'); return; }
 
   let allowedResolverOps = ['зареждане', 'хонинговане', 'сглобяване + измерване'];
-  let isResolver = taskData.name.includes('#') || taskData.name.startsWith('575') || taskData.name.toUpperCase().startsWith('H25') || taskData.name.toUpperCase().startsWith('DC25');
-  if (isResolver && allowedResolverOps.includes(taskData.op.trim().toLowerCase())) {
+  if (allowedResolverOps.includes(taskData.op.trim().toLowerCase())) {
       let children = globalBomData.filter(b => String(b['ID Родител']).trim() === taskData.name);
       if (children.length > 0) {
           let checkboxHtml = '<div style="text-align:left; margin-top:15px; font-size:14px; max-height: 250px; overflow-y: auto;"><p style="color:#e74c3c; font-weight:bold; margin-bottom:12px;">Кои компоненти вътре бяха счупени?<br><span style="font-size: 0.8em; color: #64748b;">(Отмаркирайте спасените детайли)</span></p>';
