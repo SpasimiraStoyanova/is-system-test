@@ -615,6 +615,11 @@ async function saveForm(e) {
                   let currentStock = currData && currData.length > 0 ? parseFloat(currData[0]['Количество']) || 0 : 0;
                   let newTotal = currentStock + qty;
                   
+                  if (newTotal < 0) {
+                      Swal.close();
+                      throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
+                  }
+                  
                   let payload = { "ID Детайл": cleanDet, "Количество": newTotal };
                   if (tName === 'inventory_wip') payload["Операция"] = opName;
                   
@@ -666,6 +671,11 @@ async function saveForm(e) {
                   
                   let currentStock = currData && currData.length > 0 ? parseFloat(currData[0]['Количество']) || 0 : 0;
                   let newTotal = currentStock + diff;
+                  
+                  if (newTotal < 0) {
+                      Swal.close();
+                      throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
+                  }
                   
                   let payload = { "ID Детайл": cleanDet, "Количество": newTotal };
                   if (currentTab === 'sklad_wip') payload["Операция"] = opName;
