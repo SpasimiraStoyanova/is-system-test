@@ -224,6 +224,7 @@ async function loadTasks(isSilent = false) {
       let bufferOriginalBom = {};
       let scrapActivated = {};
       let componentPlanSources = {};
+      let componentPlanIds = {};
 
       planIdsToProcess.forEach(pId => {
           let isBuffer = pId === 'NONE';
@@ -261,6 +262,8 @@ async function loadTasks(isSilent = false) {
                   
                   if (!componentPlanSources[root]) componentPlanSources[root] = new Set();
                   componentPlanSources[root].add(planNames[pId] || pId);
+                  if (!componentPlanIds[root]) componentPlanIds[root] = new Set();
+                  componentPlanIds[root].add(pId);
                   
                   let scrapAllowance = 0;
                   if (bufferScrapMap[root] > 0) {
@@ -424,6 +427,7 @@ async function loadTasks(isSilent = false) {
                           
                           if (componentPlanSources[code] && componentPlanSources[code].size > 0) {
                               pNameForCardBase = Array.from(componentPlanSources[code]).join(', ');
+                              pIdForCard = Array.from(componentPlanIds[code] || []).join(',');
                           } else {
                               Object.keys(planRoots).forEach(pid => {
                                   if (planRoots[pid] && planRoots[pid][code]) {
@@ -532,6 +536,10 @@ async function loadTasks(isSilent = false) {
                   if (!componentPlanSources[cCode]) componentPlanSources[cCode] = new Set();
                   if (componentPlanSources[code]) {
                       componentPlanSources[code].forEach(pn => componentPlanSources[cCode].add(pn));
+                  }
+                  if (!componentPlanIds[cCode]) componentPlanIds[cCode] = new Set();
+                  if (componentPlanIds[code]) {
+                      componentPlanIds[code].forEach(id => componentPlanIds[cCode].add(id));
                   }
                   
                   bufferPureBom[cCode] = (bufferPureBom[cCode] || 0) + (currentBufferTarget * multiplier);

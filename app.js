@@ -355,8 +355,8 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         return r;
     }).sort((a, b) => a._ts - b._ts);
 
-    let scrappedOps = {};
-    let scrappedComponent = {};
+    let componentScrapEvents = [];
+    let opScrapEvents = [];
     let grossCompletedOps = {};
 
     let allCombinedReports = sortedReports;
@@ -377,15 +377,9 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         
         if (r['Статус'] === 'Брак') {
             if (r['Оператор'] === 'СИСТЕМА (Бракуван Компонент)') {
-                scrappedComponent[code] = (scrappedComponent[code] || 0) + qty;
+                componentScrapEvents.push(r);
             } else {
-                scrappedOps[key] = (scrappedOps[key] || 0) + qty;
-                let rawPId = String(r['ID План'] || '').trim();
-                let pId = planNameToId[rawPId] || rawPId;
-                if (pId) {
-                    let planKey = key + '_' + pId;
-                    scrappedOps[planKey] = (scrappedOps[planKey] || 0) + qty;
-                }
+                opScrapEvents.push(r);
             }
         } 
         else if (r['Статус'] === 'Отчетено') {
@@ -402,9 +396,6 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
             opStatusMap[key] = r['Статус']; 
         }
     });
-
-    let shippedQty = {};
-
 
     let masterData = {
         tiela: [], predni: [], zadni: [], mpr: [], statori: [], assembly: [],
@@ -478,7 +469,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 for (let j = idx; j < partRoutes.length; j++) {
                     globalPhysicalPassed += (invWipMap[code.toLowerCase()]?.[String(partRoutes[j]['Име на операция']).trim().toLowerCase()] || 0);
                 }
-                let globalNet = globalPhysicalPassed; // Physical tables already reflect shipped quantities (they are removed from GP)
+                let globalNet = globalPhysicalPassed; 
                 
                 let usedSoFar = alreadyAllocated[opKey] || 0;
                 let availableForThisNode = Math.max(0, globalNet - usedSoFar);
@@ -493,10 +484,17 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 else if (doneQty > 0) opState = 'blue';
                 else if (latestStatus === 'Започната') opState = 'blue_0';
                 
-                let pIdStr = String(n.planId || '').trim();
-                let planOpKey = pIdStr ? (opKey + '_' + pIdStr) : opKey;
+                let opScrap = 0;
+                opScrapEvents.forEach(e => {
+                    if (String(e['ID Детайл']).trim().toLowerCase() === code.toLowerCase() && String(e['Операция'] || '').trim().toLowerCase() === opName.toLowerCase()) {
+                        let rawPIds = String(e['ID План'] || '').split(',').map(s=>s.trim()).filter(s=>s);
+                        if (rawPIds.length === 0 || rawPIds.some(pid => n.planDbIds.includes(pid))) {
+                            opScrap += (parseFloat(e['Количество']) || 0);
+                        }
+                    }
+                });
                 
-                n.operations.push({ name: opName, completed: doneQty, state: opState, scrapped: scrappedOps[planOpKey] || 0, latestStatus: latestStatus });
+                n.operations.push({ name: opName, completed: doneQty, state: opState, scrapped: opScrap, latestStatus: latestStatus });
                 
                 if (idx === 0) finalDoneQtyForChildren = doneQty;
             });
@@ -529,7 +527,16 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
 
     Object.values(mergedNodes).forEach(n => {
 
-        n.totalScrappedAsComponent = scrappedComponent[n.code.toLowerCase()] || 0;
+        let nodeScrap = 0;
+        componentScrapEvents.forEach(e => {
+            if (String(e['ID Детайл']).trim().toLowerCase() === n.code.toLowerCase()) {
+                let rawPIds = String(e['ID План'] || '').split(',').map(s=>s.trim()).filter(s=>s);
+                if (rawPIds.length > 0 && rawPIds.some(pid => n.planDbIds.includes(pid))) {
+                    nodeScrap += (parseFloat(e['Количество']) || 0);
+                }
+            }
+        });
+        n.totalScrappedAsComponent = nodeScrap;
 
         let typeStr = (n.partType + " " + n.code).toLowerCase().replace(/[\s\.\-\_]+/g, '');
         
