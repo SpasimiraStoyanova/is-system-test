@@ -357,6 +357,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
 
     let componentScrapEvents = [];
     let opScrapEvents = [];
+    let statusEvents = [];
     let grossCompletedOps = {};
 
     let allCombinedReports = sortedReports;
@@ -392,8 +393,10 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 grossCompletedOps[key] = (grossCompletedOps[key] || 0) + qty; 
             }
             opStatusMap[key] = 'Отчетено';
+            statusEvents.push(r);
         } else if (r['Статус'] !== 'Брак') {
             opStatusMap[key] = r['Статус']; 
+            statusEvents.push(r);
         }
     });
 
@@ -479,7 +482,19 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 alreadyAllocated[opKey] = usedSoFar + allocatedFromWh;
                 
                 let opState = 'gray';
-                let latestStatus = opStatusMap[opKey];
+                
+                let latestStatus = 'Очаква се';
+                for (let i = statusEvents.length - 1; i >= 0; i--) {
+                    let e = statusEvents[i];
+                    if (String(e['ID Детайл']).trim().toLowerCase() === code.toLowerCase() && String(e['Операция'] || '').trim().toLowerCase() === opName.toLowerCase()) {
+                        let rawPIds = String(e['ID План'] || '').split(',').map(s=>s.trim()).filter(s=>s);
+                        if (rawPIds.length === 0 || rawPIds.some(pid => n.planDbIds.includes(pid))) {
+                            latestStatus = e['Статус'] === 'Отчетено' ? 'Отчетено' : e['Статус'];
+                            break;
+                        }
+                    }
+                }
+                
                 if (doneQty >= n.planQty) opState = 'green';
                 else if (doneQty > 0) opState = 'blue';
                 else if (latestStatus === 'Започната') opState = 'blue_0';
