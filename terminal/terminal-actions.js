@@ -87,6 +87,7 @@ function claimCurrentTaskDOM(taskId) {
   if (taskData) {
       taskData.isTaken = true;
       client.from('otcheti').insert([{ 
+          "ID План": taskData.plan_id,
           "ID Детайл": taskData.name, 
           "Оператор": currentOperator, 
           "Количество": 0, 
@@ -105,6 +106,7 @@ function pauseTaskDOM(taskId) {
   if (taskData) {
       taskData.isTaken = false;
       client.from('otcheti').insert([{ 
+          "ID План": taskData.plan_id,
           "ID Детайл": taskData.name, 
           "Оператор": currentOperator, 
           "Количество": 0, 
