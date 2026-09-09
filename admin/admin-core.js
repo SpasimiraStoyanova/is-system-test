@@ -482,14 +482,12 @@ async function computeSkladData() {
     }
     
     let packingData = [];
-    if (isGpTab) {
-        let pRes = await client.from('otcheti')
-            .select('*')
-            .ilike('Операция', '%Опаковане%')
-            .eq('Статус', 'Отчетено')
-            .limit(100000);
-        if (pRes.data) packingData = pRes.data;
-    }
+    let pRes = await client.from('otcheti')
+        .select('*')
+        .ilike('Операция', '%Опаковане%')
+        .eq('Статус', 'Отчетено')
+        .limit(100000);
+    if (pRes.data) packingData = pRes.data;
     
     let packedByDetail = {};
     let packedDetailsByBox = {};
@@ -514,29 +512,35 @@ async function computeSkladData() {
         let qty = parseFloat(item['Количество']) || 0;
         let buf = bufferMap[code] || 0;
         let scrap = bufferScrapMap[code] || 0;
-        let opName = isGpTab ? 'Готов детайл' : (item['Операция'] || '');
         
-        let reservedQty = packedByDetail[code] || 0;
+        let opKey = String(item['Операция'] || '').trim().toLowerCase();
+        let isGpItem = (opKey === 'готов продукт');
+        
+        let opName = item['Операция'] || '';
+        
+        let reservedQty = 0;
+        let reservedStr = "0";
+        if (isGpItem) {
+            reservedQty = packedByDetail[code] || 0;
+            if (reservedQty > 0) {
+                let boxTexts = [];
+                Object.keys(packedDetailsByBox[code]).forEach(b => {
+                    boxTexts.push(`${packedDetailsByBox[code][b]} бр в Кашон №${b}`);
+                });
+                reservedStr = boxTexts.join(', ');
+            }
+        }
+        
         let freeQty = Math.max(0, qty - reservedQty);
         
-        let reservedStr = "0";
-        if (reservedQty > 0) {
-            let boxTexts = [];
-            Object.keys(packedDetailsByBox[code]).forEach(b => {
-                boxTexts.push(`${packedDetailsByBox[code][b]} бр в Кашон №${b}`);
-            });
-            reservedStr = boxTexts.join(', ');
-        }
-
         let loc = '';
-        let opKey = String(item['Операция'] || '').trim().toLowerCase();
-        if (isGpTab) {
+        if (isGpItem) {
             loc = nomLocMap[code] || lastDropoffMap[code] || 'Склад Готови Детайли';
         } else {
             loc = (routeMap[code] && routeMap[code][opKey]) ? routeMap[code][opKey] : 'Буфер';
         }
 
-        let shouldShowEmpty = (buf > 0 || (scrap > 0 && scrap !== 20)) && isGpTab;
+        let shouldShowEmpty = (buf > 0 || (scrap > 0 && scrap !== 20)) && isGpItem;
 
         if (qty > 0 || shouldShowEmpty || reservedQty > 0) {
             rows.push({
@@ -555,29 +559,27 @@ async function computeSkladData() {
         }
     });
     
-    if (isGpTab) {
-        Object.keys(bufferMap).forEach(code => {
-            let buf = bufferMap[code];
-            let scrap = bufferScrapMap[code] || 0;
-            let shouldShowEmpty = buf > 0 || (scrap > 0 && scrap !== 20);
-            
-            if (shouldShowEmpty && !rows.some(r => String(r['ID Детайл']).trim().toLowerCase() === code)) {
-                rows.push({
-                    "RawPlanId": "",
-                    "ID Детайл": code.toUpperCase(),
-                    "Име": nomNameMap[code] || code,
-                    "Локация": nomLocMap[code] || lastDropoffMap[code] || 'Склад Готови Детайли',
-                    "Операция": "Готов детайл",
-                    "Оригинална Операция": "Готов детайл",
-                    "Общо": 0,
-                    "Запазени": "0",
-                    "Свободни": 0,
-                    "Минимално количество/Буфер": buf,
-                    "% Брак": scrap
-                });
-            }
-        });
-    }
+    Object.keys(bufferMap).forEach(code => {
+        let buf = bufferMap[code];
+        let scrap = bufferScrapMap[code] || 0;
+        let shouldShowEmpty = buf > 0 || (scrap > 0 && scrap !== 20);
+        
+        if (shouldShowEmpty && !rows.some(r => String(r['ID Детайл']).trim().toLowerCase() === code && String(r['Операция']).toLowerCase() === 'готов продукт')) {
+            rows.push({
+                "RawPlanId": "",
+                "ID Детайл": code.toUpperCase(),
+                "Име": nomNameMap[code] || code,
+                "Локация": nomLocMap[code] || lastDropoffMap[code] || 'Склад Готови Детайли',
+                "Операция": "Готов продукт",
+                "Оригинална Операция": "Готов продукт",
+                "Общо": 0,
+                "Запазени": "0",
+                "Свободни": 0,
+                "Минимално количество/Буфер": buf,
+                "% Брак": scrap
+            });
+        }
+    });
     
     return rows;
 }
