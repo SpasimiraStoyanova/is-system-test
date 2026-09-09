@@ -21,10 +21,10 @@ async function loadData() {
 
     try {
         const todayStr = getTodayString();
-
+        // Since dates in DB are ISO strings (e.g. 2026-09-09T14:00:00.000Z), we use .gte instead of .eq
         const [chekiraniyaRes, otchetiRes] = await Promise.all([
             client.from('chekiraniya').select('*').gte('Време', todayStr + 'T00:00:00').order('Време', { ascending: false }),
-            client.from('otcheti').select('*').eq('Дата', todayStr).order('Време Старт', { ascending: false })
+            client.from('otcheti').select('*').gte('Дата', todayStr + 'T00:00:00').order('Време Старт', { ascending: false })
         ]);
 
         if (chekiraniyaRes.error) throw chekiraniyaRes.error;
@@ -57,7 +57,7 @@ function renderDashboard(chekiraniyaData, otchetiData) {
     let checkedInUsers = [];
     for (let name in latestCheckins) {
         let row = latestCheckins[name];
-        if (row['Действие'] === 'Вход') {
+        if (row['Действие'] === 'Влизане') {
             checkedInUsers.push({
                 name: name,
                 time: new Date(row['Време']).toLocaleTimeString('bg-BG')
