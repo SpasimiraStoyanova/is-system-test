@@ -620,10 +620,18 @@ async function saveForm(e) {
                       if (opName === 'готов детайл') opName = 'готов продукт';
                   }
                   
-                  let query = client.from(tName).select('Количество').eq('ID Детайл', cleanDet).eq('Операция', opName);
+                  let query = client.from(tName).select('*').ilike('ID Детайл', cleanDet).ilike('Операция', opName);
                   let { data: currData } = await query;
                   
-                  let currentStock = currData && currData.length > 0 ? parseFloat(currData[0]['Количество']) || 0 : 0;
+                  let currentStock = 0;
+                  let exactDet = det;
+                  let exactOp = opName;
+                  if (currData && currData.length > 0) {
+                      currentStock = parseFloat(currData[0]['Количество']) || 0;
+                      exactDet = currData[0]['ID Детайл'];
+                      exactOp = currData[0]['Операция'];
+                  }
+                  
                   let newTotal = currentStock + qty;
                   
                   if (newTotal < 0) {
@@ -631,7 +639,7 @@ async function saveForm(e) {
                       throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
                   }
                   
-                  let payload = { "ID Детайл": cleanDet, "Количество": newTotal, "Операция": opName };
+                  let payload = { "ID Детайл": exactDet, "Количество": newTotal, "Операция": exactOp };
                   
                   let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
                   if (upsertErr) throw upsertErr;
@@ -639,6 +647,17 @@ async function saveForm(e) {
                   let auditNewData = { "ID Детайл": cleanDet, "Разлика": qty, "Ново Количество": newTotal, "Операция": opName };
                   
                   await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
+                  
+                  let otchetiPayload = {
+                      "ID План": null,
+                      "ID Детайл": exactDet,
+                      "Операция": exactOp,
+                      "Количество": qty,
+                      "Статус": "Отчетено",
+                      "Оператор": "СИСТЕМА (Корекция наличност)",
+                      "Дата": new Date().toISOString()
+                  };
+                  await client.from('otcheti').insert([otchetiPayload]);
               }
               
               if (bufferQty !== 0 || scrapInput !== "") {
@@ -867,8 +886,8 @@ async function deleteItem(index) {
               let opName = (row['Оригинална Операция'] || row['Операция']).trim().toLowerCase();
               let cleanDet = String(row['ID Детайл']).trim().toLowerCase();
               
-              let query = client.from(tName).delete().eq('ID Детайл', cleanDet);
-              if (currentTab === 'sklad_wip') query = query.eq('Операция', opName);
+              let query = client.from(tName).delete().ilike('ID Детайл', cleanDet);
+              if (currentTab === 'sklad_inventory' || currentTab === 'sklad_wip') query = query.ilike('Операция', opName);
               const { error } = await query;
               
               if (error) throw error; 
