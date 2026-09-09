@@ -338,7 +338,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
     if (invGpData) {
         invGpData.forEach(r => {
             let code = String(r['ID Детайл']).trim().toLowerCase();
-            invGpMap[code] = (invGpMap[code] || 0) + (parseFloat(r['Количество']) || 0);
+            invGpMap[code] = (invGpMap[code] || 0) + (parseFloat(r['Общо']) || 0);
         });
     }
 
@@ -348,7 +348,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
             let code = String(r['ID Детайл']).trim().toLowerCase();
             let op = String(r['Операция']).trim().toLowerCase();
             if (!invWipMap[code]) invWipMap[code] = {};
-            invWipMap[code][op] = (invWipMap[code][op] || 0) + (parseFloat(r['Количество']) || 0);
+            invWipMap[code][op] = (invWipMap[code][op] || 0) + (parseFloat(r['Общо']) || 0);
         });
     }
     
@@ -1041,7 +1041,7 @@ function generateNodeHTML(node, parentMap, childMap, allNodesMap) {
         const formatPast = (op) => `<span class="op-text op-past">${op.name} | ${formatQty(op.completed, node.planQty, op.scrapped)}</span>`;
         const formatFuture = (op) => `<span class="op-text op-future">${op.name} | ${formatQty(0, node.planQty, op.scrapped)}</span>`;
         const formatActive = (op) => {
-            let colorClass = 'active';
+            let colorClass = (op.latestStatus === 'Започната') ? 'active' : 'waiting';
             return `<span class="op-text op-focus ${colorClass}">${op.name} | ${formatQty(op.completed, node.planQty, op.scrapped)}</span>`;
         };
         const formatWaiting = (op) => `<span class="op-text op-focus waiting">${op.name} | ${formatQty(op.completed, node.planQty, op.scrapped)}</span>`;
