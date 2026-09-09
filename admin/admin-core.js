@@ -643,6 +643,10 @@ async function saveForm(e) {
                   
                   await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
                   
+                  let payload = { "ID Детайл": exactDet, "Операция": exactOp, "Количество": newTotal };
+                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
+                  if (upsertErr) throw upsertErr;
+                  
                   let otchetiPayload = {
                       "ID План": null,
                       "ID Детайл": exactDet,
@@ -684,12 +688,12 @@ async function saveForm(e) {
               
               if (diff !== 0) {
                   Swal.fire({title: 'Записване на наличности...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
-                  let tName = currentTab === 'sklad_gp' ? 'inventory_gp' : 'inventory_wip';
-                  let opName = currentTab === 'sklad_gp' ? 'готов детайл' : op.trim().toLowerCase();
+                  let tName = 'inventory';
+                  let opName = op.trim().toLowerCase();
+                  if (opName === 'готов детайл') opName = 'готов продукт';
                   let cleanDet = det.toLowerCase();
                   
-                  let query = client.from(tName).select('Количество').eq('ID Детайл', cleanDet);
-                  if (currentTab === 'sklad_wip') query = query.eq('Операция', opName);
+                  let query = client.from(tName).select('Количество').eq('ID Детайл', cleanDet).eq('Операция', opName);
                   let { data: currData } = await query;
                   
                   let currentStock = currData && currData.length > 0 ? parseFloat(currData[0]['Количество']) || 0 : 0;
@@ -700,16 +704,25 @@ async function saveForm(e) {
                       throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
                   }
                   
-                  let payload = { "ID Детайл": cleanDet, "Количество": newTotal };
-                  if (currentTab === 'sklad_wip') payload["Операция"] = opName;
+                  let payload = { "ID Детайл": cleanDet, "Операция": opName, "Количество": newTotal };
                   
-                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: currentTab === 'sklad_gp' ? 'ID Детайл' : 'ID Детайл, Операция' });
+                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
                   if (upsertErr) throw upsertErr;
                   
-                  let auditNewData = { "ID Детайл": cleanDet, "Разлика": diff, "Ново Количество": newTotal };
-                  if (currentTab === 'sklad_wip') auditNewData["Операция"] = opName;
+                  let auditNewData = { "ID Детайл": cleanDet, "Операция": opName, "Разлика": diff, "Ново Количество": newTotal };
                   
                   await client.from('audit_logs').insert([{ table_name: tName, action_type: 'UPDATE', old_data: { "Количество": oldQty }, new_data: auditNewData }]);
+                  
+                  let otchetiPayload = {
+                      "ID План": null,
+                      "ID Детайл": cleanDet,
+                      "Операция": opName,
+                      "Количество": diff,
+                      "Статус": "Отчетено",
+                      "Оператор": "СИСТЕМА (Корекция наличност)",
+                      "Дата": new Date().toISOString()
+                  };
+                  await client.from('otcheti').insert([otchetiPayload]);
               }
               
               
