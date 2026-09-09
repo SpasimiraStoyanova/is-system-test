@@ -1,4 +1,4 @@
-﻿const SUPABASE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
+const SUPABASE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkeXRoemNnY2p4d2J4dWZ1bnVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MTcxNTMsImV4cCI6MjA5NjE5MzE1M30.XGZX5DHhJCGz9X5s__3iuSghukjanyJmGKv8MLig_jE';
 const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -139,23 +139,26 @@ async function initialFetch() {
 async function fetchDynamicData() {
     let plansQuery = client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', 'Опакован']);
     
-    const [plansRes, reportsRes, skladRes, invGpRes, invWipRes] = await Promise.all([
+    const [plansRes, reportsRes, skladRes, invRes] = await Promise.all([
         fetchAll('plan'),
         fetchAll('otcheti'),
         fetchAll('sklad'),
-        fetchAll('inventory_gp'),
-        fetchAll('inventory_wip')
+        fetchAll('inventory')
     ]);
 
     let activePlans = (plansRes.data || []).filter(p => ['Активен', 'Завършен', 'Опакован'].includes(p['Статус']));
     let realReports = (reportsRes.data || []).filter(r => r['Оператор'] !== '💉 СИСТЕМА (Виртуална компенсация)');
     
+    let invData = invRes.data || [];
+    let invGpData = invData.filter(r => String(r['Операция']).trim().toLowerCase() === 'готов продукт');
+    let invWipData = invData.filter(r => String(r['Операция']).trim().toLowerCase() !== 'готов продукт');
+    
     return {
         plansData: activePlans,
         reportsData: realReports,
         skladData: skladRes.data || [],
-        invGpData: invGpRes.data || [],
-        invWipData: invWipRes.data || []
+        invGpData: invGpData,
+        invWipData: invWipData
     };
 }
 
