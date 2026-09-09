@@ -639,11 +639,6 @@ async function saveForm(e) {
                       throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
                   }
                   
-                  let payload = { "ID Детайл": exactDet, "Количество": newTotal, "Операция": exactOp };
-                  
-                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
-                  if (upsertErr) throw upsertErr;
-                  
                   let auditNewData = { "ID Детайл": cleanDet, "Разлика": qty, "Ново Количество": newTotal, "Операция": opName };
                   
                   await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
