@@ -57,7 +57,7 @@ BEGIN
 
     -- Стъпка 2: Вадим материали (BOM)
     FOR child_record IN 
-        SELECT b."ID Компонент" AS comp, b."Количество" AS needed, m."Тип" AS m_type, m."Мерна единица" as unit
+        SELECT b."ID Компонент" AS comp, b."Количество" AS needed, m."Тип" AS m_type, m."Единици" as unit
         FROM public.bom b
         LEFT JOIN public."Номенклатура" m ON LOWER(TRIM(b."ID Компонент")) = LOWER(TRIM(m."ID Детайл"))
         WHERE LOWER(TRIM(b."ID Родител")) = new_detail 
