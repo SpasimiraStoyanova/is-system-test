@@ -1217,9 +1217,9 @@ async function fetchAuditLogs() {
             let newData = log.new_data || {};
             
             if (log.action_type === 'DELETE') {
-                detailsHtml = `<div style="color:#64748b;"><b>Изтрит запис:</b> ${JSON.stringify(oldData)}</div>`;
+                detailsHtml = `<div style="color:#64748b; white-space:pre-wrap; font-size:0.85em;"><b>Изтрит запис:</b><br>${JSON.stringify(oldData, null, 2)}</div>`;
             } else if (log.action_type === 'INSERT') {
-                detailsHtml = `<div style="color:#166534;"><b>Нов запис:</b> ${JSON.stringify(newData)}</div>`;
+                detailsHtml = `<div style="color:#166534; white-space:pre-wrap; font-size:0.85em;"><b>Нов запис:</b><br>${JSON.stringify(newData, null, 2)}</div>`;
             } else {
                 let changesHtml = [];
                 for (let key in newData) {
@@ -1234,7 +1234,7 @@ async function fetchAuditLogs() {
                 <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
                 <td style="padding:10px; border:1px solid #e2e8f0; font-weight:bold; color:#1e293b;">${log.table_name}</td>
                 <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${actionBadge}</td>
-                <td style="padding:10px; border:1px solid #e2e8f0; font-family:monospace;">${detailsHtml}</td>
+                <td style="padding:10px; border:1px solid #e2e8f0; font-family:monospace; word-break:break-word;">${detailsHtml}</td>
             </tr>`;
         });
         
