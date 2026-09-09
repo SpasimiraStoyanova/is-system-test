@@ -78,7 +78,7 @@ BEGIN
                 IF nom_mat IS NOT NULL AND nom_mat != '' THEN
                     SELECT LOWER(TRIM("Тип")) INTO nom_type FROM public."Номенклатура" WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
                     
-                    IF nom_type = 'Материал' OR nom_type IS NULL THEN
+                    IF nom_type = 'материал' OR nom_type IS NULL THEN
                         UPDATE public.sklad 
                         SET "Изразходено" = GREATEST(0, COALESCE("Изразходено"::text, '0')::numeric - (old_qty * nom_qty)), 
                             "Остатък" = COALESCE("Остатък"::text, '0')::numeric + (old_qty * nom_qty)
