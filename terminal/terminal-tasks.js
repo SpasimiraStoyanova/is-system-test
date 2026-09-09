@@ -153,7 +153,7 @@ async function loadTasks(isSilent = false) {
                   }
               }
               let key = code + '_' + op;
-              physicalStock[key] = (physicalStock[key] || 0) + (parseFloat(r['Количество']) || 0);
+              physicalStock[key] = (physicalStock[key] || 0) + (parseFloat(r['Общо']) || 0);
           });
       }
 
