@@ -21,7 +21,7 @@ async function loadTasks(isSilent = false) {
           client.from('marshruti').select('*').limit(100000), 
           client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(100000), 
           client.from('Номенклатура').select('*').limit(100000),
-          client.from('inventory_gp').select('*').limit(100000)
+          client.from('inventory').select('*').ilike('Операция', '%готов продукт%').limit(100000)
       ]);
 
       if (plansRes.error) throw plansRes.error;

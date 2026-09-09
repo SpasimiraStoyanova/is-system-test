@@ -42,20 +42,17 @@ async function loadTasks(isSilent = false) {
   if (!isSilent) container.innerHTML = '<div id="loadingMsg" style="text-align:center; padding: 40px; font-weight:bold; color:#64748b; font-size: 1.2em;">Търсене на задачи... 🔄</div>';
   
   try {
-      const [plansRes, bomRes, routesRes, reportsRes, skladRes, nomRes, bufferRes, gpRes, wipRes] = await Promise.all([
+      const [plansRes, bomRes, routesRes, reportsRes, skladRes, nomRes, bufferRes, invRes] = await Promise.all([
           client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', '📦 Опакован']).limit(100000), client.from('bom').select('*').limit(100000),
           client.from('marshruti').select('*').limit(100000), client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(2000), 
           client.from('sklad').select('*').limit(100000), client.from('Номенклатура').select('*').limit(100000),
           client.from('sklad_bufferi').select('*').limit(100000),
-          client.from('inventory_gp').select('*').limit(100000),
-          client.from('inventory_wip').select('*').limit(100000)
+          client.from('inventory').select('*').limit(100000)
       ]);
 
       if (plansRes.error) throw plansRes.error; if (bomRes.error) throw bomRes.error;
       if (routesRes.error) throw routesRes.error; if (reportsRes.error) throw reportsRes.error;
-      if (gpRes.error) throw gpRes.error; if (wipRes.error) throw wipRes.error;
-
-      if (gpRes.error) throw gpRes.error; if (wipRes.error) throw wipRes.error;
+      if (invRes.error) throw invRes.error;
 
       globalNomData = nomRes.data || [];
       let namesMap = {}; if (nomRes.data) nomRes.data.forEach(n => { let code = normalizeStr(n['ID Детайл']); namesMap[code] = n['Вътрешно име'] || ''; });
@@ -145,21 +142,16 @@ async function loadTasks(isSilent = false) {
       });
 
       let physicalStock = {}; 
-      if (gpRes.data) {
-          gpRes.data.forEach(r => {
-              let code = normalizeStr(r['ID Детайл']);
-              let routes = globalRoutesByDetail[code];
-              if (routes && routes.length > 0) {
-                  let lastOp = normalizeStr(routes[routes.length - 1]['Име на операция']);
-                  let key = code + '_' + lastOp;
-                  physicalStock[key] = (physicalStock[key] || 0) + (parseFloat(r['Количество']) || 0);
-              }
-          });
-      }
-      if (wipRes.data) {
-          wipRes.data.forEach(r => {
+      if (invRes.data) {
+          invRes.data.forEach(r => {
               let code = normalizeStr(r['ID Детайл']);
               let op = normalizeStr(r['Операция']);
+              if (op === 'готов продукт') {
+                  let routes = globalRoutesByDetail[code];
+                  if (routes && routes.length > 0) {
+                      op = normalizeStr(routes[routes.length - 1]['Име на операция']);
+                  }
+              }
               let key = code + '_' + op;
               physicalStock[key] = (physicalStock[key] || 0) + (parseFloat(r['Количество']) || 0);
           });

@@ -35,7 +35,7 @@ function switchTab(tabKey) {
   const pdfBtn = document.getElementById('pdfBtn'); const logBtn = document.getElementById('logisticsBtn'); const mrpBtn = document.getElementById('mrpBtn'); const sidebar = document.getElementById('personnelSidebar');
   
   addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`; 
-  addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_gp' && tabKey !== 'sklad_wip') ? 'none' : 'flex';
+  addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_inventory') ? 'none' : 'flex';
   if (pdfBtn) pdfBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
   if (logBtn) logBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
   if (mrpBtn) mrpBtn.style.display = (tabKey === 'porachki') ? 'flex' : 'none';
@@ -83,7 +83,7 @@ async function loadCurrentTableData() {
   selectedIndices.clear(); updateMassActionBar();
   try {
       let query;
-      if (currentTab === 'sklad_gp' || currentTab === 'sklad_wip') {
+      if (currentTab === 'sklad_inventory') {
           query = client.from('plan').select('id').limit(1); // dummy query
       } else {
           query = client.from(config.table).select('*').limit(10000);
@@ -150,10 +150,8 @@ async function loadCurrentTableData() {
                   }
               });
           }
-      } else if (currentTab === 'sklad_gp') {
-          rows = await computeSkladData(true);
-      } else if (currentTab === 'sklad_wip') {
-          rows = await computeSkladData(false);
+      } else if (currentTab === 'sklad_inventory') {
+          rows = await computeSkladData();
       }
       
       if (currentTab === 'sklad') {
@@ -269,7 +267,7 @@ function renderDynamicTable(itemsToRender = null) {
           if (item['__packaged_info']) td.innerHTML += item['__packaged_info'];
           row.appendChild(td); return;
       }
-      if ((currentTab === 'sklad_gp' || currentTab === 'sklad_wip') && (f.name === 'Общо' || f.name === 'Минимално количество/Буфер') && typeof val === 'number' && val < 0) {
+      if (currentTab === 'sklad_inventory' && (f.name === 'Общо' || f.name === 'Минимално количество/Буфер') && typeof val === 'number' && val < 0) {
           td.innerHTML = `<span style="color:#dc2626; font-weight:bold;">${val}</span>`;
           row.appendChild(td); return;
       }
@@ -354,7 +352,7 @@ function filterSkladDetails(val) {
 function buildForm(data = null) {
   const area = document.getElementById('formFieldsArea'); area.innerHTML = ''; const fields = tableConfigs[currentTab].fields;
   
-  if (currentTab === 'sklad_gp' || currentTab === 'sklad_wip') {
+  if (currentTab === 'sklad_inventory') {
       if (!isEditMode) {
           area.innerHTML = `
             <div class="form-group" style="position:relative;">
@@ -390,7 +388,7 @@ function buildForm(data = null) {
           `;
           document.getElementById('inp_skladDetail').value = data['ID Детайл'] || '';
           document.getElementById('inp_skladOp').value = data['Операция'] || '';
-          document.getElementById('inp_skladRealOp').value = (currentTab === 'sklad_gp') ? (data['Оригинална Операция'] || data['Операция'] || '') : (data['Операция'] || '');
+          document.getElementById('inp_skladRealOp').value = data['Операция'] || '';
           document.getElementById('inp_skladOldQty').value = data['Общо'] || 0;
           document.getElementById('inp_skladQty').value = data['Общо'] || 0;
           document.getElementById('inp_skladBuffer').value = data['Минимално количество/Буфер'] || 0;
@@ -429,8 +427,8 @@ async function fetchAll(table, orderCol) {
     return { data: allData };
 }
 
-async function computeSkladData(isGpTab) {
-    const table = isGpTab ? 'inventory_gp' : 'inventory_wip';
+async function computeSkladData() {
+    const table = 'inventory';
     const [invRes, nomRes, bufferRes, routeRes] = await Promise.all([
         fetchAll(table),
         fetchAll('Номенклатура'),
@@ -591,7 +589,7 @@ async function computeSkladData(isGpTab) {
 async function saveForm(e) {
   e.preventDefault(); const config = tableConfigs[currentTab]; const btn = e.target.querySelector('button[type="submit"]'); btn.innerText = 'Записване...'; btn.disabled = true; 
   
-  if (currentTab === 'sklad_gp' || currentTab === 'sklad_wip') {
+  if (currentTab === 'sklad_inventory') {
       try {
           if (!isEditMode) {
               const det = document.getElementById('inp_skladDetail').value.trim();
@@ -607,25 +605,20 @@ async function saveForm(e) {
                   
                   let cleanDet = det.toLowerCase();
                   let opName = op.trim().toLowerCase();
-                  let tName = currentTab === 'sklad_gp' ? 'inventory_gp' : 'inventory_wip';
+                  let tName = 'inventory';
                   
                   const { data: routeData } = await client.from('marshruti').select('*').ilike('Код на детайла', cleanDet);
                   if (routeData && routeData.length > 0) {
                       routeData.sort((a,b) => (parseInt(a['№ Операция'])||0) - (parseInt(b['№ Операция'])||0));
                       let lastOp = routeData[routeData.length - 1]['Име на операция'].trim().toLowerCase();
-                      
                       if (opName === lastOp || opName === 'готов детайл') {
-                          tName = 'inventory_gp';
-                          opName = 'готов детайл';
-                      } else {
-                          tName = 'inventory_wip';
+                          opName = 'готов продукт';
                       }
                   } else {
-                      if (currentTab === 'sklad_gp') opName = 'готов детайл';
+                      if (opName === 'готов детайл') opName = 'готов продукт';
                   }
                   
-                  let query = client.from(tName).select('Количество').eq('ID Детайл', cleanDet);
-                  if (tName === 'inventory_wip') query = query.eq('Операция', opName);
+                  let query = client.from(tName).select('Количество').eq('ID Детайл', cleanDet).eq('Операция', opName);
                   let { data: currData } = await query;
                   
                   let currentStock = currData && currData.length > 0 ? parseFloat(currData[0]['Количество']) || 0 : 0;
@@ -636,14 +629,12 @@ async function saveForm(e) {
                       throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
                   }
                   
-                  let payload = { "ID Детайл": cleanDet, "Количество": newTotal };
-                  if (tName === 'inventory_wip') payload["Операция"] = opName;
+                  let payload = { "ID Детайл": cleanDet, "Количество": newTotal, "Операция": opName };
                   
-                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: tName === 'inventory_gp' ? 'ID Детайл' : 'ID Детайл, Операция' });
+                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
                   if (upsertErr) throw upsertErr;
                   
-                  let auditNewData = { "ID Детайл": cleanDet, "Разлика": qty, "Ново Количество": newTotal };
-                  if (tName === 'inventory_wip') auditNewData["Операция"] = opName;
+                  let auditNewData = { "ID Детайл": cleanDet, "Разлика": qty, "Ново Количество": newTotal, "Операция": opName };
                   
                   await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
               }
@@ -752,7 +743,7 @@ async function saveForm(e) {
                 throw new Error("Не е намерена маршрутна карта за този детайл. Не може да се определи последната операция!");
             }
             
-            const { data: stockData, error: stockErr } = await client.from('computed_sklad_gp').select('*').eq('ID Детайл', detailID).eq('Операция', selectedOp);
+            const { data: stockData, error: stockErr } = await client.from('inventory').select('*').eq('ID Детайл', detailID).eq('Операция', selectedOp);
             if (stockErr) throw stockErr;
             
             let availableStock = 0;
@@ -794,12 +785,12 @@ async function saveForm(e) {
     if (isEditMode) { 
         const row = globalRows[editingIndex]; 
         const keyVal = row[config.key]; 
-        if (config.table === 'computed_sklad_gp' || config.table === 'computed_sklad_wip') {
+        if (currentTab === 'sklad_inventory') {
             let oldQty = parseFloat(row['Общо']) || 0;
             let newQty = parseFloat(payload['Общо']) || 0;
             let delta = newQty - oldQty;
             if (delta !== 0) {
-                let opName = config.table === 'computed_sklad_gp' ? (row['Оригинална Операция'] || row['Операция']) : row['Операция'];
+                let opName = (row['Оригинална Операция'] || row['Операция']);
                 let planIdVal = document.getElementById('inp_skladPlanId').value || null;
                 let otchetiPayload = {
                     "ID План": planIdVal,
@@ -865,13 +856,13 @@ async function saveForm(e) {
 async function deleteItem(index) {
   const config = tableConfigs[currentTab]; const row = globalRows[index]; 
   
-  if (currentTab === 'sklad_gp' || currentTab === 'sklad_wip') {
+  if (currentTab === 'sklad_inventory') {
       const res = await Swal.fire({ title: 'Нулиране на наличността?', text: `Наличността за ${row['ID Детайл']} (${row['Операция']}) ще бъде зададена на 0.`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Да, нулирай!', cancelButtonText: 'Отказ' });
       if (res.isConfirmed) { 
           try { 
               Swal.fire({title: 'Записване...', allowOutsideClick: false, didOpen: () => Swal.showLoading()}); 
-              let tName = currentTab === 'sklad_gp' ? 'inventory_gp' : 'inventory_wip';
-              let opName = currentTab === 'sklad_gp' ? 'готов детайл' : (row['Оригинална Операция'] || row['Операция']).trim().toLowerCase();
+              let tName = 'inventory';
+              let opName = (row['Оригинална Операция'] || row['Операция']).trim().toLowerCase();
               let cleanDet = String(row['ID Детайл']).trim().toLowerCase();
               
               let query = client.from(tName).delete().eq('ID Детайл', cleanDet);
