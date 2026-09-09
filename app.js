@@ -341,7 +341,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
     if (invGpData) {
         invGpData.forEach(r => {
             let code = String(r['ID Детайл']).trim().toLowerCase();
-            invGpMap[code] = (invGpMap[code] || 0) + (parseFloat(r['Общо']) || 0);
+            invGpMap[code] = (invGpMap[code] || 0) + (parseFloat(r['Количество']) || 0);
         });
     }
 
@@ -351,7 +351,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
             let code = String(r['ID Детайл']).trim().toLowerCase();
             let op = String(r['Операция']).trim().toLowerCase();
             if (!invWipMap[code]) invWipMap[code] = {};
-            invWipMap[code][op] = (invWipMap[code][op] || 0) + (parseFloat(r['Общо']) || 0);
+            invWipMap[code][op] = (invWipMap[code][op] || 0) + (parseFloat(r['Количество']) || 0);
         });
     }
     
