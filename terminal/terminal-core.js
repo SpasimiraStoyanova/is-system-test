@@ -1,4 +1,4 @@
-﻿const client = supabase.createClient(
+const client = supabase.createClient(
     'https://zdythzcgcjxwbxufunuh.supabase.co', 
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkeXRoemNnY2p4d2J4dWZ1bnVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MTcxNTMsImV4cCI6MjA5NjE5MzE1M30.XGZX5DHhJCGz9X5s__3iuSghukjanyJmGKv8MLig_jE'
 );
@@ -61,7 +61,27 @@ async function initTerminal() {
     loadTasks();
     if (typeof loadHistoryFromDB === 'function') loadHistoryFromDB();
 
-    setInterval(() => { if (!activeTaskId && isUserCheckedIn) loadTasks(true); }, 30000); 
+    setInterval(() => { 
+        if (!activeTaskId && isUserCheckedIn) loadTasks(true); 
+        checkSystemCommands();
+    }, 30000); 
+}
+
+let terminalStartTime = new Date().getTime();
+
+async function checkSystemCommands() {
+    try {
+        const { data, error } = await client.from('system_commands').select('*').eq('id', 1).single();
+        if (data && data.last_triggered_at) {
+            let triggerTime = new Date(data.last_triggered_at).getTime();
+            if (triggerTime > terminalStartTime + 5000) { // Add 5s buffer to avoid immediate reload if starting up while sync was hit
+                console.log("Remote reload command received!");
+                window.location.reload(true);
+            }
+        }
+    } catch (e) {
+        console.error("Error checking system commands", e);
+    }
 }
 
 function checkSystemMessage() {

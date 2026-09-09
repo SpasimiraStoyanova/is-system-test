@@ -1245,3 +1245,26 @@ async function fetchAuditLogs() {
         container.innerHTML = '<div style="text-align:center; padding:20px; color:#ef4444;">Грешка: ' + err.message + '</div>';
     }
 }
+
+window.forceReloadTerminals = async function() {
+    Swal.fire({
+        title: 'Сигурни ли сте?',
+        text: 'Това ще презареди екраните на всички терминали в цеха.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc2626',
+        confirmButtonText: 'Да, синхронизирай!',
+        cancelButtonText: 'Отказ'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            Swal.fire({ title: 'Изпращане...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            try {
+                const { error } = await client.from('system_commands').upsert({ id: 1, command_name: 'reload_terminals', last_triggered_at: new Date().toISOString() });
+                if (error) throw error;
+                Swal.fire('Готово!', 'Сигналът е изпратен. Всички терминали ще се презаредят след малко.', 'success');
+            } catch (err) {
+                Swal.fire('Грешка', err.message, 'error');
+            }
+        }
+    });
+};

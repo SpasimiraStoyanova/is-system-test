@@ -30,6 +30,7 @@
                 <input type="file" id="pdfUploader" accept="application/pdf" style="display:none;" onchange="processPDF(event)">
                 <button class="btn-primary" id="pdfBtn" onclick="document.getElementById('pdfUploader').click()" style="display: none; background-color: #059669; box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);">📥 Зареди от PDF</button>
                 <button class="btn-primary" onclick="window.open('index.html', '_blank')" style="background-color: #0284c7; box-shadow: 0 2px 4px rgba(2, 132, 199, 0.3);">📺 Монитор</button>
+                <button class="btn-primary" onclick="window.forceReloadTerminals()" style="background-color: #dc2626; box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3);" title="Принудително рестартира всички таблети в цеха">🔄 Синхронизирай Терминалите</button>
                 <button class="btn-primary" onclick="openNotificationDialog()" style="background-color: #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);">📢 Известие</button>
                 <button class="btn-primary" id="logisticsBtn" onclick="openLogisticsModal()" style="display: none; background-color: #8b5cf6; box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3);">📦 Логистика на План</button>
                 <button class="btn-primary" id="mrpBtn" onclick="openMrpModal()" style="display: none; background-color: #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);">🚨 Анализ на доставките</button>
