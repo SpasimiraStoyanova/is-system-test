@@ -51,7 +51,30 @@ BEGIN
         IF prev_op IS NOT NULL THEN
             UPDATE public.inventory SET "Количество" = GREATEST(0, COALESCE("Количество"::text, '0')::numeric - new_qty) WHERE LOWER(TRIM("ID Детайл")) = new_detail AND LOWER(TRIM("Операция")) = prev_op;
         ELSE
-            UPDATE public.sklad SET "Остатък" = GREATEST(0, COALESCE("Остатък"::text, '0')::numeric - new_qty), "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + new_qty WHERE LOWER(TRIM("ID Детайл")) = new_detail;
+            DECLARE
+                nom_mat text;
+                nom_qty numeric;
+                nom_type text;
+            BEGIN
+                SELECT LOWER(TRIM("ID Родител")), COALESCE(NULLIF("Разходна норма"::text, ''), '1')::numeric INTO nom_mat, nom_qty
+                FROM public."Номенклатура"
+                WHERE LOWER(TRIM("ID Детайл")) = new_detail;
+                
+                IF nom_mat IS NOT NULL AND nom_mat != '' THEN
+                    SELECT LOWER(TRIM("Тип")) INTO nom_type FROM public."Номенклатура" WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
+                    
+                    IF nom_type = 'материал' OR nom_type IS NULL THEN
+                        UPDATE public.sklad 
+                        SET "Остатък" = GREATEST(0, COALESCE("Остатък"::text, '0')::numeric - (new_qty * nom_qty)), 
+                            "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + (new_qty * nom_qty)
+                        WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
+                    ELSE
+                        UPDATE public.inventory 
+                        SET "Количество" = GREATEST(0, COALESCE("Количество"::text, '0')::numeric - (new_qty * nom_qty))
+                        WHERE LOWER(TRIM("ID Детайл")) = nom_mat AND LOWER(TRIM("Операция")) = 'готов продукт';
+                    END IF;
+                END IF;
+            END;
         END IF;
     END IF;
 
