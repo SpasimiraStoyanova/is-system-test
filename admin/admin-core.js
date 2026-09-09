@@ -88,7 +88,7 @@ async function loadCurrentTableData() {
       } else {
           query = client.from(config.table).select('*').limit(10000);
           if (currentTab === 'otcheti') {
-              query = query.neq('Статус', 'Започната').neq('Статус', 'Прекъсната').order('Дата', { ascending: false });
+              query = query.order('Дата', { ascending: false });
           }
           if (currentTab === 'chekiraniya') query = query.order('Време', { ascending: false });
       }
