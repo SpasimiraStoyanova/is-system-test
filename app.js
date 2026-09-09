@@ -1041,7 +1041,7 @@ function generateNodeHTML(node, parentMap, childMap, allNodesMap) {
         const formatPast = (op) => `<span class="op-text op-past">${op.name} | ${formatQty(op.completed, node.planQty, op.scrapped)}</span>`;
         const formatFuture = (op) => `<span class="op-text op-future">${op.name} | ${formatQty(0, node.planQty, op.scrapped)}</span>`;
         const formatActive = (op) => {
-            let colorClass = (op.latestStatus === 'Започната') ? 'active' : 'waiting';
+            let colorClass = 'active';
             return `<span class="op-text op-focus ${colorClass}">${op.name} | ${formatQty(op.completed, node.planQty, op.scrapped)}</span>`;
         };
         const formatWaiting = (op) => `<span class="op-text op-focus waiting">${op.name} | ${formatQty(op.completed, node.planQty, op.scrapped)}</span>`;
