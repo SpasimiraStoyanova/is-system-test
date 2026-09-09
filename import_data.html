@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+    <meta charset="UTF-8">
+    <title>Импорт на данни (Prod -> Test)</title>
+    <!-- Зареждаме Supabase JS Library директно от CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        #log { margin-top: 20px; padding: 10px; background: #f0f0f0; border-radius: 5px; min-height: 200px; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+
+    <h2>Импорт на Номенклатура, БОМ, Маршрути и Буфери от Реалната към Тестовата база</h2>
+    <p>Натиснете бутона, за да стартирате процеса.</p>
+    <button onclick="startImport()">▶ СТАРТИРАЙ ИМПОРТА</button>
+
+    <div id="log"></div>
+
+    <script>
+        const logEl = document.getElementById('log');
+        function log(msg) {
+            logEl.textContent += msg + "\n";
+            console.log(msg);
+        }
+
+        async function startImport() {
+            log("Инициализиране на връзките към базите...");
+
+            // Реалната (PROD) база данни
+            const prodUrl = 'https://aoekbmhgbohsgpwqsizv.supabase.co';
+            const prodKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFvZWtibWhnYm9oc2dwd3FzaXp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NDU1OTEsImV4cCI6MjEwMjUyMTU5MX0.ikCySPlyg0kPHt0sx34pndAWJAJ9tVCyWonBuG-lLQU';
+            const prodClient = window.supabase.createClient(prodUrl, prodKey);
+
+            // Тестовата (TEST) база данни
+            const testUrl = 'https://zdythzcgcjxwbxufunuh.supabase.co';
+            const testKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkeXRoemNnY2p4d2J4dWZ1bnVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MTcxNTMsImV4cCI6MjA5NjE5MzE1M30.XGZX5DHhJCGz9X5s__3iuSghukjanyJmGKv8MLig_jE';
+            const testClient = window.supabase.createClient(testUrl, testKey);
+
+            const tablesToCopy = ['Номенклатура', 'bom', 'marshruti', 'sklad_bufferi', 'sklad'];
+
+            for (const table of tablesToCopy) {
+                log(`\n--- Обработка на таблица: ${table} ---`);
+                log(`Извличане от реалната база...`);
+                
+                let { data, error } = await prodClient.from(table).select('*').limit(100000);
+                
+                if (error) {
+                    log(`❌ Грешка при извличане от ${table}: ${error.message}`);
+                    continue;
+                }
+
+                log(`Успешно извлечени ${data.length} реда.`);
+
+                if (data.length > 0) {
+                    log(`Започва импортиране в тестовата база...`);
+                    
+                    let { error: insErr } = await testClient.from(table).insert(data);
+                    
+                    if (insErr) {
+                        log(`❌ Грешка при импортиране в ${table}: ${insErr.message}`);
+                    } else {
+                        log(`✅ УСПЕШНО импортирана таблица: ${table}`);
+                    }
+                } else {
+                    log(`Няма данни за импортиране в тази таблица.`);
+                }
+            }
+
+            log(`\n🎉 Импортът приключи! Можете да затворите този прозорец и да рефрешнете системата си.`);
+        }
+    </script>
+</body>
+</html>
