@@ -3,6 +3,11 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 window.onload = async function() {
+    const datePicker = document.getElementById('date-picker');
+    if (datePicker) {
+        datePicker.value = getTodayString();
+        datePicker.addEventListener('change', loadData);
+    }
     await loadData();
     setInterval(loadData, 15000); 
 };
@@ -20,11 +25,17 @@ async function loadData() {
     document.getElementById('main-layout').style.display = 'none';
 
     try {
-        const todayStr = getTodayString();
-        // Since dates in DB are ISO strings (e.g. 2026-09-09T14:00:00.000Z), we use .gte instead of .eq
+        const datePicker = document.getElementById('date-picker');
+        const selectedDateStr = datePicker ? datePicker.value : getTodayString();
+        
+        let nextDay = new Date(selectedDateStr);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextDayStr = nextDay.toISOString().split('T')[0];
+
+        // Fetch exactly within the 24-hour bounds of the selected date
         const [chekiraniyaRes, otchetiRes] = await Promise.all([
-            client.from('chekiraniya').select('*').gte('Време', todayStr + 'T00:00:00').order('Време', { ascending: false }),
-            client.from('otcheti').select('*').gte('Дата', todayStr + 'T00:00:00').order('Време Старт', { ascending: false })
+            client.from('chekiraniya').select('*').gte('Време', selectedDateStr + 'T00:00:00').lt('Време', nextDayStr + 'T00:00:00').order('Време', { ascending: false }),
+            client.from('otcheti').select('*').gte('Дата', selectedDateStr + 'T00:00:00').lt('Дата', nextDayStr + 'T00:00:00').order('Време Старт', { ascending: false })
         ]);
 
         if (chekiraniyaRes.error) throw chekiraniyaRes.error;
