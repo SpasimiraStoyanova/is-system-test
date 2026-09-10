@@ -905,40 +905,43 @@ function calculateOperationStates(node, children, allNodesMap) {
                 container.innerHTML = finalHTML;
 
                 // --- ПАКЕТИ (РОТОРНИ / СТАТОРНИ) ---
+                const packetsLane = document.getElementById('lane-packets');
                 const packetsContainer = document.getElementById('w-packets');
-                if (packetsContainer) {
-                    let allPackets = [
-                        ...(data.nodes.small_rotors || []),
-                        ...(data.nodes.small_rotors_var11 || []),
-                        ...(data.nodes.small_rotors_var25 || [])
-                    ];
-                    
-                    if (variant) {
-                        allPackets = allPackets.filter(n => n.displayName && (n.displayName.includes('Вар. ' + variant) || n.displayName.includes('Вар.' + variant)));
-                    }
+                
+                if (packetsLane && packetsContainer) {
+                    if (variant === '11') {
+                        packetsLane.style.display = 'none';
+                    } else {
+                        packetsLane.style.display = 'flex';
+                        let allPackets = [
+                            ...(data.nodes.small_rotors || []),
+                            ...(data.nodes.small_rotors_var11 || []),
+                            ...(data.nodes.small_rotors_var25 || [])
+                        ];
 
-                    let packetGroups = {};
-                    allPackets.forEach(p => {
-                        let pid = p.planMonth || p.planId;
-                        if (!packetGroups[pid]) packetGroups[pid] = [];
-                        
-                        // За пакетите оставяме операциите им както са, за да се вижда Редене + Печене
-                        packetGroups[pid].push(p);
-                    });
-
-                    let packetsHTML = '';
-                    for (const [planId, nodes] of Object.entries(packetGroups)) {
-                        let planHTML = `<div class="plan-group" style="width: 100%;"><div class="plan-label">ПЛАН: ${planId}</div>`;
-                        planHTML += `<div class="family-row" style="flex-wrap: wrap; display: flex; flex-direction: row; gap: 20px;">`;
-                        
-                        nodes.forEach(n => {
-                            planHTML += `<div class="bom-column">` + generateNodeHTML(n, parentMap, childMap, allNodesMap) + `</div>`;
+                        let packetGroups = {};
+                        allPackets.forEach(p => {
+                            let pid = p.planMonth || p.planId;
+                            if (!packetGroups[pid]) packetGroups[pid] = [];
+                            
+                            // За пакетите оставяме операциите им както са, за да се вижда Редене + Печене
+                            packetGroups[pid].push(p);
                         });
-                        
-                        planHTML += `</div></div>`;
-                        packetsHTML += planHTML;
+
+                        let packetsHTML = '';
+                        for (const [planId, nodes] of Object.entries(packetGroups)) {
+                            let planHTML = `<div class="plan-group" style="width: 100%;"><div class="plan-label">ПЛАН: ${planId}</div>`;
+                            planHTML += `<div class="family-row" style="flex-wrap: wrap; display: flex; flex-direction: row; gap: 20px;">`;
+                            
+                            nodes.forEach(n => {
+                                planHTML += `<div class="bom-column">` + generateNodeHTML(n, parentMap, childMap, allNodesMap) + `</div>`;
+                            });
+                            
+                            planHTML += `</div></div>`;
+                            packetsHTML += planHTML;
+                        }
+                        packetsContainer.innerHTML = packetsHTML;
                     }
-                    packetsContainer.innerHTML = packetsHTML;
                 }
 
                 setTimeout(() => {
