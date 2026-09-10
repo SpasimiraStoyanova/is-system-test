@@ -36,7 +36,7 @@ async function loadData() {
         const [chekiraniyaRes, otchetiRes, accessRes] = await Promise.all([
             client.from('chekiraniya').select('*').gte('Време', selectedDateStr + 'T00:00:00').lt('Време', nextDayStr + 'T00:00:00').order('Време', { ascending: false }),
             client.from('otcheti').select('*').gte('Дата', selectedDateStr + 'T00:00:00').lt('Дата', nextDayStr + 'T00:00:00').order('Време Старт', { ascending: false }),
-            client.from('access').select('email, name')
+            client.from('personal').select('Имейл, Име')
         ]);
 
         if (chekiraniyaRes.error) throw chekiraniyaRes.error;
@@ -48,8 +48,8 @@ async function loadData() {
         
         let emailToName = {};
         accessData.forEach(row => {
-            if (row.email && row.name) {
-                emailToName[row.email.trim().toLowerCase()] = row.name.trim();
+            if (row['Имейл'] && row['Име']) {
+                emailToName[row['Имейл'].trim().toLowerCase()] = row['Име'].trim();
             }
         });
 
