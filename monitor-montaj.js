@@ -917,11 +917,17 @@ function calculateOperationStates(node, children, allNodesMap) {
                             ...(data.nodes.small_rotors || []),
                             ...(data.nodes.small_rotors_var11 || []),
                             ...(data.nodes.small_rotors_var25 || []),
-                            ...(data.nodes.statori || []).filter(n => n.displayName.toLowerCase().includes("пак") || (n.partType && n.partType.toLowerCase().includes("пакет")))
+                            ...(data.nodes.statori || [])
                         ];
 
-                        // Вземаме само главните възли (които нямат родител), за да не чертаем децата им като отделни пакети
-                        allPackets = allPackets.filter(n => !parentMap[n.id]);
+                        // Вземаме само главните възли (които нямат родител) и филтрираме строго само роторни и статорни пакети
+                        allPackets = allPackets.filter(n => {
+                            if (parentMap[n.id]) return false;
+                            let name = (n.displayName || "").toLowerCase();
+                            let type = (n.partType || "").toLowerCase();
+                            return name.includes("статорен пак") || type.includes("статорен пакет") || 
+                                   name.includes("роторен пак") || type.includes("роторен пакет");
+                        });
 
                         let packetGroups = {};
                         allPackets.forEach(p => {
