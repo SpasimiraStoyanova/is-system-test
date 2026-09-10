@@ -702,7 +702,10 @@ function calculateOperationStates(node, children, allNodesMap) {
     let stateMachine = [];
     let hasActive = false;
     let len = (node.operations && node.operations.length > 0) ? node.operations.length : 0;
-                    if (op.state === 'green' || op.completed >= node.planQty) {
+    for (let i = 0; i < len; i++) {
+        let op = node.operations[i];
+        let state = 'hidden';
+        if (op.state === 'green' || op.completed >= node.planQty) {
                         state = 'past';
                     } else if (op.state === 'blue' || op.completed > 0) {
                         state = 'active'; 
