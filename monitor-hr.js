@@ -152,32 +152,44 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
     document.getElementById('w-active-tasks').innerHTML = htmlActiveTasks || '<div style="color:#94a3b8; padding:10px;">Няма започнати задачи в момента</div>';
 
 
-    // 3. ТОП ИЗПЪЛНИТЕЛИ (БРОЙКИ ЗА ДЕНЯ)
+    // 3. ИЗВЪРШЕНА РАБОТА (ЗА ДЕНЯ)
     let userProduction = {};
     otchetiData.forEach(row => {
         if (row['Статус'] === 'Отчетено') {
             let name = String(row['Оператор'] || '').trim();
-            if (name) {
-                userProduction[name] = (userProduction[name] || 0) + (parseFloat(row['Количество']) || 0);
+            let detail = row['ID Детайл'] || 'Неизвестен детайл';
+            let op = row['Операция'] || 'Неизвестна операция';
+            let qty = parseFloat(row['Количество']) || 0;
+            
+            if (name && qty > 0) {
+                if (!userProduction[name]) userProduction[name] = {};
+                let key = `${detail} (${op})`;
+                userProduction[name][key] = (userProduction[name][key] || 0) + qty;
             }
         }
     });
 
-    let leaderboard = Object.keys(userProduction).map(name => ({
-        name: name,
-        qty: userProduction[name]
-    })).sort((a, b) => b.qty - a.qty);
-
-    let htmlLeaderboard = '';
-    leaderboard.forEach((user, index) => {
-        let rankObj = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index+1}`;
-        htmlLeaderboard += `
-            <div class="stat-row">
-                <div class="stat-rank">${rankObj}</div>
-                <div class="stat-name">${user.name}</div>
-                <div class="stat-qty">${user.qty} бр.</div>
+    let htmlCompleted = '';
+    // Sort operators alphabetically
+    let operators = Object.keys(userProduction).sort((a,b) => a.localeCompare(b));
+    
+    operators.forEach(name => {
+        let itemsHtml = '';
+        for (let taskKey in userProduction[name]) {
+            itemsHtml += `
+                <div style="display: flex; justify-content: space-between; font-size: 0.95em; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <span style="color: #cbd5e1;">✓ ${taskKey}</span>
+                    <strong style="color: #10b981;">${userProduction[name][taskKey]} бр.</strong>
+                </div>`;
+        }
+        
+        htmlCompleted += `
+            <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid #10b981; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                <div style="font-weight: 900; font-size: 1.1em; margin-bottom: 8px; color: #f8fafc; text-transform: uppercase;">👤 ${name}</div>
+                ${itemsHtml}
             </div>
         `;
     });
-    document.getElementById('w-leaderboard').innerHTML = htmlLeaderboard || '<div style="color:#94a3b8; padding:10px;">Няма отчетени бройки днес</div>';
+    
+    document.getElementById('w-completed-work').innerHTML = htmlCompleted || '<div style="color:#94a3b8; padding:10px;">Няма отчетени задачи днес</div>';
 }
