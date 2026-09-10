@@ -114,14 +114,22 @@ async function loadData() {
         // Fetch quotas
         const quotasRes = await client.from('planner_bobini').select('*').eq('date', selectedDateStr);
 
-        // Fetch personal to filter by department
-        const personalRes = await client.from('personal').select('Име, Длъжност').eq('Статус', 'Активен');
+        // Fetch personal to filter by department and map emails
+        const personalRes = await client.from('personal').select('Име, Имейл, Длъжност').eq('Статус', 'Активен');
         let personalData = personalRes.data || [];
-        let validNames = new Set(
-            personalData
-                .filter(p => p['Длъжност'] && p['Длъжност'].toLowerCase().includes('бобин'))
-                .map(p => String(p['Име']).trim())
-        );
+        
+        let emailToName = {};
+        let validNames = new Set();
+
+        personalData.forEach(p => {
+            let name = String(p['Име'] || '').trim();
+            let email = String(p['Имейл'] || '').trim().toLowerCase();
+            if (email && name) emailToName[email] = name;
+            
+            if (p['Длъжност'] && p['Длъжност'].toLowerCase().includes('бобин') && name) {
+                validNames.add(name);
+            }
+        });
 
         let activePlans = plansRes.data || [];
         
@@ -132,8 +140,11 @@ async function loadData() {
         // Build list of checked in operators
         let present = new Set();
         chekiraniyaData.forEach(r => {
-            let name = String(r['Име']).trim();
-            if(name && validNames.has(name)) present.add(name);
+            let email = String(r['Имейл'] || '').trim().toLowerCase();
+            let nameFromRow = String(r['Име'] || '').trim();
+            let name = nameFromRow || emailToName[email];
+            
+            if (name && validNames.has(name)) present.add(name);
         });
         globalState.checkedIn = Array.from(present).sort();
 
