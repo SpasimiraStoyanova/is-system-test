@@ -809,7 +809,23 @@ function calculateOperationStates(node, children, allNodesMap) {
                 let rootNodes = assemblyNodes.filter(n => !parentMap[n.id]);
                 
                 if (variant) {
-                    rootNodes = rootNodes.filter(n => n.planMonth && n.planMonth.includes(variant));
+                    rootNodes = rootNodes.filter(root => {
+                        let hasVariant = false;
+                        if (root.displayName && (root.displayName.includes('Вар. ' + variant) || root.displayName.includes('Вар.' + variant) || root.code.includes(variant))) return true;
+                        
+                        let children = childMap[root.id] || [];
+                        children.forEach(cId => {
+                            let child = allNodesMap[cId];
+                            if (child && child.displayName && (child.displayName.includes('Вар. ' + variant) || child.displayName.includes('Вар.' + variant))) hasVariant = true;
+                            
+                            let grandchildren = childMap[cId] || [];
+                            grandchildren.forEach(gcId => {
+                                let gchild = allNodesMap[gcId];
+                                if (gchild && gchild.displayName && (gchild.displayName.includes('Вар. ' + variant) || gchild.displayName.includes('Вар.' + variant))) hasVariant = true;
+                            });
+                        });
+                        return hasVariant;
+                    });
                 }
 
                 let groups = {};
