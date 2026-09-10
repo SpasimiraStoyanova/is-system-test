@@ -891,7 +891,7 @@ async function generateTerminalTasks(client) {
           })).catch(e => console.error('Failed to save scrap details:', e));
       }
 
-      globalTasks.sort((a, b) => {
+      generatedTasks.sort((a, b) => {
           let getWeight = (t) => {
               if (t.plan_name === "БУФЕРИ") return Infinity;
               if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") return 9999999;
