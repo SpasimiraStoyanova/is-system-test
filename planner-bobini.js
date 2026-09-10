@@ -158,7 +158,7 @@ async function loadData() {
                 if (!name) name = String(t.name || '').toLowerCase().trim();
                 
                 let isStator = name.includes('статор') && !name.includes('пак');
-                let isRotor = name.includes('ротор') && name.includes('пакет');
+                let isRotor = name.includes('ротор');
                 let isTransformer = name.includes('трансформатор');
                 let isToroid = name.includes('тороид');
 
@@ -167,7 +167,7 @@ async function loadData() {
                     let isValidOp = false;
                     
                     if (isStator && op.includes('навиване')) isValidOp = true;
-                    if (isRotor && (op.includes('навиване на роторен пакет') || op.includes('спояване на роторни намотки'))) isValidOp = true;
+                    if (isRotor && (op.includes('навиване') || op.includes('спояване'))) isValidOp = true;
                     if ((isTransformer || isToroid) && (op.includes('навиване') || op.includes('спояване'))) isValidOp = true;
                     
                     if (isValidOp) {
