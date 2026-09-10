@@ -916,8 +916,12 @@ function calculateOperationStates(node, children, allNodesMap) {
                         let allPackets = [
                             ...(data.nodes.small_rotors || []),
                             ...(data.nodes.small_rotors_var11 || []),
-                            ...(data.nodes.small_rotors_var25 || [])
+                            ...(data.nodes.small_rotors_var25 || []),
+                            ...(data.nodes.statori || []).filter(n => n.displayName.toLowerCase().includes("пак") || (n.partType && n.partType.toLowerCase().includes("пакет")))
                         ];
+
+                        // Вземаме само главните възли (които нямат родител), за да не чертаем децата им като отделни пакети
+                        allPackets = allPackets.filter(n => !parentMap[n.id]);
 
                         let packetGroups = {};
                         allPackets.forEach(p => {
