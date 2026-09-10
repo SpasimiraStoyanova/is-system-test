@@ -813,17 +813,19 @@ function calculateOperationStates(node, children, allNodesMap) {
                         let hasVariant = false;
                         if (root.displayName && (root.displayName.includes('Вар. ' + variant) || root.displayName.includes('Вар.' + variant) || root.code.includes(variant))) return true;
                         
-                        let children = childMap[root.id] || [];
-                        children.forEach(cId => {
-                            let child = allNodesMap[cId];
-                            if (child && child.displayName && (child.displayName.includes('Вар. ' + variant) || child.displayName.includes('Вар.' + variant))) hasVariant = true;
-                            
-                            let grandchildren = childMap[cId] || [];
-                            grandchildren.forEach(gcId => {
-                                let gchild = allNodesMap[gcId];
-                                if (gchild && gchild.displayName && (gchild.displayName.includes('Вар. ' + variant) || gchild.displayName.includes('Вар.' + variant))) hasVariant = true;
-                            });
-                        });
+                        function checkDescendants(nodeId) {
+                            if (hasVariant) return;
+                            let children = childMap[nodeId] || [];
+                            for (let cId of children) {
+                                let child = allNodesMap[cId];
+                                if (child && child.displayName && (child.displayName.includes('Вар. ' + variant) || child.displayName.includes('Вар.' + variant))) {
+                                    hasVariant = true;
+                                    return;
+                                }
+                                checkDescendants(cId);
+                            }
+                        }
+                        checkDescendants(root.id);
                         return hasVariant;
                     });
                 }
@@ -831,7 +833,7 @@ function calculateOperationStates(node, children, allNodesMap) {
                 let groups = {};
                 rootNodes.forEach(root => {
                     let pid = root.planMonth || root.planId;
-                    if (!groups[pid]) groups[pid] = { root: [], level1: [], level2: [] };
+                    if (!groups[pid]) groups[pid] = { root: [], level1: [] };
                     
                     // Филтрираме операциите за Ниво 0 (Краен)
                     if (root.operations) {
@@ -856,17 +858,6 @@ function calculateOperationStates(node, children, allNodesMap) {
                             if (!groups[pid].level1.find(x => x.id === child.id)) {
                                 groups[pid].level1.push(child);
                             }
-
-                            let grandchildren = childMap[child.id] || [];
-                            grandchildren.forEach(gcId => {
-                                let gchild = allNodesMap[gcId];
-                                if (gchild) {
-                                    // Оставяме операциите на внуците както са
-                                    if (!groups[pid].level2.find(x => x.id === gchild.id)) {
-                                        groups[pid].level2.push(gchild);
-                                    }
-                                }
-                            });
                         }
                     });
                 });
@@ -876,13 +867,6 @@ function calculateOperationStates(node, children, allNodesMap) {
                     let planHTML = `<div class="plan-group" style="width: 100%;"><div class="plan-label">ПЛАН: ${planId}</div>`;
                     planHTML += `<div class="family-row" style="flex-wrap: wrap; display: flex; flex-direction: row; gap: 40px; margin-bottom: 20px;">`;
                     
-                    // Ниво 2 (Внуци) - Най-ляво
-                    planHTML += `<div class="bom-column col-level2">`;
-                    lvlData.level2.forEach(n => {
-                        planHTML += generateNodeHTML(n, parentMap, childMap, allNodesMap);
-                    });
-                    planHTML += `</div>`;
-
                     // Ниво 1 (Деца) - По средата
                     planHTML += `<div class="bom-column col-level1">`;
                     lvlData.level1.forEach(n => {
