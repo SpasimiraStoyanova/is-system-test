@@ -190,7 +190,7 @@ function buildTargetItems(plansData) {
             let vutreshnoIme = (nomEntry['Вътрешно име'] || '').trim();
             let typeStr = (partType + " " + currentCode + " " + vutreshnoIme).toLowerCase().replace(/[\s\.\-\_]+/g, '');
 
-            let isStator = typeStr.includes("статор");
+            let isStator = typeStr.includes("статор") && !typeStr.includes("пак");
             let isRotor = typeStr.includes("ротор") && typeStr.includes("пакет");
             let isTransformer = typeStr.includes("трансформатор");
             let isToroid = typeStr.includes("тороид");
@@ -205,20 +205,12 @@ function buildTargetItems(plansData) {
                 let routes = staticCache.routesByDetail[currentCodeLower] || [];
                 let opsToAssign = [];
                 
-                if (routes.length === 0) {
-                    opsToAssign = validOperations;
-                } else {
-                    routes.forEach(r => {
-                        let opName = String(r['Операция']).trim();
-                        if (validOperations.includes(opName) || validOperations.some(v => opName.toLowerCase().includes(v.toLowerCase()))) {
-                            opsToAssign.push(opName);
-                        }
-                    });
-                    
-                    if(opsToAssign.length === 0) {
-                        opsToAssign = validOperations;
+                routes.forEach(r => {
+                    let opName = String(r['Операция']).trim();
+                    if (validOperations.includes(opName) || validOperations.some(v => opName.toLowerCase().includes(v.toLowerCase()))) {
+                        opsToAssign.push(opName);
                     }
-                }
+                });
 
                 opsToAssign = [...new Set(opsToAssign)];
 
