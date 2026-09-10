@@ -341,9 +341,25 @@ async function confirmAssign() {
         }]);
 
         if (error) throw error;
+        
+        // Optimistic update
+        if (!globalState.quotas) globalState.quotas = [];
+        globalState.quotas.push({
+            id: Date.now().toString(), // temporary ID just in case
+            date: dateStr,
+            operator_name: currentDropOperator,
+            detail_name: currentDragTask.detailName,
+            operation_name: currentDragTask.operationName,
+            qty: qty
+        });
+        
         currentDragTask = null;
         currentDropOperator = null;
-        await loadData();
+        
+        renderKanbanUI();
+        loader.style.display = 'none';
+        document.getElementById('main-layout').style.display = 'flex';
+
     } catch(err) {
         alert("Грешка при запис: " + err.message);
         loader.style.display = 'none';
@@ -361,7 +377,13 @@ async function deleteQuota(id) {
     try {
         const { error } = await client.from('planner_bobini').delete().eq('id', id);
         if (error) throw error;
-        await loadData();
+        
+        // Optimistic update
+        globalState.quotas = globalState.quotas.filter(q => q.id !== id);
+        renderKanbanUI();
+        
+        loader.style.display = 'none';
+        document.getElementById('main-layout').style.display = 'flex';
     } catch(err) {
         alert("Грешка при изтриване: " + err.message);
         loader.style.display = 'none';
@@ -380,26 +402,26 @@ async function generateTerminalTasks(client) {
   
   
   try {
-      const [plansRes, bomRes, routesRes, reportsRes, skladRes, nomRes, bufferRes, invRes] = await Promise.all([
-          client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', '📦 Опакован']).limit(100000), client.from('bom').select('*').limit(100000),
-          client.from('marshruti').select('*').limit(100000), client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(2000), 
-          client.from('sklad').select('*').limit(100000), client.from('Номенклатура').select('*').limit(100000),
+      const [plansRes, reportsRes, skladRes, bufferRes, invRes] = await Promise.all([
+          client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', '📦 Опакован']).limit(100000), 
+          client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(2000), 
+          client.from('sklad').select('*').limit(100000), 
           client.from('sklad_bufferi').select('*').limit(100000),
           client.from('inventory').select('*').limit(100000)
       ]);
 
-      if (plansRes.error) throw plansRes.error; if (bomRes.error) throw bomRes.error;
-      if (routesRes.error) throw routesRes.error; if (reportsRes.error) throw reportsRes.error;
+      if (plansRes.error) throw plansRes.error; 
+      if (reportsRes.error) throw reportsRes.error;
       if (invRes.error) throw invRes.error;
 
-      let globalNomData = nomRes.data || [];
-      let namesMap = {}; if (nomRes.data) nomRes.data.forEach(n => { let code = normalizeStr(n['ID Детайл']); namesMap[code] = n['Вътрешно име'] || ''; });
+      let globalNomData = staticCache.nomData || [];
+      let namesMap = {}; if (globalNomData) globalNomData.forEach(n => { let code = normalizeStr(n['ID Детайл']); namesMap[code] = n['Вътрешно име'] || ''; });
       
       let bufferMap = {};
       let bufferScrapMap = {};
       
-      if (nomRes.data) {
-          nomRes.data.forEach(n => {
+      if (globalNomData) {
+          globalNomData.forEach(n => {
               let code = normalizeStr(n['ID Детайл']);
               let type = normalizeStr(n['Тип'] || '');
               
@@ -419,11 +441,8 @@ async function generateTerminalTasks(client) {
           });
       }
 
-      let globalBomData = bomRes.data || []; 
-      
-      let globalRoutesByDetail = {};
-      routesRes.data.forEach(r => { let code = normalizeStr(r['Код на детайла']); if(!globalRoutesByDetail[code]) globalRoutesByDetail[code] = []; globalRoutesByDetail[code].push(r); });
-      Object.keys(globalRoutesByDetail).forEach(code => globalRoutesByDetail[code].sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция'])));
+      let globalBomData = staticCache.bomData || []; 
+      let globalRoutesByDetail = staticCache.routesByDetail || {};
 
       let takenOps = {}; 
       reportsRes.data.forEach(r => {
@@ -469,8 +488,8 @@ async function generateTerminalTasks(client) {
           
           planNames[groupKey] = monthYear ? monthYear : plan['Вътрешно име'];
           
-          if (nomRes.data) {
-              let translated = nomRes.data.find(n => String(n['Вътрешно име']).trim() === rootItem);
+          if (globalNomData) {
+              let translated = globalNomData.find(n => String(n['Вътрешно име']).trim() === rootItem);
               if (translated && translated['ID Детайл']) rootItem = String(translated['ID Детайл']).trim();
           }
           rootItem = rootItem.toLowerCase();
