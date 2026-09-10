@@ -114,7 +114,13 @@ async function loadData() {
         // Fetch quotas
         const quotasRes = await client.from('planner_bobini').select('*').eq('date', selectedDateStr);
 
+        // Fetch personal to filter by department
+        const personalRes = await client.from('personal').select('Име, Отдел').eq('Статус', 'Активен');
+        let personalData = personalRes.data || [];
+        let validNames = new Set(personalData.filter(p => p['Отдел'] === 'Бобинаж').map(p => String(p['Име']).trim()));
+
         let activePlans = plansRes.data || [];
+        
         let chekiraniyaData = checkinRes.data || [];
         globalState.otcheti = otchetiRes.data || [];
         globalState.quotas = quotasRes.data || [];
@@ -123,7 +129,7 @@ async function loadData() {
         let present = new Set();
         chekiraniyaData.forEach(r => {
             let name = String(r['Име']).trim();
-            if(name) present.add(name);
+            if(name && validNames.has(name)) present.add(name);
         });
         globalState.checkedIn = Array.from(present).sort();
 
