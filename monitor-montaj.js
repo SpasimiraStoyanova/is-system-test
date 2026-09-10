@@ -920,9 +920,8 @@ function calculateOperationStates(node, children, allNodesMap) {
                             ...(data.nodes.statori || [])
                         ];
 
-                        // Вземаме само главните възли (които нямат родител) и филтрираме строго само роторни и статорни пакети
+                        // Филтрираме строго само роторни и статорни пакети
                         allPackets = allPackets.filter(n => {
-                            if (parentMap[n.id]) return false;
                             let name = (n.displayName || "").toLowerCase();
                             let type = (n.partType || "").toLowerCase();
                             return name.includes("статорен пак") || type.includes("статорен пакет") || 
