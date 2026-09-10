@@ -114,46 +114,83 @@
       gap: 10px;
     }
     
-    .kanban-board {
+    .calendar-board {
       flex: 1;
       display: flex;
-      gap: 15px;
-      overflow-x: auto;
-      padding-bottom: 10px;
-    }
-    
-    .operator-column {
-      min-width: 280px;
-      width: 280px;
+      flex-direction: column;
+      overflow: auto;
       background: #1e293b;
       border-radius: 8px;
-      display: flex;
-      flex-direction: column;
       border: 1px solid #334155;
       box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
     }
     
-    .operator-header {
-      background: linear-gradient(180deg, rgba(59,130,246,0.15) 0%, transparent 100%);
-      border-top: 3px solid #3b82f6;
-      padding: 15px;
-      font-weight: 900;
-      font-size: 1.1em;
+    table.calendar-table {
+      border-collapse: collapse;
+      width: 100%;
     }
     
-    .operator-body {
-      flex: 1;
+    th, td {
+      border: 1px solid #475569;
+      text-align: center;
+      min-width: 80px;
+      vertical-align: top;
+    }
+    
+    th {
+      background: #334155;
       padding: 10px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      min-height: 150px;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    
+    td.op-name {
+      background: #334155;
+      font-weight: bold;
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      padding: 10px;
+      text-align: left;
+    }
+    
+    th.first-cell {
+      position: sticky;
+      left: 0;
+      top: 0;
+      z-index: 3;
+    }
+    
+    td.day-cell {
+      padding: 5px;
+      min-height: 80px;
+      position: relative;
       transition: background 0.2s;
     }
-    .operator-body.drag-over {
-      background: rgba(59,130,246,0.1);
-      border: 2px dashed #3b82f6;
+    
+    td.day-cell.drag-over {
+      background: rgba(59,130,246,0.2);
+    }
+    
+    td.day-cell.off-day {
+      background: rgba(239, 68, 68, 0.1);
+      background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(239,68,68,0.2) 10px, rgba(239,68,68,0.2) 20px);
+    }
+    
+    .mode-toggle {
+      background: #334155;
+      padding: 5px 15px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      border: 2px solid transparent;
+      user-select: none;
+    }
+    .mode-toggle.active {
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
     }
     
     /* Task Cards */
@@ -175,12 +212,51 @@
     .assigned-card {
       background: #0f172a;
       border: 1px solid #475569;
-      border-left: 4px solid #3b82f6;
-      padding: 10px;
-      border-radius: 6px;
+      border-left: 3px solid #3b82f6;
+      padding: 5px;
+      border-radius: 4px;
       display: flex;
       flex-direction: column;
+      margin-bottom: 5px;
+      font-size: 0.85em;
+      position: relative;
     }
+    .assigned-card-title {
+      font-weight: bold;
+      color: #f8fafc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 80px;
+    }
+    
+    .btn-copy-forward {
+      position: absolute;
+      bottom: 2px;
+      right: 25px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      padding: 2px 5px;
+      font-size: 0.8em;
+      cursor: pointer;
+    }
+    .btn-copy-forward:hover { background: #2563eb; }
+    
+    .btn-del-quota {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      padding: 2px 5px;
+      font-size: 0.8em;
+      cursor: pointer;
+    }
+    .btn-del-quota:hover { background: #dc2626; }
     
     /* Modal */
     .modal {
@@ -213,10 +289,30 @@
   </div>
   
   <div class="layout-wrapper" style="display:none;" id="main-layout">
-    <h1 id="monitorTitle" style="display:flex; justify-content:center; align-items:center; gap:15px;">
-      ПЛАНЬОР БОБИНЬОРКИ
-      <input type="date" id="date-picker" style="padding: 5px 10px; font-size: 18px; border-radius: 4px; border: none; background: #334155; color: #f8fafc; font-family: 'Sofia Sans', sans-serif; cursor: pointer; outline: none;">
-    </h1>
+    <div style="display:flex; justify-content:space-between; align-items:center; flex: 0 0 auto;">
+        <h1 id="monitorTitle" style="display:flex; justify-content:center; align-items:center; gap:15px; margin:0;">
+          ПЛАНЬОР БОБИНЬОРКИ
+          <input type="month" id="month-picker" style="padding: 5px 10px; font-size: 18px; border-radius: 4px; border: none; background: #334155; color: #f8fafc; font-family: 'Sofia Sans', sans-serif; cursor: pointer; outline: none;">
+        </h1>
+        
+        <div id="forecast-bar" style="flex:1; margin: 0 30px; display:none; flex-direction:column; background:#1e293b; padding:10px; border-radius:6px; border:1px solid #334155;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <strong id="fc-title"></strong>
+                <span id="fc-eta" style="color:#f59e0b;"></span>
+            </div>
+            <div style="background:#0f172a; height:10px; border-radius:5px; overflow:hidden; position:relative;">
+                <div id="fc-fill" style="background:#10b981; height:100%; width:0%; transition:width 0.3s;"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:0.85em; color:#94a3b8; margin-top:3px;">
+                <span id="fc-done"></span>
+                <span id="fc-total"></span>
+            </div>
+        </div>
+        
+        <div class="mode-toggle" id="off-mode-toggle" onclick="toggleOffMode()" title="Ако е включено, цъкането върху клетка в календара я маркира като почивен ден (Х)">
+            🛑 Режим Почивки: ИЗКЛ
+        </div>
+    </div>
     
     <div class="kanban-layout">
       <!-- Task Pool Sidebar -->
@@ -227,9 +323,9 @@
         </div>
       </div>
       
-      <!-- Operators Kanban Board -->
-      <div class="kanban-board" id="w-kanban-board">
-        <!-- Operator columns -->
+      <!-- Calendar Board -->
+      <div class="calendar-board" id="w-calendar-board">
+        <!-- Calendar Table -->
       </div>
     </div>
     

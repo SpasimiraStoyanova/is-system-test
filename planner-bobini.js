@@ -20,22 +20,34 @@ let globalState = {
 };
 
 window.onload = async function() {
-    const datePicker = document.getElementById('date-picker');
-    if (datePicker) {
-        datePicker.value = getTodayString();
-        datePicker.addEventListener('change', loadData);
+    const monthPicker = document.getElementById('month-picker');
+    if (monthPicker) {
+        monthPicker.value = getMonthString();
+        monthPicker.addEventListener('change', loadData);
     }
     await initialFetch();
     loadData();
     setInterval(loadData, 15000); 
 };
 
-function getTodayString() {
+function getMonthString() {
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
+    return `${yyyy}-${mm}`;
+}
+
+let offMode = false;
+function toggleOffMode() {
+    offMode = !offMode;
+    const btn = document.getElementById('off-mode-toggle');
+    if (offMode) {
+        btn.classList.add('active');
+        btn.innerText = '🛑 Режим Почивки: ВКЛЮЧЕН';
+    } else {
+        btn.classList.remove('active');
+        btn.innerText = '🛑 Режим Почивки: ИЗКЛ';
+    }
 }
 
 async function fetchAll(table, orderCol) {
@@ -100,19 +112,18 @@ async function loadData() {
     }
 
     try {
-        const selectedDateStr = document.getElementById('date-picker').value;
-        let nextDay = new Date(selectedDateStr);
-        nextDay.setDate(nextDay.getDate() + 1);
-        const nextDayStr = nextDay.toISOString().split('T')[0];
+        const selectedMonth = document.getElementById('month-picker').value;
+        const startOfMonth = selectedMonth + '-01';
+        let d = new Date(selectedMonth + '-01');
+        let lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        const endOfMonth = selectedMonth + '-' + String(lastDay).padStart(2,'0');
 
         // Fetch Plans (Active only)
         const plansRes = await client.from('plan').select('*').in('Статус', ['Активен', 'Опакован']); // Assuming active
-        // Fetch checkins for the selected date
-        const checkinRes = await client.from('chekiraniya').select('*').gte('Време', selectedDateStr + 'T00:00:00').lt('Време', nextDayStr + 'T00:00:00');
         // Fetch otcheti for these operations (to calculate progress)
         const otchetiRes = await client.from('otcheti').select('*').eq('Статус', 'Отчетено');
-        // Fetch quotas
-        const quotasRes = await client.from('planner_bobini').select('*').eq('date', selectedDateStr);
+        // Fetch quotas for the entire month
+        const quotasRes = await client.from('planner_bobini').select('*').gte('date', startOfMonth).lte('date', endOfMonth);
 
         // Fetch personal to filter by department and map emails
         const personalRes = await client.from('personal').select('Име, Имейл, Длъжност').eq('Статус', 'Активен');
@@ -132,21 +143,11 @@ async function loadData() {
         });
 
         let activePlans = plansRes.data || [];
-        
-        let chekiraniyaData = checkinRes.data || [];
         globalState.otcheti = otchetiRes.data || [];
         globalState.quotas = quotasRes.data || [];
 
-        // Build list of checked in operators
-        let present = new Set();
-        chekiraniyaData.forEach(r => {
-            let email = String(r['Имейл'] || '').trim().toLowerCase();
-            let nameFromRow = String(r['Име'] || '').trim();
-            let name = nameFromRow || emailToName[email];
-            
-            if (name && validNames.has(name)) present.add(name);
-        });
-        globalState.checkedIn = Array.from(present).sort();
+        // All active operators in bobini department
+        globalState.activeOperators = Array.from(validNames).sort();
 
         let allTasks = await generateTerminalTasks(client);
         
@@ -197,44 +198,38 @@ async function loadData() {
         
         globalState.targetItems = Object.values(filteredTargetNodes);
         globalState.targetItems.sort((a,b) => a.detailName.localeCompare(b.detailName));
-        renderKanbanUI();
+        renderCalendarUI();
 
         if (firstLoad) {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('main-layout').style.display = 'flex';
-            firstLoad = false;
-        }
-
-    } catch(err) {
-        console.error(err);
-        document.getElementById('loading').innerHTML = '<div style="color:red;">Грешка при зареждане.</div>';
-    }
-}
-
-let currentDragTask = null;
+            document.getElementById('loading').style.display = 'nolet currentDragTask = null;
 let currentDropOperator = null;
+let currentDropDateStr = null;
 
-function renderKanbanUI() {
+function renderCalendarUI() {
+    const selectedMonth = document.getElementById('month-picker').value; 
+    let year = parseInt(selectedMonth.split('-')[0]);
+    let month = parseInt(selectedMonth.split('-')[1]);
+    let daysInMonth = new Date(year, month, 0).getDate();
+
     // 1. Render Task Pool (Left Sidebar)
     let poolHtml = '';
     globalState.targetItems.forEach(item => {
-        let completedQty = item.totalDone || 0;
         let remaining = item.planQty || 0;
         
-        let dailyPace = 0;
+        let totalAssignedMonth = 0;
         globalState.quotas.forEach(q => {
-            if (q.detail_name === item.detailName && q.operation_name === item.operationName) {
-                dailyPace += q.qty;
+            if (q.detail_name === item.detailName && q.operation_name === item.operationName && q.detail_name !== 'OFF') {
+                totalAssignedMonth += q.qty;
             }
         });
 
         poolHtml += `
-            <div class="task-card" draggable="true" ondragstart="dragStart(event, '${item.detailName}', '${item.operationName}')">
+            <div class="task-card" draggable="true" ondragstart="dragStart(event, '${item.detailName}', '${item.operationName}', ${remaining}, ${totalAssignedMonth})">
                 <div class="task-card-title">${item.detailName}</div>
                 <div class="task-card-op">${item.operationName}</div>
-                <div class="task-stat"><span style="color:#94a3b8">Остават:</span> <strong>${remaining} бр.</strong></div>
+                <div class="task-stat"><span style="color:#94a3b8">Остават по план:</span> <strong>${remaining} бр.</strong></div>
                 <div class="task-stat"><span style="color:#94a3b8">Налични:</span> <strong style="color:#f59e0b">${item.availableQty} бр.</strong></div>
-                <div class="task-stat" style="margin-top:5px; padding-top:5px; border-top:1px solid #475569;"><span style="color:#94a3b8">Темпо днес:</span> <strong style="color:#38bdf8">${dailyPace} бр./ден</strong></div>
+                <div class="task-stat" style="margin-top:5px; padding-top:5px; border-top:1px solid #475569;"><span style="color:#94a3b8">Възложени м.:</span> <strong style="color:#38bdf8">${totalAssignedMonth} бр.</strong></div>
             </div>
         `;
     });
@@ -243,78 +238,185 @@ function renderKanbanUI() {
     }
     document.getElementById('w-task-pool').innerHTML = poolHtml;
 
-    // 2. Render Operator Columns
-    let boardHtml = '';
-    if (globalState.checkedIn.length === 0) {
-        boardHtml = '<div style="color:#94a3b8; padding:20px;">Няма чекирани оператори днес.</div>';
+    // 2. Render Calendar Board
+    let boardHtml = '<table class="calendar-table"><thead><tr><th class="first-cell">Оператор</th>';
+    for (let d = 1; d <= daysInMonth; d++) {
+        let dateObj = new Date(year, month - 1, d);
+        let dayStr = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][dateObj.getDay()];
+        let isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6) ? 'color:#f87171;' : '';
+        boardHtml += `<th style="${isWeekend}">${d}<br><span style="font-size:0.7em; font-weight:normal;">${dayStr}</span></th>`;
+    }
+    boardHtml += '</tr></thead><tbody>';
+
+    if (globalState.activeOperators.length === 0) {
+        boardHtml += '<tr><td colspan="' + (daysInMonth + 1) + '" style="padding:20px; color:#94a3b8;">Няма активни оператори в този отдел.</td></tr>';
     } else {
-        globalState.checkedIn.forEach(opName => {
-            let existingQuotas = globalState.quotas.filter(q => q.operator_name === opName);
-            let totalQty = existingQuotas.reduce((sum, q) => sum + q.qty, 0);
-
-            boardHtml += `
-                <div class="operator-column">
-                    <div class="operator-header">👤 ${opName} <br><span style="font-size:0.8em; font-weight:normal; color:#e2e8f0;">Общо за деня: ${totalQty} бр.</span></div>
-                    <div class="operator-body" ondragover="allowDrop(event)" ondrop="drop(event, '${opName}')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">
-            `;
-            
-            existingQuotas.forEach(q => {
-                boardHtml += `
-                    <div class="assigned-card">
-                        <div style="font-weight:bold; color:#f8fafc; font-size:0.95em;">${q.detail_name}</div>
-                        <div style="color:#94a3b8; font-size:0.8em; margin-bottom:5px;">${q.operation_name}</div>
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <strong style="color:#10b981; font-size:1.1em;">${q.qty} бр.</strong>
-                            <button onclick="deleteQuota('${q.id}')" style="background:#ef4444; border:none; padding:4px 8px; border-radius:4px; color:white; cursor:pointer;">X</button>
-                        </div>
-                    </div>
-                `;
-            });
-
-            boardHtml += `
-                    </div>
-                </div>
-            `;
+        globalState.activeOperators.forEach(opName => {
+            boardHtml += `<tr><td class="op-name">👤 ${opName}</td>`;
+            for (let d = 1; d <= daysInMonth; d++) {
+                let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                
+                let dayQuotas = globalState.quotas.filter(q => q.operator_name === opName && q.date === fullDateStr);
+                let isOffDay = dayQuotas.some(q => q.detail_name === 'OFF');
+                
+                let cellClass = isOffDay ? 'day-cell off-day' : 'day-cell';
+                
+                boardHtml += `<td class="${cellClass}" onclick="cellClick('${fullDateStr}', '${opName}')" ondragover="allowDrop(event)" ondrop="drop(event, '${opName}', '${fullDateStr}')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">`;
+                
+                if (!isOffDay) {
+                    dayQuotas.forEach(q => {
+                        boardHtml += `
+                            <div class="assigned-card">
+                                <div class="assigned-card-title" title="${q.detail_name}">${q.detail_name}</div>
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+                                    <strong style="color:#10b981;">${q.qty} бр.</strong>
+                                </div>
+                                <button class="btn-copy-forward" onclick="event.stopPropagation(); copyForward('${q.id}')" title="Разпъни до края на месеца">»</button>
+                                <button class="btn-del-quota" onclick="event.stopPropagation(); deleteQuota('${q.id}')">X</button>
+                            </div>
+                        `;
+                    });
+                }
+                boardHtml += `</td>`;
+            }
+            boardHtml += '</tr>';
         });
     }
-    document.getElementById('w-kanban-board').innerHTML = boardHtml;
+    boardHtml += '</tbody></table>';
+    document.getElementById('w-calendar-board').innerHTML = boardHtml;
+}
+
+// Cell click for OFF mode
+async function cellClick(dateStr, opName) {
+    if (!offMode) return;
+    
+    // Check if it's already an off day
+    let existingOff = globalState.quotas.find(q => q.operator_name === opName && q.date === dateStr && q.detail_name === 'OFF');
+    
+    const loader = document.getElementById('loading');
+    loader.style.display = 'flex';
+    
+    if (existingOff) {
+        // Remove it
+        await client.from('planner_bobini').delete().eq('id', existingOff.id);
+        globalState.quotas = globalState.quotas.filter(q => q.id !== existingOff.id);
+    } else {
+        // Add it
+        const { data } = await client.from('planner_bobini').insert([{
+            date: dateStr, operator_name: opName, detail_name: 'OFF', operation_name: '-', qty: 0
+        }]).select();
+        if (data && data[0]) globalState.quotas.push(data[0]);
+    }
+    renderCalendarUI();
+    loader.style.display = 'none';
+}
+
+// Copy forward logic
+async function copyForward(quotaId) {
+    let q = globalState.quotas.find(x => String(x.id) === String(quotaId));
+    if (!q) return;
+    if(!confirm(`Искате ли да копирате задачата (${q.qty} бр.) за всички оставащи работни дни до края на месеца за ${q.operator_name}?`)) return;
+    
+    const selectedMonth = document.getElementById('month-picker').value; 
+    let year = parseInt(selectedMonth.split('-')[0]);
+    let month = parseInt(selectedMonth.split('-')[1]);
+    let daysInMonth = new Date(year, month, 0).getDate();
+    
+    let startDay = parseInt(q.date.split('-')[2]) + 1;
+    let inserts = [];
+    
+    for (let d = startDay; d <= daysInMonth; d++) {
+        let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        let dateObj = new Date(year, month - 1, d);
+        let isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6);
+        
+        // Skip off days
+        let isOffDay = globalState.quotas.some(x => x.operator_name === q.operator_name && x.date === fullDateStr && x.detail_name === 'OFF');
+        if (isWeekend || isOffDay) continue;
+        
+        inserts.push({
+            date: fullDateStr,
+            operator_name: q.operator_name,
+            detail_name: q.detail_name,
+            operation_name: q.operation_name,
+            qty: q.qty
+        });
+    }
+    
+    if (inserts.length === 0) {
+        alert("Няма оставащи свободни работни дни."); return;
+    }
+    
+    document.getElementById('loading').style.display = 'flex';
+    const { data, error } = await client.from('planner_bobini').insert(inserts).select();
+    if (!error && data) {
+        globalState.quotas.push(...data);
+    }
+    renderCalendarUI();
+    document.getElementById('loading').style.display = 'none';
 }
 
 // Drag & Drop Handlers
-function dragStart(e, detailName, operationName) {
-    currentDragTask = { detailName, operationName };
+function dragStart(e, detailName, operationName, remaining, totalAssignedMonth) {
+    currentDragTask = { detailName, operationName, remaining, totalAssignedMonth };
     e.dataTransfer.setData('text/plain', detailName); 
 }
 function allowDrop(e) {
+    if (offMode) return;
     e.preventDefault();
 }
 function dragEnter(e) {
+    if (offMode) return;
     e.preventDefault();
-    e.currentTarget.classList.add('drag-over');
+    if (!e.currentTarget.classList.contains('off-day')) {
+        e.currentTarget.classList.add('drag-over');
+    }
 }
 function dragLeave(e) {
     e.currentTarget.classList.remove('drag-over');
 }
-function drop(e, operatorName) {
+function drop(e, operatorName, dateStr) {
+    if (offMode) return;
     e.preventDefault();
     e.currentTarget.classList.remove('drag-over');
     
+    if (e.currentTarget.classList.contains('off-day')) return; // Cannot drop on off day
     if (!currentDragTask) return;
     
     currentDropOperator = operatorName;
+    currentDropDateStr = dateStr;
     
     document.getElementById('modal-task-title').innerText = currentDragTask.detailName;
     document.getElementById('modal-task-op').innerText = currentDragTask.operationName;
-    document.getElementById('modal-operator-name').innerText = operatorName;
+    document.getElementById('modal-operator-name').innerText = operatorName + ' (' + dateStr + ')';
     document.getElementById('modal-qty').value = '';
+    
+    // Update Forecast Bar temporarily
+    let fBar = document.getElementById('forecast-bar');
+    fBar.style.display = 'flex';
+    document.getElementById('fc-title').innerText = currentDragTask.detailName;
+    
+    let target = currentDragTask.remaining;
+    let done = currentDragTask.totalAssignedMonth;
+    let pct = target > 0 ? (done / target) * 100 : 0;
+    if(pct > 100) pct = 100;
+    
+    document.getElementById('fc-fill').style.width = pct + '%';
+    document.getElementById('fc-done').innerText = done + ' възложени';
+    document.getElementById('fc-total').innerText = target + ' план';
+    
+    if (done >= target) document.getElementById('fc-eta').innerText = "Планът е покрит!";
+    else document.getElementById('fc-eta').innerText = "Остават " + (target - done) + " бр.";
     
     document.getElementById('assign-modal').style.display = 'flex';
 }
 
 function closeAssignModal() {
     document.getElementById('assign-modal').style.display = 'none';
+    document.getElementById('forecast-bar').style.display = 'none';
     currentDragTask = null;
     currentDropOperator = null;
+    currentDropDateStr = null;
 }
 
 async function confirmAssign() {
@@ -323,34 +425,44 @@ async function confirmAssign() {
         alert("Моля, въведете валидно количество.");
         return;
     }
-    const dateStr = document.getElementById('date-picker').value;
 
     document.getElementById('assign-modal').style.display = 'none';
+    document.getElementById('forecast-bar').style.display = 'none';
     
     const loader = document.getElementById('loading');
     loader.style.display = 'flex';
     document.getElementById('main-layout').style.display = 'none';
 
     try {
-        const { error } = await client.from('planner_bobini').insert([{
-            date: dateStr,
+        const { error, data } = await client.from('planner_bobini').insert([{
+            date: currentDropDateStr,
             operator_name: currentDropOperator,
             detail_name: currentDragTask.detailName,
             operation_name: currentDragTask.operationName,
             qty: qty
-        }]);
+        }]).select();
 
         if (error) throw error;
         
-        // Optimistic update
-        if (!globalState.quotas) globalState.quotas = [];
-        globalState.quotas.push({
-            id: Date.now().toString(), // temporary ID just in case
-            date: dateStr,
-            operator_name: currentDropOperator,
-            detail_name: currentDragTask.detailName,
-            operation_name: currentDragTask.operationName,
-            qty: qty
+        if (data && data[0]) {
+            if (!globalState.quotas) globalState.quotas = [];
+            globalState.quotas.push(data[0]);
+        }
+        
+        currentDragTask = null;
+        currentDropOperator = null;
+        currentDropDateStr = null;
+        
+        renderCalendarUI();
+        loader.style.display = 'none';
+        document.getElementById('main-layout').style.display = 'flex';
+
+    } catch(err) {
+        alert("Грешка при запис: " + err.message);
+        loader.style.display = 'none';
+        document.getElementById('main-layout').style.display = 'flex';
+    }
+}ty: qty
         });
         
         currentDragTask = null;
@@ -380,7 +492,7 @@ async function deleteQuota(id) {
         
         // Optimistic update
         globalState.quotas = globalState.quotas.filter(q => q.id !== id);
-        renderKanbanUI();
+        renderCalendarUI();
         
         loader.style.display = 'none';
         document.getElementById('main-layout').style.display = 'flex';
