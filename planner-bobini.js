@@ -115,9 +115,13 @@ async function loadData() {
         const quotasRes = await client.from('planner_bobini').select('*').eq('date', selectedDateStr);
 
         // Fetch personal to filter by department
-        const personalRes = await client.from('personal').select('Име, Отдел').eq('Статус', 'Активен');
+        const personalRes = await client.from('personal').select('Име, Длъжност').eq('Статус', 'Активен');
         let personalData = personalRes.data || [];
-        let validNames = new Set(personalData.filter(p => p['Отдел'] === 'Бобинаж').map(p => String(p['Име']).trim()));
+        let validNames = new Set(
+            personalData
+                .filter(p => p['Длъжност'] && p['Длъжност'].toLowerCase().includes('бобин'))
+                .map(p => String(p['Име']).trim())
+        );
 
         let activePlans = plansRes.data || [];
         
