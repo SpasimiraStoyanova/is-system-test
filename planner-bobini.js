@@ -197,9 +197,7 @@ async function loadData() {
         
         globalState.targetItems = Object.values(filteredTargetNodes);
         globalState.targetItems.sort((a,b) => a.detailName.localeCompare(b.detailName));
-
-        renderAssignUI();
-        renderDashboardUI();
+        renderKanbanUI();
 
         if (firstLoad) {
             document.getElementById('loading').style.display = 'none';
@@ -213,62 +211,16 @@ async function loadData() {
     }
 }
 
-function renderAssignUI() {
-    let html = '';
-    const dateStr = document.getElementById('date-picker').value;
-    
-    if (globalState.checkedIn.length === 0) {
-        html = '<div style="color:#94a3b8;">Няма чекирани оператори днес. Възлагането на задачи е заключено.</div>';
-    } else {
-        globalState.checkedIn.forEach(opName => {
-            // Find if there's already an assigned quota for this operator today
-            let existingQuotas = globalState.quotas.filter(q => q.operator_name === opName);
-            
-            html += `<div class="operator-row">
-                <div class="operator-name">👤 ${opName}</div>
-                <div style="flex:1; display:flex; flex-direction:column; gap:5px;">
-            `;
-            
-            existingQuotas.forEach(q => {
-                html += `
-                    <div style="display:flex; gap:10px; align-items:center; background:#1e293b; padding:5px; border-radius:4px;">
-                        <span style="flex:1;">${q.detail_name} - ${q.operation_name}</span>
-                        <strong style="color:#10b981;">${q.qty} бр.</strong>
-                        <button onclick="deleteQuota('${q.id}')" style="background:#ef4444; border:none; padding:4px 8px; border-radius:4px; color:white; cursor:pointer;">X</button>
-                    </div>
-                `;
-            });
+let currentDragTask = null;
+let currentDropOperator = null;
 
-            html += `
-                    <div style="display:flex; gap:10px;">
-                        <select id="sel_${opName}">
-                            <option value="">-- Избери детайл и операция --</option>
-                            ${globalState.targetItems.map(t => {
-                                let lock = t.isBlocked ? '🔒 ' : '';
-                                let dis = t.isBlocked ? 'disabled' : '';
-                                return `<option value="${t.detailName}___${t.operationName}" ${dis}>${lock}${t.detailName} - ${t.operationName} (Свободни: ${t.availableQty})</option>`;
-                            }).join('')}
-                        </select>
-                        <input type="number" id="qty_${opName}" placeholder="Бр." min="1">
-                        <button class="btn-assign" onclick="assignQuota('${opName}')">Запази</button>
-                    </div>
-                </div>
-            </div>`;
-        });
-    }
-    document.getElementById('w-assign').innerHTML = html;
-}
-
-function renderDashboardUI() {
-    let html = '';
-    const dateStr = document.getElementById('date-picker').value;
-
+function renderKanbanUI() {
+    // 1. Render Task Pool (Left Sidebar)
+    let poolHtml = '';
     globalState.targetItems.forEach(item => {
         let completedQty = item.totalDone || 0;
         let remaining = item.planQty || 0;
-        let totalMonthlyPlan = completedQty + remaining;
-
-        // Calculate Daily Pace (sum of all quotas for this item today)
+        
         let dailyPace = 0;
         globalState.quotas.forEach(q => {
             if (q.detail_name === item.detailName && q.operation_name === item.operationName) {
@@ -276,64 +228,105 @@ function renderDashboardUI() {
             }
         });
 
-        let progressPct = totalMonthlyPlan > 0 ? (completedQty / totalMonthlyPlan) * 100 : 0;
-        if(progressPct > 100) progressPct = 100;
-
-        let etaStr = "Няма зададено темпо";
-        if (remaining === 0) {
-            etaStr = '<span class="status-ok">Приключен</span>';
-        } else if (dailyPace > 0) {
-            let daysRemaining = Math.ceil(remaining / dailyPace);
-            let etaDate = new Date();
-            etaDate.setDate(etaDate.getDate() + daysRemaining);
-            let formattedDate = `${String(etaDate.getDate()).padStart(2,'0')}.${String(etaDate.getMonth()+1).padStart(2,'0')}.${etaDate.getFullYear()}`;
-            etaStr = `<span class="status-warning">След ${daysRemaining} работни дни (${formattedDate})</span>`;
-        }
-
-        html += `
-            <div class="dash-card">
-                <div class="dash-card-header">${item.detailName}<br><span style="font-size:0.8em; color:#94a3b8; font-weight:normal;">${item.operationName}</span></div>
-                
-                <div class="dash-stat"><span class="dash-stat-label">Месечен План:</span> <span class="dash-stat-val">${totalMonthlyPlan} бр.</span></div>
-                <div class="dash-stat"><span class="dash-stat-label">Изработени:</span> <span class="dash-stat-val" style="color:#10b981;">${completedQty} бр.</span></div>
-                <div class="dash-stat"><span class="dash-stat-label">Остават:</span> <span class="dash-stat-val" style="color:#ef4444;">${remaining} бр.</span></div>
-                
-                <div class="progress-bar-bg">
-                    <div class="progress-bar-fill" style="width: ${progressPct}%;"></div>
-                </div>
-
-                <div class="dash-stat" style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
-                    <span class="dash-stat-label">Зададени днес (Темпо):</span> <span class="dash-stat-val" style="color:#38bdf8;">${dailyPace} бр./ден</span>
-                </div>
-                <div class="dash-stat">
-                    <span class="dash-stat-label">Прогноза:</span> <span class="dash-stat-val">${etaStr}</span>
-                </div>
+        poolHtml += `
+            <div class="task-card" draggable="true" ondragstart="dragStart(event, '${item.detailName}', '${item.operationName}')">
+                <div class="task-card-title">${item.detailName}</div>
+                <div class="task-card-op">${item.operationName}</div>
+                <div class="task-stat"><span style="color:#94a3b8">Остават:</span> <strong>${remaining} бр.</strong></div>
+                <div class="task-stat"><span style="color:#94a3b8">Налични:</span> <strong style="color:#f59e0b">${item.availableQty} бр.</strong></div>
+                <div class="task-stat" style="margin-top:5px; padding-top:5px; border-top:1px solid #475569;"><span style="color:#94a3b8">Темпо днес:</span> <strong style="color:#38bdf8">${dailyPace} бр./ден</strong></div>
             </div>
         `;
     });
-
-    if (globalState.targetItems.length === 0) {
-        html = '<div style="color:#94a3b8; width:100%; text-align:center; padding:20px;">Няма заредени статори/ротори в активните планове.</div>';
+    if(globalState.targetItems.length === 0) {
+        poolHtml = '<div style="color:#94a3b8; text-align:center;">Няма заредени статори/ротори.</div>';
     }
+    document.getElementById('w-task-pool').innerHTML = poolHtml;
 
-    document.getElementById('w-dashboard').innerHTML = html;
+    // 2. Render Operator Columns
+    let boardHtml = '';
+    if (globalState.checkedIn.length === 0) {
+        boardHtml = '<div style="color:#94a3b8; padding:20px;">Няма чекирани оператори днес.</div>';
+    } else {
+        globalState.checkedIn.forEach(opName => {
+            let existingQuotas = globalState.quotas.filter(q => q.operator_name === opName);
+            let totalQty = existingQuotas.reduce((sum, q) => sum + q.qty, 0);
+
+            boardHtml += `
+                <div class="operator-column">
+                    <div class="operator-header">👤 ${opName} <br><span style="font-size:0.8em; font-weight:normal; color:#e2e8f0;">Общо за деня: ${totalQty} бр.</span></div>
+                    <div class="operator-body" ondragover="allowDrop(event)" ondrop="drop(event, '${opName}')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">
+            `;
+            
+            existingQuotas.forEach(q => {
+                boardHtml += `
+                    <div class="assigned-card">
+                        <div style="font-weight:bold; color:#f8fafc; font-size:0.95em;">${q.detail_name}</div>
+                        <div style="color:#94a3b8; font-size:0.8em; margin-bottom:5px;">${q.operation_name}</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <strong style="color:#10b981; font-size:1.1em;">${q.qty} бр.</strong>
+                            <button onclick="deleteQuota('${q.id}')" style="background:#ef4444; border:none; padding:4px 8px; border-radius:4px; color:white; cursor:pointer;">X</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            boardHtml += `
+                    </div>
+                </div>
+            `;
+        });
+    }
+    document.getElementById('w-kanban-board').innerHTML = boardHtml;
 }
 
-async function assignQuota(operatorName) {
-    const sel = document.getElementById('sel_' + operatorName);
-    const qtyInput = document.getElementById('qty_' + operatorName);
-    const dateStr = document.getElementById('date-picker').value;
+// Drag & Drop Handlers
+function dragStart(e, detailName, operationName) {
+    currentDragTask = { detailName, operationName };
+    e.dataTransfer.setData('text/plain', detailName); 
+}
+function allowDrop(e) {
+    e.preventDefault();
+}
+function dragEnter(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+}
+function dragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+function drop(e, operatorName) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    
+    if (!currentDragTask) return;
+    
+    currentDropOperator = operatorName;
+    
+    document.getElementById('modal-task-title').innerText = currentDragTask.detailName;
+    document.getElementById('modal-task-op').innerText = currentDragTask.operationName;
+    document.getElementById('modal-operator-name').innerText = operatorName;
+    document.getElementById('modal-qty').value = '';
+    
+    document.getElementById('assign-modal').style.display = 'flex';
+}
 
-    const val = sel.value;
-    const qty = parseInt(qtyInput.value);
+function closeAssignModal() {
+    document.getElementById('assign-modal').style.display = 'none';
+    currentDragTask = null;
+    currentDropOperator = null;
+}
 
-    if (!val || !qty || qty <= 0) {
-        alert("Моля, изберете детайл и въведете валидно количество.");
+async function confirmAssign() {
+    const qty = parseInt(document.getElementById('modal-qty').value);
+    if (!qty || qty <= 0) {
+        alert("Моля, въведете валидно количество.");
         return;
     }
+    const dateStr = document.getElementById('date-picker').value;
 
-    const [detailName, operationName] = val.split('___');
-
+    document.getElementById('assign-modal').style.display = 'none';
+    
     const loader = document.getElementById('loading');
     loader.style.display = 'flex';
     document.getElementById('main-layout').style.display = 'none';
@@ -341,14 +334,16 @@ async function assignQuota(operatorName) {
     try {
         const { error } = await client.from('planner_bobini').insert([{
             date: dateStr,
-            operator_name: operatorName,
-            detail_name: detailName,
-            operation_name: operationName,
+            operator_name: currentDropOperator,
+            detail_name: currentDragTask.detailName,
+            operation_name: currentDragTask.operationName,
             qty: qty
         }]);
 
         if (error) throw error;
-        await loadData(); // refresh UI
+        currentDragTask = null;
+        currentDropOperator = null;
+        await loadData();
     } catch(err) {
         alert("Грешка при запис: " + err.message);
         loader.style.display = 'none';
