@@ -33,9 +33,10 @@ async function loadData() {
         const nextDayStr = nextDay.toISOString().split('T')[0];
 
         // Fetch exactly within the 24-hour bounds of the selected date
-        const [chekiraniyaRes, otchetiRes] = await Promise.all([
+        const [chekiraniyaRes, otchetiRes, accessRes] = await Promise.all([
             client.from('chekiraniya').select('*').gte('Време', selectedDateStr + 'T00:00:00').lt('Време', nextDayStr + 'T00:00:00').order('Време', { ascending: false }),
-            client.from('otcheti').select('*').gte('Дата', selectedDateStr + 'T00:00:00').lt('Дата', nextDayStr + 'T00:00:00').order('Време Старт', { ascending: false })
+            client.from('otcheti').select('*').gte('Дата', selectedDateStr + 'T00:00:00').lt('Дата', nextDayStr + 'T00:00:00').order('Време Старт', { ascending: false }),
+            client.from('access').select('email, name')
         ]);
 
         if (chekiraniyaRes.error) throw chekiraniyaRes.error;
@@ -43,8 +44,16 @@ async function loadData() {
 
         const chekiraniyaData = chekiraniyaRes.data || [];
         const otchetiData = otchetiRes.data || [];
+        const accessData = accessRes && accessRes.data ? accessRes.data : [];
+        
+        let emailToName = {};
+        accessData.forEach(row => {
+            if (row.email && row.name) {
+                emailToName[row.email.trim().toLowerCase()] = row.name.trim();
+            }
+        });
 
-        renderDashboard(chekiraniyaData, otchetiData);
+        renderDashboard(chekiraniyaData, otchetiData, emailToName);
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('main-layout').style.display = 'flex';
@@ -54,11 +63,13 @@ async function loadData() {
     }
 }
 
-function renderDashboard(chekiraniyaData, otchetiData) {
+function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
     // 1. НА СМЯНА В МОМЕНТА
     let latestCheckins = {};
     chekiraniyaData.forEach(row => {
-        let name = String(row['Име'] || row['Имейл'] || '').trim();
+        let email = String(row['Имейл'] || '').trim().toLowerCase();
+        let mappedName = (email && emailToName && emailToName[email]) ? emailToName[email] : '';
+        let name = String(row['Име'] || mappedName || row['Имейл'] || '').trim();
         if (!name) return;
         if (!latestCheckins[name]) {
             latestCheckins[name] = row;
