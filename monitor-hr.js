@@ -47,7 +47,7 @@ function renderDashboard(chekiraniyaData, otchetiData) {
     // 1. НА СМЯНА В МОМЕНТА
     let latestCheckins = {};
     chekiraniyaData.forEach(row => {
-        let name = String(row['Име'] || '').trim();
+        let name = String(row['Име'] || row['Имейл'] || '').trim();
         if (!name) return;
         if (!latestCheckins[name]) {
             latestCheckins[name] = row;

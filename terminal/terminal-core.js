@@ -95,7 +95,7 @@ function checkSystemMessage() {
         }).then(() => {
             window.history.replaceState({}, document.title, window.location.pathname);
             if (currentEmail) {
-                client.from('chekiraniya').insert([{ "Имейл": currentEmail, "Действие": "📢 Прочетено", "Време": new Date().toISOString(), "Локация": "Системно", "Бележка": sysTitle }]).then(res => {
+                client.from('chekiraniya').insert([{ "Име": currentOperator, "Имейл": currentEmail, "Действие": "📢 Прочетено", "Време": new Date().toISOString(), "Локация": "Системно", "Бележка": sysTitle }]).then(res => {
                     if(res.error) console.error("Грешка при запис на прочит", res.error);
                 });
             }
@@ -176,7 +176,7 @@ async function processCheckIn(actionType) {
             
             if (lastAction === 'Влизане' && lastTime.toDateString() !== now.toDateString()) {
                 let autoOutTime = new Date(lastTime); autoOutTime.setHours(17, 0, 0, 0);
-                await client.from('chekiraniya').insert([{ "Имейл": currentEmail, "Действие": 'Авто излизане', "Време": autoOutTime.toISOString(), "Локация": "Системно", "Бележка": "Авто корекция" }]);
+                await client.from('chekiraniya').insert([{ "Име": currentOperator, "Имейл": currentEmail, "Действие": 'Авто излизане', "Време": autoOutTime.toISOString(), "Локация": "Системно", "Бележка": "Авто корекция" }]);
                 await client.from('otcheti').delete().eq('Оператор', currentOperator).eq('Статус', 'Започната');
             } else {
                 if (actionType === 'Влизане' && lastAction === 'Влизане') { Swal.fire('Внимание!', 'Вече сте чекирани за Влизане днес.', 'info'); return; }
@@ -185,7 +185,7 @@ async function processCheckIn(actionType) {
         }
         Swal.fire({ title: 'Проверка на локация...', allowOutsideClick: false, didOpen: () => Swal.showLoading() }); const geoInfo = await getUserLocation();
         Swal.fire({ title: 'Записване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-        const { error: insertErr } = await client.from('chekiraniya').insert([{ "Имейл": currentEmail, "Действие": actionType, "Време": new Date().toISOString(), "Локация": geoInfo.loc, "Бележка": geoInfo.note }]);
+        const { error: insertErr } = await client.from('chekiraniya').insert([{ "Име": currentOperator, "Имейл": currentEmail, "Действие": actionType, "Време": new Date().toISOString(), "Локация": geoInfo.loc, "Бележка": geoInfo.note }]);
         if (insertErr) throw insertErr;
         
         if (actionType === 'Излизане') {
