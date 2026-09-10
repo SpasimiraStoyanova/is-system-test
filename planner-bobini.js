@@ -198,6 +198,21 @@ async function loadData() {
         globalState.targetItems = Object.values(filteredTargetNodes);
         globalState.targetItems.sort((a,b) => a.detailName.localeCompare(b.detailName));
 
+        renderAssignUI();
+        renderDashboardUI();
+
+        if (firstLoad) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('main-layout').style.display = 'flex';
+            firstLoad = false;
+        }
+
+    } catch(err) {
+        console.error(err);
+        document.getElementById('loading').innerHTML = '<div style="color:red;">Грешка при зареждане.</div>';
+    }
+}
+
 function renderAssignUI() {
     let html = '';
     const dateStr = document.getElementById('date-picker').value;
