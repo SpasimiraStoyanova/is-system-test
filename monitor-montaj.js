@@ -809,12 +809,12 @@ function calculateOperationStates(node, children, allNodesMap) {
                 let rootNodes = assemblyNodes.filter(n => !parentMap[n.id]);
                 
                 if (variant) {
-                    rootNodes = rootNodes.filter(n => n.displayName.includes('Вар. ' + variant) || n.displayName.includes('Вар.' + variant) || n.code.includes(variant));
+                    rootNodes = rootNodes.filter(n => n.planMonth && n.planMonth.includes(variant));
                 }
 
                 let groups = {};
                 rootNodes.forEach(root => {
-                    let pid = root.planId;
+                    let pid = root.planMonth || root.planId;
                     if (!groups[pid]) groups[pid] = { root: [], level1: [], level2: [] };
                     
                     // Филтрираме операциите за Ниво 0 (Краен)
