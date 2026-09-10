@@ -187,7 +187,8 @@ function buildTargetItems(plansData) {
             if (isRawMaterial) return;
 
             let partType = (nomEntry['Тип'] || '').trim();
-            let typeStr = (partType + " " + currentCode).toLowerCase().replace(/[\s\.\-\_]+/g, '');
+            let vutreshnoIme = (nomEntry['Вътрешно име'] || '').trim();
+            let typeStr = (partType + " " + currentCode + " " + vutreshnoIme).toLowerCase().replace(/[\s\.\-\_]+/g, '');
 
             let isStator = typeStr.includes("статор");
             let isRotor = typeStr.includes("ротор") && typeStr.includes("пакет");
@@ -202,19 +203,35 @@ function buildTargetItems(plansData) {
 
                 // Check actual routes
                 let routes = staticCache.routesByDetail[currentCodeLower] || [];
-                routes.forEach(r => {
-                    let opName = String(r['Операция']).trim();
-                    if (validOperations.includes(opName) || validOperations.some(v => opName.toLowerCase().includes(v.toLowerCase()))) {
-                        let key = currentCode + "___" + opName;
-                        if (!targetNodesMap[key]) {
-                            targetNodesMap[key] = {
-                                detailName: currentCode,
-                                operationName: opName,
-                                planQty: 0
-                            };
+                let opsToAssign = [];
+                
+                if (routes.length === 0) {
+                    opsToAssign = validOperations;
+                } else {
+                    routes.forEach(r => {
+                        let opName = String(r['Операция']).trim();
+                        if (validOperations.includes(opName) || validOperations.some(v => opName.toLowerCase().includes(v.toLowerCase()))) {
+                            opsToAssign.push(opName);
                         }
-                        targetNodesMap[key].planQty += requiredQty;
+                    });
+                    
+                    if(opsToAssign.length === 0) {
+                        opsToAssign = validOperations;
                     }
+                }
+
+                opsToAssign = [...new Set(opsToAssign)];
+
+                opsToAssign.forEach(opName => {
+                    let key = currentCode + "___" + opName;
+                    if (!targetNodesMap[key]) {
+                        targetNodesMap[key] = {
+                            detailName: currentCode,
+                            operationName: opName,
+                            planQty: 0
+                        };
+                    }
+                    targetNodesMap[key].planQty += requiredQty;
                 });
             }
 
