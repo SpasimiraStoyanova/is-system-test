@@ -20,9 +20,13 @@ function getTodayString() {
     return `${yyyy}-${mm}-${dd}`;
 }
 
+let firstLoad = true;
+
 async function loadData() {
-    document.getElementById('loading').style.display = 'flex';
-    document.getElementById('main-layout').style.display = 'none';
+    if (firstLoad) {
+        document.getElementById('loading').style.display = 'flex';
+        document.getElementById('main-layout').style.display = 'none';
+    }
 
     try {
         const datePicker = document.getElementById('date-picker');
@@ -55,11 +59,14 @@ async function loadData() {
 
         renderDashboard(chekiraniyaData, otchetiData, emailToName);
 
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
-    } catch (err) {
-        console.error(err);
-        document.getElementById('loading').innerHTML = `<div style="color:red;">Грешка при зареждане на данните!</div>`;
+        if (firstLoad) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('main-layout').style.display = 'flex';
+            firstLoad = false;
+        }
+    } catch (error) {
+        console.error('Грешка при зареждане:', error);
+        document.getElementById('loading').innerHTML = '<div style="color:#ef4444;">Грешка при зареждане на данните.</div>';
     }
 }
 
