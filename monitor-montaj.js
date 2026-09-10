@@ -833,7 +833,7 @@ function calculateOperationStates(node, children, allNodesMap) {
                 let groups = {};
                 rootNodes.forEach(root => {
                     let pid = root.planMonth || root.planId;
-                    if (!groups[pid]) groups[pid] = { root: [], level1: [] };
+                    if (!groups[pid]) groups[pid] = { root: [], level1: [], level2: [] };
                     
                     // Филтрираме операциите за Ниво 0 (Краен)
                     if (root.operations) {
@@ -858,6 +858,16 @@ function calculateOperationStates(node, children, allNodesMap) {
                             if (!groups[pid].level1.find(x => x.id === child.id)) {
                                 groups[pid].level1.push(child);
                             }
+
+                            let grandchildren = childMap[child.id] || [];
+                            grandchildren.forEach(gcId => {
+                                let gchild = allNodesMap[gcId];
+                                if (gchild) {
+                                    if (!groups[pid].level2.find(x => x.id === gchild.id)) {
+                                        groups[pid].level2.push(gchild);
+                                    }
+                                }
+                            });
                         }
                     });
                 });
@@ -867,6 +877,13 @@ function calculateOperationStates(node, children, allNodesMap) {
                     let planHTML = `<div class="plan-group" style="width: 100%;"><div class="plan-label">ПЛАН: ${planId}</div>`;
                     planHTML += `<div class="family-row" style="flex-wrap: wrap; display: flex; flex-direction: row; gap: 40px; margin-bottom: 20px;">`;
                     
+                    // Ниво 2 (Внуци) - Най-ляво
+                    planHTML += `<div class="bom-column col-level2">`;
+                    lvlData.level2.forEach(n => {
+                        planHTML += generateNodeHTML(n, parentMap, childMap, allNodesMap);
+                    });
+                    planHTML += `</div>`;
+
                     // Ниво 1 (Деца) - По средата
                     planHTML += `<div class="bom-column col-level1">`;
                     lvlData.level1.forEach(n => {
