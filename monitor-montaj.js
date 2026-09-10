@@ -798,150 +798,97 @@ function calculateOperationStates(node, children, allNodesMap) {
                     document.getElementById('monitorTitle').innerText = 'МОНИТОР МОНТАЖ (ВАР. ' + variant + ')';
                 }
 
-                // Level 1
+                const container = document.getElementById('w-resolvers');
+                if (!container) return;
+
                 let assemblyNodes = data.nodes.assembly || [];
+                // Намираме крайните резолвери
+                let rootNodes = assemblyNodes.filter(n => !parentMap[n.id]);
+                
                 if (variant) {
-                    assemblyNodes = assemblyNodes.filter(n => n.name && n.name.includes(variant));
+                    rootNodes = rootNodes.filter(n => n.displayName.includes('Вар. ' + variant) || n.displayName.includes('Вар.' + variant) || n.code.includes(variant));
                 }
-                renderFamilyBOMBucket(assemblyNodes, 'w-level1');
 
-                // Level 2 (Зареждане)
-                let level2Nodes = [];
-                let level2Set = new Set();
-                
-                // BFS to find Зареждане nodes
-                let queue = assemblyNodes.map(n => n.id);
-                let visited = new Set(queue);
-                
-                while(queue.length > 0) {
-                    let curr = queue.shift();
-                    let children = childMap[curr] || [];
-                    children.forEach(childId => {
-                        let childNode = allNodesMap[childId];
-                        if (childNode) {
-                            if (childNode.op && childNode.op.toLowerCase().includes("зареждане")) {
-                                if (!level2Set.has(childNode.id)) {
-                                    level2Set.add(childNode.id);
-                                    level2Nodes.push(childNode);
-                                }
-                            } else {
-                                if (!visited.has(childId)) {
-                                    visited.add(childId);
-                                    queue.push(childId);
-                                }
+                let groups = {};
+                rootNodes.forEach(root => {
+                    let pid = root.planId;
+                    if (!groups[pid]) groups[pid] = { root: [], level1: [], level2: [] };
+                    
+                    // Филтрираме операциите за Ниво 0 (Краен)
+                    if (root.operations) {
+                        root.operations = root.operations.filter(o => {
+                            let name = o.name.toLowerCase();
+                            return name.includes("сглобяване") || name.includes("измерване");
+                        });
+                    }
+                    groups[pid].root.push(root);
+
+                    let children = childMap[root.id] || [];
+                    children.forEach(cId => {
+                        let child = allNodesMap[cId];
+                        if (child) {
+                            // Филтрираме операциите за Ниво 1 (Дете)
+                            if (child.operations) {
+                                child.operations = child.operations.filter(o => {
+                                    let name = o.name.toLowerCase();
+                                    return name.includes("зареждане") || name.includes("хонинговане");
+                                });
                             }
-                        }
-                    });
-                }
-                
-                renderFamilyBOMBucket(level2Nodes, 'w-level2');
+                            if (!groups[pid].level1.find(x => x.id === child.id)) {
+                                groups[pid].level1.push(child);
+                            }
 
-                // Level 3 (Готови деца на Зареждане)
-                let level3Nodes = [];
-                let level3Set = new Set();
-                
-                level2Nodes.forEach(n2 => {
-                    let children = childMap[n2.id] || [];
-                    children.forEach(childId => {
-                        let childNode = allNodesMap[childId];
-                        if (childNode && !level3Set.has(childNode.id)) {
-                            level3Set.add(childNode.id);
-                            level3Nodes.push(childNode);
+                            let grandchildren = childMap[child.id] || [];
+                            grandchildren.forEach(gcId => {
+                                let gchild = allNodesMap[gcId];
+                                if (gchild) {
+                                    // Оставяме операциите на внуците както са
+                                    if (!groups[pid].level2.find(x => x.id === gchild.id)) {
+                                        groups[pid].level2.push(gchild);
+                                    }
+                                }
+                            });
                         }
                     });
                 });
-                
-                renderFamilyBOMBucket(level3Nodes, 'w-level3');
+
+                let finalHTML = '';
+                for (const [planId, lvlData] of Object.entries(groups)) {
+                    let planHTML = `<div class="plan-group" style="width: 100%;"><div class="plan-label">ПЛАН: ${planId}</div>`;
+                    planHTML += `<div class="family-row" style="flex-wrap: wrap; display: flex; flex-direction: row; gap: 40px; margin-bottom: 20px;">`;
+                    
+                    // Ниво 2 (Внуци) - Най-ляво
+                    planHTML += `<div class="bom-column col-level2">`;
+                    lvlData.level2.forEach(n => {
+                        planHTML += generateNodeHTML(n, parentMap, childMap, allNodesMap);
+                    });
+                    planHTML += `</div>`;
+
+                    // Ниво 1 (Деца) - По средата
+                    planHTML += `<div class="bom-column col-level1">`;
+                    lvlData.level1.forEach(n => {
+                        planHTML += generateNodeHTML(n, parentMap, childMap, allNodesMap);
+                    });
+                    planHTML += `</div>`;
+
+                    // Ниво 0 (Краен Резолвер) - Най-дясно
+                    planHTML += `<div class="bom-column col-root">`;
+                    lvlData.root.forEach(n => {
+                        planHTML += generateNodeHTML(n, parentMap, childMap, allNodesMap);
+                    });
+                    planHTML += `</div>`;
+                    
+                    planHTML += `</div></div>`;
+                    finalHTML += planHTML;
+                }
+
+                container.innerHTML = finalHTML;
 
                 setTimeout(() => {
                     drawArrows();
                     setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
                 }, 50);
             }
-
-    function appendColumn(sourceId, targetWindowId, titleText) {
-        const winContainer = document.getElementById(targetWindowId);
-        const sourceContainer = document.getElementById(sourceId);
-        if (winContainer && sourceContainer && sourceContainer.innerHTML.trim() !== '') {
-            let lastRow = null;
-            const familyRows = winContainer.querySelectorAll('.family-row');
-            if (familyRows.length > 0) {
-                lastRow = familyRows[familyRows.length - 1];
-            } else {
-                const planGroup = document.createElement('div');
-                planGroup.className = 'plan-group';
-                lastRow = document.createElement('div');
-                lastRow.className = 'family-row';
-                planGroup.appendChild(lastRow);
-                winContainer.appendChild(planGroup);
-            }
-            
-            const colClass = 'appended-' + sourceId;
-            let existingCol = lastRow.querySelector('.' + colClass);
-            
-            if (!existingCol) {
-                if (lastRow.children.length > 0) {
-                    const spacer = document.createElement('div');
-                    spacer.style.width = "40px";
-                    lastRow.appendChild(spacer);
-                }
-                    
-                // Нова колона
-                existingCol = document.createElement('div');
-                existingCol.className = 'bom-column ' + colClass;
-                if (titleText) {
-                    existingCol.innerHTML = `<span class="lane-title" style="margin-bottom: 8px;">${titleText}</span>`;
-                }
-                lastRow.appendChild(existingCol);
-            } else {
-                let titleNode = existingCol.querySelector('.lane-title');
-                existingCol.innerHTML = '';
-                if (titleNode) existingCol.appendChild(titleNode);
-            }
-            
-            // Взимаме всички детайли
-            const nodes = sourceContainer.querySelectorAll('.vsm-node');
-            
-            if (sourceId === 'w-small-pins' || sourceId === 'w-small-studs') {
-                const rowWrapper = document.createElement('div');
-                rowWrapper.style.display = 'flex';
-                rowWrapper.style.flexDirection = 'row';
-                rowWrapper.style.gap = '20px';
-                nodes.forEach(n => rowWrapper.appendChild(n));
-                existingCol.appendChild(rowWrapper);
-            } else {
-                nodes.forEach(n => existingCol.appendChild(n));
-            }
-            
-            // Скриваме оригиналния контейнер (ако е видим)
-            const lane = sourceContainer.closest('.lane');
-            if (lane) lane.style.display = 'none';
-            
-            renderedHtmlCache[sourceId] = '';
-        }
-    }
-
-    appendColumn('w-temp-rotors-11', 'w-var11', '');
-    appendColumn('w-temp-rotors-25', 'w-var25', '');
-    appendColumn('w-small-pins', 'w-var25', 'ЩИФТОВЕ');
-    
-    appendColumn('w-small-rotors', 'w-bearings', 'ПАКЕТИ');
-    appendColumn('w-small-studs', 'w-bearings', 'ШПИЛКИ');
-    appendColumn('w-small-others', 'w-bearings', 'ДРУГИ');
-
-    const studsContainer = document.getElementById('w-small-studs');
-    if (studsContainer) {
-        const smallDetailsWindow = studsContainer.closest('.window');
-        if (smallDetailsWindow) {
-            smallDetailsWindow.style.display = 'none';
-        }
-    }
-
-    setTimeout(() => {
-        drawArrows();
-        setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
-    }, 50);
-}
 
 function generateNodeHTML(node, parentMap, childMap, allNodesMap) {
     let dId = getDomId(node.id);
