@@ -845,24 +845,49 @@ function calculateOperationStates(node, children, allNodesMap) {
                     groups[pid].root.push(root);
 
                     let children = childMap[root.id] || [];
+                    
+                    // Намираме възела с # (напр. 575-01902#), за да го направим родител на Вал-а
+                    let hashChildId = children.find(cId => {
+                        let c = allNodesMap[cId];
+                        return c && c.displayName && c.displayName.endsWith('#');
+                    });
+
                     children.forEach(cId => {
                         let child = allNodesMap[cId];
                         if (child) {
-                            // Филтрираме операциите за Ниво 1 (Дете)
-                            if (child.operations) {
-                                child.operations = child.operations.filter(o => {
-                                    let name = o.name.toLowerCase();
-                                    return name.includes("зареждане") || name.includes("хонинговане");
-                                });
-                            }
-                            if (!groups[pid].level1.find(x => x.id === child.id)) {
-                                groups[pid].level1.push(child);
+                            // 1. Игнорираме напълно "Вал Вар. ... #"
+                            if (child.displayName && child.displayName.includes('Вал Вар') && child.displayName.includes('#')) return;
+
+                            // 2. Ако е Вал Вар. ... (без #), го местим в Ниво 2 (Внуци) и го връзваме за 575-01902#
+                            if (child.displayName && child.displayName.includes('Вал Вар')) {
+                                if (!groups[pid].level2.find(x => x.id === child.id)) {
+                                    groups[pid].level2.push(child);
+                                }
+                                if (hashChildId) {
+                                    parentMap[child.id] = hashChildId;
+                                    let conn = globalConnections.find(c => c.from === child.id && c.to === root.id);
+                                    if (conn) conn.to = hashChildId;
+                                }
+                            } else {
+                                // Нормално дете
+                                if (child.operations) {
+                                    child.operations = child.operations.filter(o => {
+                                        let name = o.name.toLowerCase();
+                                        return name.includes("зареждане") || name.includes("хонинговане");
+                                    });
+                                }
+                                if (!groups[pid].level1.find(x => x.id === child.id)) {
+                                    groups[pid].level1.push(child);
+                                }
                             }
 
                             let grandchildren = childMap[child.id] || [];
                             grandchildren.forEach(gcId => {
                                 let gchild = allNodesMap[gcId];
                                 if (gchild) {
+                                    // Игнорираме напълно "Вал Вар. ... #"
+                                    if (gchild.displayName && gchild.displayName.includes('Вал Вар') && gchild.displayName.includes('#')) return;
+
                                     if (!groups[pid].level2.find(x => x.id === gchild.id)) {
                                         groups[pid].level2.push(gchild);
                                     }
