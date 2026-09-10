@@ -893,6 +893,6 @@ async function generateTerminalTasks(client) {
           return a.opNum - b.opNum;
       });
       return generatedTasks;
-  } catch (err) { console.error(err); padding: 40px; color:#ef4444; font-weight:bold;">❌ Грешка:<br>' + err.message + '</div>'; }
+  } catch (err) { console.error(err); return []; }
 }
 
