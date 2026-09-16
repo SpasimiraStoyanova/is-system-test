@@ -347,6 +347,27 @@ async function copyForward(quotaId) {
     let inserts = [];
     let existingIdsToDelete = [];
     
+    // Find how much is remaining to assign across the whole month
+    let targetItem = globalState.targetItems.find(t => t.detailName === q.detail_name && t.operationName === q.operation_name);
+    let maxAllowed = targetItem ? targetItem.planQty : Infinity;
+    
+    let otherAssigned = 0;
+    globalState.quotas.forEach(x => {
+        if (x.detail_name === q.detail_name && x.operation_name === q.operation_name) {
+            let xDay = parseInt(x.date.split('-')[2]);
+            let isOverwritten = x.operator_name === q.operator_name && xDay >= startDay;
+            if (!isOverwritten) {
+                otherAssigned += x.qty;
+            }
+        }
+    });
+    
+    let remainingToAssign = maxAllowed - otherAssigned;
+    if (targetItem && remainingToAssign <= 0) {
+        alert("Планът за тази задача вече е напълно разпределен. Не може да се копира повече.");
+        return;
+    }
+    
     for (let d = startDay; d <= daysInMonth; d++) {
         let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         let dateObj = new Date(year, month - 1, d);
@@ -355,6 +376,13 @@ async function copyForward(quotaId) {
         // Skip off days
         let isOffDay = globalState.quotas.some(x => x.operator_name === q.operator_name && x.date === fullDateStr && x.detail_name === 'OFF');
         if (isWeekend || isOffDay) continue;
+        
+        let qtyToAssign = q.qty;
+        if (targetItem && qtyToAssign > remainingToAssign) {
+            qtyToAssign = remainingToAssign;
+        }
+        
+        if (qtyToAssign <= 0) break; // Reached the plan limit!
         
         // Mark existing identical tasks (same detail and operation) for deletion
         let existing = globalState.quotas.filter(x => x.operator_name === q.operator_name && x.date === fullDateStr && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
@@ -365,12 +393,15 @@ async function copyForward(quotaId) {
             operator_name: q.operator_name,
             detail_name: q.detail_name,
             operation_name: q.operation_name,
-            qty: q.qty
+            qty: qtyToAssign
         });
+        
+        remainingToAssign -= qtyToAssign;
+        if (targetItem && remainingToAssign <= 0) break;
     }
     
     if (inserts.length === 0) {
-        alert("Няма оставащи свободни работни дни."); return;
+        alert("Няма оставащи свободни работни дни или планът е запълнен."); return;
     }
     
     document.getElementById('loading').style.display = 'flex';
