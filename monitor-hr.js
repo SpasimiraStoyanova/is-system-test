@@ -98,6 +98,25 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
     document.getElementById('count-checked').innerText = checkedInUsers.length;
     
     let htmlCheckedIn = '';
+    
+    // Compute User Shifts
+    let userShifts = {};
+    chekiraniyaData.forEach(row => {
+        let email = String(row['Имейл'] || '').trim().toLowerCase();
+        let mappedName = (email && emailToName && emailToName[email]) ? emailToName[email] : '';
+        let name = String(row['Име'] || mappedName || row['Имейл'] || '').trim();
+        if (!name) return;
+        
+        let t = new Date(row['Време']).getTime();
+        if (!userShifts[name]) {
+            userShifts[name] = { firstIn: Infinity, lastOut: -Infinity };
+        }
+        if (row['Действие'] === 'Влизане') {
+            if (t < userShifts[name].firstIn) userShifts[name].firstIn = t;
+        } else if (row['Действие'].includes('излизане') || row['Действие'] === 'Излизане') {
+            if (t > userShifts[name].lastOut) userShifts[name].lastOut = t;
+        }
+    });
     checkedInUsers.forEach(u => {
         htmlCheckedIn += `
             <div class="person-card active">
@@ -197,9 +216,11 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
     let operators = Object.keys(userProduction).sort((a,b) => a.localeCompare(b));
     
     operators.forEach(name => {
+        let totalWorkedMs = 0;
         let itemsHtml = '';
         for (let taskKey in userProduction[name]) {
             let data = userProduction[name][taskKey];
+            totalWorkedMs += data.durationMs;
             
             let timeStr = '';
             if (data.durationMs > 0) {
@@ -220,9 +241,28 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
                 </div>`;
         }
         
+        let efficiencyHtml = '';
+        if (userShifts[name] && userShifts[name].firstIn !== Infinity && totalWorkedMs > 0) {
+            let shift = userShifts[name];
+            let endT = shift.lastOut !== -Infinity && shift.lastOut > shift.firstIn ? shift.lastOut : Date.now();
+            let d = new Date(shift.firstIn);
+            d.setHours(16, 30, 0, 0); // Cap shift end at 16:30
+            if (endT > d.getTime()) endT = d.getTime();
+            
+            let shiftMs = Math.max(0, endT - shift.firstIn);
+            if (shiftMs > 0) {
+                let perc = (totalWorkedMs / shiftMs) * 100;
+                let color = perc >= 75 ? '#10b981' : perc >= 40 ? '#f59e0b' : '#ef4444';
+                efficiencyHtml = `<div style="font-size: 0.85em; color: #94a3b8; margin-top: 4px;">Ефективност: <strong style="color:${color};">${perc.toFixed(1)}%</strong></div>`;
+            }
+        }
+        
         htmlCompleted += `
             <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid #10b981; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                <div style="font-weight: 900; font-size: 1.1em; margin-bottom: 8px; color: #f8fafc; text-transform: uppercase;">👤 ${name}</div>
+                <div style="margin-bottom: 8px;">
+                    <div style="font-weight: 900; font-size: 1.1em; color: #f8fafc; text-transform: uppercase;">👤 ${name}</div>
+                    ${efficiencyHtml}
+                </div>
                 ${itemsHtml}
             </div>
         `;
