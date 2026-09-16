@@ -329,7 +329,7 @@ async function cellClick(dateStr, opName) {
 async function copyForward(quotaId) {
     let q = globalState.quotas.find(x => String(x.id) === String(quotaId));
     if (!q) return;
-    if(!confirm(`Искате ли да копирате задачата (${q.qty} бр.) за всички оставащи работни дни до края на месеца за ${q.operator_name}?`)) return;
+    if(!confirm(`Искате ли да копирате задачата (${q.qty} бр.) за всички оставащи работни дни до края на месеца за ${q.operator_name}?\n\nВнимание: Това автоматично ще презапише (замени) всички съществуващи дневни цели за същия детайл и операция в следващите дни!`)) return;
     
     const selectedMonth = document.getElementById('month-picker').value; 
     let year = parseInt(selectedMonth.split('-')[0]);
@@ -338,6 +338,7 @@ async function copyForward(quotaId) {
     
     let startDay = parseInt(q.date.split('-')[2]) + 1;
     let inserts = [];
+    let existingIdsToDelete = [];
     
     for (let d = startDay; d <= daysInMonth; d++) {
         let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -347,6 +348,10 @@ async function copyForward(quotaId) {
         // Skip off days
         let isOffDay = globalState.quotas.some(x => x.operator_name === q.operator_name && x.date === fullDateStr && x.detail_name === 'OFF');
         if (isWeekend || isOffDay) continue;
+        
+        // Mark existing identical tasks (same detail and operation) for deletion
+        let existing = globalState.quotas.filter(x => x.operator_name === q.operator_name && x.date === fullDateStr && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
+        existing.forEach(ex => existingIdsToDelete.push(ex.id));
         
         inserts.push({
             date: fullDateStr,
@@ -362,6 +367,12 @@ async function copyForward(quotaId) {
     }
     
     document.getElementById('loading').style.display = 'flex';
+    
+    if (existingIdsToDelete.length > 0) {
+        await client.from('planner_bobini').delete().in('id', existingIdsToDelete);
+        globalState.quotas = globalState.quotas.filter(x => !existingIdsToDelete.includes(x.id));
+    }
+    
     const { data, error } = await client.from('planner_bobini').insert(inserts).select();
     if (!error && data) {
         globalState.quotas.push(...data);
