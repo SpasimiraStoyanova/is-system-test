@@ -143,9 +143,13 @@
       justify-content: space-between;
       align-items: center;
     }
-    #timeline-div {
-      flex: 1;
+    #timeline-container {
       width: 100%;
+      overflow-x: auto;
+    }
+    #timeline-div {
+      min-width: 2000px; /* Forces horizontal scroll to prevent squishing */
+      height: 100%;
     }
     
     #loading {
@@ -226,16 +230,8 @@
       
     </div>
     
-    <!-- Gantt / Timeline -->
-    <div class="timeline-wrapper">
-      <div class="timeline-header">
-        <span>Времева Линия (Gantt) на Операторите</span>
-      </div>
-      <div id="timeline-div"></div>
-    </div>
-    
     <!-- Summary Table -->
-    <div class="timeline-wrapper" style="margin-top:20px; min-height:auto;">
+    <div class="timeline-wrapper" style="margin-top:20px; min-height:auto; max-width: 800px; margin-left: auto; margin-right: auto;">
       <div class="timeline-header">
         <span>Справка по Детайли</span>
       </div>
@@ -245,13 +241,23 @@
             <th>Детайл</th>
             <th>Операция</th>
             <th>Общо Изработени</th>
-            <th>Общо Отчетено Време</th>
+            <th>Общо Време</th>
           </tr>
         </thead>
         <tbody id="summary-tbody">
           <!-- Rows will be injected here -->
         </tbody>
       </table>
+    </div>
+
+    <!-- Gantt / Timeline -->
+    <div class="timeline-wrapper" style="margin-top:20px;">
+      <div class="timeline-header">
+        <span>Времева Линия (Gantt) на Операторите (Скролни настрани ➔)</span>
+      </div>
+      <div id="timeline-container">
+        <div id="timeline-div"></div>
+      </div>
     </div>
     
   </div>
