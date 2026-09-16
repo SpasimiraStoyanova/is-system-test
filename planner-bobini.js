@@ -202,7 +202,20 @@ async function loadData() {
 
         if (firstLoad) {
             document.getElementById('loading').style.display = 'none';
+            document.getElementById('main-layout').style.display = 'flex';
+            firstLoad = false;
         }
+    } catch (err) {
+        console.error("Грешка при зареждане:", err);
+        if (firstLoad) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('main-layout').style.display = 'flex';
+            firstLoad = false;
+        }
+    }
+}
+
+let currentDragTask = null;
 let currentDropOperator = null;
 let currentDropDateStr = null;
 
@@ -463,6 +476,7 @@ async function confirmAssign() {
         loader.style.display = 'none';
         document.getElementById('main-layout').style.display = 'flex';
     }
+}
 
 
 async function deleteQuota(id) {
