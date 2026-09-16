@@ -978,6 +978,7 @@ window.openLogisticsModal = function() {
                         <div style="color:#0284c7;">📦 От тях 100% опаковани: <b>${p.packed}</b> бр.</div>
                     </div>
                     <div style="display:flex; flex-direction:column; gap:8px;">
+                        <button class="btn-primary" onclick="window.open('packing-list.html?month=${p.month}&year=${p.year}', '_blank')" style="background:#0ea5e9; min-width:200px;">📄 Печат Пакинг Лист</button>
                         <button class="btn-primary" ${p.done === 0 || !p.fullyPacked ? 'disabled style="opacity:0.5;cursor:not-allowed;" title="Всички завършени детайли трябва да са 100% опаковани!"' : ''} onclick="window.massLogisticsAction('${p.month}', '${p.year}')" style="background:#f59e0b; min-width:200px;">🚚 Изпрати План ${p.month}/${p.year}</button>
                     </div>
                 </div>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Packing List</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            margin: 0;
+            padding: 20px;
+            background: white;
+            color: black;
+        }
+        .page {
+            page-break-after: always;
+            padding: 20px;
+        }
+        .page:last-child {
+            page-break-after: auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .address-block {
+            margin-bottom: 30px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th {
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+        }
+        td {
+            padding: 8px;
+            text-align: center;
+        }
+        td.desc {
+            text-align: left;
+        }
+        @media print {
+            body { padding: 0; }
+            #controls { display: none; }
+        }
+        #controls {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <button onclick="window.print()">🖨️ Принтирай</button>
+        <button onclick="window.close()">❌ Затвори</button>
+    </div>
+
+    <div id="content">
+        <div style="text-align:center; padding: 50px;">Зареждане на данни...</div>
+    </div>
+
+    <script src="app.js?v=2"></script>
+    <script>
+        async function loadData() {
+            const params = new URLSearchParams(window.location.search);
+            const month = params.get('month');
+            const year = params.get('year');
+
+            if (!month || !year) {
+                document.getElementById('content').innerHTML = "<div style='color:red; text-align:center;'>Липсват месец и година!</div>";
+                return;
+            }
+
+            try {
+                // Fetch plans for this month/year
+                const { data: plans, error: planErr } = await client.from('plan')
+                    .select('id, "Вътрешно име"')
+                    .eq('Месец', month).eq('Година', year);
+
+                if (planErr) throw planErr;
+                
+                if (!plans || plans.length === 0) {
+                    document.getElementById('content').innerHTML = "<div style='text-align:center;'>Няма планове за този месец.</div>";
+                    return;
+                }
+
+                let planIds = plans.map(p => String(p.id));
+
+                // Fetch reports (otcheti) for packing
+                const { data: otcheti, error: otchErr } = await client.from('otcheti')
+                    .select('*')
+                    .in('ID План', planIds)
+                    .ilike('Операция', '%Опаковане - Кашон №%')
+                    .eq('Статус', 'Отчетено');
+
+                if (otchErr) throw otchErr;
+
+                if (!otcheti || otcheti.length === 0) {
+                    document.getElementById('content').innerHTML = "<div style='text-align:center;'>Няма намерени опаковани кашони за този план.</div>";
+                    return;
+                }
+
+                // Fetch Nomenclature for Description
+                const { data: nomData, error: nomErr } = await client.from('Номенклатура').select('*');
+                let nomMap = {};
+                if (!nomErr && nomData) {
+                    nomData.forEach(n => {
+                        let name = String(n['Вътрешно име'] || '').trim();
+                        let idCode = String(n['ID Детайл'] || '').trim();
+                        let desc = String(n['Описание'] || '').trim();
+                        if (name) nomMap[name] = { idCode, desc };
+                        if (idCode) nomMap[idCode] = { idCode, desc };
+                    });
+                }
+
+                // Group by Box Number
+                let boxes = {};
+                otcheti.forEach(r => {
+                    let op = String(r['Операция'] || '');
+                    let match = op.match(/Кашон №\s*(.+)/i);
+                    let boxNum = match ? match[1].trim() : 'Неизвестен';
+                    
+                    if (!boxes[boxNum]) boxes[boxNum] = [];
+                    
+                    let detailInternal = String(r['ID Детайл'] || '');
+                    let qty = parseFloat(r['Количество']) || 0;
+                    
+                    let itemNo = detailInternal;
+                    let desc = '';
+                    
+                    if (nomMap[detailInternal]) {
+                        itemNo = nomMap[detailInternal].idCode || detailInternal;
+                        desc = nomMap[detailInternal].desc || detailInternal;
+                    }
+
+                    boxes[boxNum].push({
+                        qty: qty,
+                        itemNo: itemNo,
+                        desc: desc,
+                        internal: detailInternal
+                    });
+                });
+
+                let lastDateObj = new Date(year, month, 0); 
+                let dateStr = String(lastDateObj.getMonth() + 1).padStart(2, '0') + '.' + 
+                              String(lastDateObj.getDate()).padStart(2, '0') + '.' + 
+                              lastDateObj.getFullYear();
+
+                let html = '';
+                
+                let sortedBoxes = Object.keys(boxes).sort((a,b) => parseInt(a) - parseInt(b));
+                
+                sortedBoxes.forEach(bNum => {
+                    let items = boxes[bNum];
+                    let mergedItems = {};
+                    items.forEach(i => {
+                        let key = i.itemNo;
+                        if (!mergedItems[key]) mergedItems[key] = { qty: 0, desc: i.desc, itemNo: i.itemNo, internal: i.internal };
+                        mergedItems[key].qty += i.qty;
+                    });
+                    
+                    let rowsHtml = '';
+                    Object.values(mergedItems).forEach(item => {
+                        let descLines = item.desc.split('\\n').map(l => l.trim()).filter(l => l !== '').join('<br>');
+                        if (!descLines) descLines = item.internal;
+                        
+                        rowsHtml += `
+                            <tr>
+                                <td>${item.qty}</td>
+                                <td>${item.itemNo}</td>
+                                <td class="desc">${descLines}</td>
+                            </tr>
+                        `;
+                    });
+
+                    html += `
+                        <div class="page">
+                            <div class="header">
+                                <h1>"AMCI"</h1>
+                                <h1>Packing List</h1>
+                            </div>
+                            <div class="address-block">
+                                <div>${dateStr}</div>
+                                <div style="margin-top: 10px;">Ship to:</div>
+                                <div>Advanced Micro Controls Inc.</div>
+                                <div>20 Gear Drive</div>
+                                <div>Plymouth Industrial Park</div>
+                                <div>Terryville, CT 06786-2408</div>
+                                <div>U.S.A</div>
+                            </div>
+                            
+                            <div style="font-weight: bold; margin-bottom: 5px;">Кашон № ${bNum}</div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 15%;">Qty</th>
+                                        <th style="width: 25%;">Item No</th>
+                                        <th style="width: 60%;">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rowsHtml}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                });
+
+                document.getElementById('content').innerHTML = html;
+
+            } catch (err) {
+                console.error(err);
+                document.getElementById('content').innerHTML = "<div style='color:red; text-align:center;'>Грешка при зареждане: " + err.message + "</div>";
+            }
+        }
+
+        window.onload = loadData;
+    </script>
+</body>
+</html>
