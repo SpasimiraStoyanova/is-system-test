@@ -463,22 +463,7 @@ async function confirmAssign() {
         loader.style.display = 'none';
         document.getElementById('main-layout').style.display = 'flex';
     }
-}ty: qty
-        });
-        
-        currentDragTask = null;
-        currentDropOperator = null;
-        
-        renderKanbanUI();
-        loader.style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
 
-    } catch(err) {
-        alert("Грешка при запис: " + err.message);
-        loader.style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
-    }
-}
 
 async function deleteQuota(id) {
     if(!confirm("Сигурни ли сте, че искате да изтриете тази норма?")) return;
