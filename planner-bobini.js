@@ -270,7 +270,10 @@ function renderCalendarUI() {
         boardHtml += '<tr><td colspan="' + (daysInMonth + 1) + '" style="padding:20px; color:#94a3b8;">Няма активни оператори в този отдел.</td></tr>';
     } else {
         globalState.activeOperators.forEach(opName => {
-            boardHtml += `<tr><td class="op-name">👤 ${opName}</td>`;
+            boardHtml += `<tr><td class="op-name">
+                <input type="checkbox" class="op-mass-checkbox" data-op="${opName}" onchange="toggleMassDeleteBtn()" style="margin-right:5px; cursor:pointer;" title="Маркирай за масови действия">
+                👤 ${opName}
+            </td>`;
             for (let d = 1; d <= daysInMonth; d++) {
                 let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                 
@@ -415,9 +418,20 @@ function drop(e, operatorName, dateStr) {
     currentDropOperator = operatorName;
     currentDropDateStr = dateStr;
     
+    let selectedDates = document.querySelectorAll('.date-mass-checkbox:checked').length;
+    let selectedOps = document.querySelectorAll('.op-mass-checkbox:checked').length;
+    let massText = '';
+    if (selectedDates > 0 || selectedOps > 0) {
+        let dText = selectedDates > 0 ? selectedDates + ' дати' : dateStr;
+        let oText = selectedOps > 0 ? selectedOps + ' човека' : operatorName;
+        massText = `МАСОВО: ${oText} за ${dText}`;
+    } else {
+        massText = operatorName + ' (' + dateStr + ')';
+    }
+    
     document.getElementById('modal-task-title').innerText = currentDragTask.detailName;
     document.getElementById('modal-task-op').innerText = currentDragTask.operationName;
-    document.getElementById('modal-operator-name').innerText = operatorName + ' (' + dateStr + ')';
+    document.getElementById('modal-operator-name').innerText = massText;
     document.getElementById('modal-qty').value = '';
     
     // Update Forecast Bar temporarily
@@ -463,19 +477,43 @@ async function confirmAssign() {
     document.getElementById('main-layout').style.display = 'none';
 
     try {
-        const { error, data } = await client.from('planner_bobini').insert([{
-            date: currentDropDateStr,
-            operator_name: currentDropOperator,
-            detail_name: currentDragTask.detailName,
-            operation_name: currentDragTask.operationName,
-            qty: qty
-        }]).select();
+        let selectedDates = Array.from(document.querySelectorAll('.date-mass-checkbox:checked')).map(cb => cb.getAttribute('data-date'));
+        let selectedOperators = Array.from(document.querySelectorAll('.op-mass-checkbox:checked')).map(cb => cb.getAttribute('data-op'));
+
+        let datesToAssign = selectedDates.length > 0 ? selectedDates : [currentDropDateStr];
+        let opsToAssign = selectedOperators.length > 0 ? selectedOperators : [currentDropOperator];
+
+        let inserts = [];
+        for (let d of datesToAssign) {
+            for (let op of opsToAssign) {
+                // Skip if it's an off day
+                let isOffDay = globalState.quotas.some(q => q.operator_name === op && q.date === d && q.detail_name === 'OFF');
+                if (isOffDay) continue;
+
+                inserts.push({
+                    date: d,
+                    operator_name: op,
+                    detail_name: currentDragTask.detailName,
+                    operation_name: currentDragTask.operationName,
+                    qty: qty
+                });
+            }
+        }
+
+        if (inserts.length === 0) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('main-layout').style.display = 'flex';
+            alert("Няма валидни дни за възлагане (всички са маркирани като почивни).");
+            return;
+        }
+
+        const { error, data } = await client.from('planner_bobini').insert(inserts).select();
 
         if (error) throw error;
         
-        if (data && data[0]) {
+        if (data && data.length > 0) {
             if (!globalState.quotas) globalState.quotas = [];
-            globalState.quotas.push(data[0]);
+            globalState.quotas.push(...data);
         }
         
         currentDragTask = null;
@@ -552,32 +590,52 @@ async function clearMonth() {
 }
 
 function toggleMassDeleteBtn() {
-    let checkboxes = document.querySelectorAll('.date-mass-checkbox:checked');
+    let dateCb = document.querySelectorAll('.date-mass-checkbox:checked').length;
+    let opCb = document.querySelectorAll('.op-mass-checkbox:checked').length;
     let btn = document.getElementById('delete-selected-dates-btn');
-    if (checkboxes.length > 0) {
+    if (dateCb > 0 || opCb > 0) {
         btn.style.display = 'block';
+        if (dateCb > 0 && opCb > 0) btn.innerHTML = `🗑️ Изтрий за ${opCb} човека на ${dateCb} дати`;
+        else if (dateCb > 0) btn.innerHTML = `🗑️ Изтрий за ${dateCb} дати`;
+        else btn.innerHTML = `🗑️ Изтрий за ${opCb} човека`;
     } else {
         btn.style.display = 'none';
     }
 }
 
 async function deleteSelectedDates() {
-    let checkboxes = document.querySelectorAll('.date-mass-checkbox:checked');
-    if (checkboxes.length === 0) return;
+    let selectedDates = Array.from(document.querySelectorAll('.date-mass-checkbox:checked')).map(cb => cb.getAttribute('data-date'));
+    let selectedOperators = Array.from(document.querySelectorAll('.op-mass-checkbox:checked')).map(cb => cb.getAttribute('data-op'));
     
-    let datesToDelete = [];
-    checkboxes.forEach(cb => datesToDelete.push(cb.getAttribute('data-date')));
+    if (selectedDates.length === 0 && selectedOperators.length === 0) return;
     
-    if(!confirm(`Сигурни ли сте, че искате да изтриете всички задачи за избраните ${datesToDelete.length} дати?`)) return;
+    let msg = `Сигурни ли сте, че искате да изтриете задачите?`;
+    if (selectedDates.length > 0 && selectedOperators.length > 0) {
+        msg = `Ще изтриете ВСИЧКИ задачи за ${selectedOperators.length} оператора в избраните ${selectedDates.length} дати!`;
+    } else if (selectedDates.length > 0) {
+        msg = `Ще изтриете задачите на ВСИЧКИ оператори за избраните ${selectedDates.length} дати!`;
+    } else {
+        msg = `Ще изтриете ВСИЧКИ задачи на избраните ${selectedOperators.length} оператора за ЦЕЛИЯ месец!`;
+    }
+    
+    if(!confirm(msg)) return;
     
     document.getElementById('loading').style.display = 'flex';
     document.getElementById('main-layout').style.display = 'none';
     
     try {
-        const { error } = await client.from('planner_bobini').delete().in('date', datesToDelete);
+        let query = client.from('planner_bobini').delete();
+        if (selectedDates.length > 0) query = query.in('date', selectedDates);
+        if (selectedOperators.length > 0) query = query.in('operator_name', selectedOperators);
+        
+        const { error } = await query;
         if (error) throw error;
         
-        globalState.quotas = globalState.quotas.filter(q => !datesToDelete.includes(q.date));
+        globalState.quotas = globalState.quotas.filter(q => {
+            let matchDate = selectedDates.length === 0 || selectedDates.includes(q.date);
+            let matchOp = selectedOperators.length === 0 || selectedOperators.includes(q.operator_name);
+            return !(matchDate && matchOp);
+        });
         renderCalendarUI();
         toggleMassDeleteBtn(); 
         
