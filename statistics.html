@@ -230,33 +230,35 @@
       
     </div>
     
-    <!-- Summary Table -->
-    <div class="timeline-wrapper" style="margin-top:20px; min-height:auto; max-width: 800px; margin-left: auto; margin-right: auto;">
-      <div class="timeline-header">
-        <span>Справка по Детайли</span>
+    <div style="display: flex; gap: 20px; flex-direction: row; margin-top: 20px; flex-wrap: wrap;">
+      <!-- Summary Table -->
+      <div class="timeline-wrapper" style="flex: 1; min-width: 350px; max-width: 500px;">
+        <div class="timeline-header">
+          <span>Справка по Детайли</span>
+        </div>
+        <table class="summary-table" style="font-size: 1em;">
+          <thead>
+            <tr>
+              <th>Детайл</th>
+              <th>Операция</th>
+              <th>Бройки</th>
+              <th>Време</th>
+            </tr>
+          </thead>
+          <tbody id="summary-tbody">
+            <!-- Rows will be injected here -->
+          </tbody>
+        </table>
       </div>
-      <table class="summary-table">
-        <thead>
-          <tr>
-            <th>Детайл</th>
-            <th>Операция</th>
-            <th>Общо Изработени</th>
-            <th>Общо Време</th>
-          </tr>
-        </thead>
-        <tbody id="summary-tbody">
-          <!-- Rows will be injected here -->
-        </tbody>
-      </table>
-    </div>
 
-    <!-- Gantt / Timeline -->
-    <div class="timeline-wrapper" style="margin-top:20px;">
-      <div class="timeline-header">
-        <span>Времева Линия (Gantt) на Операторите (Скролни настрани ➔)</span>
-      </div>
-      <div id="timeline-container">
-        <div id="timeline-div"></div>
+      <!-- Gantt / Timeline -->
+      <div class="timeline-wrapper" style="flex: 2; min-width: 600px;">
+        <div class="timeline-header">
+          <span>Времева Линия (Gantt) на Операторите (Скролни настрани ➔)</span>
+        </div>
+        <div id="timeline-container">
+          <div id="timeline-div"></div>
+        </div>
       </div>
     </div>
     
