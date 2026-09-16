@@ -175,11 +175,32 @@ function renderTimeline(timelineData) {
     let uniqueOps = new Set(timelineData.map(d => d[0])).size;
     let chartHeight = Math.max(200, (uniqueOps * 60) + 80);
     
+    let minDate = new Date(Math.min(...timelineData.map(d => d[3].getTime())));
+    let maxDate = new Date(Math.max(...timelineData.map(d => d[4].getTime())));
+    
+    // Ensure at least a 4-hour window so short tasks don't get stretched over the whole screen
+    let diffMs = maxDate - minDate;
+    if (diffMs < 4 * 60 * 60 * 1000) {
+        let padding = (4 * 60 * 60 * 1000 - diffMs) / 2;
+        minDate = new Date(minDate.getTime() - padding);
+        maxDate = new Date(maxDate.getTime() + padding);
+        diffMs = maxDate - minDate;
+    }
+    
+    // Set dynamic width to allow scroll if there are many hours (approx 150px per hour)
+    let hours = diffMs / (1000 * 60 * 60);
+    container.style.minWidth = `max(100%, ${Math.floor(hours * 150)}px)`;
+    
     var options = {
         backgroundColor: '#1e293b',
         timeline: { 
             rowLabelStyle: {fontName: 'Sofia Sans', fontSize: 14, color: '#cbd5e1' },
             barLabelStyle: { fontName: 'Sofia Sans', fontSize: 12 }
+        },
+        hAxis: {
+            minValue: minDate,
+            maxValue: maxDate,
+            format: 'HH:mm'
         },
         tooltip: { isHtml: true },
         height: chartHeight
