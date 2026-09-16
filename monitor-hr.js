@@ -171,7 +171,18 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
             if (name && qty > 0) {
                 if (!userProduction[name]) userProduction[name] = {};
                 let key = `${detail} (${op})`;
-                userProduction[name][key] = (userProduction[name][key] || 0) + qty;
+                if (!userProduction[name][key]) {
+                    userProduction[name][key] = { qty: 0, durationMs: 0 };
+                }
+                userProduction[name][key].qty += qty;
+                
+                if (row['Време Старт']) {
+                    let start = new Date(row['Време Старт']).getTime();
+                    let end = new Date(row['Дата']).getTime();
+                    if (!isNaN(start) && !isNaN(end) && end > start) {
+                        userProduction[name][key].durationMs += (end - start);
+                    }
+                }
             }
         }
     });
@@ -183,10 +194,24 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
     operators.forEach(name => {
         let itemsHtml = '';
         for (let taskKey in userProduction[name]) {
+            let data = userProduction[name][taskKey];
+            
+            let timeStr = '';
+            if (data.durationMs > 0) {
+                let totalMin = Math.floor(data.durationMs / 60000);
+                if (totalMin < 60) {
+                    timeStr = ` <span style="color:#94a3b8; font-size:0.85em; margin-left:5px;">(⏱️ ${totalMin} мин)</span>`;
+                } else {
+                    let h = Math.floor(totalMin / 60);
+                    let m = totalMin % 60;
+                    timeStr = ` <span style="color:#94a3b8; font-size:0.85em; margin-left:5px;">(⏱️ ${h}ч ${m}м)</span>`;
+                }
+            }
+
             itemsHtml += `
                 <div style="display: flex; justify-content: space-between; font-size: 0.95em; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                    <span style="color: #cbd5e1;">✓ ${taskKey}</span>
-                    <strong style="color: #10b981;">${userProduction[name][taskKey]} бр.</strong>
+                    <span style="color: #cbd5e1;">✓ ${taskKey}${timeStr}</span>
+                    <strong style="color: #10b981;">${data.qty} бр.</strong>
                 </div>`;
         }
         
