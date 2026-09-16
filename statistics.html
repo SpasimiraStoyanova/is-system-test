@@ -162,6 +162,29 @@
       z-index: 9999;
     }
     
+    /* Table styles */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      color: #f8fafc;
+      font-size: 1.1em;
+    }
+    .summary-table th {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 2px solid #334155;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+    .summary-table td {
+      padding: 12px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .summary-table tr:hover td {
+      background: rgba(255,255,255,0.05);
+    }
+    
     /* Google Charts customizations for dark mode */
     rect[fill="#ffffff"] { fill: #1e293b !important; } /* background */
     text { font-family: 'Sofia Sans', sans-serif !important; fill: #cbd5e1 !important; }
@@ -201,11 +224,6 @@
         <div class="kpi-icon">⏱️</div>
       </div>
       
-      <div class="kpi-card" style="border-bottom: 4px solid #3b82f6;">
-        <div class="kpi-title">Топ Оператор (бройки)</div>
-        <div class="kpi-value" id="kpi-top-op">-</div>
-        <div class="kpi-icon">🏆</div>
-      </div>
     </div>
     
     <!-- Gantt / Timeline -->
@@ -214,6 +232,26 @@
         <span>Времева Линия (Gantt) на Операторите</span>
       </div>
       <div id="timeline-div"></div>
+    </div>
+    
+    <!-- Summary Table -->
+    <div class="timeline-wrapper" style="margin-top:20px; min-height:auto;">
+      <div class="timeline-header">
+        <span>Справка по Детайли</span>
+      </div>
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>Детайл</th>
+            <th>Операция</th>
+            <th>Общо Изработени</th>
+            <th>Общо Отчетено Време</th>
+          </tr>
+        </thead>
+        <tbody id="summary-tbody">
+          <!-- Rows will be injected here -->
+        </tbody>
+      </table>
     </div>
     
   </div>

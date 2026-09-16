@@ -51,7 +51,7 @@ async function fetchAndRenderData() {
 function processAndRender(data) {
     let totalQty = 0;
     let totalDurationMs = 0;
-    let operatorStats = {};
+    let detailStats = {};
     let timelineData = [];
 
     data.forEach(row => {
@@ -69,8 +69,18 @@ function processAndRender(data) {
         let startTime = startStr ? new Date(startStr) : null;
         
         let durationMs = 0;
+        let durationMin = 0;
+        let durationText = '-';
+        
         if(startTime && endTime > startTime) {
             durationMs = endTime.getTime() - startTime.getTime();
+            durationMin = Math.floor(durationMs / 60000);
+            
+            let hLabel = Math.floor(durationMin / 60);
+            let mLabel = durationMin % 60;
+            if(hLabel > 0) durationText = `${hLabel}ч. ${mLabel}м.`;
+            else durationText = `${mLabel} мин.`;
+            
             let taskLabel = `${detail} (${operation})`;
             
             // Custom HTML Tooltip for Timeline
@@ -80,7 +90,8 @@ function processAndRender(data) {
                     <span style="color:#94a3b8;">Оператор:</span> ${opName}<br>
                     <span style="color:#94a3b8;">Количество:</span> <strong style="color:#10b981;">${qty} бр.</strong><br>
                     <span style="color:#94a3b8;">Начало:</span> ${startTime.toLocaleTimeString()}<br>
-                    <span style="color:#94a3b8;">Край:</span> ${endTime.toLocaleTimeString()}
+                    <span style="color:#94a3b8;">Край:</span> ${endTime.toLocaleTimeString()}<br>
+                    <span style="color:#94a3b8;">Продължителност:</span> <strong style="color:#f59e0b;">${durationText}</strong>
                 </div>
             `;
             
@@ -96,8 +107,12 @@ function processAndRender(data) {
         totalQty += qty;
         totalDurationMs += durationMs;
         
-        if(!operatorStats[opName]) operatorStats[opName] = 0;
-        operatorStats[opName] += qty;
+        let detailKey = `${detail}|${operation}`;
+        if(!detailStats[detailKey]) {
+            detailStats[detailKey] = { detail: detail, operation: operation, qty: 0, durationMs: 0 };
+        }
+        detailStats[detailKey].qty += qty;
+        detailStats[detailKey].durationMs += durationMs;
     });
     
     // Update KPIs
@@ -108,15 +123,30 @@ function processAndRender(data) {
     let m = totalMin % 60;
     document.getElementById('kpi-time').innerText = `${h}ч. ${m}м.`;
     
-    let topOp = '-';
-    let maxQty = 0;
-    for(let op in operatorStats) {
-        if(operatorStats[op] > maxQty) {
-            maxQty = operatorStats[op];
-            topOp = `${op} (${maxQty} бр.)`;
+    // Render Summary Table
+    let tbody = document.getElementById('summary-tbody');
+    tbody.innerHTML = '';
+    
+    for(let key in detailStats) {
+        let stat = detailStats[key];
+        
+        let tMin = Math.floor(stat.durationMs / 60000);
+        let th = Math.floor(tMin / 60);
+        let tm = tMin % 60;
+        let timeStr = '-';
+        if (tMin > 0) {
+            timeStr = th > 0 ? `${th}ч. ${tm}м.` : `${tm} мин.`;
         }
+        
+        let tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${stat.detail}</strong></td>
+            <td>${stat.operation}</td>
+            <td style="color:#10b981; font-weight:900;">${stat.qty} бр.</td>
+            <td style="color:#f59e0b; font-weight:600;">${timeStr}</td>
+        `;
+        tbody.appendChild(tr);
     }
-    document.getElementById('kpi-top-op').innerText = topOp;
     
     // Render Timeline
     renderTimeline(timelineData);
