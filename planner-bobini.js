@@ -255,10 +255,14 @@ function renderCalendarUI() {
     // 2. Render Calendar Board
     let boardHtml = '<table class="calendar-table"><thead><tr><th class="first-cell">Оператор</th>';
     for (let d = 1; d <= daysInMonth; d++) {
+        let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         let dateObj = new Date(year, month - 1, d);
         let dayStr = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][dateObj.getDay()];
         let isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6) ? 'color:#f87171;' : '';
-        boardHtml += `<th style="${isWeekend}">${d}<br><span style="font-size:0.7em; font-weight:normal;">${dayStr}</span></th>`;
+        boardHtml += `<th style="${isWeekend} position:relative; padding-top:25px;">
+            <input type="checkbox" class="date-mass-checkbox" data-date="${fullDateStr}" onchange="toggleMassDeleteBtn()" style="position:absolute; top:5px; left:50%; transform:translateX(-50%); cursor:pointer;" title="Маркирай за масово изтриване">
+            ${d}<br><span style="font-size:0.7em; font-weight:normal;">${dayStr}</span>
+        </th>`;
     }
     boardHtml += '</tr></thead><tbody>';
 
@@ -542,6 +546,45 @@ async function clearMonth() {
         document.getElementById('main-layout').style.display = 'flex';
     } catch(err) {
         alert("Грешка при нулиране: " + err.message);
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('main-layout').style.display = 'flex';
+    }
+}
+
+function toggleMassDeleteBtn() {
+    let checkboxes = document.querySelectorAll('.date-mass-checkbox:checked');
+    let btn = document.getElementById('delete-selected-dates-btn');
+    if (checkboxes.length > 0) {
+        btn.style.display = 'block';
+    } else {
+        btn.style.display = 'none';
+    }
+}
+
+async function deleteSelectedDates() {
+    let checkboxes = document.querySelectorAll('.date-mass-checkbox:checked');
+    if (checkboxes.length === 0) return;
+    
+    let datesToDelete = [];
+    checkboxes.forEach(cb => datesToDelete.push(cb.getAttribute('data-date')));
+    
+    if(!confirm(`Сигурни ли сте, че искате да изтриете всички задачи за избраните ${datesToDelete.length} дати?`)) return;
+    
+    document.getElementById('loading').style.display = 'flex';
+    document.getElementById('main-layout').style.display = 'none';
+    
+    try {
+        const { error } = await client.from('planner_bobini').delete().in('date', datesToDelete);
+        if (error) throw error;
+        
+        globalState.quotas = globalState.quotas.filter(q => !datesToDelete.includes(q.date));
+        renderCalendarUI();
+        toggleMassDeleteBtn(); 
+        
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('main-layout').style.display = 'flex';
+    } catch (err) {
+        alert("Грешка при изтриване: " + err.message);
         document.getElementById('loading').style.display = 'none';
         document.getElementById('main-layout').style.display = 'flex';
     }

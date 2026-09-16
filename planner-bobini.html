@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=5">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="planner-bobini.js?v=6" defer></script>
+  <script src="planner-bobini.js?v=7" defer></script>
   <style>
     body {
       background: #0f172a;
@@ -310,6 +310,9 @@
         </div>
         
         <div style="display:flex; gap:10px;">
+            <div class="mode-toggle" id="delete-selected-dates-btn" onclick="deleteSelectedDates()" style="border-color:#f59e0b; color:#f59e0b; background: rgba(245, 158, 11, 0.1); display:none;" title="Изтрива всички задачи от маркираните дати">
+                🗑️ Изтрий маркирани
+            </div>
             <div class="mode-toggle" id="clear-month-btn" onclick="clearMonth()" style="border-color:#ef4444; color:#ef4444; background: rgba(239, 68, 68, 0.1);" title="Изтрива всички възложени задачи и почивки за избрания месец">
                 🗑️ Изчисти Месеца
             </div>
