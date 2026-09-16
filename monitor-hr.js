@@ -36,10 +36,9 @@ async function loadData() {
         nextDay.setDate(nextDay.getDate() + 1);
         const nextDayStr = nextDay.toISOString().split('T')[0];
 
-        // Fetch exactly within the 24-hour bounds of the selected date
         const [chekiraniyaRes, otchetiRes, accessRes] = await Promise.all([
             client.from('chekiraniya').select('*').gte('Време', selectedDateStr + 'T00:00:00').lt('Време', nextDayStr + 'T00:00:00').order('Време', { ascending: false }),
-            client.from('otcheti').select('*').gte('Дата', selectedDateStr + 'T00:00:00').lt('Дата', nextDayStr + 'T00:00:00').order('Време Старт', { ascending: false }),
+            client.from('otcheti').select('*').gte('Дата', selectedDateStr + 'T00:00:00').lt('Дата', nextDayStr + 'T00:00:00').order('Дата', { ascending: false }),
             client.from('personal').select('Имейл, Име')
         ]);
 
