@@ -114,14 +114,7 @@ function processAndRender(data) {
         detailStats[detailKey].qty += qty;
         detailStats[detailKey].durationMs += durationMs;
     });
-    
-    // Update KPIs
-    document.getElementById('kpi-qty').innerText = totalQty + ' бр.';
-    
-    let totalMin = Math.floor(totalDurationMs / 60000);
-    let h = Math.floor(totalMin / 60);
-    let m = totalMin % 60;
-    document.getElementById('kpi-time').innerText = `${h}ч. ${m}м.`;
+
     
     // Render Summary Table
     let tbody = document.getElementById('summary-tbody');
