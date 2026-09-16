@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Анализи и Справки</title>
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=3">
   <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="statistics.js?v=2" defer></script>
@@ -143,10 +143,7 @@
       justify-content: space-between;
       align-items: center;
     }
-    #timeline-container {
-      width: 100%;
-      overflow-x: auto;
-    }
+
     #timeline-div {
       min-width: 2000px; /* Forces horizontal scroll to prevent squishing */
       height: 100%;
@@ -252,13 +249,11 @@
       </div>
 
       <!-- Gantt / Timeline -->
-      <div class="timeline-wrapper" style="flex: 2 1 400px; min-width: 0; overflow: hidden;">
+      <div class="timeline-wrapper" style="flex: 2 1 400px; min-width: 0; overflow-x: auto;">
         <div class="timeline-header">
           <span>Времева Линия (Gantt) на Операторите (Скролни настрани ➔)</span>
         </div>
-        <div id="timeline-container">
-          <div id="timeline-div"></div>
-        </div>
+        <div id="timeline-div"></div>
       </div>
     </div>
     
