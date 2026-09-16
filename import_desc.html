@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Import Descriptions</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>body { font-family: sans-serif; padding: 20px; }</style>
+</head>
+<body>
+    <h2>Importing Descriptions...</h2>
+    <div id="log" style="white-space: pre-wrap; font-family: monospace; background: #f0f0f0; padding: 10px; border: 1px solid #ccc; max-height: 80vh; overflow-y: auto;"></div>
+
+    <script src="app.js?v=2"></script>
+    <script>
+        function log(msg) {
+            document.getElementById('log').innerText += msg + '\n';
+        }
+
+        async function run() {
+            try {
+                log("Fetching descriptions.csv...");
+                const response = await fetch('descriptions.csv');
+                if (!response.ok) throw new Error("Could not fetch CSV");
+                
+                // Ensure text is decoded as UTF-8/Windows-1251 if needed, but it seems to be fine.
+                const buffer = await response.arrayBuffer();
+                const text = new TextDecoder('windows-1251').decode(buffer); // Try Windows-1251 because it's a BG Excel CSV
+                
+                const lines = text.split('\n');
+                let records = [];
+                
+                let firstLine = true;
+                for (let line of lines) {
+                    if (firstLine) { firstLine = false; continue; }
+                    line = line.trim();
+                    if (!line) continue;
+                    
+                    let lastComma = line.lastIndexOf(',');
+                    if (lastComma === -1) continue;
+                    
+                    let itemNum = line.substring(lastComma + 1).trim();
+                    let desc = line.substring(0, lastComma).trim();
+                    
+                    if (desc.startsWith('"') && desc.endsWith('"')) {
+                        desc = desc.substring(1, desc.length - 1).replace(/""/g, '"');
+                    }
+                    
+                    if (itemNum && desc) {
+                        records.push({ itemNum, desc });
+                    }
+                }
+                
+                log(`Found ${records.length} records in CSV.`);
+                
+                log("Fetching Nomenclature from DB...");
+                const { data: nomData, error: nomErr } = await client.from('Номенклатура').select('id, "ID Детайл", "Вътрешно име"');
+                if (nomErr) throw nomErr;
+                
+                log(`Found ${nomData.length} records in DB. Mapping...`);
+                let updateCount = 0;
+                
+                for (const r of records) {
+                    let match = nomData.find(n => 
+                        String(n['ID Детайл']).trim().toUpperCase() === r.itemNum.toUpperCase() ||
+                        String(n['Вътрешно име']).trim().toUpperCase() === r.itemNum.toUpperCase()
+                    );
+                    
+                    if (match) {
+                        const { error: updErr } = await client.from('Номенклатура')
+                            .update({ 'Описание': r.desc })
+                            .eq('id', match.id);
+                            
+                        if (updErr) {
+                            log(`ERROR updating ${r.itemNum}: ${updErr.message}`);
+                        } else {
+                            log(`UPDATED ${r.itemNum} -> ${r.desc.substring(0, 30)}...`);
+                            updateCount++;
+                        }
+                    } else {
+                        log(`WARNING: Item ${r.itemNum} not found in database.`);
+                    }
+                }
+                
+                log(`DONE! Updated ${updateCount} records successfully.`);
+                
+            } catch(e) {
+                log("ERROR: " + e.message);
+            }
+        }
+        
+        run();
+    </script>
+</body>
+</html>
