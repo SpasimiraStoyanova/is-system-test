@@ -201,7 +201,8 @@ async function loadData() {
         renderCalendarUI();
 
         if (firstLoad) {
-            document.getElementById('loading').style.display = 'nolet currentDragTask = null;
+            document.getElementById('loading').style.display = 'none';
+        }
 let currentDropOperator = null;
 let currentDropDateStr = null;
 
