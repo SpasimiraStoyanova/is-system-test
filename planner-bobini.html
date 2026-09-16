@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=5">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="planner-bobini.js?v=5" defer></script>
+  <script src="planner-bobini.js?v=6" defer></script>
   <style>
     body {
       background: #0f172a;
@@ -309,8 +309,13 @@
             </div>
         </div>
         
-        <div class="mode-toggle" id="off-mode-toggle" onclick="toggleOffMode()" title="Ако е включено, цъкането върху клетка в календара я маркира като почивен ден (Х)">
-            🛑 Режим Почивки: ИЗКЛ
+        <div style="display:flex; gap:10px;">
+            <div class="mode-toggle" id="clear-month-btn" onclick="clearMonth()" style="border-color:#ef4444; color:#ef4444; background: rgba(239, 68, 68, 0.1);" title="Изтрива всички възложени задачи и почивки за избрания месец">
+                🗑️ Изчисти Месеца
+            </div>
+            <div class="mode-toggle" id="off-mode-toggle" onclick="toggleOffMode()" title="Ако е включено, цъкането върху клетка в календара я маркира като почивен ден (Х)">
+                🛑 Режим Почивки: ИЗКЛ
+            </div>
         </div>
     </div>
     

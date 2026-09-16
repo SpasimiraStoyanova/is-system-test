@@ -514,6 +514,39 @@ async function deleteQuota(id) {
     }
 }
 
+async function clearMonth() {
+    const selectedMonth = document.getElementById('month-picker').value; 
+    if(!confirm(`ВНИМАНИЕ!\n\nСигурни ли сте, че искате да ИЗТРИЕТЕ абсолютно всички задачи и почивки за целия месец ${selectedMonth}?\n\nТова действие е необратимо!`)) return;
+
+    let year = parseInt(selectedMonth.split('-')[0]);
+    let month = parseInt(selectedMonth.split('-')[1]);
+    let daysInMonth = new Date(year, month, 0).getDate();
+    
+    let startOfMonth = `${year}-${String(month).padStart(2,'0')}-01`;
+    let endOfMonth = `${year}-${String(month).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+    
+    document.getElementById('loading').style.display = 'flex';
+    document.getElementById('main-layout').style.display = 'none';
+    
+    try {
+        const { error } = await client.from('planner_bobini')
+                                      .delete()
+                                      .gte('date', startOfMonth)
+                                      .lte('date', endOfMonth);
+        if(error) throw error;
+        
+        globalState.quotas = globalState.quotas.filter(q => q.date < startOfMonth || q.date > endOfMonth);
+        renderCalendarUI();
+        
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('main-layout').style.display = 'flex';
+    } catch(err) {
+        alert("Грешка при нулиране: " + err.message);
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('main-layout').style.display = 'flex';
+    }
+}
+
 function normalizeStr(str) {
     if (!str) return '';
     return String(str).replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
