@@ -177,8 +177,14 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
                 userProduction[name][key].qty += qty;
                 
                 if (row['Време Старт']) {
-                    let start = new Date(row['Време Старт']).getTime();
-                    let end = new Date(row['Дата']).getTime();
+                    let startStr = row['Време Старт'];
+                    if (!startStr.endsWith('Z')) startStr += 'Z';
+                    let start = new Date(startStr).getTime();
+                    
+                    let endStr = row['Дата'];
+                    if (!endStr.endsWith('Z')) endStr += 'Z';
+                    let end = new Date(endStr).getTime();
+                    
                     if (!isNaN(start) && !isNaN(end) && end > start) {
                         userProduction[name][key].durationMs += (end - start);
                     }

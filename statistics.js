@@ -60,8 +60,13 @@ function processAndRender(data) {
         let operation = row['Операция'] || '-';
         let qty = parseFloat(row['Количество']) || 0;
         
-        let endTime = new Date(row['Дата']);
-        let startTime = row['Време Старт'] ? new Date(row['Време Старт']) : null;
+        let dateStr = row['Дата'];
+        if (dateStr && !dateStr.endsWith('Z')) dateStr += 'Z';
+        let endTime = new Date(dateStr);
+        
+        let startStr = row['Време Старт'];
+        if (startStr && !startStr.endsWith('Z')) startStr += 'Z';
+        let startTime = startStr ? new Date(startStr) : null;
         
         let durationMs = 0;
         if(startTime && endTime > startTime) {
