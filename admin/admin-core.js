@@ -444,11 +444,13 @@ async function computeSkladData() {
     
     let bufferMap = {};
     let bufferScrapMap = {};
+    let bufferOpMap = {};
     if (bufferRes.data) {
         bufferRes.data.forEach(b => {
             let code = String(b['ID Детайл']).trim().toLowerCase();
             bufferMap[code] = parseFloat(b['Буфер']) || 0;
             bufferScrapMap[code] = parseFloat(b['% Брак']) || 0;
+            bufferOpMap[code] = String(b['Операция'] || '').trim();
         });
     }
     
@@ -518,9 +520,12 @@ async function computeSkladData() {
         let qty = parseFloat(item['Количество']) || 0;
         let buf = bufferMap[code] || 0;
         let scrap = bufferScrapMap[code] || 0;
+        let targetOpRaw = bufferOpMap[code] || '';
+        let targetOpKey = targetOpRaw ? targetOpRaw.toLowerCase() : 'готов продукт';
         
         let opKey = String(item['Операция'] || '').trim().toLowerCase();
         let isGpItem = (opKey === 'готов продукт');
+        let isBufferRow = (opKey === targetOpKey);
         
         let opName = item['Операция'] || '';
         
@@ -546,7 +551,7 @@ async function computeSkladData() {
             loc = (routeMap[code] && routeMap[code][opKey]) ? routeMap[code][opKey] : 'Буфер';
         }
 
-        let shouldShowEmpty = (buf > 0 || (scrap > 0 && scrap !== 20)) && isGpItem;
+        let shouldShowEmpty = (buf > 0 || (scrap > 0 && scrap !== 20)) && isBufferRow;
 
         if (qty > 0 || shouldShowEmpty || reservedQty > 0) {
             rows.push({
@@ -559,8 +564,8 @@ async function computeSkladData() {
                 "Общо": qty,
                 "Запазени": reservedStr,
                 "Свободни": freeQty,
-                "Минимално количество/Буфер": buf,
-                "% Брак": scrap
+                "Минимално количество/Буфер": isBufferRow ? buf : 0,
+                "% Брак": isBufferRow ? scrap : 0
             });
         }
     });
@@ -568,16 +573,20 @@ async function computeSkladData() {
     Object.keys(bufferMap).forEach(code => {
         let buf = bufferMap[code];
         let scrap = bufferScrapMap[code] || 0;
+        let targetOpRaw = bufferOpMap[code] || '';
+        let targetOpKey = targetOpRaw ? targetOpRaw.toLowerCase() : 'готов продукт';
+        let targetOpDisplay = targetOpRaw || 'Готов продукт';
+        
         let shouldShowEmpty = buf > 0 || (scrap > 0 && scrap !== 20);
         
-        if (shouldShowEmpty && !rows.some(r => String(r['ID Детайл']).trim().toLowerCase() === code && String(r['Операция']).toLowerCase() === 'готов продукт')) {
+        if (shouldShowEmpty && !rows.some(r => String(r['ID Детайл']).trim().toLowerCase() === code && String(r['Операция']).toLowerCase() === targetOpKey)) {
             rows.push({
                 "RawPlanId": "",
                 "ID Детайл": code.toUpperCase(),
                 "Име": nomNameMap[code] || code,
-                "Локация": nomLocMap[code] || lastDropoffMap[code] || 'Склад Готови Детайли',
-                "Операция": "Готов продукт",
-                "Оригинална Операция": "Готов продукт",
+                "Локация": (targetOpKey === 'готов продукт') ? (nomLocMap[code] || lastDropoffMap[code] || 'Склад Готови Детайли') : ((routeMap[code] && routeMap[code][targetOpKey]) ? routeMap[code][targetOpKey] : 'Буфер'),
+                "Операция": targetOpDisplay,
+                "Оригинална Операция": targetOpDisplay,
                 "Общо": 0,
                 "Запазени": "0",
                 "Свободни": 0,
