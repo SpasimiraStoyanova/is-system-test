@@ -349,7 +349,7 @@ async function syncOfflineReports() {
                 const { error: insErr } = await client.from('otcheti').insert(item.inserts);
                 if (insErr) throw insErr;
                 hasSynced = true;
-                if (typeof executeSkladUpdates === 'function') await executeSkladUpdates(item.inserts);
+                // if (typeof executeSkladUpdates === 'function') await executeSkladUpdates(item.inserts);
             } catch (err) {
                 console.error("Грешка при офлайн синхронизация", err);
                 success = false;

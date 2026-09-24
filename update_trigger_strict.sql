@@ -16,9 +16,16 @@ DECLARE
     inv_avail numeric;
     sklad_avail numeric;
     needed_total numeric;
+    self_type text;
 BEGIN
     IF new_qty = 0 THEN RETURN NEW; END IF;
+    
+    -- SYSTEM OPERATORS THAT WE MUST COMPLETELY IGNORE
+    IF new_operator = 'СИСТЕМА (Изписан материал)' THEN RETURN NEW; END IF;
+    IF new_operator = 'СИСТЕМА (Бракуван Компонент)' THEN RETURN NEW; END IF;
     IF new_operator ILIKE '%СИСТЕМА (Корекция%' THEN RETURN NEW; END IF;
+    
+    -- Опаковането не вади складови наличности засега
     IF new_op ILIKE 'Опаковане%' THEN RETURN NEW; END IF;
 
     IF new_op ILIKE 'Експедиция%' THEN
@@ -57,8 +64,10 @@ BEGIN
           )
     ) INTO is_last_op;
 
-    -- Стъпка 1: Вадим от предходна операция
+    -- Стъпка 1 & 2 (Изписване на предходна оп + изписване на материали) 
+    -- СЕ ПРОПУСКАТ АКО Е СИСТЕМЕН ЗАПИС ЗА СПАСЯВАНЕ (Спасен)
     IF new_operator NOT ILIKE '%СИСТЕМА%' THEN
+        -- Стъпка 1: Вадим от предходна операция
         IF prev_op IS NOT NULL THEN
             UPDATE public.inventory SET "Количество" = COALESCE("Количество"::text, '0')::numeric - new_qty 
             WHERE LOWER(TRIM("ID Детайл")) = new_detail AND LOWER(TRIM("Операция")) = prev_op
@@ -123,74 +132,88 @@ BEGIN
                 END IF;
             END;
         END IF;
-    END IF;
 
-    -- Стъпка 2: Вадим материали (BOM)
-    FOR child_record IN 
-        SELECT b."ID Компонент" AS comp, b."Количество" AS needed, m."Тип" AS m_type, m."Единици" as unit
-        FROM public.bom b
-        LEFT JOIN public."Номенклатура" m ON LOWER(TRIM(b."ID Компонент")) = LOWER(TRIM(m."ID Детайл"))
-        WHERE LOWER(TRIM(b."ID Родител")) = new_detail 
-          AND (
-              (b."Влага се на Оп. №"::text IS NOT NULL AND b."Влага се на Оп. №"::text != '' AND CAST(NULLIF(b."Влага се на Оп. №"::text, '') AS integer) = (
-                  SELECT CAST(NULLIF("№ Операция"::text, '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция"::text, '') AS integer) DESC LIMIT 1
-              ))
-              OR
-              ((b."Влага се на Оп. №"::text IS NULL OR b."Влага се на Оп. №"::text = '') AND (
-                  SELECT CAST(NULLIF("№ Операция"::text, '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция"::text, '') AS integer) DESC LIMIT 1
-              ) = (
-                  SELECT MIN(CAST(NULLIF("№ Операция"::text, '') AS integer)) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail
-              ))
-          )
-    LOOP
-        needed_total := new_qty * COALESCE(child_record.needed::text, '0')::numeric;
-        
-        IF LOWER(TRIM(child_record.m_type)) = 'материал' THEN
-            UPDATE public.sklad SET "Остатък" = GREATEST(0, COALESCE("Остатък"::text, '0')::numeric - needed_total), "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + needed_total
-            WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp));
-        ELSE
-            -- Check inventory first
-            SELECT COALESCE("Количество"::text, '0')::numeric INTO inv_avail 
-            FROM public.inventory 
-            WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp)) AND LOWER(TRIM("Операция")) = 'готов продукт';
+        -- Стъпка 2: Вадим материали (BOM)
+        FOR child_record IN 
+            SELECT b."ID Компонент" AS comp, b."Количество" AS needed, m."Тип" AS m_type, m."Единици" as unit
+            FROM public.bom b
+            LEFT JOIN public."Номенклатура" m ON LOWER(TRIM(b."ID Компонент")) = LOWER(TRIM(m."ID Детайл"))
+            WHERE LOWER(TRIM(b."ID Родител")) = new_detail 
+              AND (
+                  (b."Влага се на Оп. №"::text IS NOT NULL AND b."Влага се на Оп. №"::text != '' AND CAST(NULLIF(b."Влага се на Оп. №"::text, '') AS integer) = (
+                      SELECT CAST(NULLIF("№ Операция"::text, '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция"::text, '') AS integer) DESC LIMIT 1
+                  ))
+                  OR
+                  ((b."Влага се на Оп. №"::text IS NULL OR b."Влага се на Оп. №"::text = '') AND (
+                      SELECT CAST(NULLIF("№ Операция"::text, '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция"::text, '') AS integer) DESC LIMIT 1
+                  ) = (
+                      SELECT MIN(CAST(NULLIF("№ Операция"::text, '') AS integer)) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail
+                  ))
+              )
+        LOOP
+            needed_total := new_qty * COALESCE(child_record.needed::text, '0')::numeric;
             
-            inv_avail := COALESCE(inv_avail, 0);
-            
-            IF inv_avail >= needed_total THEN
-                UPDATE public.inventory SET "Количество" = "Количество"::numeric - needed_total 
-                WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp)) AND LOWER(TRIM("Операция")) = 'готов продукт';
-            ELSE
-                -- Fallback to sklad
-                SELECT COALESCE("Остатък"::text, '0')::numeric INTO sklad_avail 
-                FROM public.sklad 
+            IF LOWER(TRIM(child_record.m_type)) = 'материал' THEN
+                UPDATE public.sklad SET "Остатък" = GREATEST(0, COALESCE("Остатък"::text, '0')::numeric - needed_total), "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + needed_total
                 WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp));
+            ELSE
+                -- Check inventory first
+                SELECT COALESCE("Количество"::text, '0')::numeric INTO inv_avail 
+                FROM public.inventory 
+                WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp)) AND LOWER(TRIM("Операция")) = 'готов продукт';
                 
-                sklad_avail := COALESCE(sklad_avail, 0);
+                inv_avail := COALESCE(inv_avail, 0);
                 
-                IF (inv_avail + sklad_avail) >= needed_total THEN
-                    IF inv_avail > 0 THEN
-                        UPDATE public.inventory SET "Количество" = 0 WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp)) AND LOWER(TRIM("Операция")) = 'готов продукт';
-                        needed_total := needed_total - inv_avail;
-                    END IF;
-                    UPDATE public.sklad SET "Остатък" = "Остатък"::numeric - needed_total, "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + needed_total 
-                    WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp));
+                IF inv_avail >= needed_total THEN
+                    UPDATE public.inventory SET "Количество" = "Количество"::numeric - needed_total 
+                    WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp)) AND LOWER(TRIM("Операция")) = 'готов продукт';
                 ELSE
-                    RAISE EXCEPTION 'ГРЕШКА: Няма достатъчно наличност от компонент % (опит за превишаване с % бр.). Моля обновете страницата.', child_record.comp, (needed_total - inv_avail - sklad_avail);
+                    -- Fallback to sklad
+                    SELECT COALESCE("Остатък"::text, '0')::numeric INTO sklad_avail 
+                    FROM public.sklad 
+                    WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp));
+                    
+                    sklad_avail := COALESCE(sklad_avail, 0);
+                    
+                    IF (inv_avail + sklad_avail) >= needed_total THEN
+                        IF inv_avail > 0 THEN
+                            UPDATE public.inventory SET "Количество" = 0 WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp)) AND LOWER(TRIM("Операция")) = 'готов продукт';
+                            needed_total := needed_total - inv_avail;
+                        END IF;
+                        UPDATE public.sklad SET "Остатък" = "Остатък"::numeric - needed_total, "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + needed_total 
+                        WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp));
+                    ELSE
+                        RAISE EXCEPTION 'ГРЕШКА: Няма достатъчно наличност от компонент % (опит за превишаване с % бр.). Моля обновете страницата.', child_record.comp, (needed_total - inv_avail - sklad_avail);
+                    END IF;
                 END IF;
             END IF;
-        END IF;
-    END LOOP;
+        END LOOP;
+    END IF;
 
-    -- Стъпка 3: Добавяме в склада САМО ако статусът е 'Отчетено' (бракът се игнорира)
+    -- Стъпка 3: Добавяме в склада САМО ако статусът е 'Отчетено'
     IF new_status = 'отчетено' THEN
-        IF is_last_op THEN
-            INSERT INTO public.inventory ("ID Детайл", "Операция", "Количество")
-            VALUES (NEW."ID Детайл", 'готов продукт', new_qty)
-            ON CONFLICT ("ID Детайл", "Операция") DO UPDATE SET "Количество" = COALESCE(public.inventory."Количество"::text, '0')::numeric + COALESCE(EXCLUDED."Количество"::text, '0')::numeric;
+        SELECT LOWER(TRIM("Тип")) INTO self_type FROM public."Номенклатура" WHERE LOWER(TRIM("ID Детайл")) = new_detail;
+        
+        IF self_type = 'материал' THEN
+            UPDATE public.sklad 
+            SET "Остатък" = COALESCE("Остатък"::text, '0')::numeric + new_qty, 
+                "Изразходено" = GREATEST(0, COALESCE("Изразходено"::text, '0')::numeric - new_qty)
+            WHERE LOWER(TRIM("ID Детайл")) = new_detail;
+            
+            IF NOT FOUND THEN
+                INSERT INTO public.sklad ("ID Детайл", "Остатък", "Изразходено")
+                VALUES (NEW."ID Детайл", new_qty, 0);
+            END IF;
         ELSE
-            INSERT INTO public.inventory ("ID Детайл", "Операция", "Количество")
-            VALUES (NEW."ID Детайл", new_op, new_qty)
-            ON CONFLICT ("ID Детайл", "Операция") DO UPDATE SET "Количество" = COALESCE(public.inventory."Количество"::text, '0')::numeric + COALESCE(EXCLUDED."Количество"::text, '0')::numeric;
+            IF is_last_op THEN
+                INSERT INTO public.inventory ("ID Детайл", "Операция", "Количество")
+                VALUES (NEW."ID Детайл", 'готов продукт', new_qty)
+                ON CONFLICT ("ID Детайл", "Операция") DO UPDATE SET "Количество" = COALESCE(public.inventory."Количество"::text, '0')::numeric + COALESCE(EXCLUDED."Количество"::text, '0')::numeric;
+            ELSE
+                INSERT INTO public.inventory ("ID Детайл", "Операция", "Количество")
+                VALUES (NEW."ID Детайл", new_op, new_qty)
+                ON CONFLICT ("ID Детайл", "Операция") DO UPDATE SET "Количество" = COALESCE(public.inventory."Количество"::text, '0')::numeric + COALESCE(EXCLUDED."Количество"::text, '0')::numeric;
+            END IF;
         END IF;
     END IF;
 
