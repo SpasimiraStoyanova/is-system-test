@@ -164,16 +164,34 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
         }
     });
 
-    activeTasks.sort((a, b) => a.operator.localeCompare(b.operator));
+    let tasksByOperator = {};
+    activeTasks.forEach(t => {
+        if (!tasksByOperator[t.operator]) {
+            tasksByOperator[t.operator] = [];
+        }
+        tasksByOperator[t.operator].push(t);
+    });
+
+    let operatorsWithTasks = Object.keys(tasksByOperator).sort((a,b) => a.localeCompare(b));
 
     let htmlActiveTasks = '';
-    activeTasks.forEach(t => {
+    operatorsWithTasks.forEach(operator => {
+        let tasksHtml = '';
+        tasksByOperator[operator].forEach((t, index) => {
+            let borderTop = index > 0 ? 'border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px; margin-top: 6px;' : 'margin-top: 4px;';
+            tasksHtml += `
+                <div style="${borderTop}">
+                    <div class="task-detail" style="font-size:0.95em; color:#f8fafc; font-weight:600;">${t.detail || '-'}</div>
+                    <div class="task-op" style="font-size:0.85em; color:#cbd5e1; margin: 2px 0;">Оп: ${t.op || '-'}</div>
+                    <div class="task-time" style="font-size:0.8em; color:#f59e0b; font-weight:600;">⏳ Работи от: ${t.time}</div>
+                </div>
+            `;
+        });
+        
         htmlActiveTasks += `
-            <div class="task-card">
-                <div class="task-operator">👤 ${t.operator}</div>
-                <div class="task-detail">Детайл: ${t.detail || '-'}</div>
-                <div class="task-op">Оп: ${t.op || '-'}</div>
-                <div class="task-time">⏳ Работи от: ${t.time}</div>
+            <div class="task-card" style="min-width:180px; flex: 1 1 200px; padding: 10px; background:#1e293b; border:1px solid #475569; border-radius:6px;">
+                <div class="task-operator" style="font-weight:900; font-size:1.05em; color:#38bdf8; margin-bottom:5px;">👤 ${operator}</div>
+                ${tasksHtml}
             </div>
         `;
     });
