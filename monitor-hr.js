@@ -130,26 +130,37 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
     // 2. АКТИВНИ ЗАДАЧИ
     // Find all otcheti with Status == 'Започната'
     let activeTasks = [];
+    let latestStatusPerTask = {};
 
     otchetiData.forEach(row => {
         let name = String(row['Оператор'] || '').trim();
         if (!name) return;
         
-        if (row['Статус'] === 'Започната') {
-            let startTime = new Date(row['Време Старт'] || row['Дата']);
-            let now = new Date();
-            let diffMins = Math.floor((now - startTime) / 60000);
+        let plan = String(row['ID План'] || '').trim();
+        let detail = String(row['ID Детайл'] || '').trim();
+        let op = String(row['Операция'] || '').trim();
+        
+        let taskKey = `${name}_${plan}_${detail}_${op}`;
+        
+        if (!latestStatusPerTask[taskKey]) {
+            latestStatusPerTask[taskKey] = row['Статус'];
             
-            let timeStr = diffMins > 60 
-                ? `${Math.floor(diffMins/60)} ч. ${diffMins%60} мин.` 
-                : `${diffMins} мин.`;
+            if (row['Статус'] === 'Започната') {
+                let startTime = new Date(row['Време Старт'] || row['Дата']);
+                let now = new Date();
+                let diffMins = Math.floor((now - startTime) / 60000);
+                
+                let timeStr = diffMins > 60 
+                    ? `${Math.floor(diffMins/60)} ч. ${diffMins%60} мин.` 
+                    : `${diffMins} мин.`;
 
-            activeTasks.push({
-                operator: name,
-                detail: row['ID Детайл'],
-                op: row['Операция'],
-                time: timeStr
-            });
+                activeTasks.push({
+                    operator: name,
+                    detail: detail,
+                    op: op,
+                    time: timeStr
+                });
+            }
         }
     });
 
