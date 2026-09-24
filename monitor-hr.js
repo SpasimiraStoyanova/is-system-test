@@ -128,23 +128,15 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
     document.getElementById('w-checked-in').innerHTML = htmlCheckedIn || '<div style="color:#94a3b8; padding:10px;">Няма чекирани хора</div>';
 
     // 2. АКТИВНИ ЗАДАЧИ
-    // Group otcheti by operator to find what they are doing NOW (Status == 'Започната')
+    // Find all otcheti with Status == 'Започната'
     let activeTasks = [];
-    let latestTaskPerPerson = {};
 
     otchetiData.forEach(row => {
         let name = String(row['Оператор'] || '').trim();
         if (!name) return;
         
-        if (!latestTaskPerPerson[name]) {
-            latestTaskPerPerson[name] = row;
-        }
-    });
-
-    for (let name in latestTaskPerPerson) {
-        let row = latestTaskPerPerson[name];
         if (row['Статус'] === 'Започната') {
-            let startTime = new Date(row['Време Старт']);
+            let startTime = new Date(row['Време Старт'] || row['Дата']);
             let now = new Date();
             let diffMins = Math.floor((now - startTime) / 60000);
             
@@ -159,7 +151,7 @@ function renderDashboard(chekiraniyaData, otchetiData, emailToName) {
                 time: timeStr
             });
         }
-    }
+    });
 
     activeTasks.sort((a, b) => a.operator.localeCompare(b.operator));
 
