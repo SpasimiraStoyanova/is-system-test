@@ -19,8 +19,11 @@ async function checkAndGenerateArchive(targetMonth, targetYear) {
 
         console.log(`All items for ${targetMonth} ${targetYear} are Изпратен. Generating archive...`);
 
-        const endSkladRes = await client.from('sklad').select('*');
-        if (endSkladRes.error) throw endSkladRes.error;
+        let endSkladRes = null;
+        if (typeof window.computeSkladData === 'function') {
+            endSkladRes = await window.computeSkladData();
+        }
+        if (!endSkladRes) throw new Error("Could not compute end warehouse state");
 
         const startSnapRes = await client.from('plan_snapshots')
             .select('inventory_data')
@@ -51,13 +54,13 @@ async function checkAndGenerateArchive(targetMonth, targetYear) {
         startData.forEach(row => {
             let code = row['ID Детайл'];
             if (!itemDiffs[code]) itemDiffs[code] = { start: 0, end: 0, brak: 0 };
-            itemDiffs[code].start += (parseFloat(row['Количество']) || 0);
+            itemDiffs[code].start += (parseFloat(row['Общо']) || 0);
         });
 
-        endSkladRes.data.forEach(row => {
+        endSkladRes.forEach(row => {
             let code = row['ID Детайл'];
             if (!itemDiffs[code]) itemDiffs[code] = { start: 0, end: 0, brak: 0 };
-            itemDiffs[code].end += (parseFloat(row['Количество']) || 0);
+            itemDiffs[code].end += (parseFloat(row['Общо']) || 0);
         });
 
         if (otchetiRes.data) {
@@ -81,7 +84,7 @@ async function checkAndGenerateArchive(targetMonth, targetYear) {
             plan_name: targetMonth,
             plan_year: targetYear,
             snapshot_type: 'end',
-            inventory_data: endSkladRes.data
+            inventory_data: endSkladRes
         }]);
 
         await client.from('plan_archives').insert([{

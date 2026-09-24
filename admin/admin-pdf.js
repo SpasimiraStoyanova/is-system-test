@@ -55,13 +55,16 @@ async function processPDF(event) {
             if (error) throw error; 
             
             try {
-                const skladDataRes = await client.from('sklad').select('*');
-                if (!skladDataRes.error && skladDataRes.data) {
+                let skladDataRes = null;
+                if (typeof window.computeSkladData === 'function') {
+                    skladDataRes = await window.computeSkladData();
+                }
+                if (skladDataRes) {
                     await client.from('plan_snapshots').insert([{
                         plan_name: targetMonth,
                         plan_year: targetYear,
                         snapshot_type: 'start',
-                        inventory_data: skladDataRes.data
+                        inventory_data: skladDataRes
                     }]);
                 }
             } catch (snapErr) {
