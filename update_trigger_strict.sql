@@ -13,11 +13,12 @@ DECLARE
     child_record RECORD;
     is_last_op boolean := false;
     current_qty numeric;
+    inv_avail numeric;
+    sklad_avail numeric;
+    needed_total numeric;
 BEGIN
     IF new_qty = 0 THEN RETURN NEW; END IF;
-
     IF new_operator ILIKE '%СИСТЕМА (Корекция%' THEN RETURN NEW; END IF;
-
     IF new_op ILIKE 'Опаковане%' THEN RETURN NEW; END IF;
 
     IF new_op ILIKE 'Експедиция%' THEN
@@ -25,6 +26,9 @@ BEGIN
         WHERE LOWER(TRIM("ID Детайл")) = new_detail AND LOWER(TRIM("Операция")) = 'готов продукт'
         RETURNING "Количество" INTO current_qty;
         
+        IF current_qty IS NULL THEN
+            RAISE EXCEPTION 'ГРЕШКА: Този продукт изобщо не е наличен в склада за готови продукти (%).', NEW."ID Детайл";
+        END IF;
         IF current_qty < 0 THEN
             RAISE EXCEPTION 'ГРЕШКА: Няма достатъчно наличност от % за Експедиция (опит за превишаване с % бр.).', NEW."ID Детайл", ABS(current_qty);
         END IF;
@@ -60,6 +64,9 @@ BEGIN
             WHERE LOWER(TRIM("ID Детайл")) = new_detail AND LOWER(TRIM("Операция")) = prev_op
             RETURNING "Количество" INTO current_qty;
             
+            IF current_qty IS NULL THEN
+                RAISE EXCEPTION 'ГРЕШКА: Няма нито една отчетена бройка от предходната операция (%) за Детайл %.', prev_op, NEW."ID Детайл";
+            END IF;
             IF current_qty < 0 THEN
                 RAISE EXCEPTION 'ГРЕШКА: Няма достатъчно наличност на Детайл % от предходна операция % (опит за превишаване с % бр.). Моля обновете страницата.', NEW."ID Детайл", prev_op, ABS(current_qty);
             END IF;
@@ -75,20 +82,42 @@ BEGIN
                 
                 IF nom_mat IS NOT NULL AND nom_mat != '' THEN
                     SELECT LOWER(TRIM("Тип")) INTO nom_type FROM public."Номенклатура" WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
+                    needed_total := new_qty * nom_qty;
                     
                     IF nom_type = 'материал' OR nom_type IS NULL THEN
                         UPDATE public.sklad 
-                        SET "Остатък" = GREATEST(0, COALESCE("Остатък"::text, '0')::numeric - (new_qty * nom_qty)), 
-                            "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + (new_qty * nom_qty)
+                        SET "Остатък" = GREATEST(0, COALESCE("Остатък"::text, '0')::numeric - needed_total), 
+                            "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + needed_total
                         WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
                     ELSE
-                        UPDATE public.inventory 
-                        SET "Количество" = COALESCE("Количество"::text, '0')::numeric - (new_qty * nom_qty)
-                        WHERE LOWER(TRIM("ID Детайл")) = nom_mat AND LOWER(TRIM("Операция")) = 'готов продукт'
-                        RETURNING "Количество" INTO current_qty;
+                        -- Check inventory first
+                        SELECT COALESCE("Количество"::text, '0')::numeric INTO inv_avail 
+                        FROM public.inventory 
+                        WHERE LOWER(TRIM("ID Детайл")) = nom_mat AND LOWER(TRIM("Операция")) = 'готов продукт';
                         
-                        IF current_qty < 0 THEN
-                            RAISE EXCEPTION 'ГРЕШКА: Няма достатъчно наличност от компонент % (опит за превишаване с % бр.). Моля обновете страницата.', nom_mat, ABS(current_qty);
+                        inv_avail := COALESCE(inv_avail, 0);
+                        
+                        IF inv_avail >= needed_total THEN
+                            UPDATE public.inventory SET "Количество" = "Количество"::numeric - needed_total 
+                            WHERE LOWER(TRIM("ID Детайл")) = nom_mat AND LOWER(TRIM("Операция")) = 'готов продукт';
+                        ELSE
+                            -- Fallback to sklad
+                            SELECT COALESCE("Остатък"::text, '0')::numeric INTO sklad_avail 
+                            FROM public.sklad 
+                            WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
+                            
+                            sklad_avail := COALESCE(sklad_avail, 0);
+                            
+                            IF (inv_avail + sklad_avail) >= needed_total THEN
+                                IF inv_avail > 0 THEN
+                                    UPDATE public.inventory SET "Количество" = 0 WHERE LOWER(TRIM("ID Детайл")) = nom_mat AND LOWER(TRIM("Операция")) = 'готов продукт';
+                                    needed_total := needed_total - inv_avail;
+                                END IF;
+                                UPDATE public.sklad SET "Остатък" = "Остатък"::numeric - needed_total, "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + needed_total 
+                                WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
+                            ELSE
+                                RAISE EXCEPTION 'ГРЕШКА: Няма достатъчно наличност от базов компонент % (опит за превишаване с % бр.). Моля обновете страницата.', nom_mat, (needed_total - inv_avail - sklad_avail);
+                            END IF;
                         END IF;
                     END IF;
                 END IF;
@@ -106,16 +135,40 @@ BEGIN
                 SELECT CAST(NULLIF("№ Операция"::text, '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция"::text, '') AS integer) DESC LIMIT 1
           ))
     LOOP
+        needed_total := new_qty * COALESCE(child_record.needed::text, '0')::numeric;
+        
         IF LOWER(TRIM(child_record.m_type)) = 'материал' THEN
-            UPDATE public.sklad SET "Остатък" = GREATEST(0, COALESCE("Остатък"::text, '0')::numeric - (new_qty * COALESCE(child_record.needed::text, '0')::numeric)), "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + (new_qty * COALESCE(child_record.needed::text, '0')::numeric)
+            UPDATE public.sklad SET "Остатък" = GREATEST(0, COALESCE("Остатък"::text, '0')::numeric - needed_total), "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + needed_total
             WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp));
         ELSE
-            UPDATE public.inventory SET "Количество" = COALESCE("Количество"::text, '0')::numeric - (new_qty * COALESCE(child_record.needed::text, '0')::numeric)
-            WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp)) AND LOWER(TRIM("Операция")) = 'готов продукт'
-            RETURNING "Количество" INTO current_qty;
+            -- Check inventory first
+            SELECT COALESCE("Количество"::text, '0')::numeric INTO inv_avail 
+            FROM public.inventory 
+            WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp)) AND LOWER(TRIM("Операция")) = 'готов продукт';
             
-            IF current_qty < 0 THEN
-                RAISE EXCEPTION 'ГРЕШКА: Няма достатъчно наличност от компонент % (опит за превишаване с % бр.). Моля обновете страницата.', child_record.comp, ABS(current_qty);
+            inv_avail := COALESCE(inv_avail, 0);
+            
+            IF inv_avail >= needed_total THEN
+                UPDATE public.inventory SET "Количество" = "Количество"::numeric - needed_total 
+                WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp)) AND LOWER(TRIM("Операция")) = 'готов продукт';
+            ELSE
+                -- Fallback to sklad
+                SELECT COALESCE("Остатък"::text, '0')::numeric INTO sklad_avail 
+                FROM public.sklad 
+                WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp));
+                
+                sklad_avail := COALESCE(sklad_avail, 0);
+                
+                IF (inv_avail + sklad_avail) >= needed_total THEN
+                    IF inv_avail > 0 THEN
+                        UPDATE public.inventory SET "Количество" = 0 WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp)) AND LOWER(TRIM("Операция")) = 'готов продукт';
+                        needed_total := needed_total - inv_avail;
+                    END IF;
+                    UPDATE public.sklad SET "Остатък" = "Остатък"::numeric - needed_total, "Изразходено" = COALESCE("Изразходено"::text, '0')::numeric + needed_total 
+                    WHERE LOWER(TRIM("ID Детайл")) = LOWER(TRIM(child_record.comp));
+                ELSE
+                    RAISE EXCEPTION 'ГРЕШКА: Няма достатъчно наличност от компонент % (опит за превишаване с % бр.). Моля обновете страницата.', child_record.comp, (needed_total - inv_avail - sklad_avail);
+                END IF;
             END IF;
         END IF;
     END LOOP;
