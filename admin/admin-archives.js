@@ -100,7 +100,6 @@ async function checkAndGenerateArchive(targetMonth, targetYear) {
 async function renderArchivesTab() {
     const tableBody = document.querySelector('#tableBody');
     tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Зареждане на архиви...</td></tr>';
-    document.getElementById('topPagination').innerHTML = '';
 
     const { data, error } = await client.from('plan_archives').select('*').order('created_at', { ascending: false });
     if (error) {
@@ -172,8 +171,7 @@ async function downloadArchive(archiveId) {
         ws['!cols'] = [{wch: 25}, {wch: 25}, {wch: 20}, {wch: 20}, {wch: 20}];
 
         XLSX.utils.book_append_sheet(wb, ws, "Движение Склад");
-        
-        XLSX.writeFile(wb, \`Archive_\${data.plan_name}_\${data.plan_year}.xlsx\`);
+        XLSX.writeFile(wb, `Archive_${data.plan_name}_${data.plan_year}.xlsx`);
         
         Swal.close();
     } catch (e) {

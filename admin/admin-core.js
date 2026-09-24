@@ -81,6 +81,7 @@ async function deleteSelectedItems() {
 async function loadCurrentTableData() {
   const config = tableConfigs[currentTab]; document.getElementById('loadingLayout').style.display = 'block'; document.getElementById('mainTable').style.display = 'none';
   selectedIndices.clear(); updateMassActionBar();
+  const requestedTab = currentTab;
   try {
       if (currentTab === 'archives') {
           document.getElementById('mainTable').style.display = 'table';
@@ -179,6 +180,7 @@ async function loadCurrentTableData() {
           }
       }
 
+      if (currentTab !== requestedTab) return;
       globalRows = rows; filterTable();
   } catch (err) { document.getElementById('loadingLayout').innerHTML = '❌ Грешка: ' + err.message; }
 }
