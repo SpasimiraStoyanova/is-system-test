@@ -161,10 +161,10 @@
                     });
                 });
 
-                let lastDateObj = new Date(year, month, 0); 
-                let dateStr = String(lastDateObj.getMonth() + 1).padStart(2, '0') + '.' + 
-                              String(lastDateObj.getDate()).padStart(2, '0') + '.' + 
-                              lastDateObj.getFullYear();
+                let today = new Date(); 
+                let dateStr = String(today.getMonth() + 1).padStart(2, '0') + '.' + 
+                              String(today.getDate()).padStart(2, '0') + '.' + 
+                              today.getFullYear();
 
                 let html = '';
                 
