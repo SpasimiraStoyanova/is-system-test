@@ -131,9 +131,17 @@ BEGIN
         FROM public.bom b
         LEFT JOIN public."Номенклатура" m ON LOWER(TRIM(b."ID Компонент")) = LOWER(TRIM(m."ID Детайл"))
         WHERE LOWER(TRIM(b."ID Родител")) = new_detail 
-          AND (b."Влага се на Оп. №"::text IS NULL OR b."Влага се на Оп. №"::text = '' OR CAST(NULLIF(b."Влага се на Оп. №"::text, '') AS integer) = (
-                SELECT CAST(NULLIF("№ Операция"::text, '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция"::text, '') AS integer) DESC LIMIT 1
-          ))
+          AND (
+              (b."Влага се на Оп. №"::text IS NOT NULL AND b."Влага се на Оп. №"::text != '' AND CAST(NULLIF(b."Влага се на Оп. №"::text, '') AS integer) = (
+                  SELECT CAST(NULLIF("№ Операция"::text, '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция"::text, '') AS integer) DESC LIMIT 1
+              ))
+              OR
+              ((b."Влага се на Оп. №"::text IS NULL OR b."Влага се на Оп. №"::text = '') AND (
+                  SELECT CAST(NULLIF("№ Операция"::text, '') AS integer) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail AND LOWER(TRIM("Име на операция")) = new_op ORDER BY CAST(NULLIF("№ Операция"::text, '') AS integer) DESC LIMIT 1
+              ) = (
+                  SELECT MIN(CAST(NULLIF("№ Операция"::text, '') AS integer)) FROM public.marshruti WHERE LOWER(TRIM("Код на детайла")) = new_detail
+              ))
+          )
     LOOP
         needed_total := new_qty * COALESCE(child_record.needed::text, '0')::numeric;
         
