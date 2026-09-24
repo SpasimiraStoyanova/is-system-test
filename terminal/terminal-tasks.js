@@ -59,6 +59,7 @@ async function loadTasks(isSilent = false) {
       
       let bufferMap = {};
       let bufferScrapMap = {};
+      let bufferOpMap = {};
       
       if (nomRes.data) {
           // The old hardcoded 20% logic is removed
@@ -69,8 +70,11 @@ async function loadTasks(isSilent = false) {
               let bKey = normalizeStr(b['ID Детайл']);
               let bufVal = parseFloat(b['Буфер']) || 0;
               let scrapVal = parseFloat(b['% Брак']) || 0;
+              let opVal = String(b['Операция'] || '').trim();
+              
               if (bufVal > 0) bufferMap[bKey] = bufVal;
               if (scrapVal > 0) bufferScrapMap[bKey] = scrapVal;
+              if (opVal) bufferOpMap[bKey] = opVal;
           });
       }
 
@@ -282,11 +286,19 @@ async function loadTasks(isSilent = false) {
           
           let routes = globalRoutesByDetail[code] || [];
           
+          let bufferOpTarget = bufferOpMap[code];
+          let reachedBufferOp = !bufferOpTarget;
+          
           if (routes.length > 0) {
               for (let i = routes.length - 1; i >= 0; i--) {
                   let route = routes[i];
-                  let opName = normalizeStr(route['Име на операция']);
+                  let opNameRaw = String(route['Име на операция']).trim();
+                  let opName = normalizeStr(opNameRaw);
                   let opKey = code + '_' + opName;
+                  
+                  if (!reachedBufferOp && bufferOpTarget && normalizeStr(bufferOpTarget) === opName) {
+                      reachedBufferOp = true;
+                  }
                   
                   let availableHere = physicalStock[opKey] || 0; 
                   
@@ -302,7 +314,8 @@ async function loadTasks(isSilent = false) {
                   availableHere -= takenBuffer;
                   let bufferShortage = currentBufferTarget - takenBuffer;
                   
-                  let totalShortage = pureShortage + scrapShortage + bufferShortage;
+                  let cardBufferShortage = reachedBufferOp ? bufferShortage : 0;
+                  let totalShortage = pureShortage + scrapShortage + cardBufferShortage;
                   
                   if (totalShortage > 0) {
                       let maxAllowed = Infinity;
@@ -478,7 +491,9 @@ async function loadTasks(isSilent = false) {
 
                           pushTask(pureShortage, '_blue', pNameForCardBase, false, planOriginalBom[code] || 0);
                           pushTask(scrapShortage, '_scrap', pNameForCardBase, true, 0);
-                          pushTask(bufferShortage, '_green', "БУФЕРИ", false, bufferOriginalBom[code] || 0);
+                          if (reachedBufferOp) {
+                              pushTask(bufferShortage, '_green', "БУФЕРИ", false, bufferOriginalBom[code] || 0);
+                          }
                       }
                   }
 
