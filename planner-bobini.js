@@ -119,7 +119,7 @@ async function loadData() {
         const endOfMonth = selectedMonth + '-' + String(lastDay).padStart(2,'0');
 
         // Fetch Plans (Active only)
-        const plansRes = await client.from('plan').select('*').in('Статус', ['Активен', 'Опакован']); // Assuming active
+        const plansRes = await client.from('plan').select('*').in('Статус', ['Активен']);
         // Fetch otcheti for these operations (to calculate progress)
         const otchetiRes = await client.from('otcheti').select('*').eq('Статус', 'Отчетено');
         // Fetch quotas for the entire month
@@ -691,7 +691,7 @@ async function generateTerminalTasks(client) {
   
   try {
       const [plansRes, reportsRes, skladRes, bufferRes, invRes] = await Promise.all([
-          client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', '📦 Опакован']).limit(100000), 
+          client.from('plan').select('*').in('Статус', ['Активен']).limit(100000), 
           client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(2000), 
           client.from('sklad').select('*').limit(100000), 
           client.from('sklad_bufferi').select('*').limit(100000),
