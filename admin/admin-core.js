@@ -90,6 +90,9 @@ async function loadCurrentTableData() {
           if (currentTab === 'otcheti') {
               query = query.order('Дата', { ascending: false });
           }
+          if (currentTab === 'brak') {
+              query = query.eq('Статус', 'Брак').order('Дата', { ascending: false });
+          }
           if (currentTab === 'chekiraniya') query = query.order('Време', { ascending: false });
       }
       const { data, error } = await query; if (error) throw error;
@@ -367,9 +370,10 @@ function buildForm(data = null) {
                 <div id="skladDetailDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; max-height:200px; overflow-y:auto; background:white; border:1px solid #cbd5e1; border-radius:4px; z-index:1000; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"></div>
             </div>
             <div class="form-group"><label>Операция:</label><select id="inp_skladOp" class="form-input" required><option value="">-- Въведете детайл първо --</option></select></div>
-            <div class="form-group"><label>Количество (физическо):</label><input type="number" id="inp_skladQty" class="form-input" step="any" value="0" required></div>
+            <div class="form-group"><label>Количество (физическо):</label><input type="number" id="inp_skladQty" class="form-input" step="any" value="0" required oninput="if(this.value && this.value != '0') { document.getElementById('inp_skladDefects').disabled = true; } else { document.getElementById('inp_skladDefects').disabled = false; }"></div>
+            <div class="form-group"><label>БРАК (Бройки):</label><input type="number" id="inp_skladDefects" class="form-input" step="any" min="0" placeholder="0" oninput="if(this.value && this.value != '0') { document.getElementById('inp_skladQty').disabled = true; document.getElementById('inp_skladQty').value = '0'; } else { document.getElementById('inp_skladQty').disabled = false; }"></div>
             <div class="form-group"><label>Количество (буфер):</label><input type="number" id="inp_skladQtyBuffer" class="form-input" step="any" value="0" required></div>
-            <div class="form-group"><label>Процент Брак (%):</label><input type="number" id="inp_skladScrap" class="form-input" step="any" min="0" placeholder="Без промяна"></div>
+            <div class="form-group"><label>Процент Свръхпроизводство (%):</label><input type="number" id="inp_skladScrap" class="form-input" step="any" min="0" placeholder="Без промяна"></div>
           `;
           
           if (globalNomenclatureCodes.length === 0) {
@@ -386,7 +390,7 @@ function buildForm(data = null) {
             <div class="form-group"><label>Текуща наличност:</label><input type="number" id="inp_skladOldQty" class="form-input" readonly style="background:#f1f5f9; color:#64748b;"></div>
             <div class="form-group"><label>НОВА наличност:</label><input type="number" id="inp_skladQty" class="form-input" step="any" required></div>
             <div class="form-group"><label>Буфер (Минимално количество):</label><input type="number" id="inp_skladBuffer" class="form-input" step="any" required></div>
-            <div class="form-group"><label>Процент Брак (%):</label><input type="number" id="inp_skladScrap" class="form-input" step="any" min="0" required></div>
+            <div class="form-group"><label>Процент Свръхпроизводство (%):</label><input type="number" id="inp_skladScrap" class="form-input" step="any" min="0" required></div>
           `;
           document.getElementById('inp_skladDetail').value = data['ID Детайл'] || '';
           document.getElementById('inp_skladOp').value = data['Операция'] || '';
@@ -599,12 +603,15 @@ async function saveForm(e) {
               const det = document.getElementById('inp_skladDetail').value.trim();
               const op = document.getElementById('inp_skladOp').value.trim();
               const qty = parseFloat(document.getElementById('inp_skladQty').value) || 0;
-              const bufferQty = parseFloat(document.getElementById('inp_skladQtyBuffer').value) || 0;
-              const scrapInput = document.getElementById('inp_skladScrap').value;
+              const bufferQty = parseFloat(document.getElementById('inp_skladQtyBuffer')?.value) || 0;
+              const scrapInput = document.getElementById('inp_skladScrap')?.value || "";
               const scrap = parseFloat(scrapInput) || 0;
-              if (!det || !op || (qty === 0 && bufferQty === 0 && scrapInput === "")) throw new Error("Моля, въведете поне едно количество (физическо, буфер) или % брак.");
+              const defectsQty = parseFloat(document.getElementById('inp_skladDefects')?.value) || 0;
+              if (!det || !op || (qty === 0 && bufferQty === 0 && scrapInput === "" && defectsQty === 0)) throw new Error("Моля, въведете поне едно количество (физическо, буфер, брак бройки) или % свръхпроизводство.");
               
-              if (qty !== 0) {
+              if (qty !== 0 && defectsQty !== 0) throw new Error("Можете да въведете само едното: Количество или Брак!");
+
+              if (qty !== 0 || defectsQty !== 0) {
                   Swal.fire({title: 'Записване на наличности...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
                   
                   let cleanDet = det.toLowerCase();
@@ -634,14 +641,14 @@ async function saveForm(e) {
                       exactOp = currData[0]['Операция'];
                   }
                   
-                  let newTotal = currentStock + qty;
+                  let newTotal = currentStock + qty - defectsQty;
                   
                   if (newTotal < 0) {
                       Swal.close();
                       throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
                   }
                   
-                  let auditNewData = { "ID Детайл": cleanDet, "Разлика": qty, "Ново Количество": newTotal, "Операция": opName };
+                  let auditNewData = { "ID Детайл": cleanDet, "Разлика": (qty !== 0 ? qty : -defectsQty), "Ново Количество": newTotal, "Операция": opName };
                   
                   await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
                   
@@ -649,16 +656,31 @@ async function saveForm(e) {
                   let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
                   if (upsertErr) throw upsertErr;
                   
-                  let otchetiPayload = {
-                      "ID План": null,
-                      "ID Детайл": exactDet,
-                      "Операция": exactOp,
-                      "Количество": qty,
-                      "Статус": "Отчетено",
-                      "Оператор": "СИСТЕМА (Корекция наличност)",
-                      "Дата": new Date().toISOString()
-                  };
-                  await client.from('otcheti').insert([otchetiPayload]);
+                  if (qty !== 0) {
+                      let otchetiPayload = {
+                          "ID План": null,
+                          "ID Детайл": exactDet,
+                          "Операция": exactOp,
+                          "Количество": qty,
+                          "Статус": "Отчетено",
+                          "Оператор": "СИСТЕМА (Корекция наличност)",
+                          "Дата": new Date().toISOString()
+                      };
+                      await client.from('otcheti').insert([otchetiPayload]);
+                  }
+                  
+                  if (defectsQty > 0) {
+                      let brakPayload = {
+                          "ID План": null,
+                          "ID Детайл": exactDet,
+                          "Операция": exactOp,
+                          "Количество": defectsQty,
+                          "Статус": "Брак",
+                          "Оператор": "Администратор",
+                          "Дата": new Date().toISOString()
+                      };
+                      await client.from('otcheti').insert([brakPayload]);
+                  }
               }
               
               if (bufferQty !== 0 || scrapInput !== "") {
