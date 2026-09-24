@@ -49,6 +49,27 @@ async function processPDF(event) {
 
         const confirmRes = await Swal.fire({ title: titleText, html: '<p style="font-size:13px; color:#64748b; margin-top:0;">Списъкът е генериран само от първите 2 колони (Количество и Детайл):</p>' + summaryHtml, icon: hasWarnings ? 'warning' : 'question', showCancelButton: true, confirmButtonColor: '#4338ca', cancelButtonColor: '#94a3b8', confirmButtonText: '🚀 Зареди в плана', cancelButtonText: 'Отказ' });
         
-        if (confirmRes.isConfirmed) { Swal.fire({ title: 'Записване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() }); const { error } = await client.from('plan').insert(extractedPlan); if (error) throw error; Swal.fire({ icon: 'success', title: 'Успех!', text: `Планът беше добавен успешно.`, timer: 2000, showConfirmButton: false }); loadCurrentTableData(); }
+        if (confirmRes.isConfirmed) { 
+            Swal.fire({ title: 'Записване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() }); 
+            const { error } = await client.from('plan').insert(extractedPlan); 
+            if (error) throw error; 
+            
+            try {
+                const skladDataRes = await client.from('sklad').select('*');
+                if (!skladDataRes.error && skladDataRes.data) {
+                    await client.from('plan_snapshots').insert([{
+                        plan_name: targetMonth,
+                        plan_year: targetYear,
+                        snapshot_type: 'start',
+                        inventory_data: skladDataRes.data
+                    }]);
+                }
+            } catch (snapErr) {
+                console.error("Грешка при запазване на начален snapshot:", snapErr);
+            }
+
+            Swal.fire({ icon: 'success', title: 'Успех!', text: `Планът беше добавен успешно. Началният склад е запаметен.`, timer: 2000, showConfirmButton: false }); 
+            loadCurrentTableData(); 
+        }
     } catch (err) { console.error(err); Swal.fire('Грешка при импорта', err.message, 'error'); }
 }

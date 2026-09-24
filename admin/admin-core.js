@@ -82,6 +82,14 @@ async function loadCurrentTableData() {
   const config = tableConfigs[currentTab]; document.getElementById('loadingLayout').style.display = 'block'; document.getElementById('mainTable').style.display = 'none';
   selectedIndices.clear(); updateMassActionBar();
   try {
+      if (currentTab === 'archives') {
+          document.getElementById('mainTable').style.display = 'table';
+          document.getElementById('tableHead').innerHTML = '<tr><th style="text-align:left; padding:12px;">Месец и Година</th><th style="text-align:left; padding:12px;">Създаден на</th><th style="text-align:right; padding:12px;">Изтегляне</th></tr>';
+          document.getElementById('loadingLayout').style.display = 'none';
+          if (typeof renderArchivesTab === 'function') renderArchivesTab();
+          return;
+      }
+
       let query;
       if (currentTab === 'sklad_inventory') {
           query = client.from('plan').select('id').limit(1); // dummy query
@@ -871,6 +879,14 @@ async function saveForm(e) {
             const { error } = await client.from(config.table).update(payload).eq(config.key, keyVal); 
             if (error) throw error; 
             Swal.fire({icon: 'success', title: 'Успешно запазено!', timer: 1000, showConfirmButton: false}); 
+            
+            if (currentTab === 'plan' && payload['Статус'] === '🚚 Изпратен') {
+                if (typeof checkAndGenerateArchive === 'function') {
+                    let m = payload['Месец'] || (globalRows && globalRows[editingIndex] ? globalRows[editingIndex]['Месец'] : null);
+                    let y = payload['Година'] || (globalRows && globalRows[editingIndex] ? globalRows[editingIndex]['Година'] : null);
+                    if (m && y) await checkAndGenerateArchive(m, parseInt(y));
+                }
+            }
         }
     } 
     else { 
@@ -1086,6 +1102,11 @@ window.massLogisticsAction = async function(month, year) {
         Swal.fire({icon: 'success', title: 'Успешно!', text: `Изпратени са ${detailsToShip ? detailsToShip.length : 0} записа.`, timer: 2000, showConfirmButton: false});
         
         document.getElementById('logisticsModalBackdrop').style.display = 'none';
+        
+        if (typeof checkAndGenerateArchive === 'function') {
+            await checkAndGenerateArchive(month, parseInt(year));
+        }
+
         loadCurrentTableData();
     } catch(err) {
         Swal.fire('Грешка', err.message, 'error');

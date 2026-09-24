@@ -1,0 +1,32 @@
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+const supabaseUrl = 'https://zdythzcgccjxwbxufunuh.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkeXRoemNnY2p4d2J4dWZ1bnVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MTcxNTMsImV4cCI6MjA5NjE5MzE1M30.XGZX5DHhJCGz9X5s__3iuSghukjanyJmGKv8MLig_jE';
+const client = createClient(supabaseUrl, supabaseKey);
+
+function normalizeStr(str) {
+    if (!str) return '';
+    return String(str).replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
+}
+
+async function run() {
+    try {
+        const [plansRes, bomRes, routesRes, reportsRes, skladRes, nomRes, bufferRes, invRes] = await Promise.all([
+            client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', '📦 Опакован']).limit(100000), client.from('bom').select('*').limit(100000),
+            client.from('marshruti').select('*').limit(100000), client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(2000), 
+            client.from('sklad').select('*').limit(100000), client.from('Номенклатура').select('*').limit(100000),
+            client.from('sklad_bufferi').select('*').limit(100000),
+            client.from('inventory').select('*').limit(100000)
+        ]);
+        
+        console.log("Plans length:", plansRes.data.length);
+        
+        let globalNomData = nomRes.data || [];
+        let namesMap = {}; if (nomRes.data) nomRes.data.forEach(n => { let code = normalizeStr(n['ID Детайл']); namesMap[code] = n['Вътрешно име'] || ''; });
+        // ... I will just copy the entire generateTerminalTasks content ...
+    } catch (e) {
+        console.log(e);
+    }
+}
+run();
+</script>

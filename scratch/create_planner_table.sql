@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS public.planner_bobini ( id uuid DEFAULT gen_random_uuid() PRIMARY KEY, date date NOT NULL, operator_name text NOT NULL, detail_name text NOT NULL, operation_name text NOT NULL, qty integer NOT NULL, created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) );
