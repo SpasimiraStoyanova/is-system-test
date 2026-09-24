@@ -709,14 +709,7 @@ async function generateTerminalTasks(client) {
       let bufferScrapMap = {};
       
       if (globalNomData) {
-          globalNomData.forEach(n => {
-              let code = normalizeStr(n['ID Детайл']);
-              let type = normalizeStr(n['Тип'] || '');
-              
-              if (!type.includes('резолвер')) {
-                  bufferScrapMap[code] = 20;
-              }
-          });
+          // The old hardcoded 20% logic is removed
       }
 
       if (bufferRes && bufferRes.data) {
