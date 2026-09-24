@@ -336,7 +336,19 @@ async function cellClick(dateStr, opName) {
 async function copyForward(quotaId) {
     let q = globalState.quotas.find(x => String(x.id) === String(quotaId));
     if (!q) return;
-    if(!confirm(`Искате ли да копирате задачата (${q.qty} бр.) за всички оставащи работни дни до края на месеца за ${q.operator_name}?\n\nВнимание: Това автоматично ще презапише (замени) всички съществуващи дневни цели за същия детайл и операция в следващите дни!`)) return;
+    
+    let sameDayQuotas = globalState.quotas.filter(x => x.date === q.date && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
+    let operators = [{ name: q.operator_name, qty: q.qty }];
+    
+    if (sameDayQuotas.length > 1) {
+        if (confirm(`Тази задача е възложена на ${sameDayQuotas.length} служители днес.\n\nИскате ли да я разтегнете едновременно за ВСИЧКИ тях (за да си разпределят бройките)?\n\n[OK] - Да, разпъни за всички ${sameDayQuotas.length} служители\n[Cancel] - Не, разпъни САМО за ${q.operator_name}`)) {
+            operators = sameDayQuotas.map(x => ({ name: x.operator_name, qty: x.qty }));
+        } else {
+            if(!confirm(`Искате ли да копирате задачата (${q.qty} бр.) за всички оставащи работни дни до края на месеца САМО за ${q.operator_name}?`)) return;
+        }
+    } else {
+        if(!confirm(`Искате ли да копирате задачата (${q.qty} бр.) за всички оставащи работни дни до края на месеца за ${q.operator_name}?\n\nВнимание: Това автоматично ще презапише (замени) всички съществуващи дневни цели за същия детайл и операция в следващите дни!`)) return;
+    }
     
     const selectedMonth = document.getElementById('month-picker').value; 
     let year = parseInt(selectedMonth.split('-')[0]);
@@ -355,7 +367,7 @@ async function copyForward(quotaId) {
     globalState.quotas.forEach(x => {
         if (x.detail_name === q.detail_name && x.operation_name === q.operation_name) {
             let xDay = parseInt(x.date.split('-')[2]);
-            let isOverwritten = x.operator_name === q.operator_name && xDay >= startDay;
+            let isOverwritten = operators.some(op => op.name === x.operator_name) && xDay >= startDay;
             if (!isOverwritten) {
                 otherAssigned += x.qty;
             }
@@ -369,35 +381,38 @@ async function copyForward(quotaId) {
     }
     
     for (let d = startDay; d <= daysInMonth; d++) {
+        if (targetItem && remainingToAssign <= 0) break;
+        
         let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         let dateObj = new Date(year, month - 1, d);
         let isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6);
         
-        // Skip off days
-        let isOffDay = globalState.quotas.some(x => x.operator_name === q.operator_name && x.date === fullDateStr && x.detail_name === 'OFF');
-        if (isWeekend || isOffDay) continue;
+        if (isWeekend) continue;
         
-        let qtyToAssign = q.qty;
-        if (targetItem && qtyToAssign > remainingToAssign) {
-            qtyToAssign = remainingToAssign;
+        for (let op of operators) {
+            if (targetItem && remainingToAssign <= 0) break;
+            
+            let isOffDay = globalState.quotas.some(x => x.operator_name === op.name && x.date === fullDateStr && x.detail_name === 'OFF');
+            if (isOffDay) continue;
+            
+            let qtyToAssign = op.qty;
+            if (targetItem && qtyToAssign > remainingToAssign) {
+                qtyToAssign = remainingToAssign;
+            }
+            if (qtyToAssign <= 0) continue;
+            
+            let existing = globalState.quotas.filter(x => x.operator_name === op.name && x.date === fullDateStr && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
+            existing.forEach(ex => existingIdsToDelete.push(ex.id));
+            
+            inserts.push({
+                date: fullDateStr,
+                operator_name: op.name,
+                detail_name: q.detail_name,
+                operation_name: q.operation_name,
+                qty: qtyToAssign
+            });
+            remainingToAssign -= qtyToAssign;
         }
-        
-        if (qtyToAssign <= 0) break; // Reached the plan limit!
-        
-        // Mark existing identical tasks (same detail and operation) for deletion
-        let existing = globalState.quotas.filter(x => x.operator_name === q.operator_name && x.date === fullDateStr && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
-        existing.forEach(ex => existingIdsToDelete.push(ex.id));
-        
-        inserts.push({
-            date: fullDateStr,
-            operator_name: q.operator_name,
-            detail_name: q.detail_name,
-            operation_name: q.operation_name,
-            qty: qtyToAssign
-        });
-        
-        remainingToAssign -= qtyToAssign;
-        if (targetItem && remainingToAssign <= 0) break;
     }
     
     if (inserts.length === 0) {
