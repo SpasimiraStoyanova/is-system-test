@@ -277,8 +277,26 @@ function renderCalendarUI() {
             let op = normalizeStr(r['Операция']);
             let qty = parseFloat(r['Количество']) || 0;
             if (qty > 0) {
-                let key = `${dateStr}|${name}|${detail}|${op}`;
-                actualsMap[key] = (actualsMap[key] || 0) + qty;
+                let lowerDetail = detail.toLowerCase();
+                let lowerOp = op.toLowerCase();
+                
+                let isStator = lowerDetail.includes('статор') && !lowerDetail.includes('пак');
+                let isRotor = lowerDetail.includes('ротор');
+                let isTransformer = lowerDetail.includes('трансформатор');
+                let isToroid = lowerDetail.includes('тороид');
+
+                let isValidOp = false;
+                if (isStator && lowerOp.includes('навиване')) isValidOp = true;
+                if (isRotor && (lowerOp.includes('навиване') || lowerOp.includes('спояване'))) isValidOp = true;
+                if ((isTransformer || isToroid) && (lowerOp.includes('навиване') || lowerOp.includes('спояване'))) isValidOp = true;
+                
+                // Allow any manual quotas that match exactly
+                let isAssigned = globalState.quotas && globalState.quotas.some(q => q.detail_name === r['ID Детайл'] && q.operation_name === r['Операция']);
+
+                if (isValidOp || isAssigned) {
+                    let key = `${dateStr}|${name}|${detail}|${op}`;
+                    actualsMap[key] = (actualsMap[key] || 0) + qty;
+                }
             }
         });
     }
