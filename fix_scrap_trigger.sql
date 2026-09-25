@@ -47,7 +47,7 @@ BEGIN
 
     -- Стъпка 2
     FOR child_record IN 
-        SELECT b."ID Компонент" AS comp, b."Количество" AS needed, m."Тип" AS m_type, m."Мерна единица" as unit
+        SELECT b."ID Компонент" AS comp, b."Количество" AS needed, m."Тип" AS m_type, m."Единици" as unit
         FROM public.bom b
         LEFT JOIN public."Номенклатура" m ON LOWER(TRIM(b."ID Компонент")) = LOWER(TRIM(m."ID Детайл"))
         WHERE LOWER(TRIM(b."ID Родител")) = new_detail 
@@ -77,12 +77,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- СТЪПКА 4: Отчитане на брак
-    IF new_status = 'брак' THEN
-        INSERT INTO public.sklad_bufferi ("ID Детайл", "% Брак")
-        VALUES (NEW."ID Детайл", new_qty)
-        ON CONFLICT ("ID Детайл") DO UPDATE SET "% Брак" = COALESCE(public.sklad_bufferi."% Брак"::text, '0')::numeric + COALESCE(EXCLUDED."% Брак"::text, '0')::numeric;
-    END IF;
+
 
     RETURN NEW;
 END;

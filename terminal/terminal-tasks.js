@@ -85,16 +85,20 @@ async function loadTasks(isSilent = false) {
       Object.keys(globalRoutesByDetail).forEach(code => globalRoutesByDetail[code].sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция'])));
 
       let takenOps = {}; 
+      let activeDangling = [];
       reportsRes.data.forEach(r => {
           let code = normalizeStr(r['ID Детайл']);
           let op = normalizeStr(r['Операция']);
           let key = code + '_' + op; 
           
-          if (r['Статус'] === 'Брак' || r['Статус'] === 'Отчетено' || r['Статус'] === 'Прекъсната') {
+          if (r['Статус'] === 'Брак' || r['Статус'] === 'Отчетено' || r['Статус'] === 'Прекъсната' || r['Статус'] === 'Авто-приключена') {
               if (String(r['Оператор']).trim() === currentOperator.trim() && takenOps[key] === undefined) takenOps[key] = false;
           }
           else if (r['Статус'] === 'Започната') {
-              if (String(r['Оператор']).trim() === currentOperator.trim() && takenOps[key] === undefined) takenOps[key] = true;
+              if (String(r['Оператор']).trim() === currentOperator.trim() && takenOps[key] === undefined) {
+                  takenOps[key] = true;
+                  activeDangling.push(r);
+              }
           }
       });
 
@@ -574,6 +578,47 @@ async function loadTasks(isSilent = false) {
           if (aPlanWeight !== bPlanWeight) return aPlanWeight - bPlanWeight;
           return a.opNum - b.opNum;
       });
+
+      // AUTO-CLOSE DANGLING TASKS
+      let insertsAutoClose = [];
+      let shouldAlert = false;
+      
+      if (activeTaskId !== null && activeTaskId !== undefined) {
+          let currentlyActive = globalTasks.find(t => t.id === activeTaskId);
+          if (!currentlyActive) {
+              activeTaskId = null;
+              shouldAlert = true;
+          }
+      }
+
+      activeDangling.forEach(r => {
+          let code = normalizeStr(r['ID Детайл']);
+          let op = normalizeStr(r['Операция']);
+          let foundInGlobal = globalTasks.find(t => normalizeStr(t.name) === code && normalizeStr(t.op) === op);
+          
+          if (!foundInGlobal || activeTaskId === null) {
+              insertsAutoClose.push({
+                  "ID План": r['ID План'],
+                  "ID Детайл": r['ID Детайл'],
+                  "Оператор": currentOperator,
+                  "Количество": 0,
+                  "Операция": r['Операция'],
+                  "Статус": "Авто-приключена",
+                  "Дата": new Date().toISOString(),
+                  "Време Старт": r['Време Старт'] || new Date().toISOString()
+              });
+              takenOps[code + '_' + op] = false;
+          }
+      });
+
+      if (insertsAutoClose.length > 0) {
+          client.from('otcheti').insert(insertsAutoClose).then(res => { if(res.error) console.error("Auto-close error", res.error); });
+      }
+      
+      if (shouldAlert) {
+          Swal.fire('Задачата е изпълнена', 'Някой друг току-що завърши тази задача!', 'info');
+      }
+
       renderTasks(globalTasks);
   } catch (err) { console.error(err); document.getElementById('tasksContainer').innerHTML = '<div style="text-align:center; padding: 40px; color:#ef4444; font-weight:bold;">❌ Грешка:<br>' + err.message + '</div>'; }
 }
