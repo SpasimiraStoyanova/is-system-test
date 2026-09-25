@@ -253,13 +253,25 @@ function renderCalendarUI() {
     document.getElementById('w-task-pool').innerHTML = poolHtml;
 
     // 2. Render Calendar Board
-    let boardHtml = '<table class="calendar-table"><thead><tr><th class="first-cell">Оператор</th>';
+    let today = new Date();
+    let isCurrentMonth = (year === today.getFullYear() && month === (today.getMonth() + 1));
+    let currentMonday = new Date(today);
+    let dayOfWeek = currentMonday.getDay();
+    let diff = currentMonday.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+    currentMonday.setDate(diff);
+    currentMonday.setHours(0,0,0,0);
+    
+    let toggleBtnHtml = isCurrentMonth ? `<br><button id="togglePastBtn" onclick="togglePastWeeks()" style="background:#3b82f6; color:#fff; border:none; border-radius:4px; padding:3px 6px; font-size:0.85em; font-weight:normal; cursor:pointer; margin-top:8px;" title="Скрий/Покажи миналите седмици">Покажи минали</button>` : '';
+
+    let tableClass = isCurrentMonth ? "calendar-table hide-past-weeks" : "calendar-table";
+    let boardHtml = `<table class="${tableClass}" id="planner-table"><thead><tr><th class="first-cell" style="vertical-align: top; padding-top: 15px;">Оператор${toggleBtnHtml}</th>`;
     for (let d = 1; d <= daysInMonth; d++) {
         let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         let dateObj = new Date(year, month - 1, d);
         let dayStr = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][dateObj.getDay()];
         let isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6) ? 'color:#f87171;' : '';
-        boardHtml += `<th style="${isWeekend} position:relative; padding-top:25px;">
+        let hideClass = (isCurrentMonth && dateObj < currentMonday) ? "past-week-col" : "";
+        boardHtml += `<th class="${hideClass}" style="${isWeekend} position:relative; padding-top:25px;">
             <input type="checkbox" class="date-mass-checkbox" data-date="${fullDateStr}" onchange="toggleMassDeleteBtn()" style="position:absolute; top:5px; left:50%; transform:translateX(-50%); cursor:pointer;" title="Маркирай за масово изтриване">
             ${d}<br><span style="font-size:0.7em; font-weight:normal;">${dayStr}</span>
         </th>`;
@@ -317,7 +329,10 @@ function renderCalendarUI() {
                 
                 let dayActualKeys = Object.keys(actualsMap).filter(k => k.startsWith(`${fullDateStr}|${opName}|`));
                 
-                let cellClass = isOffDay ? 'day-cell off-day' : 'day-cell';
+                let dateObj2 = new Date(year, month - 1, d);
+                let hideClass = (isCurrentMonth && dateObj2 < currentMonday) ? "past-week-col" : "";
+                
+                let cellClass = isOffDay ? `day-cell off-day ${hideClass}` : `day-cell ${hideClass}`;
                 
                 boardHtml += `<td class="${cellClass}" onclick="cellClick('${fullDateStr}', '${opName}')" ondragover="allowDrop(event)" ondrop="drop(event, '${opName}', '${fullDateStr}')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">`;
                 
@@ -1295,4 +1310,19 @@ async function generateTerminalTasks(client) {
       return generatedTasks;
   } catch (err) { console.error(err); return []; }
 }
+
+window.togglePastWeeks = function() {
+    let table = document.getElementById('planner-table');
+    if (table) {
+        table.classList.toggle('hide-past-weeks');
+        let btn = document.getElementById('togglePastBtn');
+        if (btn) {
+            if (table.classList.contains('hide-past-weeks')) {
+                btn.innerText = 'Покажи минали';
+            } else {
+                btn.innerText = 'Скрий минали';
+            }
+        }
+    }
+};
 
