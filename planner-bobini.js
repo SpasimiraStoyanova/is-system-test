@@ -656,11 +656,17 @@ async function confirmAssign() {
         let opsToAssign = selectedOperators.length > 0 ? selectedOperators : [currentDropOperator];
 
         let inserts = [];
+        let existingIdsToDelete = [];
+        let totalAssignedByNew = 0;
+        
         for (let d of datesToAssign) {
             for (let op of opsToAssign) {
                 // Skip if it's an off day
                 let isOffDay = globalState.quotas.some(q => q.operator_name === op && q.date === d && q.detail_name === 'OFF');
                 if (isOffDay) continue;
+
+                let existing = globalState.quotas.filter(q => q.operator_name === op && q.date === d && q.detail_name === currentDragTask.detailName && q.operation_name === currentDragTask.operationName);
+                existing.forEach(ex => existingIdsToDelete.push(ex.id));
 
                 inserts.push({
                     date: d,
@@ -669,6 +675,7 @@ async function confirmAssign() {
                     operation_name: currentDragTask.operationName,
                     qty: qty
                 });
+                totalAssignedByNew += qty;
             }
         }
 
@@ -677,6 +684,62 @@ async function confirmAssign() {
             document.getElementById('main-layout').style.display = 'flex';
             alert("Няма валидни дни за възлагане (всички са маркирани като почивни).");
             return;
+        }
+        
+        // Auto-balance if exceeding plan
+        let targetItem = globalState.targetItems.find(t => t.detailName === currentDragTask.detailName && t.operationName === currentDragTask.operationName);
+        if (targetItem) {
+            let maxAllowed = targetItem.planQty;
+            let otherAssigned = 0;
+            let otherQuotas = [];
+            
+            globalState.quotas.forEach(q => {
+                if (q.detail_name === currentDragTask.detailName && q.operation_name === currentDragTask.operationName) {
+                    if (!existingIdsToDelete.includes(q.id)) {
+                        otherAssigned += q.qty;
+                        otherQuotas.push(q);
+                    }
+                }
+            });
+            
+            let totalNew = otherAssigned + totalAssignedByNew;
+            if (totalNew > maxAllowed) {
+                let excess = totalNew - maxAllowed;
+                if (excess > 0 && otherQuotas.length > 0) {
+                    if (confirm(`Внимание: Общо възложените бройки ще станат ${totalNew}, а по план ви трябват само ${maxAllowed} (с ${excess} бр. повече).\n\nИскате ли автоматично да извадим тези ${excess} бр. от другите дни, за да се изравни планът?`)) {
+                        otherQuotas.sort((a,b) => b.date.localeCompare(a.date)); // Latest first
+                        
+                        let deletes = [];
+                        let updates = [];
+                        
+                        for (let q of otherQuotas) {
+                            if (excess <= 0) break;
+                            if (q.qty <= excess) {
+                                excess -= q.qty;
+                                deletes.push(q.id);
+                            } else {
+                                updates.push({ id: q.id, qty: q.qty - excess });
+                                excess = 0;
+                            }
+                        }
+                        
+                        if (deletes.length > 0) {
+                            await client.from('planner_bobini').delete().in('id', deletes);
+                            globalState.quotas = globalState.quotas.filter(x => !deletes.includes(x.id));
+                        }
+                        for (let u of updates) {
+                            await client.from('planner_bobini').update({ qty: u.qty }).eq('id', u.id);
+                            let idx = globalState.quotas.findIndex(x => x.id === u.id);
+                            if (idx !== -1) globalState.quotas[idx].qty = u.qty;
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (existingIdsToDelete.length > 0) {
+            await client.from('planner_bobini').delete().in('id', existingIdsToDelete);
+            globalState.quotas = globalState.quotas.filter(x => !existingIdsToDelete.includes(x.id));
         }
 
         const { error, data } = await client.from('planner_bobini').insert(inserts).select();
