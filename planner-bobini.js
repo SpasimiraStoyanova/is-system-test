@@ -195,7 +195,6 @@ async function loadData() {
                             filteredTargetNodes[key].availableQty += t.totalNeed;
                         }
                     }
-                }
             });
         }
         
