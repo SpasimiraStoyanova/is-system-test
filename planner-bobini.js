@@ -239,8 +239,11 @@ function renderCalendarUI() {
             }
         });
 
+        let safeDetail = item.detailName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+        let safeOp = item.operationName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+
         poolHtml += `
-            <div class="task-card" draggable="true" ondragstart="dragStart(event, '${item.detailName}', '${item.operationName}', ${remaining}, ${totalAssignedMonth})">
+            <div class="task-card" draggable="true" ondragstart="dragStart(event, '${safeDetail}', '${safeOp}', ${remaining}, ${totalAssignedMonth})">
                 <div class="task-card-title">${item.detailName}</div>
                 <div class="task-card-op">${item.operationName}</div>
                 <div class="task-stat"><span style="color:#94a3b8">Остават по план:</span> <strong>${remaining} бр.</strong></div>
