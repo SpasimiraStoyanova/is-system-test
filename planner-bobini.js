@@ -479,29 +479,55 @@ async function copyForward(quotaId) {
         
         if (isWeekend) continue;
         
+        // Find valid operators for this day
+        let validOps = [];
         for (let op of operators) {
-            if (targetItem && remainingToAssign <= 0) break;
-            
             let isOffDay = globalState.quotas.some(x => x.operator_name === op.name && x.date === fullDateStr && x.detail_name === 'OFF');
-            if (isOffDay) continue;
+            if (!isOffDay) validOps.push(op);
+        }
+        if (validOps.length === 0) continue;
+        
+        let totalRequested = validOps.reduce((sum, op) => sum + op.qty, 0);
+        
+        if (targetItem && remainingToAssign < totalRequested) {
+            // Distribute remaining evenly
+            let base = Math.floor(remainingToAssign / validOps.length);
+            let remainder = remainingToAssign % validOps.length;
             
-            let qtyToAssign = op.qty;
-            if (targetItem && qtyToAssign > remainingToAssign) {
-                qtyToAssign = remainingToAssign;
-            }
-            if (qtyToAssign <= 0) continue;
-            
-            let existing = globalState.quotas.filter(x => x.operator_name === op.name && x.date === fullDateStr && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
-            existing.forEach(ex => existingIdsToDelete.push(ex.id));
-            
-            inserts.push({
-                date: fullDateStr,
-                operator_name: op.name,
-                detail_name: q.detail_name,
-                operation_name: q.operation_name,
-                qty: qtyToAssign
+            validOps.forEach((op, index) => {
+                let qtyToAssign = base + (index < remainder ? 1 : 0);
+                if (qtyToAssign <= 0) return;
+                
+                let existing = globalState.quotas.filter(x => x.operator_name === op.name && x.date === fullDateStr && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
+                existing.forEach(ex => existingIdsToDelete.push(ex.id));
+                
+                inserts.push({
+                    date: fullDateStr,
+                    operator_name: op.name,
+                    detail_name: q.detail_name,
+                    operation_name: q.operation_name,
+                    qty: qtyToAssign
+                });
             });
-            remainingToAssign -= qtyToAssign;
+            remainingToAssign = 0;
+            break;
+        } else {
+            // Normal assignment
+            for (let op of validOps) {
+                let qtyToAssign = op.qty;
+                
+                let existing = globalState.quotas.filter(x => x.operator_name === op.name && x.date === fullDateStr && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
+                existing.forEach(ex => existingIdsToDelete.push(ex.id));
+                
+                inserts.push({
+                    date: fullDateStr,
+                    operator_name: op.name,
+                    detail_name: q.detail_name,
+                    operation_name: q.operation_name,
+                    qty: qtyToAssign
+                });
+                if (targetItem) remainingToAssign -= qtyToAssign;
+            }
         }
     }
     
