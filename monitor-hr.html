@@ -62,10 +62,11 @@
       flex: 1;
       padding: 15px;
       overflow-y: auto;
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
       gap: 10px;
       align-content: flex-start;
+      align-items: flex-start;
     }
     
     h1#monitorTitle {
@@ -187,7 +188,7 @@
         <div class="window-header" style="border-top: 3px solid #10b981; background: linear-gradient(180deg, rgba(16,185,129,0.15) 0%, transparent 100%);">
           ✅ ИЗВЪРШЕНА РАБОТА (ЗА ДЕНЯ)
         </div>
-        <div class="window-body" id="w-completed-work" style="flex-direction: column;"></div>
+        <div class="window-body" id="w-completed-work"></div>
       </div>
     </div>
 
