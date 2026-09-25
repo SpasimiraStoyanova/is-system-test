@@ -267,6 +267,23 @@ function renderCalendarUI() {
     boardHtml += '</tr></thead><tbody>';
 
     if (globalState.activeOperators.length === 0) {
+    let actualsMap = {};
+    if (globalState.otcheti) {
+        globalState.otcheti.forEach(r => {
+            if (!r['Дата']) return;
+            let dateStr = r['Дата'].split('T')[0];
+            let name = String(r['Оператор']).trim();
+            let detail = normalizeStr(r['ID Детайл']);
+            let op = normalizeStr(r['Операция']);
+            let qty = parseFloat(r['Количество']) || 0;
+            if (qty > 0) {
+                let key = `${dateStr}|${name}|${detail}|${op}`;
+                actualsMap[key] = (actualsMap[key] || 0) + qty;
+            }
+        });
+    }
+
+    if (globalState.activeOperators.length === 0) {
         boardHtml += '<tr><td colspan="' + (daysInMonth + 1) + '" style="padding:20px; color:#94a3b8;">Няма активни оператори в този отдел.</td></tr>';
     } else {
         globalState.activeOperators.forEach(opName => {
@@ -280,22 +297,62 @@ function renderCalendarUI() {
                 let dayQuotas = globalState.quotas.filter(q => q.operator_name === opName && q.date === fullDateStr);
                 let isOffDay = dayQuotas.some(q => q.detail_name === 'OFF');
                 
+                let dayActualKeys = Object.keys(actualsMap).filter(k => k.startsWith(`${fullDateStr}|${opName}|`));
+                
                 let cellClass = isOffDay ? 'day-cell off-day' : 'day-cell';
                 
                 boardHtml += `<td class="${cellClass}" onclick="cellClick('${fullDateStr}', '${opName}')" ondragover="allowDrop(event)" ondrop="drop(event, '${opName}', '${fullDateStr}')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">`;
                 
                 if (!isOffDay) {
                     dayQuotas.forEach(q => {
+                        let aKey = `${fullDateStr}|${opName}|${normalizeStr(q.detail_name)}|${normalizeStr(q.operation_name)}`;
+                        let actualQty = actualsMap[aKey] || 0;
+                        
+                        let displayQty = "";
+                        let bgClass = "";
+                        
+                        if (actualQty > 0) {
+                            displayQty = `${actualQty} / ${q.qty} бр.`;
+                            bgClass = "assigned-card-actual";
+                        } else {
+                            displayQty = `${q.qty} бр.`;
+                            bgClass = "assigned-card-forecast";
+                        }
+                        
+                        actualsMap[aKey] = -1; // flag as processed
+                        
                         boardHtml += `
-                            <div class="assigned-card">
+                            <div class="assigned-card ${bgClass}">
                                 <div class="assigned-card-title" title="${q.detail_name}">${q.detail_name}</div>
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
-                                    <strong style="color:#10b981;">${q.qty} бр.</strong>
+                                    <strong>${displayQty}</strong>
                                 </div>
                                 <button class="btn-copy-forward" onclick="event.stopPropagation(); copyForward('${q.id}')" title="Разпъни до края на месеца">»</button>
                                 <button class="btn-del-quota" onclick="event.stopPropagation(); deleteQuota('${q.id}')">X</button>
                             </div>
                         `;
+                    });
+                    
+                    dayActualKeys.forEach(k => {
+                        if (actualsMap[k] > 0) {
+                            let parts = k.split('|');
+                            let detail = parts[2];
+                            let actualQty = actualsMap[k];
+                            
+                            // Try to find un-normalized name
+                            let originalDetail = detail;
+                            let report = globalState.otcheti.find(r => r['Дата'].startsWith(fullDateStr) && String(r['Оператор']).trim() === opName && normalizeStr(r['ID Детайл']) === detail);
+                            if (report && report['ID Детайл']) originalDetail = report['ID Детайл'];
+                            
+                            boardHtml += `
+                                <div class="assigned-card assigned-card-unplanned" style="cursor: default;" onclick="event.stopPropagation();" title="Отчетена извънредна работа през терминала">
+                                    <div class="assigned-card-title" title="${originalDetail}">${originalDetail}</div>
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+                                        <strong>${actualQty} бр. (Извънр.)</strong>
+                                    </div>
+                                </div>
+                            `;
+                        }
                     });
                 }
                 boardHtml += `</td>`;
