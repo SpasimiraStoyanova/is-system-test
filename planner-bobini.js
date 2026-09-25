@@ -162,16 +162,19 @@ async function loadData() {
                 let isRotor = name.includes('ротор');
                 let isTransformer = name.includes('трансформатор');
                 let isToroid = name.includes('тороид');
-
-                if (isStator || isRotor || isTransformer || isToroid) {
-                    let op = String(t.op || '').toLowerCase().trim();
-                    let isValidOp = false;
-                    
-                    if (isStator && op.includes('навиване')) isValidOp = true;
-                    if (isRotor && (op.includes('навиване') || op.includes('спояване'))) isValidOp = true;
-                    if ((isTransformer || isToroid) && (op.includes('навиване') || op.includes('спояване'))) isValidOp = true;
-                    
-                    if (isValidOp) {
+                
+                let op = String(t.op || '').toLowerCase().trim();
+                let isValidOp = false;
+                
+                if (isStator && op.includes('навиване')) isValidOp = true;
+                if (isRotor && (op.includes('навиване') || op.includes('спояване'))) isValidOp = true;
+                if ((isTransformer || isToroid) && (op.includes('навиване') || op.includes('спояване'))) isValidOp = true;
+                
+                // Explicit catches based on operation name
+                if (op.includes('бобиньорки')) isValidOp = true;
+                if (op.includes('ротор') && (op.includes('навиване') || op.includes('спояване'))) isValidOp = true;
+                
+                if (isValidOp) {
                         let key = t.name + "___" + t.op;
                         if (!filteredTargetNodes[key]) {
                             filteredTargetNodes[key] = {
@@ -301,6 +304,10 @@ function renderCalendarUI() {
                 if (isStator && lowerOp.includes('навиване')) isValidOp = true;
                 if (isRotor && (lowerOp.includes('навиване') || lowerOp.includes('спояване'))) isValidOp = true;
                 if ((isTransformer || isToroid) && (lowerOp.includes('навиване') || lowerOp.includes('спояване'))) isValidOp = true;
+                
+                // Explicit catches based on operation name
+                if (lowerOp.includes('бобиньорки')) isValidOp = true;
+                if (lowerOp.includes('ротор') && (lowerOp.includes('навиване') || lowerOp.includes('спояване'))) isValidOp = true;
                 
                 // Allow any manual quotas that match exactly
                 let isAssigned = globalState.quotas && globalState.quotas.some(q => q.detail_name === r['ID Детайл'] && q.operation_name === r['Операция']);
