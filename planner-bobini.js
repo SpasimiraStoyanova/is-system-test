@@ -266,7 +266,7 @@ function renderCalendarUI() {
     }
     boardHtml += '</tr></thead><tbody>';
 
-    if (globalState.activeOperators.length === 0) {
+
     let actualsMap = {};
     if (globalState.otcheti) {
         globalState.otcheti.forEach(r => {
