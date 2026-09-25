@@ -363,14 +363,15 @@ function renderCalendarUI() {
                         
                         actualsMap[aKey] = -1; // flag as processed
                         
+                        let safeDetail = q.detail_name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+                        let safeOp = q.operation_name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+
                         boardHtml += `
-                            <div class="assigned-card ${bgClass}">
+                            <div class="assigned-card ${bgClass}" onclick="event.stopPropagation(); openTaskOptionsModal('${q.id}', '${safeDetail}', '${safeOp}')" style="cursor: pointer;" title="Натиснете за опции">
                                 <div class="assigned-card-title" title="${q.detail_name}">${q.detail_name}</div>
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
                                     <strong>${displayQty}</strong>
                                 </div>
-                                <button class="btn-copy-forward" onclick="event.stopPropagation(); copyForward('${q.id}')" title="Разпъни до края на месеца">»</button>
-                                <button class="btn-del-quota" onclick="event.stopPropagation(); deleteQuota('${q.id}')">X</button>
                             </div>
                         `;
                     });
@@ -1359,5 +1360,26 @@ window.togglePastWeeks = function() {
             }
         }
     }
+};
+
+window.openTaskOptionsModal = function(quotaId, detailName, operationName) {
+    document.getElementById('opt-task-title').innerText = detailName;
+    document.getElementById('opt-task-op').innerText = operationName;
+    
+    document.getElementById('opt-btn-copy').onclick = function() {
+        closeTaskOptionsModal();
+        copyForward(quotaId);
+    };
+    
+    document.getElementById('opt-btn-delete').onclick = function() {
+        closeTaskOptionsModal();
+        deleteQuota(quotaId);
+    };
+    
+    document.getElementById('task-options-modal').style.display = 'flex';
+};
+
+window.closeTaskOptionsModal = function() {
+    document.getElementById('task-options-modal').style.display = 'none';
 };
 
