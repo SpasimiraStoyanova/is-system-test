@@ -126,3 +126,26 @@ window.addEventListener('load', () => {
 function generateInvoice() {
     Swal.fire('Информация', 'Тази функция ще събере данните от трите таба и ще сметне финалните суми.', 'info');
 }
+
+async function fetchActivePlan() {
+    try {
+        const { data, error } = await client.from('plan').select('*').eq('Статус', 'Активен');
+        if (error) throw error;
+        
+        if (!data || data.length === 0) {
+            Swal.fire('Информация', 'Няма намерени активни планове в системата!', 'info');
+            return;
+        }
+
+        const mappedData = data.map(p => ({
+            'бр.': p['Целево количество'],
+            'Номер': p['Вътрешно име']
+        }));
+        
+        hotPlan.loadData(mappedData);
+        Swal.fire('Успех', `Извлечени са ${mappedData.length} записа от Активния План! Натисни "Запази промените", за да ги съхраниш.`, 'success');
+    } catch(err) {
+        console.error(err);
+        Swal.fire('Грешка при извличане', err.message, 'error');
+    }
+}
