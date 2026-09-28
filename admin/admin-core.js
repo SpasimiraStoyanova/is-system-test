@@ -1360,12 +1360,15 @@ async function fetchAuditLogs() {
                             detailsHtml = `<div style="color:#166534; white-space:pre-wrap; font-size:0.85em;"><b>Нов запис:</b><br>${JSON.stringify(newData, null, 2)}</div>`;
                         } else {
                             let changesHtml = [];
+                            let idStr = newData['ID Детайл'] || newData['Вътрешно име'] || newData['id'] || '';
+                            let identifierHtml = idStr ? `<div style="color:#1e293b; margin-bottom:4px; border-bottom:1px dotted #cbd5e1; padding-bottom:4px;">🔑 Запис: <b>${idStr}</b></div>` : '';
+                            
                             for (let key in newData) {
                                 if (oldData[key] !== newData[key]) {
                                     changesHtml.push(`<div><b>${key}:</b> <span style="text-decoration:line-through; color:#ef4444;">${oldData[key]}</span> ➡️ <span style="color:#16a34a;">${newData[key]}</span></div>`);
                                 }
                             }
-                            detailsHtml = changesHtml.length > 0 ? changesHtml.join('') : '<span style="color:#94a3b8;">Няма промяна в полетата</span>';
+                            detailsHtml = identifierHtml + (changesHtml.length > 0 ? changesHtml.join('') : '<span style="color:#94a3b8;">Няма промяна в полетата</span>');
                         }
                         
                         html += `<tr>
@@ -1421,12 +1424,15 @@ async function fetchAuditLogs() {
                 detailsHtml = `<div style="color:#166534; white-space:pre-wrap; font-size:0.85em;"><b>Нов запис:</b><br>${JSON.stringify(newData, null, 2)}</div>`;
             } else {
                 let changesHtml = [];
+                let idStr = newData['ID Детайл'] || newData['Вътрешно име'] || newData['id'] || '';
+                let identifierHtml = idStr ? `<div style="color:#1e293b; margin-bottom:4px; border-bottom:1px dotted #cbd5e1; padding-bottom:4px;">🔑 Запис: <b>${idStr}</b></div>` : '';
+                
                 for (let key in newData) {
                     if (oldData[key] !== newData[key]) {
                         changesHtml.push(`<div><b>${key}:</b> <span style="text-decoration:line-through; color:#ef4444;">${oldData[key]}</span> ➡️ <span style="color:#16a34a;">${newData[key]}</span></div>`);
                     }
                 }
-                detailsHtml = changesHtml.length > 0 ? changesHtml.join('') : '<span style="color:#94a3b8;">Няма промяна в полетата</span>';
+                detailsHtml = identifierHtml + (changesHtml.length > 0 ? changesHtml.join('') : '<span style="color:#94a3b8;">Няма промяна в полетата</span>');
             }
             
             html += `<tr>
