@@ -15,32 +15,35 @@ async function openTransformModal() {
     if(btn) { btn.innerText = 'Зареждане...'; btn.disabled = true; }
     
     try {
-        // 1. Fetch current inventory (items having # in ID) with pagination
+        // 1. Fetch current inventory with pagination, filter locally
         let invData = [];
         let from = 0; const step = 1000;
         while(true) {
-            let { data } = await client.from('inventory').select('*').like('ID Детайл', '%#%').range(from, from + step - 1);
+            let { data } = await client.from('inventory').select('*').range(from, from + step - 1);
             if (!data || data.length === 0) break;
             invData.push(...data);
             if (data.length < step) break;
             from += step;
         }
         
-        transformSourceData = invData.filter(item => parseFloat(item['Свободни'] !== undefined ? item['Свободни'] : (item['Общо'] || 0)) > 0);
+        transformSourceData = invData.filter(item => 
+            String(item['ID Детайл'] || '').includes('#') && 
+            parseFloat(item['Свободни'] !== undefined ? item['Свободни'] : (item['Общо'] || 0)) > 0
+        );
         
-        // Also we need to know if they are loosely type 'Резолвер'. Let's fetch Номенклатура
+        // Fetch Номенклатура locally filtering by #
         let nomData = [];
         from = 0;
         while(true) {
-            let { data } = await client.from('Номенклатура').select('*').like('ID Детайл', '%#%').range(from, from + step - 1);
+            let { data } = await client.from('Номенклатура').select('*').range(from, from + step - 1);
             if (!data || data.length === 0) break;
             nomData.push(...data);
             if (data.length < step) break;
             from += step;
         }
         
-        // Filter loosely by type
-        nomData = nomData.filter(n => String(n['Тип']).trim().toLowerCase().includes('резолвер'));
+        // Filter loosely by type and #
+        nomData = nomData.filter(n => String(n['ID Детайл'] || '').includes('#') && String(n['Тип'] || '').trim().toLowerCase().includes('резолвер'));
         nomenclatureDataForTransform = nomData;
         
         let validResolverIds = new Set(nomData.map(n => String(n['ID Детайл']).trim().toLowerCase()));
@@ -56,16 +59,18 @@ async function openTransformModal() {
             sourceSelect.appendChild(opt);
         });
         
-        // Fetch BOM once to be ready for fast checking (only where parent has #)
+        // Fetch BOM once to be ready for fast checking
         bomDataForTransform = [];
         from = 0;
         while(true) {
-            let { data } = await client.from('bom').select('*').like('ID Родител', '%#%').range(from, from + step - 1);
+            let { data } = await client.from('bom').select('*').range(from, from + step - 1);
             if (!data || data.length === 0) break;
             bomDataForTransform.push(...data);
             if (data.length < step) break;
             from += step;
         }
+        
+        bomDataForTransform = bomDataForTransform.filter(b => String(b['ID Родител'] || '').includes('#'));
         
         document.getElementById('transOpSelect').innerHTML = '<option value="">-- Изберете Операция --</option>';
         document.getElementById('transMaxQty').innerText = '0';
