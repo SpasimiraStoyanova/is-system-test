@@ -261,13 +261,14 @@ async function executeTransformation() {
             if (err3) throw err3;
         }
         
-        // 3. Log to Otcheti for traceability (as an Admin action)
+        // 3. Log to Otcheti for traceability. 
+        // We MUST use 'СИСТЕМА (Корекция...' to bypass the DB trigger which would otherwise deduct BOM again and double-add inventory!
         await client.from('otcheti').insert([{
             'ID Детайл': targetId,
             'Операция': op,
             'Количество': qty,
             'Статус': 'Отчетено',
-            'Оператор': 'АДМИН (Трансформация)',
+            'Оператор': 'СИСТЕМА (Корекция - Трансформация)',
             'ID План': `TRANSFORM FROM ${sourceId}`,
             'Дата': new Date().toISOString()
         }]);
@@ -278,7 +279,7 @@ async function executeTransformation() {
             'Операция': op,
             'Количество': -qty,
             'Статус': 'Отчетено',
-            'Оператор': 'АДМИН (Трансформация)',
+            'Оператор': 'СИСТЕМА (Корекция - Трансформация)',
             'ID План': `TRANSFORM TO ${targetId}`,
             'Дата': new Date().toISOString()
         }]);
