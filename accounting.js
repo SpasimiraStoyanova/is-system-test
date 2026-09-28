@@ -71,6 +71,47 @@ const hotPlan = new Handsontable(document.getElementById('grid-plan'), {
     licenseKey: 'non-commercial-and-evaluation'
 });
 
+const invoiceColumns = [
+    { data: 'index', readOnly: true },
+    { data: 'item_no', readOnly: true },
+    { data: 'description', readOnly: true },
+    { data: 'qty', type: 'numeric', readOnly: true },
+    { data: 'hts_code', readOnly: true },
+    { data: 'unit_cost', type: 'numeric', format: '$0,0.00', readOnly: true },
+    { data: 'amount', type: 'numeric', format: '$0,0.00', readOnly: true },
+    { data: 'al_content_value', type: 'numeric', format: '$0,0.00', readOnly: true },
+    { data: 'total_al_value', type: 'numeric', format: '$0,0.00', readOnly: true },
+    { data: 'value_of_rest', type: 'numeric', format: '$0,0.00', readOnly: true },
+    { data: 'al_weight_percent', type: 'numeric', format: '0.00%', readOnly: true },
+    { data: 'al_type_1', readOnly: true },
+    { data: 'al_weight_1', type: 'numeric', readOnly: true },
+    { data: 'al_price_1', type: 'numeric', readOnly: true },
+    { data: 'al_type_2', readOnly: true },
+    { data: 'al_weight_2', type: 'numeric', readOnly: true },
+    { data: 'al_price_2', type: 'numeric', readOnly: true },
+    { data: 'al_type_3', readOnly: true },
+    { data: 'al_weight_3', type: 'numeric', readOnly: true },
+    { data: 'al_price_3', type: 'numeric', readOnly: true }
+];
+
+const hotInvoice = new Handsontable(document.getElementById('grid-invoice'), {
+    data: Handsontable.helper.createEmptySpreadsheetData(30, 20),
+    columns: invoiceColumns,
+    rowHeaders: false,
+    colHeaders: true,
+    nestedHeaders: [
+        ['#', 'Item No', 'Description', 'Qty', 'HTS Code', 'Unit cost', 'Amount', 'Aluminum Content Value', 'Total AL Value', 'Value of the rest', 'Aluminum Content weight percentage', {label: 'Country of Smelt & Cast of Aluminum Breakdown per Aluminum Type', colspan: 9}],
+        ['', '', '', '', '', '', '', '', '', '', '', 'AL type 1', 'Weight', 'Price', 'AL type 2', 'Weight', 'Price', 'AL type 3', 'Weight', 'Price']
+    ],
+    minSpareRows: 0,
+    contextMenu: true,
+    stretchH: 'all',
+    width: '100%',
+    className: 'htCenter htMiddle',
+    wordWrap: true,
+    licenseKey: 'non-commercial-and-evaluation'
+});
+
 async function loadData(tableName, hotInstance) {
     try {
         let { data, error } = await client.from(tableName).select('*').order('id', { ascending: true });
@@ -148,4 +189,8 @@ async function fetchActivePlan() {
         console.error(err);
         Swal.fire('Грешка при извличане', err.message, 'error');
     }
+}
+
+function printInvoice() {
+    window.print();
 }
