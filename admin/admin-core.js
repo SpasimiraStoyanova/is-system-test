@@ -1326,13 +1326,17 @@ async function fetchAuditLogs() {
                         if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">НОВ В СКЛАД</span>';
                         
                         let detailsHtml = '';
-                        let oldQty = parseFloat(oldData['Общо']) || 0;
-                        let newQty = parseFloat(newData['Общо']) || 0;
+                        let oldQty = parseFloat(oldData['Количество'] || oldData['Общо']) || 0;
+                        let newQty = parseFloat(newData['Количество'] || newData['Общо']) || 0;
+                        let detailId = newData['ID Детайл'] || oldData['ID Детайл'] || 'Неизвестен детайл';
+                        let opName = newData['Операция'] || oldData['Операция'] || '';
+                        let opHtml = opName ? ` <span style="font-size:0.9em; color:#64748b;">(Оп: ${opName})</span>` : '';
+                        
                         if (log.action_type === 'INSERT') oldQty = 0;
                         let diff = newQty - oldQty;
                         let diffStr = diff > 0 ? `<span style="color:#16a34a; font-weight:bold;">(+${diff})</span>` : (diff < 0 ? `<span style="color:#ef4444; font-weight:bold;">(${diff})</span>` : '');
                         
-                        detailsHtml = `Склад: <b>Детайли</b> | <span style="text-decoration:line-through; color:#94a3b8;">${oldQty} бр.</span> ➡️ <b>${newQty} бр.</b> ${diffStr}`;
+                        detailsHtml = `Склад: <b>${detailId}</b>${opHtml} | <span style="text-decoration:line-through; color:#94a3b8;">${oldQty} бр.</span> ➡️ <b>${newQty} бр.</b> ${diffStr}`;
                                        
                         if (diff < 0 && recentOtchetiRes && recentOtchetiRes.data) {
                             let parentMatch = recentOtchetiRes.data.find(ro => Math.abs(new Date(ro['Дата']) - item.time) < 3000);
