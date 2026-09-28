@@ -20,11 +20,12 @@
     
     <style>
         body { padding: 20px; background-color: #f4f6f9; color: #333; }
-        .hot-container { width: 100%; height: 600px; overflow: hidden; background: #fff; border: 1px solid #ccc; border-radius: 4px; }
+        .hot-container { width: 100%; height: 75vh; overflow: hidden; background: #fff !important; border: 1px solid #ccc; border-radius: 4px; }
         .nav-tabs .nav-link.active { font-weight: bold; color: #0056b3; }
         .action-bar { padding: 10px 0; display: flex; gap: 10px; align-items: center; }
         
         /* Force light theme for the grid (override extensions) */
+        .handsontable, .ht_master .wtHolder { background: #fff !important; }
         .handsontable th { background-color: #f0f0f0 !important; color: #333 !important; }
         .handsontable td { background-color: #fff !important; color: #000 !important; }
         .handsontable tr:hover td { background-color: #f9f9f9 !important; }

@@ -42,6 +42,8 @@ const hotNom = new Handsontable(document.getElementById('grid-nom'), {
     colHeaders: true,
     minSpareRows: 50,
     contextMenu: true,
+    stretchH: 'all',
+    width: '100%',
     licenseKey: 'non-commercial-and-evaluation'
 });
 
@@ -52,6 +54,8 @@ const hotData = new Handsontable(document.getElementById('grid-data'), {
     colHeaders: true,
     minSpareRows: 50,
     contextMenu: true,
+    stretchH: 'all',
+    width: '100%',
     licenseKey: 'non-commercial-and-evaluation'
 });
 
@@ -62,6 +66,8 @@ const hotPlan = new Handsontable(document.getElementById('grid-plan'), {
     colHeaders: true,
     minSpareRows: 50,
     contextMenu: true,
+    stretchH: 'all',
+    width: '100%',
     licenseKey: 'non-commercial-and-evaluation'
 });
 
