@@ -226,6 +226,22 @@ function generateInvoice() {
     Swal.fire('Успех', 'Колони от 1 до 7 (включително Unit Cost и Amount) са генерирани!', 'success');
 }
 
+async function fetchExchangeRate() {
+    const dateVal = document.getElementById('invoice-date').value;
+    if (!dateVal) return;
+    try {
+        const response = await fetch(`https://api.frankfurter.app/${dateVal}?from=USD&to=BGN`);
+        if (!response.ok) throw new Error('Няма данни за тази дата (може би е почивен ден).');
+        const data = await response.json();
+        if (data && data.rates && data.rates.BGN) {
+            document.getElementById('invoice-rate').value = data.rates.BGN;
+        }
+    } catch(err) {
+        console.error('Exchange rate error:', err);
+        Swal.fire('Внимание', 'Не успях да изтегля курса автоматично (вероятно е почивен ден или бъдеща дата). Въведи го ръчно.', 'warning');
+    }
+}
+
 async function fetchActivePlan() {
     try {
         const { data, error } = await client.from('plan').select('*').eq('Статус', 'Активен');
