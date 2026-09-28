@@ -1261,15 +1261,21 @@ async function fetchAuditLogs() {
     
     try {
         if (searchTerm) {
-            // Търсене за проследимост (Traceability)
-            let [otchetiRes, auditRes, recentOtchetiRes] = await Promise.all([
-                client.from('otcheti').select('*').ilike('ID Детайл', `%${searchTerm}%`).order('Дата', { ascending: false }).limit(300),
-                client.from('audit_logs').select('*').eq('table_name', 'inventory').order('changed_at', { ascending: false }).limit(3000),
-                client.from('otcheti').select('ID Детайл, Дата').order('Дата', { ascending: false }).limit(3000)
+            let isTraceabilityMode = (tableFilter === 'all' || tableFilter === 'inventory');
+            
+            let auditQuery = client.from('audit_logs').select('*').order('changed_at', { ascending: false }).limit(3000);
+            if (tableFilter !== 'all') {
+                auditQuery = auditQuery.eq('table_name', tableFilter);
+            }
+            
+            let [auditRes, otchetiRes, recentOtchetiRes] = await Promise.all([
+                auditQuery,
+                isTraceabilityMode ? client.from('otcheti').select('*').ilike('ID Детайл', `%${searchTerm}%`).order('Дата', { ascending: false }).limit(300) : Promise.resolve({data:[]}),
+                isTraceabilityMode ? client.from('otcheti').select('ID Детайл, Дата').order('Дата', { ascending: false }).limit(3000) : Promise.resolve({data:[]})
             ]);
             
-            if (otchetiRes.error) throw otchetiRes.error;
             if (auditRes.error) throw auditRes.error;
+            if (otchetiRes.error) throw otchetiRes.error;
             
             let filteredAudit = (auditRes.data || []).filter(log => {
                 let str = JSON.stringify(log.new_data || {}) + JSON.stringify(log.old_data || {});
@@ -1310,30 +1316,61 @@ async function fetchAuditLogs() {
                     let log = item.data;
                     let oldData = log.old_data || {};
                     let newData = log.new_data || {};
-                    let actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">СКЛАД</span>';
-                    if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">НОВ В СКЛАД</span>';
                     
-                    let detailsHtml = '';
-                    let oldQty = parseFloat(oldData['Общо']) || 0;
-                    let newQty = parseFloat(newData['Общо']) || 0;
-                    if (log.action_type === 'INSERT') oldQty = 0;
-                    let diff = newQty - oldQty;
-                    let diffStr = diff > 0 ? `<span style="color:#16a34a; font-weight:bold;">(+${diff})</span>` : (diff < 0 ? `<span style="color:#ef4444; font-weight:bold;">(${diff})</span>` : '');
-                    
-                    detailsHtml = `Склад: <b>Детайли</b> | <span style="text-decoration:line-through; color:#94a3b8;">${oldQty} бр.</span> ➡️ <b>${newQty} бр.</b> ${diffStr}`;
-                                   
-                    if (diff < 0 && recentOtchetiRes && recentOtchetiRes.data) {
-                        let parentMatch = recentOtchetiRes.data.find(ro => Math.abs(new Date(ro['Дата']) - item.time) < 3000);
-                        if (parentMatch) {
-                            detailsHtml += `<br><span style="color:#d97706; font-size:0.9em;">🔗 Вероятно вложено в отчет: <b>${parentMatch['ID Детайл']}</b></span>`;
+                    if (log.table_name === 'inventory') {
+                        let actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">СКЛАД</span>';
+                        if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">НОВ В СКЛАД</span>';
+                        
+                        let detailsHtml = '';
+                        let oldQty = parseFloat(oldData['Общо']) || 0;
+                        let newQty = parseFloat(newData['Общо']) || 0;
+                        if (log.action_type === 'INSERT') oldQty = 0;
+                        let diff = newQty - oldQty;
+                        let diffStr = diff > 0 ? `<span style="color:#16a34a; font-weight:bold;">(+${diff})</span>` : (diff < 0 ? `<span style="color:#ef4444; font-weight:bold;">(${diff})</span>` : '');
+                        
+                        detailsHtml = `Склад: <b>Детайли</b> | <span style="text-decoration:line-through; color:#94a3b8;">${oldQty} бр.</span> ➡️ <b>${newQty} бр.</b> ${diffStr}`;
+                                       
+                        if (diff < 0 && recentOtchetiRes && recentOtchetiRes.data) {
+                            let parentMatch = recentOtchetiRes.data.find(ro => Math.abs(new Date(ro['Дата']) - item.time) < 3000);
+                            if (parentMatch) {
+                                detailsHtml += `<br><span style="color:#d97706; font-size:0.9em;">🔗 Вероятно вложено в отчет: <b>${parentMatch['ID Детайл']}</b></span>`;
+                            }
                         }
-                    }
 
-                    html += `<tr>
-                        <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
-                        <td style="padding:10px; border:1px solid #e2e8f0;">${actionBadge}</td>
-                        <td style="padding:10px; border:1px solid #e2e8f0;">${detailsHtml}</td>
-                    </tr>`;
+                        html += `<tr>
+                            <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
+                            <td style="padding:10px; border:1px solid #e2e8f0;">${actionBadge}</td>
+                            <td style="padding:10px; border:1px solid #e2e8f0;">${detailsHtml}</td>
+                        </tr>`;
+                    } else {
+                        // Generic rendering for other tables in search results
+                        let actionBadge = '';
+                        if (log.action_type === 'DELETE') actionBadge = '<span style="background:#fee2e2; color:#b91c1c; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ИЗТРИВАНЕ</span>';
+                        else if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ДОБАВЯНЕ</span>';
+                        else actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">РЕДАКЦИЯ</span>';
+                        
+                        let detailsHtml = '';
+                        if (log.action_type === 'DELETE') {
+                            detailsHtml = `<div style="color:#64748b; white-space:pre-wrap; font-size:0.85em;"><b>Изтрит запис:</b><br>${JSON.stringify(oldData, null, 2)}</div>`;
+                        } else if (log.action_type === 'INSERT') {
+                            detailsHtml = `<div style="color:#166534; white-space:pre-wrap; font-size:0.85em;"><b>Нов запис:</b><br>${JSON.stringify(newData, null, 2)}</div>`;
+                        } else {
+                            let changesHtml = [];
+                            for (let key in newData) {
+                                if (oldData[key] !== newData[key]) {
+                                    changesHtml.push(`<div><b>${key}:</b> <span style="text-decoration:line-through; color:#ef4444;">${oldData[key]}</span> ➡️ <span style="color:#16a34a;">${newData[key]}</span></div>`);
+                                }
+                            }
+                            detailsHtml = changesHtml.length > 0 ? changesHtml.join('') : '<span style="color:#94a3b8;">Няма промяна в полетата</span>';
+                        }
+                        
+                        html += `<tr>
+                            <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
+                            <td style="padding:10px; border:1px solid #e2e8f0; font-weight:bold; color:#1e293b;">${log.table_name}</td>
+                            <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${actionBadge}</td>
+                            <td style="padding:10px; border:1px solid #e2e8f0; font-family:monospace; word-break:break-word;">${detailsHtml}</td>
+                        </tr>`;
+                    }
                 }
             });
             
