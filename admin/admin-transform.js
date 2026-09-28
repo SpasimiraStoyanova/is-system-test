@@ -28,7 +28,7 @@ async function openTransformModal() {
         
         transformSourceData = invData.filter(item => 
             String(item['ID Детайл'] || '').includes('#') && 
-            parseFloat(item['Свободни'] !== undefined ? item['Свободни'] : (item['Общо'] || 0)) > 0
+            parseFloat(item['Количество'] !== undefined ? item['Количество'] : (item['Свободни'] || item['Общо'] || 0)) > 0
         );
         
         // Fetch Номенклатура locally filtering by #
@@ -95,7 +95,8 @@ function onTransformSourceChange() {
     ops.forEach(item => {
         let opt = document.createElement('option');
         opt.value = item['Операция'];
-        opt.innerText = `${item['Операция']} (Свободни: ${item['Свободни'] || item['Общо']} бр.)`;
+        let qtyStr = item['Количество'] !== undefined ? item['Количество'] : (item['Свободни'] || item['Общо'] || 0);
+        opt.innerText = `${item['Операция']} (Налични: ${qtyStr} бр.)`;
         opSelect.appendChild(opt);
     });
     
@@ -116,7 +117,7 @@ function onTransformOpChange() {
     
     let item = transformSourceData.find(x => x['ID Детайл'] === sourceId && x['Операция'] === op);
     if (item) {
-        transformAvailableQty = parseFloat(item['Свободни'] || item['Общо'] || 0);
+        transformAvailableQty = parseFloat(item['Количество'] !== undefined ? item['Количество'] : (item['Свободни'] || item['Общо'] || 0));
         document.getElementById('transMaxQty').innerText = transformAvailableQty;
         document.getElementById('transQtyInput').value = transformAvailableQty;
         currentSourceResolver = item;
@@ -204,12 +205,13 @@ async function executeTransformation() {
     try {
         // 1. Deduct from Source
         let newSourceQty = transformAvailableQty - qty;
-        let updatePayload = {
-            'Общо': newSourceQty
-        };
-        // If Свободни exists, update it too
-        if (currentSourceResolver['Свободни'] !== undefined) {
-            updatePayload['Свободни'] = parseFloat(currentSourceResolver['Свободни']) - qty;
+        let updatePayload = {};
+        
+        if (currentSourceResolver['Количество'] !== undefined) {
+            updatePayload['Количество'] = parseFloat(currentSourceResolver['Количество']) - qty;
+        } else {
+            if (currentSourceResolver['Общо'] !== undefined) updatePayload['Общо'] = parseFloat(currentSourceResolver['Общо']) - qty;
+            if (currentSourceResolver['Свободни'] !== undefined) updatePayload['Свободни'] = parseFloat(currentSourceResolver['Свободни']) - qty;
         }
         
         let { error: err1 } = await client.from('inventory').update(updatePayload).eq('id', currentSourceResolver.id);
@@ -225,28 +227,37 @@ async function executeTransformation() {
         if (targetExists && targetExists.length > 0) {
             // Update existing
             let targetRec = targetExists[0];
-            let tObsho = parseFloat(targetRec['Общо'] || 0) + qty;
-            let tUpdate = { 'Общо': tObsho };
-            if (targetRec['Свободни'] !== undefined) {
-                tUpdate['Свободни'] = parseFloat(targetRec['Свободни'] || 0) + qty;
+            let tUpdate = {};
+            if (targetRec['Количество'] !== undefined) {
+                tUpdate['Количество'] = parseFloat(targetRec['Количество'] || 0) + qty;
+            } else {
+                if (targetRec['Общо'] !== undefined) tUpdate['Общо'] = parseFloat(targetRec['Общо'] || 0) + qty;
+                if (targetRec['Свободни'] !== undefined) tUpdate['Свободни'] = parseFloat(targetRec['Свободни'] || 0) + qty;
             }
+            
             let { error: err2 } = await client.from('inventory').update(tUpdate).eq('id', targetRec.id);
             if (err2) throw err2;
         } else {
-            // Get Target Name from Nomenclature
-            let tNom = nomenclatureDataForTransform.find(n => String(n['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase());
-            let tName = tNom ? tNom['Вътрешно име'] : targetId;
-            
             // Insert new
-            let { error: err3 } = await client.from('inventory').insert([{
+            // We use default structure if DB uses Количество, else use Общо/Свободни/Име/Локация.
+            let insertPayload = {
                 'ID Детайл': targetId,
-                'Име': tName,
-                'Операция': op,
-                'Общо': qty,
-                'Свободни': qty,
-                'Запазени': '[]',
-                'Локация': 'WIP (Трансформация)'
-            }]);
+                'Операция': op
+            };
+            
+            if (currentSourceResolver['Количество'] !== undefined) {
+                insertPayload['Количество'] = qty;
+            } else {
+                let tNom = nomenclatureDataForTransform.find(n => String(n['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase());
+                let tName = tNom ? tNom['Вътрешно име'] : targetId;
+                insertPayload['Име'] = tName;
+                insertPayload['Общо'] = qty;
+                insertPayload['Свободни'] = qty;
+                insertPayload['Запазени'] = '[]';
+                insertPayload['Локация'] = 'WIP (Трансформация)';
+            }
+            
+            let { error: err3 } = await client.from('inventory').insert([insertPayload]);
             if (err3) throw err3;
         }
         
