@@ -25,10 +25,11 @@
         .action-bar { padding: 10px 0; display: flex; gap: 10px; align-items: center; }
         
         /* Force light theme for the grid (override extensions) */
-        .hot-container, .handsontable, .ht_master .wtHolder { background: #fff !important; }
-        .handsontable th { background-color: #f0f0f0 !important; color: #333 !important; }
-        .handsontable td { background-color: #fff !important; color: #000 !important; }
-        .handsontable tr:hover td { background-color: #f9f9f9 !important; }
+        .hot-container { background: #fff !important; }
+        .hot-container .handsontable, .hot-container .ht_master .wtHolder { background: #fff !important; }
+        .hot-container .handsontable th { background-color: #f0f0f0 !important; color: #333 !important; }
+        .hot-container .handsontable td { background-color: #fff !important; color: #000 !important; }
+        .hot-container .handsontable tr:hover td { background-color: #f9f9f9 !important; }
         #invoice-print-area * { color: #000 !important; }
     </style>
 </head>
