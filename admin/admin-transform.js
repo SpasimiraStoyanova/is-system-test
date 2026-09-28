@@ -10,41 +10,70 @@ async function openTransformModal() {
     document.getElementById('transTargetSelect').innerHTML = '<option value="">-- Изберете Цел --</option>';
     document.getElementById('transTargetSelect').disabled = true;
     
-    // 1. Fetch current inventory (to find resolvers with #)
-    let { data: invData } = await client.from('inventory').select('*');
-    if (!invData) invData = [];
+    let btn = document.getElementById('transformResolverBtn');
+    let oldBtnText = btn ? btn.innerText : '🔄 Трансформация';
+    if(btn) { btn.innerText = 'Зареждане...'; btn.disabled = true; }
     
-    // Filter inventory to only items having # in ID
-    transformSourceData = invData.filter(item => String(item['ID Детайл']).includes('#') && parseFloat(item['Свободни'] || item['Общо'] || 0) > 0);
-    
-    // Also we need to know if they are type 'Резолвер'. Let's fetch Номенклатура
-    let { data: nomData } = await client.from('Номенклатура').select('*').eq('Тип', 'Резолвер').like('ID Детайл', '%#%');
-    if (!nomData) nomData = [];
-    nomenclatureDataForTransform = nomData;
-    
-    let validResolverIds = new Set(nomData.map(n => String(n['ID Детайл']).trim().toLowerCase()));
-    
-    transformSourceData = transformSourceData.filter(item => validResolverIds.has(String(item['ID Детайл']).trim().toLowerCase()));
-    
-    // Populate Source Dropdown (Unique Detail IDs)
-    let uniqueSourceIds = [...new Set(transformSourceData.map(item => item['ID Детайл']))].sort();
-    
-    let sourceSelect = document.getElementById('transSourceSelect');
-    sourceSelect.innerHTML = '<option value="">-- Изберете Източник --</option>';
-    
-    uniqueSourceIds.forEach(id => {
-        let opt = document.createElement('option');
-        opt.value = id;
-        opt.innerText = id;
-        sourceSelect.appendChild(opt);
-    });
-    
-    // Fetch BOM once to be ready for fast checking
-    let { data: bomData } = await client.from('bom').select('*');
-    bomDataForTransform = bomData || [];
-    
-    document.getElementById('transOpSelect').innerHTML = '<option value="">-- Изберете Операция --</option>';
-    document.getElementById('transMaxQty').innerText = '0';
+    try {
+        // 1. Fetch current inventory (items having # in ID) with pagination
+        let invData = [];
+        let from = 0; const step = 1000;
+        while(true) {
+            let { data } = await client.from('inventory').select('*').like('ID Детайл', '%#%').range(from, from + step - 1);
+            if (!data || data.length === 0) break;
+            invData.push(...data);
+            if (data.length < step) break;
+            from += step;
+        }
+        
+        transformSourceData = invData.filter(item => parseFloat(item['Свободни'] !== undefined ? item['Свободни'] : (item['Общо'] || 0)) > 0);
+        
+        // Also we need to know if they are loosely type 'Резолвер'. Let's fetch Номенклатура
+        let nomData = [];
+        from = 0;
+        while(true) {
+            let { data } = await client.from('Номенклатура').select('*').like('ID Детайл', '%#%').range(from, from + step - 1);
+            if (!data || data.length === 0) break;
+            nomData.push(...data);
+            if (data.length < step) break;
+            from += step;
+        }
+        
+        // Filter loosely by type
+        nomData = nomData.filter(n => String(n['Тип']).trim().toLowerCase().includes('резолвер'));
+        nomenclatureDataForTransform = nomData;
+        
+        let validResolverIds = new Set(nomData.map(n => String(n['ID Детайл']).trim().toLowerCase()));
+        
+        transformSourceData = transformSourceData.filter(item => validResolverIds.has(String(item['ID Детайл']).trim().toLowerCase()));
+        
+        // Populate Source Dropdown
+        let uniqueSourceIds = [...new Set(transformSourceData.map(item => item['ID Детайл']))].sort();
+        let sourceSelect = document.getElementById('transSourceSelect');
+        sourceSelect.innerHTML = '<option value="">-- Изберете Източник --</option>';
+        uniqueSourceIds.forEach(id => {
+            let opt = document.createElement('option'); opt.value = id; opt.innerText = id;
+            sourceSelect.appendChild(opt);
+        });
+        
+        // Fetch BOM once to be ready for fast checking (only where parent has #)
+        bomDataForTransform = [];
+        from = 0;
+        while(true) {
+            let { data } = await client.from('bom').select('*').like('ID Родител', '%#%').range(from, from + step - 1);
+            if (!data || data.length === 0) break;
+            bomDataForTransform.push(...data);
+            if (data.length < step) break;
+            from += step;
+        }
+        
+        document.getElementById('transOpSelect').innerHTML = '<option value="">-- Изберете Операция --</option>';
+        document.getElementById('transMaxQty').innerText = '0';
+    } catch (e) {
+        console.error("Грешка при зареждане:", e);
+    } finally {
+        if(btn) { btn.innerText = oldBtnText; btn.disabled = false; }
+    }
 }
 
 function onTransformSourceChange() {
