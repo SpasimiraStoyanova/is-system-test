@@ -230,15 +230,19 @@ async function fetchExchangeRate() {
     const dateVal = document.getElementById('invoice-date').value;
     if (!dateVal) return;
     try {
-        const response = await fetch(`https://api.frankfurter.app/${dateVal}?from=USD&to=BGN`);
-        if (!response.ok) throw new Error('Няма данни за тази дата (може би е почивен ден).');
+        let response = await fetch(`https://api.frankfurter.app/${dateVal}?from=USD&to=BGN`);
+        if (!response.ok) {
+            // Fallback to latest if future date or weekend
+            response = await fetch(`https://api.frankfurter.app/latest?from=USD&to=BGN`);
+        }
+        if (!response.ok) throw new Error('Няма данни за тази дата.');
         const data = await response.json();
         if (data && data.rates && data.rates.BGN) {
             document.getElementById('invoice-rate').value = data.rates.BGN;
         }
     } catch(err) {
         console.error('Exchange rate error:', err);
-        Swal.fire('Внимание', 'Не успях да изтегля курса автоматично (вероятно е почивен ден или бъдеща дата). Въведи го ръчно.', 'warning');
+        Swal.fire('Внимание', 'Не успях да изтегля курса автоматично. Въведи го ръчно.', 'warning');
     }
 }
 
