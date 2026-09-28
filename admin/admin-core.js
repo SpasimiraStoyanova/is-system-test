@@ -1256,8 +1256,93 @@ async function fetchAuditLogs() {
     container.innerHTML = '<div style="text-align:center; padding:20px; color:#64748b;">Зареждане на историята... ⏳</div>';
     
     let tableFilter = document.getElementById('auditTableFilter').value;
+    let searchInput = document.getElementById('auditSearchFilter');
+    let searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
     
     try {
+        if (searchTerm) {
+            // Търсене за проследимост (Traceability)
+            let [otchetiRes, auditRes, recentOtchetiRes] = await Promise.all([
+                client.from('otcheti').select('*').ilike('ID Детайл', `%${searchTerm}%`).order('Дата', { ascending: false }).limit(300),
+                client.from('audit_logs').select('*').eq('table_name', 'inventory').order('changed_at', { ascending: false }).limit(3000),
+                client.from('otcheti').select('ID Детайл, Дата').order('Дата', { ascending: false }).limit(3000)
+            ]);
+            
+            if (otchetiRes.error) throw otchetiRes.error;
+            if (auditRes.error) throw auditRes.error;
+            
+            let filteredAudit = (auditRes.data || []).filter(log => {
+                let str = JSON.stringify(log.new_data || {}) + JSON.stringify(log.old_data || {});
+                return str.toLowerCase().includes(searchTerm);
+            });
+            
+            let combined = [];
+            (otchetiRes.data || []).forEach(o => {
+                combined.push({ type: 'otchet', time: new Date(o['Дата']), data: o });
+            });
+            filteredAudit.forEach(a => {
+                combined.push({ type: 'audit', time: new Date(a.changed_at), data: a });
+            });
+            
+            combined.sort((a, b) => b.time - a.time);
+            
+            if (combined.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:20px; color:#64748b;">Няма намерена история за "' + searchTerm + '".</div>';
+                return;
+            }
+            
+            let html = '<table style="width:100%; border-collapse:collapse; background:white; font-size:0.9em; box-shadow:0 1px 3px rgba(0,0,0,0.1);">';
+            html += '<thead style="background:#f8fafc; color:#0f172a;"><tr><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:150px;">Време</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:120px;">Събитие</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left;">Детайли (Проследимост)</th></tr></thead><tbody>';
+            
+            combined.forEach(item => {
+                let dateStr = item.time.toLocaleString('bg-BG');
+                
+                if (item.type === 'otchet') {
+                    let o = item.data;
+                    html += `<tr>
+                        <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
+                        <td style="padding:10px; border:1px solid #e2e8f0;"><span style="background:#dbeafe; color:#1e40af; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ОТЧЕТЕНО</span></td>
+                        <td style="padding:10px; border:1px solid #e2e8f0;">
+                            Отчетен <b>${o['ID Детайл']}</b> от <b>${o['Оператор']}</b> (Оп: ${o['Операция']}) ➡️ <span style="color:#16a34a; font-weight:bold;">+${o['Количество']} бр.</span>
+                        </td>
+                    </tr>`;
+                } else {
+                    let log = item.data;
+                    let oldData = log.old_data || {};
+                    let newData = log.new_data || {};
+                    let actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">СКЛАД</span>';
+                    if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">НОВ В СКЛАД</span>';
+                    
+                    let detailsHtml = '';
+                    let oldQty = parseFloat(oldData['Общо']) || 0;
+                    let newQty = parseFloat(newData['Общо']) || 0;
+                    if (log.action_type === 'INSERT') oldQty = 0;
+                    let diff = newQty - oldQty;
+                    let diffStr = diff > 0 ? `<span style="color:#16a34a; font-weight:bold;">(+${diff})</span>` : (diff < 0 ? `<span style="color:#ef4444; font-weight:bold;">(${diff})</span>` : '');
+                    
+                    detailsHtml = `Склад: <b>Детайли</b> | <span style="text-decoration:line-through; color:#94a3b8;">${oldQty} бр.</span> ➡️ <b>${newQty} бр.</b> ${diffStr}`;
+                                   
+                    if (diff < 0 && recentOtchetiRes && recentOtchetiRes.data) {
+                        let parentMatch = recentOtchetiRes.data.find(ro => Math.abs(new Date(ro['Дата']) - item.time) < 3000);
+                        if (parentMatch) {
+                            detailsHtml += `<br><span style="color:#d97706; font-size:0.9em;">🔗 Вероятно вложено в отчет: <b>${parentMatch['ID Детайл']}</b></span>`;
+                        }
+                    }
+
+                    html += `<tr>
+                        <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
+                        <td style="padding:10px; border:1px solid #e2e8f0;">${actionBadge}</td>
+                        <td style="padding:10px; border:1px solid #e2e8f0;">${detailsHtml}</td>
+                    </tr>`;
+                }
+            });
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+            return;
+        }
+
+        // --- Стандартно поведение (без търсене) ---
         let query = client.from('audit_logs').select('*').order('changed_at', { ascending: false }).limit(200);
         
         if (tableFilter !== 'all') {

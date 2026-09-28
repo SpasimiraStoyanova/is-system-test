@@ -128,7 +128,7 @@
                 <div>🕒 Хронология на промените</div>
                 <button onclick="document.getElementById('auditModalBackdrop').style.display='none'" style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
             </div>
-            <div style="padding: 15px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 15px; align-items: center; background: #f8fafc;">
+            <div style="padding: 15px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 15px; align-items: center; background: #f8fafc; flex-wrap: wrap;">
                 <label style="font-weight: bold; color: #475569;">Таблица:</label>
                 <select id="auditTableFilter" onchange="fetchAuditLogs()" style="padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;">
                     <option value="all">Всички</option>
@@ -137,9 +137,11 @@
                     <option value="bom">Спецификации (BOM)</option>
                     <option value="Номенклатура">Номенклатура</option>
                     <option value="sklad">Склад Материали</option>
-                    <option value="inventory_gp">Склад Готови Детайли</option>
-                    <option value="inventory_wip">Склад Полуфабрикати</option>
+                    <option value="inventory">Склад Детайли</option>
                 </select>
+                <div style="flex: 1; min-width: 250px; position: relative;">
+                    <input type="text" id="auditSearchFilter" placeholder="🔍 Търси детайл за проследимост (напр. 'вар. 11')..." onkeyup="if(event.key === 'Enter') fetchAuditLogs()" style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none; box-sizing: border-box;">
+                </div>
                 <button onclick="fetchAuditLogs()" class="btn-primary" style="background-color: #3b82f6; padding: 8px 16px;">🔄 Обнови</button>
             </div>
             <div id="auditContent" style="padding: 15px; overflow-y: auto; flex: 1; background: #f1f5f9;">
