@@ -195,10 +195,14 @@ function generateInvoice() {
         }
 
         let htsCode = '';
+        let unitCost = 0;
         let htsRow = htsMap[itemNo];
         if (htsRow) {
-            htsCode = htsRow[3]; // HTS Code е 4та колона в Данни (HTS)
+            unitCost = parseFloat(htsRow[2]) || 0; // Unit cost е 3та колона в Данни
+            htsCode = htsRow[3]; // HTS Code е 4та колона в Данни
         }
+
+        let amount = qty * unitCost;
 
         invoiceRows.push({
             'index': idx++,
@@ -206,8 +210,8 @@ function generateInvoice() {
             'description': desc,
             'qty': qty,
             'hts_code': htsCode,
-            'unit_cost': null, // pending
-            'amount': null, // pending
+            'unit_cost': unitCost, 
+            'amount': amount, 
             'al_content_value': null, // pending
             'total_al_value': null, // pending
             'value_of_rest': null, // pending
@@ -219,7 +223,7 @@ function generateInvoice() {
     });
 
     hotInvoice.loadData(invoiceRows);
-    Swal.fire('Успех', 'Първите 5 колони са генерирани! Очакваме формулите за останалите.', 'success');
+    Swal.fire('Успех', 'Колони от 1 до 7 (включително Unit Cost и Amount) са генерирани!', 'success');
 }
 
 async function fetchActivePlan() {
