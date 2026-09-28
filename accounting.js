@@ -165,7 +165,61 @@ window.addEventListener('load', () => {
 });
 
 function generateInvoice() {
-    Swal.fire('Информация', 'Тази функция ще събере данните от трите таба и ще сметне финалните суми.', 'info');
+    let planData = hotPlan.getData().filter(r => r[0] || r[1]);
+    let nomData = hotNom.getData().filter(r => r[0]);
+    let htsData = hotData.getData().filter(r => r[0]);
+
+    if (planData.length === 0) {
+        Swal.fire('Грешка', 'Планът е празен!', 'error');
+        return;
+    }
+
+    let invoiceRows = [];
+    
+    // Create lookups for faster search
+    let nomMap = {};
+    nomData.forEach(r => nomMap[r[0]] = r);
+    
+    let htsMap = {};
+    htsData.forEach(r => htsMap[r[0]] = r);
+
+    let idx = 1;
+    planData.forEach(row => {
+        let qty = parseFloat(row[0]) || 0;
+        let itemNo = row[1];
+        
+        let desc = '';
+        let nomRow = nomMap[itemNo];
+        if (nomRow) {
+            desc = nomRow[1]; // Описание е втора колона в Номенклатура
+        }
+
+        let htsCode = '';
+        let htsRow = htsMap[itemNo];
+        if (htsRow) {
+            htsCode = htsRow[3]; // HTS Code е 4та колона в Данни (HTS)
+        }
+
+        invoiceRows.push({
+            'index': idx++,
+            'item_no': itemNo,
+            'description': desc,
+            'qty': qty,
+            'hts_code': htsCode,
+            'unit_cost': null, // pending
+            'amount': null, // pending
+            'al_content_value': null, // pending
+            'total_al_value': null, // pending
+            'value_of_rest': null, // pending
+            'al_weight_percent': null, // pending
+            'al_type_1': '', 'al_weight_1': null, 'al_price_1': null,
+            'al_type_2': '', 'al_weight_2': null, 'al_price_2': null,
+            'al_type_3': '', 'al_weight_3': null, 'al_price_3': null
+        });
+    });
+
+    hotInvoice.loadData(invoiceRows);
+    Swal.fire('Успех', 'Първите 5 колони са генерирани! Очакваме формулите за останалите.', 'success');
 }
 
 async function fetchActivePlan() {
