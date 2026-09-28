@@ -159,9 +159,18 @@ async function saveData(tableName, hotInstance) {
 
 // Initial load
 window.addEventListener('load', () => {
+    // Set today's date in calendar by default
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('invoice-date').value = today;
+    const parts = today.split('-');
+    document.getElementById('invoice-header-date').value = `${parts[2]}.${parts[1]}.${parts[0]}`;
+
     loadData('acc_nomenklatura', hotNom);
     loadData('acc_data', hotData);
     loadData('acc_plan', hotPlan);
+    
+    // Fetch rate for today
+    fetchExchangeRate();
 });
 
 function generateInvoice() {
@@ -229,6 +238,13 @@ function generateInvoice() {
 async function fetchExchangeRate() {
     const dateVal = document.getElementById('invoice-date').value;
     if (!dateVal) return;
+
+    // Update the invoice header date
+    const parts = dateVal.split('-');
+    if (parts.length === 3) {
+        document.getElementById('invoice-header-date').value = `${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+
     try {
         let response = await fetch(`https://api.frankfurter.app/${dateVal}?from=USD&to=BGN`);
         if (!response.ok) {
