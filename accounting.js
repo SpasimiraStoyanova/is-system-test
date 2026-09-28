@@ -253,8 +253,15 @@ async function fetchExchangeRate() {
         }
         if (!response.ok) throw new Error('Няма данни за тази дата.');
         const data = await response.json();
-        if (data && data.rates && data.rates.BGN) {
-            document.getElementById('invoice-rate').value = data.rates.BGN;
+        if (data && data.rates) {
+            let rate = data.rates.BGN;
+            if (!rate && data.rates.EUR) {
+                // If BGN is missing (because it's pegged), use EUR rate (which matches the 0.8702 from the screenshot)
+                rate = data.rates.EUR;
+            }
+            if (rate) {
+                document.getElementById('invoice-rate').value = rate;
+            }
         }
     } catch(err) {
         console.error('Exchange rate error:', err);
