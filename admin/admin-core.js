@@ -1265,7 +1265,11 @@ async function fetchAuditLogs() {
             
             let auditQuery = client.from('audit_logs').select('*').order('changed_at', { ascending: false }).limit(3000);
             if (tableFilter !== 'all') {
-                auditQuery = auditQuery.eq('table_name', tableFilter);
+                if (tableFilter === 'inventory') {
+                    auditQuery = auditQuery.in('table_name', ['inventory', 'inventory_gp', 'inventory_wip']);
+                } else {
+                    auditQuery = auditQuery.eq('table_name', tableFilter);
+                }
             }
             
             let [auditRes, otchetiRes, recentOtchetiRes] = await Promise.all([
@@ -1317,7 +1321,7 @@ async function fetchAuditLogs() {
                     let oldData = log.old_data || {};
                     let newData = log.new_data || {};
                     
-                    if (log.table_name === 'inventory') {
+                    if (['inventory', 'inventory_gp', 'inventory_wip'].includes(log.table_name)) {
                         let actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">СКЛАД</span>';
                         if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">НОВ В СКЛАД</span>';
                         
@@ -1383,7 +1387,11 @@ async function fetchAuditLogs() {
         let query = client.from('audit_logs').select('*').order('changed_at', { ascending: false }).limit(200);
         
         if (tableFilter !== 'all') {
-            query = query.eq('table_name', tableFilter);
+            if (tableFilter === 'inventory') {
+                query = query.in('table_name', ['inventory', 'inventory_gp', 'inventory_wip']);
+            } else {
+                query = query.eq('table_name', tableFilter);
+            }
         }
         
         const { data, error } = await query;
