@@ -1370,8 +1370,7 @@ async function fetchAuditLogs() {
                         
                         html += `<tr>
                             <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
-                            <td style="padding:10px; border:1px solid #e2e8f0; font-weight:bold; color:#1e293b;">${log.table_name}</td>
-                            <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${actionBadge}</td>
+                            <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${actionBadge}<br><span style="font-size:0.85em; color:#64748b;">${log.table_name}</span></td>
                             <td style="padding:10px; border:1px solid #e2e8f0; font-family:monospace; word-break:break-word;">${detailsHtml}</td>
                         </tr>`;
                     }
