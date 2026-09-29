@@ -257,7 +257,8 @@ function generateInvoice() {
         let materialsData = hotMaterials.getData().filter(r => r[0]);
         let materialsMap = {};
         materialsData.forEach(r => {
-            let price = parseFloat(r[1]);
+            let priceStr = String(r[1] || '').replace(',', '.').replace(/[^\d.-]/g, '');
+            let price = parseFloat(priceStr);
             if (!isNaN(price)) materialsMap[r[0]] = price;
         });
 
@@ -265,18 +266,25 @@ function generateInvoice() {
         if (nomRow) {
             desc = nomRow[0]; // Описание е в първата колона (индекс 0)
             
+            const parseNumber = (val) => {
+                if (!val) return null;
+                let str = String(val).replace(',', '.').replace(/[^\d.-]/g, '');
+                let num = parseFloat(str);
+                return isNaN(num) ? null : num;
+            };
+
             // Percentage from new Nomenklatura (last column, index 32)
-            let p = parseFloat(nomRow[32]); 
-            if (!isNaN(p)) {
+            let p = parseNumber(nomRow[32]); 
+            if (p !== null) {
                 alPercent = p > 1 ? p / 100 : p;
             }
 
             // Helper to get price
             const getPrice = (typeStr, weightStr, manualPriceStr) => {
-                let manual = parseFloat(manualPriceStr);
-                if (!isNaN(manual) && manual > 0) return manual; // Prefer manual if filled
+                let manual = parseNumber(manualPriceStr);
+                if (manual !== null && manual > 0) return manual; // Prefer manual if filled
                 
-                let weight = parseFloat(weightStr) || 0;
+                let weight = parseNumber(weightStr) || 0;
                 let matPrice = materialsMap[typeStr] || 0;
                 if (weight > 0 && matPrice > 0) return weight * matPrice;
                 return null;
@@ -284,17 +292,17 @@ function generateInvoice() {
 
             // Type 1: Тяло
             al_type_1 = nomRow[18] || ''; // Вид AL за тялото
-            al_weight_1 = parseFloat(nomRow[24]) || null; // Тегло Al тяло kg
+            al_weight_1 = parseNumber(nomRow[24]); // Тегло Al тяло kg
             al_price_1 = getPrice(al_type_1, al_weight_1, nomRow[19]);
 
             // Type 2: Преден капак
             al_type_2 = nomRow[20] || ''; // Вид AL за пр. капак
-            al_weight_2 = parseFloat(nomRow[26]) || null; // Тегло АL пр. капак kg
+            al_weight_2 = parseNumber(nomRow[26]); // Тегло АL пр. капак kg
             al_price_2 = getPrice(al_type_2, al_weight_2, nomRow[21]);
 
             // Type 3: Заден капак
             al_type_3 = nomRow[22] || ''; // Вид AL за з. капак
-            al_weight_3 = parseFloat(nomRow[27]) || null; // Тегло на AL зад. капак kg
+            al_weight_3 = parseNumber(nomRow[27]); // Тегло на AL зад. капак kg
             al_price_3 = getPrice(al_type_3, al_weight_3, nomRow[23]);
         }
 
