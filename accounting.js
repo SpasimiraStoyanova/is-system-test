@@ -413,73 +413,77 @@ function printInvoice() {
 }
 
 window.exportToExcel = function() {
-    if (typeof XLSX === 'undefined') {
-        Swal.fire('Грешка', 'Библиотеката за Excel не е заредена.', 'error');
-        return;
-    }
-    
-    let ws_data = [];
-    
-    // Build Header Information from DOM
     let invoiceNo = document.getElementById('invoice-number') ? document.getElementById('invoice-number').value : '0000000511';
     let dateStr = document.getElementById('invoice-header-date').value || '';
     let rate = document.getElementById('invoice-rate').value || '';
     let invoiceDate = document.getElementById('invoice-date').value || '';
     
-    ws_data.push(['INVOICE']);
-    ws_data.push(['No. ' + invoiceNo + ' / ' + dateStr]);
-    ws_data.push([]);
-    ws_data.push(['Customer:', '', '', '', 'Seller:']);
-    ws_data.push(['Advanced Micro Controls Incorporated', '', '', '', 'AMCI AD']);
-    ws_data.push(['20 Gear Drive, Plymouth Industrial Park', '', '', '', '14 Lubata str.']);
-    ws_data.push(['', '', '', '', 'Sofia 1407, Bulgaria']);
-    ws_data.push([]);
+    let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+    html += '<head><meta charset="utf-8"></head><body>';
+    html += '<table style="font-family: Arial, sans-serif; font-size: 11pt; border-collapse: collapse;">';
     
-    // Right-aligned Date and USD/EUR Rate table simulation
-    ws_data.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'Дата', 'USD/EUR']);
-    ws_data.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', invoiceDate, rate]);
-    ws_data.push([]);
+    // Header
+    html += '<tr><td colspan="4" style="font-size: 18pt; font-weight: bold; text-align: left;">INVOICE</td></tr>';
+    html += '<tr><td colspan="4" style="font-size: 14pt; font-weight: bold; text-align: left;">No.' + invoiceNo + '/' + dateStr + '</td></tr>';
+    html += '<tr><td colspan="4"></td></tr>';
     
-    // Add Headers
+    html += '<tr><td colspan="3" style="border-bottom: 1px solid #000; padding-bottom: 5px;">Customer:</td><td colspan="3" style="border-bottom: 1px solid #000; padding-bottom: 5px;">Seller:</td></tr>';
+    html += '<tr><td colspan="3">Advanced Micro Controls Incorporated</td><td colspan="3">AMCI AD</td></tr>';
+    html += '<tr><td colspan="3">20 Gear Drive, Plymouth Industrial Park</td><td colspan="3">14 Lubata str.</td></tr>';
+    html += '<tr><td colspan="3"></td><td colspan="3">Sofia 1407, Bulgaria</td></tr>';
+    html += '<tr><td colspan="4"></td></tr>';
+    
+    // Rate Table at top right
+    html += '<tr><td colspan="15"></td><td colspan="2" style="border: 1px solid #000; background: #e0e0e0; font-weight: bold; text-align: center;">Дата</td><td colspan="2" style="border: 1px solid #000; background: #e0e0e0; font-weight: bold; text-align: center;">USD/EUR</td></tr>';
+    html += '<tr><td colspan="15"></td><td colspan="2" style="border: 1px solid #000; text-align: center;">' + invoiceDate + '</td><td colspan="2" style="border: 1px solid #000; text-align: center;">' + rate + '</td></tr>';
+    html += '<tr><td colspan="4"></td></tr>';
+    
+    // Table Headers
     let exportHeaders = [
         '#', 'Item No', 'Description', 'Qty', 'HTS Code', 'Unit cost', 'Amount', 
         'Aluminum Content Value', 'Total AL Value', 'Value of the rest', 'Aluminum Content weight percentage', 
         'AL type 1', 'Weight', 'Price', 'AL type 2', 'Weight', 'Price', 'AL type 3', 'Weight', 'Price'
     ];
-    ws_data.push(exportHeaders);
+    let colWidths = [40, 120, 350, 60, 110, 80, 90, 130, 100, 100, 130, 100, 70, 70, 100, 70, 70, 100, 70, 70];
     
-    // Add Data
+    html += '<tr>';
+    exportHeaders.forEach((h, i) => {
+        html += '<td style="background-color: #d9d9d9; font-weight: bold; border: 1px solid #000; text-align: center; vertical-align: middle; width: ' + colWidths[i] + 'px; padding: 5px;">' + h + '</td>';
+    });
+    html += '</tr>';
+    
+    // Data
     let data = hotInvoice.getData();
-    data.forEach(r => ws_data.push(r));
+    data.forEach((r, idx) => {
+        let bg = (idx % 2 === 0) ? '#ffffff' : '#f2f2f2';
+        html += '<tr style="background-color: ' + bg + ';">';
+        r.forEach(cell => {
+            let val = (cell === null || cell === undefined) ? '' : cell;
+            html += '<td style="border: 1px solid #000; padding: 5px; text-align: center;">' + val + '</td>';
+        });
+        html += '</tr>';
+    });
     
-    // Add empty row
-    ws_data.push([]);
-    
-    // Add Total
+    // Total
     let total = document.getElementById('invoice-total').innerText;
-    ws_data.push(['', '', '', '', '', 'TOTAL USD', '$' + total]);
+    html += '<tr><td colspan="5"></td><td style="font-weight: bold; border: 1px solid #000; text-align: right; font-size: 14px; padding: 5px;">TOTAL USD</td><td style="font-weight: bold; border: 1px solid #000; text-align: center; font-size: 14px; padding: 5px;">$' + total + '</td></tr>';
+    html += '<tr><td colspan="4"></td></tr>';
     
-    // Add Footer Info
-    ws_data.push([]);
-    ws_data.push(['Shipment: C.I.F New York']);
-    ws_data.push(['Country of origin: Bulgaria']);
-    ws_data.push(['Payment Details: Bank Transfer']);
-    ws_data.push(['United Bulgarian Bank']);
-    ws_data.push(['IBAN:BG29UBBS888100479603']);
-    ws_data.push(['Swift:UBBSBGSF']);
+    // Footer
+    let footers = ['Shipment: C.I.F New York', 'Country of origin: Bulgaria', 'Payment Details: Bank Transfer', 'United Bulgarian Bank', 'IBAN:BG29UBBS888100479603', 'Swift:UBBSBGSF'];
+    footers.forEach(f => {
+        html += '<tr><td colspan="5">' + f + '</td></tr>';
+    });
     
-    let ws = XLSX.utils.aoa_to_sheet(ws_data);
+    html += '</table></body></html>';
     
-    // Set Excel column widths
-    ws['!cols'] = [
-        {wch: 5}, {wch: 15}, {wch: 40}, {wch: 8}, {wch: 15}, {wch: 10}, {wch: 12}, 
-        {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, 
-        {wch: 15}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 10}, {wch: 10}
-    ];
-    
-    let wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Invoice");
-    
+    let blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement('a');
+    a.href = url;
     let exportDate = document.getElementById('invoice-date').value || 'export';
-    XLSX.writeFile(wb, "Invoice_" + exportDate + ".xlsx");
+    a.download = "Invoice_" + exportDate + ".xls";
+    a.click();
+    URL.revokeObjectURL(url);
 };
+
