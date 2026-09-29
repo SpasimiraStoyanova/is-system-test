@@ -246,14 +246,36 @@ function generateInvoice() {
         
         let desc = '';
         let alPercent = 0;
+        
+        // 9 columns for Breakdown
+        let al_type_1 = '', al_weight_1 = null, al_price_1 = null;
+        let al_type_2 = '', al_weight_2 = null, al_price_2 = null;
+        let al_type_3 = '', al_weight_3 = null, al_price_3 = null;
+
         let nomRow = nomMap[itemNo];
         if (nomRow) {
-            desc = nomRow[1]; // Описание
-            let p = parseFloat(nomRow[4]); // Процент АЛ в детайл (5-та колона)
+            desc = nomRow[1]; // Вътрешно име (или Описание)
+            
+            // Percentage from new Nomenklatura (last column, index 32)
+            let p = parseFloat(nomRow[32]); 
             if (!isNaN(p)) {
-                // Ако е въведено напр. 30 (за 30%), го правим 0.3, за да работи с процентовото форматиране и сметките.
                 alPercent = p > 1 ? p / 100 : p;
             }
+
+            // Type 1: Тяло
+            al_type_1 = nomRow[18] || ''; // Вид AL за тялото
+            al_weight_1 = parseFloat(nomRow[24]) || null; // Тегло Al тяло kg
+            al_price_1 = parseFloat(nomRow[19]) || null; // Цена на AL Тяло [лв./бр.] с ДДС
+
+            // Type 2: Преден капак
+            al_type_2 = nomRow[20] || ''; // Вид AL за пр. капак
+            al_weight_2 = parseFloat(nomRow[26]) || null; // Тегло АL пр. капак kg
+            al_price_2 = parseFloat(nomRow[21]) || null; // Цена на AL на пр. капак с ДДС
+
+            // Type 3: Заден капак
+            al_type_3 = nomRow[22] || ''; // Вид AL за з. капак
+            al_weight_3 = parseFloat(nomRow[27]) || null; // Тегло на AL зад. капак kg
+            al_price_3 = parseFloat(nomRow[23]) || null; // Цена на AL на зад. капак с ДДС
         }
 
         let htsCode = '';
@@ -287,9 +309,9 @@ function generateInvoice() {
             'total_al_value': totalAlValue, // Колона 9
             'value_of_rest': valueOfRest, // Колона 10
             'al_weight_percent': alPercent, // Колона 11
-            'al_type_1': '', 'al_weight_1': null, 'al_price_1': null,
-            'al_type_2': '', 'al_weight_2': null, 'al_price_2': null,
-            'al_type_3': '', 'al_weight_3': null, 'al_price_3': null
+            'al_type_1': al_type_1, 'al_weight_1': al_weight_1, 'al_price_1': al_price_1,
+            'al_type_2': al_type_2, 'al_weight_2': al_weight_2, 'al_price_2': al_price_2,
+            'al_type_3': al_type_3, 'al_weight_3': al_weight_3, 'al_price_3': al_price_3
         });
     });
 
