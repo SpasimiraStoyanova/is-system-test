@@ -241,6 +241,7 @@ function generateInvoice() {
     htsData.forEach(r => htsMap[r[0]] = r);
 
     let idx = 1;
+    let totalUSD = 0;
     planData.forEach(row => {
         let qty = parseFloat(row[0]) || 0;
         let itemNo = row[1];
@@ -341,9 +342,12 @@ function generateInvoice() {
             'al_type_2': al_type_2, 'al_weight_2': al_weight_2, 'al_price_2': al_price_2,
             'al_type_3': al_type_3, 'al_weight_3': al_weight_3, 'al_price_3': al_price_3
         });
+        
+        totalUSD += amount;
     });
 
     hotInvoice.loadData(invoiceRows);
+    document.getElementById('invoice-total').innerText = totalUSD.toFixed(2);
     Swal.fire('Успех', 'Генерирани са колони 1-8 и колона 11!', 'success');
 }
 
@@ -407,3 +411,47 @@ async function fetchActivePlan() {
 function printInvoice() {
     window.print();
 }
+
+window.exportToExcel = function() {
+    if (typeof XLSX === 'undefined') {
+        Swal.fire('Грешка', 'Библиотеката за Excel не е заредена.', 'error');
+        return;
+    }
+    
+    let ws_data = [];
+    
+    // Add Headers
+    let exportHeaders = [
+        '#', 'Item No', 'Description', 'Qty', 'HTS Code', 'Unit cost', 'Amount', 
+        'Aluminum Content Value', 'Total AL Value', 'Value of the rest', 'Aluminum Content weight percentage', 
+        'AL type 1', 'Weight', 'Price', 'AL type 2', 'Weight', 'Price', 'AL type 3', 'Weight', 'Price'
+    ];
+    ws_data.push(exportHeaders);
+    
+    // Add Data
+    let data = hotInvoice.getData();
+    data.forEach(r => ws_data.push(r));
+    
+    // Add empty row
+    ws_data.push([]);
+    
+    // Add Total
+    let total = document.getElementById('invoice-total').innerText;
+    ws_data.push(['', '', '', '', '', 'TOTAL USD', '$' + total]);
+    
+    // Add Footer Info
+    ws_data.push([]);
+    ws_data.push(['Shipment: C.I.F New York']);
+    ws_data.push(['Country of origin: Bulgaria']);
+    ws_data.push(['Payment Details: Bank Transfer']);
+    ws_data.push(['United Bulgarian Bank']);
+    ws_data.push(['IBAN:BG29UBBS888100479603']);
+    ws_data.push(['Swift:UBBSBGSF']);
+    
+    let ws = XLSX.utils.aoa_to_sheet(ws_data);
+    let wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Invoice");
+    
+    let dateStr = document.getElementById('invoice-date').value || 'export';
+    XLSX.writeFile(wb, "Invoice_" + dateStr + ".xlsx");
+};

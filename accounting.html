@@ -16,7 +16,8 @@
 
     <!-- Handsontable for Excel-like Grid -->
     <script src="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.css" rel="stylesheet">
+    <!-- SheetJS for Excel export -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     
     <style>
         body { padding: 20px; background-color: #f4f6f9; color: #333; }
@@ -116,6 +117,7 @@
             <div class="action-bar" style="background: #e2e8f0; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
                 <button class="btn btn-primary" onclick="generateInvoice()"><i class="fas fa-magic"></i> Генерирай INVOICE</button>
                 <button class="btn btn-secondary ml-2" onclick="printInvoice()"><i class="fas fa-print"></i> Печат / PDF</button>
+                <button class="btn btn-success ml-2 hide-on-print" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> Изтегли Excel</button>
             </div>
             
             <div id="invoice-print-area" style="background: white; padding: 20px; border: 1px solid #ccc;">
@@ -154,6 +156,19 @@
                 </div>
                 
                 <div id="grid-invoice" class="hot-container" style="height: 500px; border: 1px solid #000;"></div>
+                
+                <div id="invoice-footer" style="margin-top: 20px; font-family: sans-serif; font-size: 14px; padding-bottom: 30px;">
+                    <div style="text-align: center; margin-bottom: 20px; font-size: 16px;">
+                        <b>TOTAL USD &nbsp;&nbsp; $<span id="invoice-total">0.00</span></b>
+                    </div>
+                    <div>Shipment: C.I.F New York</div>
+                    <br>
+                    <div>Country of origin: Bulgaria</div>
+                    <div>Payment Details: Bank Transfer</div>
+                    <div>United Bulgarian Bank</div>
+                    <div>IBAN:BG29UBBS888100479603</div>
+                    <div>Swift:UBBSBGSF</div>
+                </div>
             </div>
         </div>
 
