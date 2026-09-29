@@ -50,11 +50,16 @@
             h2, p.text-muted, .nav-tabs, .action-bar { display: none !important; }
             .hide-on-print { display: none !important; }
             
-            #invoice-print-area { border: none !important; padding: 0 !important; width: 100% !important; zoom: 0.85; }
-            #grid-invoice { height: auto !important; border: none !important; }
+            #invoice-print-area { 
+                border: none !important; 
+                padding: 0 !important; 
+                width: max-content !important; 
+                zoom: 0.55; 
+            }
+            #grid-invoice, .hot-container { height: auto !important; overflow: visible !important; border: none !important; }
             
             /* Allow Handsontable to expand fully for printing */
-            .handsontable .wtHolder { height: auto !important; overflow: visible !important; }
+            .handsontable .wtHolder { height: auto !important; width: auto !important; overflow: visible !important; }
             .ht_master .wtHolder { overflow: visible !important; }
             .handsontable table { width: 100% !important; }
         }
