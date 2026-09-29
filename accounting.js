@@ -420,6 +420,26 @@ window.exportToExcel = function() {
     
     let ws_data = [];
     
+    // Build Header Information from DOM
+    let invoiceNo = document.getElementById('invoice-number') ? document.getElementById('invoice-number').value : '0000000511';
+    let dateStr = document.getElementById('invoice-header-date').value || '';
+    let rate = document.getElementById('invoice-rate').value || '';
+    let invoiceDate = document.getElementById('invoice-date').value || '';
+    
+    ws_data.push(['INVOICE']);
+    ws_data.push(['No. ' + invoiceNo + ' / ' + dateStr]);
+    ws_data.push([]);
+    ws_data.push(['Customer:', '', '', '', 'Seller:']);
+    ws_data.push(['Advanced Micro Controls Incorporated', '', '', '', 'AMCI AD']);
+    ws_data.push(['20 Gear Drive, Plymouth Industrial Park', '', '', '', '14 Lubata str.']);
+    ws_data.push(['', '', '', '', 'Sofia 1407, Bulgaria']);
+    ws_data.push([]);
+    
+    // Right-aligned Date and USD/EUR Rate table simulation
+    ws_data.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'Дата', 'USD/EUR']);
+    ws_data.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', invoiceDate, rate]);
+    ws_data.push([]);
+    
     // Add Headers
     let exportHeaders = [
         '#', 'Item No', 'Description', 'Qty', 'HTS Code', 'Unit cost', 'Amount', 

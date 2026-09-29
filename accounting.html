@@ -39,8 +39,9 @@
         .hot-container .handsontable th .relative {
             white-space: normal !important;
         }
-        .hot-container .handsontable td { background-color: #fff !important; color: #000 !important; }
-        .hot-container .handsontable tr:hover td { background-color: #f9f9f9 !important; }
+        .hot-container .handsontable tbody tr:nth-child(even) td {
+            background-color: #f9f9f9 !important;
+        }
         #invoice-print-area * { color: #000 !important; }
         #invoice-print-area input { outline: none; background: transparent; font-family: inherit; }
 
@@ -62,6 +63,9 @@
             .handsontable .wtHolder { height: auto !important; width: auto !important; overflow: visible !important; }
             .ht_master .wtHolder { overflow: visible !important; }
             .handsontable table { width: 100% !important; }
+            
+            /* Print zebra stripes clearly */
+            .hot-container .handsontable tbody tr:nth-child(even) td { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
     </style>
 </head>
@@ -142,7 +146,7 @@
                     <div style="flex: 1;">
                         <h2 style="font-weight: 900; margin: 0;">INVOICE</h2>
                         <div style="font-weight: bold; margin-bottom: 20px; border-bottom: 2px solid #000; display: inline-block; padding-bottom: 2px;">
-                            No. <input type="text" value="0000000511" style="border:none; width: 100px; font-weight: bold;">/ 
+                            No. <input type="text" id="invoice-number" value="0000000511" style="border:none; width: 100px; font-weight: bold;">/ 
                             <input type="text" id="invoice-header-date" value="17.10.2025" style="border:none; width: 90px; font-weight: bold; text-align: left;">
                         </div>
                         
