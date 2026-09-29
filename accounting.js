@@ -252,6 +252,14 @@ function generateInvoice() {
         let al_type_2 = '', al_weight_2 = null, al_price_2 = null;
         let al_type_3 = '', al_weight_3 = null, al_price_3 = null;
 
+        // Build materials map for pricing
+        let materialsData = hotMaterials.getData().filter(r => r[0]);
+        let materialsMap = {};
+        materialsData.forEach(r => {
+            let price = parseFloat(r[1]);
+            if (!isNaN(price)) materialsMap[r[0]] = price;
+        });
+
         let nomRow = nomMap[itemNo];
         if (nomRow) {
             desc = nomRow[1]; // Вътрешно име (или Описание)
@@ -262,20 +270,31 @@ function generateInvoice() {
                 alPercent = p > 1 ? p / 100 : p;
             }
 
+            // Helper to get price
+            const getPrice = (typeStr, weightStr, manualPriceStr) => {
+                let manual = parseFloat(manualPriceStr);
+                if (!isNaN(manual) && manual > 0) return manual; // Prefer manual if filled
+                
+                let weight = parseFloat(weightStr) || 0;
+                let matPrice = materialsMap[typeStr] || 0;
+                if (weight > 0 && matPrice > 0) return weight * matPrice;
+                return null;
+            };
+
             // Type 1: Тяло
             al_type_1 = nomRow[18] || ''; // Вид AL за тялото
             al_weight_1 = parseFloat(nomRow[24]) || null; // Тегло Al тяло kg
-            al_price_1 = parseFloat(nomRow[19]) || null; // Цена на AL Тяло [лв./бр.] с ДДС
+            al_price_1 = getPrice(al_type_1, al_weight_1, nomRow[19]);
 
             // Type 2: Преден капак
             al_type_2 = nomRow[20] || ''; // Вид AL за пр. капак
             al_weight_2 = parseFloat(nomRow[26]) || null; // Тегло АL пр. капак kg
-            al_price_2 = parseFloat(nomRow[21]) || null; // Цена на AL на пр. капак с ДДС
+            al_price_2 = getPrice(al_type_2, al_weight_2, nomRow[21]);
 
             // Type 3: Заден капак
             al_type_3 = nomRow[22] || ''; // Вид AL за з. капак
             al_weight_3 = parseFloat(nomRow[27]) || null; // Тегло на AL зад. капак kg
-            al_price_3 = parseFloat(nomRow[23]) || null; // Цена на AL на зад. капак с ДДС
+            al_price_3 = getPrice(al_type_3, al_weight_3, nomRow[23]);
         }
 
         let htsCode = '';
