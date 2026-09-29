@@ -469,6 +469,14 @@ window.exportToExcel = function() {
     ws_data.push(['Swift:UBBSBGSF']);
     
     let ws = XLSX.utils.aoa_to_sheet(ws_data);
+    
+    // Set Excel column widths
+    ws['!cols'] = [
+        {wch: 5}, {wch: 15}, {wch: 40}, {wch: 8}, {wch: 15}, {wch: 10}, {wch: 12}, 
+        {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, 
+        {wch: 15}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 10}, {wch: 10}
+    ];
+    
     let wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Invoice");
     

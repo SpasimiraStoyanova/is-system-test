@@ -39,8 +39,11 @@
         .hot-container .handsontable th .relative {
             white-space: normal !important;
         }
+        .hot-container .handsontable tbody tr:nth-child(odd) td {
+            background-color: #ffffff !important;
+        }
         .hot-container .handsontable tbody tr:nth-child(even) td {
-            background-color: #f9f9f9 !important;
+            background-color: #e6f7ff !important;
         }
         #invoice-print-area * { color: #000 !important; }
         #invoice-print-area input { outline: none; background: transparent; font-family: inherit; }
@@ -65,7 +68,8 @@
             .handsontable table { width: 100% !important; }
             
             /* Print zebra stripes clearly */
-            .hot-container .handsontable tbody tr:nth-child(even) td { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .hot-container .handsontable tbody tr:nth-child(odd) td { background-color: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .hot-container .handsontable tbody tr:nth-child(even) td { background-color: #e6f7ff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
     </style>
 </head>
