@@ -234,7 +234,8 @@ function generateInvoice() {
     
     // Create lookups for faster search
     let nomMap = {};
-    nomData.forEach(r => nomMap[r[0]] = r);
+    // Внимание: Първата колона r[0] е Описание, втората r[1] е Номер/Вътрешно име
+    nomData.forEach(r => nomMap[r[1]] = r);
     
     let htsMap = {};
     htsData.forEach(r => htsMap[r[0]] = r);
@@ -262,7 +263,7 @@ function generateInvoice() {
 
         let nomRow = nomMap[itemNo];
         if (nomRow) {
-            desc = nomRow[1]; // Вътрешно име (или Описание)
+            desc = nomRow[0]; // Описание е в първата колона (индекс 0)
             
             // Percentage from new Nomenklatura (last column, index 32)
             let p = parseFloat(nomRow[32]); 
