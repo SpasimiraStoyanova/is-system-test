@@ -61,6 +61,7 @@
             <div class="action-bar">
                 <button class="btn btn-success" onclick="saveData('acc_nomenklatura', hotNom)"><i class="fas fa-save"></i> Запази промените</button>
                 <button class="btn btn-outline-secondary" onclick="loadData('acc_nomenklatura', hotNom)"><i class="fas fa-sync"></i> Презареди</button>
+                <input type="text" id="search-nom" placeholder="Търси детайл..." class="form-control" style="width: 250px; display: inline-block; margin-left: 15px;" onkeyup="if(window.searchNom) window.searchNom(this.value)">
                 <small class="text-info ml-3"><i class="fas fa-info-circle"></i> Можеш да копираш (Ctrl+C) от Excel и да поставиш (Ctrl+V) директно тук!</small>
             </div>
             <div id="grid-nom" class="hot-container"></div>

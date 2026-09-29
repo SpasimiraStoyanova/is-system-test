@@ -44,8 +44,17 @@ const hotNom = new Handsontable(document.getElementById('grid-nom'), {
     contextMenu: true,
     stretchH: 'all',
     width: '100%',
+    search: true,
+    filters: true,
+    dropdownMenu: true,
     licenseKey: 'non-commercial-and-evaluation'
 });
+
+window.searchNom = function(query) {
+    const searchPlugin = hotNom.getPlugin('search');
+    searchPlugin.query(query);
+    hotNom.render();
+};
 
 const hotData = new Handsontable(document.getElementById('grid-data'), {
     data: [],
@@ -100,7 +109,7 @@ const hotInvoice = new Handsontable(document.getElementById('grid-invoice'), {
     rowHeaders: false,
     colHeaders: true,
     nestedHeaders: [
-        ['#', 'Item No', 'Description', 'Qty', 'HTS Code', 'Unit cost', 'Amount', 'Aluminum Content Value', 'Total AL Value', 'Value of the rest', 'Aluminum Content weight percentage', {label: 'Country of Smelt & Cast of Aluminum Breakdown per Aluminum Type', colspan: 9}],
+        ['#', 'Item No', 'Description', 'Qty', 'HTS Code', 'Unit cost', 'Amount', 'Aluminum<br>Content Value', 'Total<br>AL Value', 'Value of<br>the rest', 'Aluminum Content<br>weight percentage', {label: 'Country of Smelt & Cast of Aluminum Breakdown per Aluminum Type', colspan: 9}],
         ['', '', '', '', '', '', '', '', '', '', '', 'AL type 1', 'Weight', 'Price', 'AL type 2', 'Weight', 'Price', 'AL type 3', 'Weight', 'Price']
     ],
     minSpareRows: 0,
@@ -198,20 +207,35 @@ function generateInvoice() {
         let itemNo = row[1];
         
         let desc = '';
+        let alPercent = 0;
         let nomRow = nomMap[itemNo];
         if (nomRow) {
-            desc = nomRow[1]; // Описание е втора колона в Номенклатура
+            desc = nomRow[1]; // Описание
+            let p = parseFloat(nomRow[4]); // Процент АЛ в детайл (5-та колона)
+            if (!isNaN(p)) {
+                // Ако е въведено напр. 30 (за 30%), го правим 0.3, за да работи с процентовото форматиране и сметките.
+                alPercent = p > 1 ? p / 100 : p;
+            }
         }
 
         let htsCode = '';
         let unitCost = 0;
         let htsRow = htsMap[itemNo];
         if (htsRow) {
-            unitCost = parseFloat(htsRow[2]) || 0; // Unit cost е 3та колона в Данни
-            htsCode = htsRow[3]; // HTS Code е 4та колона в Данни
+            unitCost = parseFloat(htsRow[2]) || 0; // Unit cost
+            htsCode = htsRow[3]; // HTS Code
         }
 
         let amount = qty * unitCost;
+        
+        // Колона 8: Aluminum Content Value = Unit Cost * Процент АЛ
+        let alContentValue = unitCost * alPercent;
+        
+        // Колона 9: Total AL Value = Qty * Aluminum Content Value
+        let totalAlValue = qty * alContentValue;
+
+        // Колона 10: Value of the rest = Amount - Total AL Value
+        let valueOfRest = amount - totalAlValue;
 
         invoiceRows.push({
             'index': idx++,
@@ -221,10 +245,10 @@ function generateInvoice() {
             'hts_code': htsCode,
             'unit_cost': unitCost, 
             'amount': amount, 
-            'al_content_value': null, // pending
-            'total_al_value': null, // pending
-            'value_of_rest': null, // pending
-            'al_weight_percent': null, // pending
+            'al_content_value': alContentValue, // Колона 8
+            'total_al_value': totalAlValue, // Колона 9
+            'value_of_rest': valueOfRest, // Колона 10
+            'al_weight_percent': alPercent, // Колона 11
             'al_type_1': '', 'al_weight_1': null, 'al_price_1': null,
             'al_type_2': '', 'al_weight_2': null, 'al_price_2': null,
             'al_type_3': '', 'al_weight_3': null, 'al_price_3': null
@@ -232,7 +256,7 @@ function generateInvoice() {
     });
 
     hotInvoice.loadData(invoiceRows);
-    Swal.fire('Успех', 'Колони от 1 до 7 (включително Unit Cost и Amount) са генерирани!', 'success');
+    Swal.fire('Успех', 'Генерирани са колони 1-8 и колона 11!', 'success');
 }
 
 async function fetchExchangeRate() {
