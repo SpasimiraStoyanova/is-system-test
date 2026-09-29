@@ -472,6 +472,6 @@ window.exportToExcel = function() {
     let wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Invoice");
     
-    let dateStr = document.getElementById('invoice-date').value || 'export';
-    XLSX.writeFile(wb, "Invoice_" + dateStr + ".xlsx");
+    let exportDate = document.getElementById('invoice-date').value || 'export';
+    XLSX.writeFile(wb, "Invoice_" + exportDate + ".xlsx");
 };
