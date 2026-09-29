@@ -50,6 +50,9 @@
             <a class="nav-link" id="tab-plan" data-toggle="tab" href="#content-plan" role="tab" onclick="setTimeout(()=>hotPlan.render(), 100)">План</a>
         </li>
         <li class="nav-item">
+            <a class="nav-link" id="tab-materials" data-toggle="tab" href="#content-materials" role="tab" onclick="setTimeout(()=>hotMaterials.render(), 100)">Материали</a>
+        </li>
+        <li class="nav-item">
             <a class="nav-link" id="tab-invoice" data-toggle="tab" href="#content-invoice" role="tab" onclick="setTimeout(()=>hotInvoice.render(), 100)">INVOICE USD (Резултат)</a>
         </li>
     </ul>
@@ -84,6 +87,15 @@
                 <button class="btn btn-info ml-auto" onclick="fetchActivePlan()" style="background-color: #0ea5e9; color: white;"><i class="fas fa-download"></i> Извлечи Активния План от системата</button>
             </div>
             <div id="grid-plan" class="hot-container"></div>
+        </div>
+
+        <!-- Материали -->
+        <div class="tab-pane fade" id="content-materials" role="tabpanel">
+            <div class="action-bar">
+                <button class="btn btn-success" onclick="saveData('acc_materials', hotMaterials)"><i class="fas fa-save"></i> Запази промените</button>
+                <button class="btn btn-outline-secondary" onclick="loadData('acc_materials', hotMaterials)"><i class="fas fa-sync"></i> Презареди</button>
+            </div>
+            <div id="grid-materials" class="hot-container"></div>
         </div>
 
         <!-- INVOICE -->

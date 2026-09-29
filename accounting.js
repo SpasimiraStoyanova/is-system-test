@@ -53,6 +53,12 @@ const planColumns = [
     { data: 'Номер', title: 'Номер' }
 ];
 
+// Define columns for Materials
+const materialsColumns = [
+    { data: 'Вид материал', title: 'Вид материал' },
+    { data: 'лв/кг с ДДС', title: 'лв/кг с ДДС' }
+];
+
 // Initialize Handsontables
 const hotNom = new Handsontable(document.getElementById('grid-nom'), {
     data: [],
@@ -93,6 +99,18 @@ const hotPlan = new Handsontable(document.getElementById('grid-plan'), {
     rowHeaders: true,
     colHeaders: true,
     minSpareRows: 50,
+    contextMenu: true,
+    stretchH: 'all',
+    width: '100%',
+    licenseKey: 'non-commercial-and-evaluation'
+});
+
+const hotMaterials = new Handsontable(document.getElementById('grid-materials'), {
+    data: [],
+    columns: materialsColumns,
+    rowHeaders: true,
+    colHeaders: true,
+    minSpareRows: 20,
     contextMenu: true,
     stretchH: 'all',
     width: '100%',
@@ -196,6 +214,7 @@ window.addEventListener('load', () => {
     loadData('acc_nomenklatura', hotNom);
     loadData('acc_data', hotData);
     loadData('acc_plan', hotPlan);
+    loadData('acc_materials', hotMaterials);
     
     // Fetch rate for today
     fetchExchangeRate();
