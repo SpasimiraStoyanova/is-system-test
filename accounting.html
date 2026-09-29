@@ -32,6 +32,19 @@
         .hot-container .handsontable tr:hover td { background-color: #f9f9f9 !important; }
         #invoice-print-area * { color: #000 !important; }
         #invoice-print-area input { outline: none; background: transparent; font-family: inherit; }
+
+        @media print {
+            body { padding: 0; background-color: #fff; }
+            h2, p.text-muted, .nav-tabs, .action-bar { display: none !important; }
+            .hide-on-print { display: none !important; }
+            
+            #invoice-print-area { border: none !important; padding: 0 !important; width: 100% !important; }
+            #grid-invoice { height: auto !important; border: none !important; }
+            
+            /* Allow Handsontable to expand fully for printing */
+            .handsontable .wtHolder { height: auto !important; overflow: visible !important; }
+            .ht_master .wtHolder { overflow: visible !important; }
+        }
     </style>
 </head>
 <body>
@@ -129,7 +142,7 @@
                         </div>
                     </div>
                     
-                    <div style="width: 250px; font-size: 12px;">
+                    <div style="width: 250px; font-size: 12px;" class="hide-on-print">
                         <table style="border-collapse: collapse; width: 100%; border: 1px solid black; text-align: center;">
                             <tr><td style="border: 1px solid black;">Дата</td><td style="border: 1px solid black;">USD/EUR</td></tr>
                             <tr>
