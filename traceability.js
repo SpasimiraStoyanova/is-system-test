@@ -154,16 +154,10 @@ async function renderTree(targetId, dayObj) {
     // 1. Fetch Current Inventory for Center Node
     let currentStock = 0;
     
-    // Check inventory (WIP)
+    // Check inventory (WIP and Finished Goods are now both in inventory)
     const { data: invData } = await client.from('inventory').select('Количество').ilike('ID Детайл', `%${targetId}%`);
     if (invData && invData.length > 0) {
         invData.forEach(i => currentStock += (parseFloat(i['Количество']) || 0));
-    }
-    
-    // Check sklad (Finished goods / Raw materials)
-    const { data: skladData } = await client.from('sklad').select('Остатък').ilike('ID Детайл', `%${targetId}%`);
-    if (skladData && skladData.length > 0) {
-        skladData.forEach(i => currentStock += (parseFloat(i['Остатък']) || 0));
     }
     
     // 2. Fetch BOM where this is parent (Children) - Using 'ID Родител' based on schema
