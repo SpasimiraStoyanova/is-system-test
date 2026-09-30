@@ -153,11 +153,22 @@ async function selectTimeline(el, index) {
 async function renderTree(targetId, dayObj) {
     // 1. Fetch Current Inventory for Center Node
     let currentStock = 0;
+    let invQtyByOp = {};
+    let invGpQty = 0;
     
     // Check inventory (WIP and Finished Goods are now both in inventory)
-    const { data: invData } = await client.from('inventory').select('Количество').ilike('ID Детайл', `%${targetId}%`);
+    const { data: invData } = await client.from('inventory').select('Количество, Операция').ilike('ID Детайл', `%${targetId}%`);
     if (invData && invData.length > 0) {
-        invData.forEach(i => currentStock += (parseFloat(i['Количество']) || 0));
+        invData.forEach(i => {
+            let qty = parseFloat(i['Количество']) || 0;
+            currentStock += qty;
+            let op = String(i['Операция'] || '').trim().toLowerCase();
+            if (op === 'готов продукт' || op === '') {
+                invGpQty += qty;
+            } else {
+                invQtyByOp[op] = (invQtyByOp[op] || 0) + qty;
+            }
+        });
     }
     
     // 2. Fetch BOM where this is parent (Children) - Using 'ID Родител' based on schema
@@ -186,16 +197,23 @@ async function renderTree(targetId, dayObj) {
     // Build UI for Children
     let childrenHtml = '';
     
-    // Filter out materials from childrenBOM by fetching all materials globally
+    // Filter out materials from childrenBOM
+    // A child is a raw material if it has no children of its own AND no routing operations
     let filteredChildren = childrenBOM || [];
     if (childrenBOM && childrenBOM.length > 0) {
-        const { data: allMats } = await client.from('Номенклатура')
-            .select('ID Детайл')
-            .ilike('Тип', '%материал%');
+        let childNames = childrenBOM.map(b => b['ID Компонент']).filter(Boolean);
+        if (childNames.length > 0) {
+            const { data: subBom } = await client.from('bom').select('ID Родител').in('ID Родител', childNames);
+            let hasChildrenSet = new Set((subBom || []).map(b => String(b['ID Родител']).trim().toLowerCase()));
             
-        if (allMats) {
-            let materialSet = new Set(allMats.map(n => String(n['ID Детайл']).trim().toLowerCase()));
-            filteredChildren = childrenBOM.filter(b => !materialSet.has(String(b['ID Компонент']).trim().toLowerCase()));
+            const { data: subRoutes } = await client.from('marshruti').select('Код на детайла').in('Код на детайла', childNames);
+            let hasRoutesSet = new Set((subRoutes || []).map(r => String(r['Код на детайла']).trim().toLowerCase()));
+            
+            filteredChildren = childrenBOM.filter(b => {
+                let code = String(b['ID Компонент']).trim().toLowerCase();
+                let isRawMaterial = !hasChildrenSet.has(code) && !hasRoutesSet.has(code);
+                return !isRawMaterial;
+            });
         }
     }
     
@@ -217,7 +235,7 @@ async function renderTree(targetId, dayObj) {
         childrenHtml = `<div style="color:var(--text-muted); font-style:italic;">Няма вложени полуфабрикати</div>`;
     }
     
-    // Build UI for Parents (or Last Operation)
+    // Build UI for Parents (or Operations)
     let parentsHtml = '';
     if (actualParents.length > 0) {
         // Show the actual parents it was put into
@@ -234,29 +252,47 @@ async function renderTree(targetId, dayObj) {
             `;
         });
     } else {
-        // No actual parents yet, so show the last operation it reached (if any)
-        // Find last operation from the timeline records
-        let lastOp = 'Неизвестна';
-        if (currentTimelineData.length > 0) {
-            let lastDayObj = currentTimelineData[currentTimelineData.length - 1];
-            if (lastDayObj.records && lastDayObj.records.length > 0) {
-                // Get the last record of the last day
-                let lastRecord = lastDayObj.records[lastDayObj.records.length - 1];
-                lastOp = lastRecord['Операция'] || 'Склад';
-            }
-        } else {
-             lastOp = 'Склад / Начало';
-        }
+        // No actual parents yet, so show the routing operations and WIP quantities
+        const { data: routes } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`);
+        let sortedRoutes = (routes || []).sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
         
-        parentsHtml = `
-          <div class="node" style="border-style: dashed;">
-            <div class="node-header" title="Последна операция">Последна операция</div>
-            <div class="node-body">
-              <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${lastOp}</div>
-              <div class="node-sub">Не е вложен в родител</div>
-            </div>
-          </div>
-        `;
+        if (sortedRoutes.length > 0) {
+            sortedRoutes.forEach(r => {
+                let opName = r['Име на операция'] || 'Неизвестна';
+                let opKey = String(opName).trim().toLowerCase();
+                let opQty = invQtyByOp[opKey] || 0;
+                
+                parentsHtml += `
+                  <div class="node" style="border-style: dashed;">
+                    <div class="node-header" title="${opName}">${opName}</div>
+                    <div class="node-body">
+                      <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${opQty} бр.</div>
+                      <div class="node-sub">Налични на операция</div>
+                    </div>
+                  </div>
+                `;
+            });
+            // Add Готов продукт at the end
+            parentsHtml += `
+                  <div class="node" style="border-style: solid; border-color: var(--success);">
+                    <div class="node-header" title="Готов продукт">Готов продукт</div>
+                    <div class="node-body">
+                      <div class="node-stat" style="color:var(--success); font-size: 1.1rem;">${invGpQty} бр.</div>
+                      <div class="node-sub">Завършени (Склад)</div>
+                    </div>
+                  </div>
+                `;
+        } else {
+            parentsHtml = `
+              <div class="node" style="border-style: dashed;">
+                <div class="node-header" title="Склад">Склад</div>
+                <div class="node-body">
+                  <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${currentStock} бр.</div>
+                  <div class="node-sub">Няма маршрутна карта</div>
+                </div>
+              </div>
+            `;
+        }
     }
 
     // Determine Day stats
