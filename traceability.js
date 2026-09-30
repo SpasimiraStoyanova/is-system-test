@@ -164,6 +164,23 @@ async function renderTree(targetId, dayObj) {
     // 3. Fetch BOM where this is child (Parents) - Using 'ID Компонент'
     const { data: parentsBOM } = await client.from('bom').select('*').ilike('ID Компонент', `%${targetId}%`);
     
+    // 4. Find which parents have actually been produced (meaning they consumed this component)
+    let actualParents = [];
+    if (parentsBOM && parentsBOM.length > 0) {
+        let parentNames = parentsBOM.map(b => b['ID Родител']).filter(Boolean);
+        if (parentNames.length > 0) {
+            // Check otcheti if any of these parents were produced
+            const { data: producedParents } = await client.from('otcheti')
+                .select('ID Детайл')
+                .in('ID Детайл', parentNames);
+                
+            if (producedParents) {
+                let producedSet = new Set(producedParents.map(p => String(p['ID Детайл']).toLowerCase()));
+                actualParents = parentsBOM.filter(b => producedSet.has(String(b['ID Родител']).toLowerCase()));
+            }
+        }
+    }
+    
     // Build UI for Children
     let childrenHtml = '';
     if (childrenBOM && childrenBOM.length > 0) {
@@ -184,23 +201,46 @@ async function renderTree(targetId, dayObj) {
         childrenHtml = `<div style="color:var(--text-muted); font-style:italic;">Няма вложени компоненти</div>`;
     }
     
-    // Build UI for Parents
+    // Build UI for Parents (or Last Operation)
     let parentsHtml = '';
-    if (parentsBOM && parentsBOM.length > 0) {
-        parentsBOM.forEach(b => {
+    if (actualParents.length > 0) {
+        // Show the actual parents it was put into
+        actualParents.forEach(b => {
             let pName = b['ID Родител'] || 'Неизвестно';
             parentsHtml += `
               <div class="node">
                 <div class="node-header" title="${pName}">${pName}</div>
                 <div class="node-body">
-                  <div class="node-stat" style="color:var(--text-main); font-size: 1.1rem;">Влиза в</div>
-                  <div class="node-sub">Като компонент</div>
+                  <div class="node-stat" style="color:var(--text-main); font-size: 1.1rem;">Вложен в</div>
+                  <div class="node-sub">Реално изработен</div>
                 </div>
               </div>
             `;
         });
     } else {
-        parentsHtml = `<div style="color:var(--text-muted); font-style:italic;">КРАЕН ПРОДУКТ<br><span style="font-size:0.75rem;">(Не се влага)</span></div>`;
+        // No actual parents yet, so show the last operation it reached (if any)
+        // Find last operation from the timeline records
+        let lastOp = 'Неизвестна';
+        if (currentTimelineData.length > 0) {
+            let lastDayObj = currentTimelineData[currentTimelineData.length - 1];
+            if (lastDayObj.records && lastDayObj.records.length > 0) {
+                // Get the last record of the last day
+                let lastRecord = lastDayObj.records[lastDayObj.records.length - 1];
+                lastOp = lastRecord['Операция'] || 'Склад';
+            }
+        } else {
+             lastOp = 'Склад / Начало';
+        }
+        
+        parentsHtml = `
+          <div class="node" style="border-style: dashed;">
+            <div class="node-header" title="Последна операция">Последна операция</div>
+            <div class="node-body">
+              <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${lastOp}</div>
+              <div class="node-sub">Не е вложен в родител</div>
+            </div>
+          </div>
+        `;
     }
 
     // Determine Day stats
