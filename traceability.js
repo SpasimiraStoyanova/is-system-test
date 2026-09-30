@@ -46,9 +46,8 @@ async function fetchTasks(targetId) {
     if (error) {
         container.innerHTML = `<div style="color:var(--danger); padding:10px;">Грешка при зареждане на задачи: ${error.message}</div>`;
         return;
-    }
-    const { data: nomData } = await client.from('Номенклатура').select('ID Детайл, Вътрешно име').limit(10000);
-    const { data: bomData } = await client.from('bom').select('ID Родител, ID Компонент').limit(10000);
+    const { data: nomData } = await client.from('Номенклатура').select('ID Детайл, Вътрешно име').limit(100000);
+    const { data: bomData } = await client.from('bom').select('ID Родител, ID Компонент').limit(100000);
     
     const normalize = s => String(s || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '');
     let tName = normalize(targetId);
@@ -204,10 +203,10 @@ async function renderTree(targetId, dayObj) {
     }
     
     // 2. Fetch BOM where this is parent (Children) - Using 'ID Родител' based on schema
-    const { data: childrenBOM } = await client.from('bom').select('*').ilike('ID Родител', `%${targetId}%`);
+    const { data: childrenBOM } = await client.from('bom').select('*').ilike('ID Родител', `%${targetId}%`).limit(100000);
     
     // 3. Fetch BOM where this is child (Parents) - Using 'ID Компонент'
-    const { data: parentsBOM } = await client.from('bom').select('*').ilike('ID Компонент', `%${targetId}%`);
+    const { data: parentsBOM } = await client.from('bom').select('*').ilike('ID Компонент', `%${targetId}%`).limit(100000);
     
     // 4. Find which parents have actually been produced (meaning they consumed this component)
     let actualParents = [];
@@ -234,7 +233,7 @@ async function renderTree(targetId, dayObj) {
     if (childrenBOM && childrenBOM.length > 0) {
         // Fetch all routes and all bom parents ONCE to build Sets for robust filtering
         const { data: allRoutes } = await client.from('marshruti').select('Код на детайла').limit(10000);
-        const { data: allBom } = await client.from('bom').select('ID Родител').limit(10000);
+        const { data: allBom } = await client.from('bom').select('ID Родител').limit(100000);
         
         // Helper to strip all non-alphanumeric chars (spaces, dots, dashes, parentheses)
         const normalize = s => String(s).toLowerCase().replace(/[^a-zа-я0-9]/g, '');
