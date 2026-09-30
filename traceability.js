@@ -36,89 +36,36 @@ async function startSearch() {
 }
 
 async function fetchTasks(targetId) {
-    // Query plan
-    const { data, error } = await client.from('plan')
-        .select('*')
-        .order('id', {ascending: false})
-        .limit(10000);
-        
     let container = document.getElementById('tasksContainer');
-    if (error) {
-        container.innerHTML = `<div style="color:var(--danger); padding:10px;">Грешка при зареждане на задачи: ${error.message}</div>`;
-        return;
-    }
-    // Safely fetch all Номенклатура and BOM with pagination to avoid 400 Bad Request
-    let nomData = [];
-    let bomData = [];
-    let startNom = 0, startBom = 0;
-    while (true) {
-        const { data } = await client.from('Номенклатура').select('ID Детайл, Вътрешно име').range(startNom, startNom + 9999);
-        if (data) nomData.push(...data);
-        if (!data || data.length < 10000) break;
-        startNom += 10000;
-    }
-    while (true) {
-        const { data } = await client.from('bom').select('ID Родител, ID Компонент').range(startBom, startBom + 9999);
-        if (data) bomData.push(...data);
-        if (!data || data.length < 10000) break;
-        startBom += 10000;
-    }
+    container.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size: 1.2rem;">Зареждане на задачи от терминала...</div>`;
     
-    const normalize = s => String(s || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '');
-    let tName = normalize(targetId);
-    
-    // Build ancestors set
-    let ancestors = new Set([tName]);
-    let added = true;
-    while (added) {
-        added = false;
-        (bomData || []).forEach(b => {
-            let child = normalize(b['ID Компонент']);
-            let parent = normalize(b['ID Родител']);
-            if (ancestors.has(child) && !ancestors.has(parent)) {
-                ancestors.add(parent);
-                added = true;
-            }
-        });
-    }
-
-    let myPlans = data.filter(task => {
-        let planInternal = String(task['Вътрешно име'] || '').trim();
-        let translated = (nomData || []).find(n => String(n['Вътрешно име'] || '').trim() === planInternal);
-        let planDetailId = translated && translated['ID Детайл'] ? translated['ID Детайл'] : planInternal;
+    // Intercept renderTasks so terminal-tasks.js doesn't overwrite our container with ALL tasks
+    const originalRender = window.renderTasks;
+    window.renderTasks = function(tasks) {
+        // Filter tasks to match targetId strictly
+        let filtered = tasks.filter(t => t.name.toLowerCase().includes(targetId.toLowerCase()));
         
-        let pName = normalize(planDetailId);
-        let pInternalName = normalize(planInternal); 
-        
-        // Check if plan matches target or any ancestor
-        for (let anc of ancestors) {
-            if (pName === anc || anc.includes(pName) || pInternalName === anc || anc.includes(pInternalName)) return true;
+        if (filtered.length === 0) {
+            container.innerHTML = `<div style="text-align:center; color:var(--text-muted); margin-top: 20px;">Няма активни задачи за този детайл.</div>`;
+        } else {
+            // Render the filtered terminal cards inside our container
+            originalRender(filtered);
+            
+            // Optional: Hide terminal specific buttons in the monitor
+            container.querySelectorAll('button').forEach(btn => {
+                if (btn.innerText.includes('ОТЧЕТИ') || btn.innerText.includes('БРАК') || btn.innerText.includes('ПАУЗА')) {
+                    btn.style.display = 'none';
+                }
+            });
         }
-        return false;
-    });
-
-    if (myPlans.length === 0) {
-        container.innerHTML = `<div style="text-align:center; color:var(--text-muted); margin-top: 20px;">Няма активни задачи за този детайл.</div>`;
-        return;
-    }
+    };
     
-    let html = '';
-    myPlans.forEach(task => {
-        let month = task['Месец'] || '';
-        let year = task['Година'] || '';
-        let planId = task['id'] || '-';
-        let qty = parseFloat(task['Целево количество']) || 0;
-        
-        html += `
-        <div class="task-card">
-          <div class="task-title" title="${task['Вътрешно име']}">План: ${month} ${year}</div>
-          <div class="task-stats">
-            <span>Целево количество: <b style="color:var(--primary)">${qty} бр.</b></span>
-            <span>ID: #${planId}</span>
-          </div>
-        </div>`;
-    });
-    container.innerHTML = html;
+    try {
+        await fetchDataAndCalculate();
+    } catch(e) {
+        console.error(e);
+        container.innerHTML = `<div style="color:var(--danger); padding:10px;">Грешка при изчисляване на задачи: ${e.message}</div>`;
+    }
 }
 
 async function fetchTimeline(targetId) {
