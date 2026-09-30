@@ -39,7 +39,7 @@ async function fetchTasks(targetId) {
     // Query plan
     const { data, error } = await client.from('plan')
         .select('*')
-        .ilike('Вътрешно име', `%${targetId}%`)
+        .ilike('ID Детайл', `%${targetId}%`)
         .eq('Статус', 'Активен')
         .order('id', {ascending: false})
         .limit(50);
@@ -211,7 +211,7 @@ async function renderTree(targetId, dayObj) {
             }
             
             // 2. Heuristic fallback for common raw materials
-            let matWords = ['шлаух', 'кабел', 'проводник', 'смола', 'лак', 'винт', 'бандаж', 'прешпан', 'изолация', 'тел', 'хартия', 'фолио', 'тръба'];
+            let matWords = ['шлаух', 'кабел', 'пров', 'смола', 'лак', 'винт', 'бандаж', 'прешпан', 'изолация', 'тел', 'хартия', 'фолио', 'тръба', 'опаковк', 'тиксо', 'кашон'];
             if (matWords.some(w => code.includes(w))) {
                 isRawMaterial = true;
             }
