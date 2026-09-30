@@ -183,8 +183,28 @@ async function renderTree(targetId, dayObj) {
     
     // Build UI for Children
     let childrenHtml = '';
+    
+    // Filter out materials from childrenBOM
+    let filteredChildren = childrenBOM || [];
     if (childrenBOM && childrenBOM.length > 0) {
-        childrenBOM.forEach(b => {
+        let childNames = childrenBOM.map(b => b['ID Компонент']).filter(Boolean);
+        if (childNames.length > 0) {
+            const { data: nomData } = await client.from('Номенклатура')
+                .select('ID Детайл, Тип')
+                .in('ID Детайл', childNames);
+                
+            if (nomData) {
+                let materialSet = new Set(
+                    nomData.filter(n => String(n['Тип'] || '').trim().toLowerCase() === 'материал')
+                           .map(n => String(n['ID Детайл']).trim().toLowerCase())
+                );
+                filteredChildren = childrenBOM.filter(b => !materialSet.has(String(b['ID Компонент']).trim().toLowerCase()));
+            }
+        }
+    }
+    
+    if (filteredChildren.length > 0) {
+        filteredChildren.forEach(b => {
             let childName = b['ID Компонент'] || 'Неизвестно';
             let qty = parseFloat(b['Количество']) || 1;
             childrenHtml += `
@@ -198,7 +218,7 @@ async function renderTree(targetId, dayObj) {
             `;
         });
     } else {
-        childrenHtml = `<div style="color:var(--text-muted); font-style:italic;">Няма вложени компоненти</div>`;
+        childrenHtml = `<div style="color:var(--text-muted); font-style:italic;">Няма вложени полуфабрикати</div>`;
     }
     
     // Build UI for Parents (or Last Operation)
