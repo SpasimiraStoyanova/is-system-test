@@ -61,7 +61,7 @@ async function fetchTasks(targetId) {
     };
     
     try {
-        await fetchDataAndCalculate();
+        await loadTasks();
     } catch(e) {
         console.error(e);
         container.innerHTML = `<div style="color:var(--danger); padding:10px;">Грешка при изчисляване на задачи: ${e.message}</div>`;
