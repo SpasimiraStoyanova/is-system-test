@@ -48,9 +48,26 @@ async function fetchTasks(targetId) {
         return;
     }
     const { data: nomData } = await client.from('Номенклатура').select('ID Детайл, Вътрешно име').limit(10000);
+    const { data: bomData } = await client.from('bom').select('ID Родител, ID Компонент').limit(10000);
     
     const normalize = s => String(s || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '');
     let tName = normalize(targetId);
+    
+    // Build ancestors set
+    let ancestors = new Set([tName]);
+    let added = true;
+    while (added) {
+        added = false;
+        (bomData || []).forEach(b => {
+            let child = normalize(b['ID Компонент']);
+            let parent = normalize(b['ID Родител']);
+            if (ancestors.has(child) && !ancestors.has(parent)) {
+                ancestors.add(parent);
+                added = true;
+            }
+        });
+    }
+
     let myPlans = data.filter(task => {
         let planInternal = String(task['Вътрешно име'] || '').trim();
         let translated = (nomData || []).find(n => String(n['Вътрешно име'] || '').trim() === planInternal);
@@ -59,12 +76,13 @@ async function fetchTasks(targetId) {
         let pName = normalize(planDetailId);
         let pInternalName = normalize(planInternal); 
         
-        let match1 = pName.includes(tName) || tName.includes(pName);
-        let match2 = pInternalName.includes(tName) || tName.includes(pInternalName);
-        let tNameNoR3 = tName.replace('r3', '');
-        let match3 = tNameNoR3.length > 5 && (pName.includes(tNameNoR3) || pInternalName.includes(tNameNoR3));
-        
-        return match1 || match2 || match3;
+        // Check if plan matches target or any ancestor
+        for (let anc of ancestors) {
+            let ancNoR3 = anc.replace('r3', '');
+            if (pName.includes(anc) || anc.includes(pName) || pInternalName.includes(anc) || anc.includes(pInternalName)) return true;
+            if (ancNoR3.length > 3 && (pName.includes(ancNoR3) || pInternalName.includes(ancNoR3))) return true;
+        }
+        return false;
     });
 
     if (myPlans.length === 0) {
