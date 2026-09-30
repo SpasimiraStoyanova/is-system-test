@@ -41,7 +41,7 @@ async function fetchTasks(targetId) {
         .select('*')
         .eq('Статус', 'Активен')
         .order('id', {ascending: false})
-        .limit(100000);
+        .limit(10000);
         
     let container = document.getElementById('tasksContainer');
     if (error) {
@@ -206,8 +206,8 @@ async function renderTree(targetId, dayObj) {
     let filteredChildren = [];
     if (childrenBOM && childrenBOM.length > 0) {
         // Fetch all routes and all bom parents ONCE to build Sets for robust filtering
-        const { data: allRoutes } = await client.from('marshruti').select('Код на детайла').limit(100000);
-        const { data: allBom } = await client.from('bom').select('ID Родител').limit(100000);
+        const { data: allRoutes } = await client.from('marshruti').select('Код на детайла').limit(10000);
+        const { data: allBom } = await client.from('bom').select('ID Родител').limit(10000);
         
         // Helper to strip all non-alphanumeric chars (spaces, dots, dashes, parentheses)
         const normalize = s => String(s).toLowerCase().replace(/[^a-zа-я0-9]/g, '');
@@ -325,7 +325,7 @@ async function renderTree(targetId, dayObj) {
         parentsHtml = `<div class="node-col">${pNodes}</div>`;
     } else {
         // Pipeline view: First Op in Center, Rest Ops on Right
-        const { data: routes } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`).limit(100000);
+        const { data: routes } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`).limit(10000);
         let sortedRoutes = (routes || []).sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
         
         if (sortedRoutes.length > 0) {
