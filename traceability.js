@@ -39,7 +39,6 @@ async function fetchTasks(targetId) {
     // Query plan
     const { data, error } = await client.from('plan')
         .select('*')
-        .eq('Статус', 'Активен')
         .order('id', {ascending: false})
         .limit(10000);
         
@@ -48,7 +47,7 @@ async function fetchTasks(targetId) {
         container.innerHTML = `<div style="color:var(--danger); padding:10px;">Грешка при зареждане на задачи: ${error.message}</div>`;
         return;
     }
-    const { data: nomData } = await client.from('Номенклатура').select('ID Детайл, Вътрешно име').limit(100000);
+    const { data: nomData } = await client.from('Номенклатура').select('ID Детайл, Вътрешно име').limit(10000);
     
     const normalize = s => String(s || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '');
     let tName = normalize(targetId);
@@ -60,7 +59,12 @@ async function fetchTasks(targetId) {
         let pName = normalize(planDetailId);
         let pInternalName = normalize(planInternal); 
         
-        return pName.includes(tName) || tName.includes(pName) || pInternalName.includes(tName) || tName.includes(pInternalName);
+        let match1 = pName.includes(tName) || tName.includes(pName);
+        let match2 = pInternalName.includes(tName) || tName.includes(pInternalName);
+        let tNameNoR3 = tName.replace('r3', '');
+        let match3 = tNameNoR3.length > 5 && (pName.includes(tNameNoR3) || pInternalName.includes(tNameNoR3));
+        
+        return match1 || match2 || match3;
     });
 
     if (myPlans.length === 0) {
@@ -231,6 +235,11 @@ async function renderTree(targetId, dayObj) {
             // It is a raw material ONLY if it has no routes AND no bom children
             let isRawMaterial = !routesSet.has(codeNormalized) && !bomSet.has(codeNormalized);
             
+            // Fallback for stator packs if spelling differs (пак vs пакет)
+            if (isRawMaterial && (codeNormalized.includes('статоренпак') || codeNormalized.includes('статор'))) {
+                isRawMaterial = false;
+            }
+            
             if (!isRawMaterial) {
                 filteredChildren.push(b);
             }
@@ -260,16 +269,32 @@ async function renderTree(targetId, dayObj) {
     let parentsHtml = '';
     let rightSpacerHtml = '';
 
+    let sortedRoutes = [];
+    const { data: routesData } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`).limit(10000);
+    if (routesData) {
+        sortedRoutes = routesData.sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
+    }
+
     // Calculate Day stats per Operation
     let statsByOp = {};
     if (dayObj && dayObj.records) {
+        let opList = sortedRoutes.map(x => String(x['Име на операция'] || '').trim().toLowerCase());
         dayObj.records.forEach(r => {
             let q = parseFloat(r['Количество']) || 0;
             let op = String(r['Операция'] || '').trim().toLowerCase();
-            if (!statsByOp[op]) statsByOp[op] = { prod: 0, scrap: 0, other: 0 };
+            if (!statsByOp[op]) statsByOp[op] = { prod: 0, scrap: 0, other: 0, consumed: 0 };
             
             let st = String(r['Статус'] || '').trim().toLowerCase();
-            if (st === 'отчетено' || st === 'завършено') statsByOp[op].prod += q;
+            if (st === 'отчетено' || st === 'завършено') {
+                statsByOp[op].prod += q;
+                // Deduct from previous operation
+                let opIdx = opList.indexOf(op);
+                if (opIdx > 0) {
+                    let prevOp = opList[opIdx - 1];
+                    if (!statsByOp[prevOp]) statsByOp[prevOp] = { prod: 0, scrap: 0, other: 0, consumed: 0 };
+                    statsByOp[prevOp].consumed += q;
+                }
+            }
             else if (st === 'брак') statsByOp[op].scrap += Math.abs(q);
             else statsByOp[op].other += q;
         });
@@ -284,11 +309,15 @@ async function renderTree(targetId, dayObj) {
         if (!st) {
             return `<div class="node-sub" style="margin-top:8px; border-top: 1px dashed var(--border-color); padding-top: 8px;">Няма движения за деня</div>`;
         }
+        
+        let consumedHtml = st.consumed > 0 ? `<span style="color:var(--danger)" title="Вложени в следваща операция">🔻 -${st.consumed}</span>` : '';
+        let prodHtml = st.prod > 0 ? `<span style="color:var(--success)" title="Произведени">🟢 +${st.prod}</span>` : '';
+        let scrapHtml = st.scrap > 0 ? `<span style="color:var(--danger)" title="Бракувани">🔴 -${st.scrap}</span>` : '';
+        let otherHtml = st.other > 0 ? `<span style="color:var(--warning)" title="Изписани / Трансферирани">🟡 ${st.other}</span>` : '';
+        
         return `
             <div style="font-size: 0.85rem; display:flex; justify-content: space-around; margin-top:8px; padding-top: 8px; border-top: 1px dashed var(--border-color);">
-               <span style="color:var(--success)" title="Произведени / Добавени">🟢 +${st.prod}</span>
-               <span style="color:var(--danger)" title="Бракувани">🔴 -${st.scrap}</span>
-               <span style="color:var(--warning)" title="Изписани / Трансферирани">🟡 ${st.other}</span>
+               ${consumedHtml} ${prodHtml} ${scrapHtml} ${otherHtml}
             </div>
             <div class="node-sub" style="margin-top:4px;">На: ${dayObj.displayDate}</div>
         `;
@@ -332,14 +361,15 @@ async function renderTree(targetId, dayObj) {
         parentsHtml = `<div class="node-col">${pNodes}</div>`;
     } else {
         // Pipeline view: First Op in Center, Rest Ops on Right
-        const { data: routes } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`).limit(10000);
-        let sortedRoutes = (routes || []).sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
-        
         if (sortedRoutes.length > 0) {
             let firstOp = sortedRoutes[0];
             let firstOpName = firstOp['Име на операция'] || 'Оп. 10';
             let firstOpKey = String(firstOpName).trim().toLowerCase();
             let firstOpQty = invQtyByOp[firstOpKey] || 0;
+            
+            if (sortedRoutes.length === 1) {
+                firstOpQty += invGpQty; // If only 1 route, it's the last op
+            }
             
             centerHtml = `
               <div class="node-col">
@@ -367,6 +397,11 @@ async function renderTree(targetId, dayObj) {
                     let opKey = String(opName).trim().toLowerCase();
                     let opQty = invQtyByOp[opKey] || 0;
                     
+                    let isLastOp = (i === sortedRoutes.length - 1);
+                    if (isLastOp) {
+                        opQty += invGpQty; // Add finished goods to the last operation
+                    }
+                    
                     if (i > 1) {
                         subsequentOps += `
                           <div class="node-spacer" style="margin: 0 10px;">
@@ -380,27 +415,12 @@ async function renderTree(targetId, dayObj) {
                         <div class="node-header" title="${opName}">${opName}</div>
                         <div class="node-body" style="padding-bottom: 8px;">
                           <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${opQty} бр.</div>
-                          <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Налични</div>
+                          <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Налични${isLastOp ? ' (и завършени)' : ''}</div>
                           ${getDayStatsHtmlForOp(opName)}
                         </div>
                       </div>
                     `;
                 }
-                
-                // Add Finished Goods box at the end of pipeline
-                subsequentOps += `
-                  <div class="node-spacer" style="margin: 0 10px;">
-                    <div class="connection-line"></div>
-                  </div>
-                  <div class="node" style="border-style: solid; border-color: var(--success); width:180px;">
-                    <div class="node-header" style="background-color: var(--success); color: white;">Готов Продукт</div>
-                    <div class="node-body" style="padding-bottom: 8px;">
-                      <div class="node-stat" style="color:var(--success); font-size: 1.1rem;">${invGpQty} бр.</div>
-                      <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Завършени</div>
-                      ${getDayStatsHtmlForOp('готов продукт')}
-                    </div>
-                  </div>
-                `;
                 
                 parentsHtml = `<div class="node-col" style="flex-direction: row; align-items: center; justify-content: flex-start; gap: 0;">${subsequentOps}</div>`;
             }
