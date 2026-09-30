@@ -46,8 +46,23 @@ async function fetchTasks(targetId) {
     if (error) {
         container.innerHTML = `<div style="color:var(--danger); padding:10px;">Грешка при зареждане на задачи: ${error.message}</div>`;
         return;
-    const { data: nomData } = await client.from('Номенклатура').select('ID Детайл, Вътрешно име').limit(100000);
-    const { data: bomData } = await client.from('bom').select('ID Родител, ID Компонент').limit(100000);
+    }
+    // Safely fetch all Номенклатура and BOM with pagination to avoid 400 Bad Request
+    let nomData = [];
+    let bomData = [];
+    let startNom = 0, startBom = 0;
+    while (true) {
+        const { data } = await client.from('Номенклатура').select('ID Детайл, Вътрешно име').range(startNom, startNom + 9999);
+        if (data) nomData.push(...data);
+        if (!data || data.length < 10000) break;
+        startNom += 10000;
+    }
+    while (true) {
+        const { data } = await client.from('bom').select('ID Родител, ID Компонент').range(startBom, startBom + 9999);
+        if (data) bomData.push(...data);
+        if (!data || data.length < 10000) break;
+        startBom += 10000;
+    }
     
     const normalize = s => String(s || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '');
     let tName = normalize(targetId);
@@ -233,7 +248,14 @@ async function renderTree(targetId, dayObj) {
     if (childrenBOM && childrenBOM.length > 0) {
         // Fetch all routes and all bom parents ONCE to build Sets for robust filtering
         const { data: allRoutes } = await client.from('marshruti').select('Код на детайла').limit(10000);
-        const { data: allBom } = await client.from('bom').select('ID Родител').limit(100000);
+        let allBom = [];
+        let sb = 0;
+        while(true) {
+            const { data } = await client.from('bom').select('ID Родител').range(sb, sb + 9999);
+            if (data) allBom.push(...data);
+            if (!data || data.length < 10000) break;
+            sb += 10000;
+        }
         
         // Helper to strip all non-alphanumeric chars (spaces, dots, dashes, parentheses)
         const normalize = s => String(s).toLowerCase().replace(/[^a-zа-я0-9]/g, '');
