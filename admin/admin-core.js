@@ -34,6 +34,7 @@ function switchTab(tabKey) {
   const config = tableConfigs[tabKey]; const addBtn = document.getElementById('addNewBtn');
   const pdfBtn = document.getElementById('pdfBtn'); const logBtn = document.getElementById('logisticsBtn'); const mrpBtn = document.getElementById('mrpBtn'); const sidebar = document.getElementById('personnelSidebar');
   const transBtn = document.getElementById('transformResolverBtn');
+  const traceBtn = document.getElementById('traceabilityBtn');
   
   addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`; 
   addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_inventory') ? 'none' : 'flex';
@@ -41,6 +42,7 @@ function switchTab(tabKey) {
   if (logBtn) logBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
   if (mrpBtn) mrpBtn.style.display = (tabKey === 'porachki') ? 'flex' : 'none';
   if (transBtn) transBtn.style.display = (tabKey === 'sklad_inventory') ? 'flex' : 'none';
+  if (traceBtn) traceBtn.style.display = (tabKey === 'sklad_inventory' || tabKey === 'sklad_wip') ? 'flex' : 'none';
 
   // Тук прехвърлихме показването на папките само когато сме в менюто Персонал
   if (tabKey === 'personal') { sidebar.style.display = 'block'; loadPersonnelSidebar(); } else { sidebar.style.display = 'none'; }
