@@ -152,10 +152,18 @@ async function selectTimeline(el, index) {
 
 async function renderTree(targetId, dayObj) {
     // 1. Fetch Current Inventory for Center Node
-    const { data: invData } = await client.from('inventory').select('Общо, Свободни').ilike('ID Детайл', `%${targetId}%`);
     let currentStock = 0;
+    
+    // Check inventory (WIP)
+    const { data: invData } = await client.from('inventory').select('Количество').ilike('ID Детайл', `%${targetId}%`);
     if (invData && invData.length > 0) {
-        invData.forEach(i => currentStock += (parseFloat(i['Общо']) || 0));
+        invData.forEach(i => currentStock += (parseFloat(i['Количество']) || 0));
+    }
+    
+    // Check sklad (Finished goods / Raw materials)
+    const { data: skladData } = await client.from('sklad').select('Остатък').ilike('ID Детайл', `%${targetId}%`);
+    if (skladData && skladData.length > 0) {
+        skladData.forEach(i => currentStock += (parseFloat(i['Остатък']) || 0));
     }
     
     // 2. Fetch BOM where this is parent (Children) - Using 'ID Родител' based on schema
@@ -184,22 +192,16 @@ async function renderTree(targetId, dayObj) {
     // Build UI for Children
     let childrenHtml = '';
     
-    // Filter out materials from childrenBOM
+    // Filter out materials from childrenBOM by fetching all materials globally
     let filteredChildren = childrenBOM || [];
     if (childrenBOM && childrenBOM.length > 0) {
-        let childNames = childrenBOM.map(b => b['ID Компонент']).filter(Boolean);
-        if (childNames.length > 0) {
-            const { data: nomData } = await client.from('Номенклатура')
-                .select('ID Детайл, Тип')
-                .in('ID Детайл', childNames);
-                
-            if (nomData) {
-                let materialSet = new Set(
-                    nomData.filter(n => String(n['Тип'] || '').trim().toLowerCase() === 'материал')
-                           .map(n => String(n['ID Детайл']).trim().toLowerCase())
-                );
-                filteredChildren = childrenBOM.filter(b => !materialSet.has(String(b['ID Компонент']).trim().toLowerCase()));
-            }
+        const { data: allMats } = await client.from('Номенклатура')
+            .select('ID Детайл')
+            .ilike('Тип', '%материал%');
+            
+        if (allMats) {
+            let materialSet = new Set(allMats.map(n => String(n['ID Детайл']).trim().toLowerCase()));
+            filteredChildren = childrenBOM.filter(b => !materialSet.has(String(b['ID Компонент']).trim().toLowerCase()));
         }
     }
     
