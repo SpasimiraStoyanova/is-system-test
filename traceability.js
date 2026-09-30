@@ -201,22 +201,19 @@ async function renderTree(targetId, dayObj) {
     // A child is a raw material if it has no children of its own AND no routing operations
     let filteredChildren = [];
     if (childrenBOM && childrenBOM.length > 0) {
+        // Fetch all routes and all bom parents ONCE to build Sets for robust filtering
+        const { data: allRoutes } = await client.from('marshruti').select('Код на детайла');
+        const { data: allBom } = await client.from('bom').select('ID Родител');
+        
+        let routesSet = new Set((allRoutes || []).map(r => String(r['Код на детайла']).trim().toLowerCase().replace(/\\s+/g, ' ')));
+        let bomSet = new Set((allBom || []).map(b => String(b['ID Родител']).trim().toLowerCase().replace(/\\s+/g, ' ')));
+
         for (let b of childrenBOM) {
-            let code = String(b['ID Компонент']).trim();
+            let code = String(b['ID Компонент']).trim().toLowerCase().replace(/\\s+/g, ' ');
             if (!code) continue;
             
-            let isRawMaterial = true;
-            // check routing (case-insensitive)
-            const { data: route } = await client.from('marshruti').select('Код на детайла').ilike('Код на детайла', code).limit(1);
-            if (route && route.length > 0) {
-                isRawMaterial = false;
-            } else {
-                // check bom children (case-insensitive)
-                const { data: subBom } = await client.from('bom').select('ID Родител').ilike('ID Родител', code).limit(1);
-                if (subBom && subBom.length > 0) {
-                    isRawMaterial = false;
-                }
-            }
+            // It is a raw material ONLY if it has no routes AND no bom children
+            let isRawMaterial = !routesSet.has(code) && !bomSet.has(code);
             
             if (!isRawMaterial) {
                 filteredChildren.push(b);
@@ -242,57 +239,12 @@ async function renderTree(targetId, dayObj) {
         childrenHtml = `<div style="color:var(--text-muted); font-style:italic;">Няма вложени полуфабрикати</div>`;
     }
     
-    // Build UI for Parents (or Operations)
+    // Build UI for Parents (or Operations Pipeline)
+    let centerHtml = '';
     let parentsHtml = '';
-    if (actualParents.length > 0) {
-        // Show the actual parents it was put into
-        actualParents.forEach(b => {
-            let pName = b['ID Родител'] || 'Неизвестно';
-            parentsHtml += `
-              <div class="node">
-                <div class="node-header" title="${pName}">${pName}</div>
-                <div class="node-body">
-                  <div class="node-stat" style="color:var(--text-main); font-size: 1.1rem;">Вложен в</div>
-                  <div class="node-sub">Реално изработен</div>
-                </div>
-              </div>
-            `;
-        });
-    } else {
-        // No actual parents yet, so show the routing operations and WIP quantities
-        const { data: routes } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`);
-        let sortedRoutes = (routes || []).sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
-        
-        if (sortedRoutes.length > 0) {
-            sortedRoutes.forEach(r => {
-                let opName = r['Име на операция'] || 'Неизвестна';
-                let opKey = String(opName).trim().toLowerCase();
-                let opQty = invQtyByOp[opKey] || 0;
-                
-                parentsHtml += `
-                  <div class="node" style="border-style: dashed;">
-                    <div class="node-header" title="${opName}">${opName}</div>
-                    <div class="node-body">
-                      <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${opQty} бр.</div>
-                      <div class="node-sub">Налични на операция</div>
-                    </div>
-                  </div>
-                `;
-            });
-        } else {
-            parentsHtml = `
-              <div class="node" style="border-style: dashed;">
-                <div class="node-header" title="Склад">Склад</div>
-                <div class="node-body">
-                  <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${currentStock} бр.</div>
-                  <div class="node-sub">Няма маршрутна карта</div>
-                </div>
-              </div>
-            `;
-        }
-    }
+    let rightSpacerHtml = '';
 
-    // Determine Day stats
+    // Determine Day stats for Center Node
     let dayStatsHtml = `<div class="node-sub">Няма движения за деня</div>`;
     if (dayObj) {
         let prod = 0; let scrap = 0; let other = 0;
@@ -317,8 +269,116 @@ async function renderTree(targetId, dayObj) {
             <div class="node-sub" style="margin-top:4px;">Движения на: ${dayObj.displayDate}</div>
         `;
     } else {
-        // If no day is selected but we have stock
         dayStatsHtml = `<div class="node-sub" style="margin-top:8px; border-top: 1px dashed var(--border-color); padding-top: 8px;">Изберете дата от хронологията</div>`;
+    }
+
+    if (actualParents.length > 0) {
+        // Standard view: Target in Center, Parents on Right
+        centerHtml = `
+          <div class="node-col">
+            <div class="node main-node">
+              <div class="node-header">${targetId.toUpperCase()}</div>
+              <div class="node-body" style="padding-bottom: 8px;">
+                <div class="node-stat" style="color: var(--primary);" title="Обща наличност в момента">${currentStock} бр.</div>
+                <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Текущ склад</div>
+                ${dayStatsHtml}
+              </div>
+            </div>
+          </div>
+        `;
+        
+        rightSpacerHtml = `
+          <div class="node-spacer">
+            <div class="connection-line"><div class="line-label" style="color:var(--primary)">Влагане</div></div>
+          </div>
+        `;
+        
+        let pNodes = '';
+        actualParents.forEach(b => {
+            let pName = b['ID Родител'] || 'Неизвестно';
+            pNodes += `
+              <div class="node">
+                <div class="node-header" title="${pName}">${pName}</div>
+                <div class="node-body">
+                  <div class="node-stat" style="color:var(--text-main); font-size: 1.1rem;">Вложен в</div>
+                  <div class="node-sub">Реално изработен</div>
+                </div>
+              </div>
+            `;
+        });
+        parentsHtml = `<div class="node-col">${pNodes}</div>`;
+    } else {
+        // Pipeline view: First Op in Center, Rest Ops on Right
+        const { data: routes } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`);
+        let sortedRoutes = (routes || []).sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
+        
+        if (sortedRoutes.length > 0) {
+            let firstOp = sortedRoutes[0];
+            let firstOpName = firstOp['Име на операция'] || 'Оп. 10';
+            let firstOpKey = String(firstOpName).trim().toLowerCase();
+            let firstOpQty = invQtyByOp[firstOpKey] || 0;
+            
+            centerHtml = `
+              <div class="node-col">
+                <div class="node main-node">
+                  <div class="node-header">${targetId.toUpperCase()}</div>
+                  <div class="node-body" style="padding-bottom: 8px;">
+                    <div class="node-stat" style="color: var(--warning);" title="Налични на тази операция">${firstOpQty} бр.</div>
+                    <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px; font-weight:bold; color:var(--text-main); font-size:1rem;">${firstOpName}</div>
+                    ${dayStatsHtml}
+                  </div>
+                </div>
+              </div>
+            `;
+            
+            if (sortedRoutes.length > 1) {
+                rightSpacerHtml = `
+                  <div class="node-spacer" style="margin: 0 10px;">
+                    <div class="connection-line"><div class="line-label" style="color:var(--primary)">Към следваща</div></div>
+                  </div>
+                `;
+                
+                let subsequentOps = '';
+                for (let i = 1; i < sortedRoutes.length; i++) {
+                    let opName = sortedRoutes[i]['Име на операция'] || `Оп. ${i*10+10}`;
+                    let opKey = String(opName).trim().toLowerCase();
+                    let opQty = invQtyByOp[opKey] || 0;
+                    
+                    if (i > 1) {
+                        subsequentOps += `
+                          <div class="node-spacer" style="margin: 0 10px;">
+                            <div class="connection-line"></div>
+                          </div>
+                        `;
+                    }
+                    
+                    subsequentOps += `
+                      <div class="node" style="border-style: dashed; border-color: var(--border-color); width:180px;">
+                        <div class="node-header" title="${opName}">${opName}</div>
+                        <div class="node-body">
+                          <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${opQty} бр.</div>
+                          <div class="node-sub">Налични</div>
+                        </div>
+                      </div>
+                    `;
+                }
+                parentsHtml = `<div class="node-col" style="flex-direction: row; align-items: center; justify-content: flex-start; gap: 0;">${subsequentOps}</div>`;
+            }
+        } else {
+            // No routes at all
+            centerHtml = `
+              <div class="node-col">
+                <div class="node main-node">
+                  <div class="node-header">${targetId.toUpperCase()}</div>
+                  <div class="node-body" style="padding-bottom: 8px;">
+                    <div class="node-stat" style="color: var(--accent);">${currentStock} бр.</div>
+                    <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Склад (Няма маршрут)</div>
+                    ${dayStatsHtml}
+                  </div>
+                </div>
+              </div>
+            `;
+        }
     }
 
     document.getElementById('treeWrapper').innerHTML = `
@@ -328,28 +388,18 @@ async function renderTree(targetId, dayObj) {
         </div>
 
         <div class="node-spacer">
-          <div class="connection-line"><div class="line-label" style="color:var(--text-muted)">Сглобяване</div></div>
+          ${childrenHtml !== '<div style="color:var(--text-muted); font-style:italic;">Няма вложени полуфабрикати</div>' 
+            ? `<div class="connection-line"><div class="line-label" style="color:var(--text-muted)">Сглобяване</div></div>`
+            : `<div class="connection-line" style="opacity:0.3"></div>`
+          }
         </div>
 
         <!-- TARGET (CENTER) -->
-        <div class="node-col">
-          <div class="node main-node">
-            <div class="node-header">${targetId.toUpperCase()}</div>
-            <div class="node-body" style="padding-bottom: 8px;">
-              <div class="node-stat" style="color: var(--primary);" title="Обща наличност в момента">${currentStock} бр.</div>
-              <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Текущ склад</div>
-              ${dayStatsHtml}
-            </div>
-          </div>
-        </div>
+        ${centerHtml}
 
-        <div class="node-spacer">
-          <div class="connection-line"><div class="line-label" style="color:var(--primary)">Влагане</div></div>
-        </div>
+        ${rightSpacerHtml}
 
-        <!-- PARENTS (Right) -->
-        <div class="node-col">
-          ${parentsHtml}
-        </div>
+        <!-- PARENTS OR PIPELINE (Right) -->
+        ${parentsHtml}
       `;
 }
