@@ -199,21 +199,28 @@ async function renderTree(targetId, dayObj) {
     
     // Filter out materials from childrenBOM
     // A child is a raw material if it has no children of its own AND no routing operations
-    let filteredChildren = childrenBOM || [];
+    let filteredChildren = [];
     if (childrenBOM && childrenBOM.length > 0) {
-        let childNames = childrenBOM.map(b => b['ID Компонент']).filter(Boolean);
-        if (childNames.length > 0) {
-            const { data: subBom } = await client.from('bom').select('ID Родител').in('ID Родител', childNames);
-            let hasChildrenSet = new Set((subBom || []).map(b => String(b['ID Родител']).trim().toLowerCase()));
+        for (let b of childrenBOM) {
+            let code = String(b['ID Компонент']).trim();
+            if (!code) continue;
             
-            const { data: subRoutes } = await client.from('marshruti').select('Код на детайла').in('Код на детайла', childNames);
-            let hasRoutesSet = new Set((subRoutes || []).map(r => String(r['Код на детайла']).trim().toLowerCase()));
+            let isRawMaterial = true;
+            // check routing (case-insensitive)
+            const { data: route } = await client.from('marshruti').select('Код на детайла').ilike('Код на детайла', code).limit(1);
+            if (route && route.length > 0) {
+                isRawMaterial = false;
+            } else {
+                // check bom children (case-insensitive)
+                const { data: subBom } = await client.from('bom').select('ID Родител').ilike('ID Родител', code).limit(1);
+                if (subBom && subBom.length > 0) {
+                    isRawMaterial = false;
+                }
+            }
             
-            filteredChildren = childrenBOM.filter(b => {
-                let code = String(b['ID Компонент']).trim().toLowerCase();
-                let isRawMaterial = !hasChildrenSet.has(code) && !hasRoutesSet.has(code);
-                return !isRawMaterial;
-            });
+            if (!isRawMaterial) {
+                filteredChildren.push(b);
+            }
         }
     }
     
@@ -272,16 +279,6 @@ async function renderTree(targetId, dayObj) {
                   </div>
                 `;
             });
-            // Add Готов продукт at the end
-            parentsHtml += `
-                  <div class="node" style="border-style: solid; border-color: var(--success);">
-                    <div class="node-header" title="Готов продукт">Готов продукт</div>
-                    <div class="node-body">
-                      <div class="node-stat" style="color:var(--success); font-size: 1.1rem;">${invGpQty} бр.</div>
-                      <div class="node-sub">Завършени (Склад)</div>
-                    </div>
-                  </div>
-                `;
         } else {
             parentsHtml = `
               <div class="node" style="border-style: dashed;">
