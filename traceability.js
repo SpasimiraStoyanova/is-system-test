@@ -48,12 +48,19 @@ async function fetchTasks(targetId) {
         container.innerHTML = `<div style="color:var(--danger); padding:10px;">Грешка при зареждане на задачи: ${error.message}</div>`;
         return;
     }
+    const { data: nomData } = await client.from('Номенклатура').select('ID Детайл, Вътрешно име').limit(100000);
+    
     const normalize = s => String(s || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '');
     let tName = normalize(targetId);
     let myPlans = data.filter(task => {
-        let pName = normalize(task['Вътрешно име']);
-        if (!pName) return false;
-        return pName.includes(tName) || tName.includes(pName);
+        let planInternal = String(task['Вътрешно име'] || '').trim();
+        let translated = (nomData || []).find(n => String(n['Вътрешно име'] || '').trim() === planInternal);
+        let planDetailId = translated && translated['ID Детайл'] ? translated['ID Детайл'] : planInternal;
+        
+        let pName = normalize(planDetailId);
+        let pInternalName = normalize(planInternal); 
+        
+        return pName.includes(tName) || tName.includes(pName) || pInternalName.includes(tName) || tName.includes(pInternalName);
     });
 
     if (myPlans.length === 0) {
@@ -379,6 +386,22 @@ async function renderTree(targetId, dayObj) {
                       </div>
                     `;
                 }
+                
+                // Add Finished Goods box at the end of pipeline
+                subsequentOps += `
+                  <div class="node-spacer" style="margin: 0 10px;">
+                    <div class="connection-line"></div>
+                  </div>
+                  <div class="node" style="border-style: solid; border-color: var(--success); width:180px;">
+                    <div class="node-header" style="background-color: var(--success); color: white;">Готов Продукт</div>
+                    <div class="node-body" style="padding-bottom: 8px;">
+                      <div class="node-stat" style="color:var(--success); font-size: 1.1rem;">${invGpQty} бр.</div>
+                      <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Завършени</div>
+                      ${getDayStatsHtmlForOp('готов продукт')}
+                    </div>
+                  </div>
+                `;
+                
                 parentsHtml = `<div class="node-col" style="flex-direction: row; align-items: center; justify-content: flex-start; gap: 0;">${subsequentOps}</div>`;
             }
         } else {
