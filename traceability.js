@@ -39,23 +39,30 @@ async function fetchTasks(targetId) {
     // Query plan
     const { data, error } = await client.from('plan')
         .select('*')
-        .ilike('ID Детайл', `%${targetId}%`)
         .eq('Статус', 'Активен')
         .order('id', {ascending: false})
-        .limit(50);
+        .limit(100000);
         
     let container = document.getElementById('tasksContainer');
     if (error) {
         container.innerHTML = `<div style="color:var(--danger); padding:10px;">Грешка при зареждане на задачи: ${error.message}</div>`;
         return;
     }
-    if (!data || data.length === 0) {
+    const normalize = s => String(s || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '');
+    let tName = normalize(targetId);
+    let myPlans = data.filter(task => {
+        let pName = normalize(task['Вътрешно име']);
+        if (!pName) return false;
+        return pName.includes(tName) || tName.includes(pName);
+    });
+
+    if (myPlans.length === 0) {
         container.innerHTML = `<div style="text-align:center; color:var(--text-muted); margin-top: 20px;">Няма активни задачи за този детайл.</div>`;
         return;
     }
     
     let html = '';
-    data.forEach(task => {
+    myPlans.forEach(task => {
         let month = task['Месец'] || '';
         let year = task['Година'] || '';
         let planId = task['id'] || '-';
@@ -63,7 +70,7 @@ async function fetchTasks(targetId) {
         
         html += `
         <div class="task-card">
-          <div class="task-title">План: ${month} ${year}</div>
+          <div class="task-title" title="${task['Вътрешно име']}">План: ${month} ${year}</div>
           <div class="task-stats">
             <span>Целево количество: <b style="color:var(--primary)">${qty} бр.</b></span>
             <span>ID: #${planId}</span>
@@ -199,8 +206,8 @@ async function renderTree(targetId, dayObj) {
     let filteredChildren = [];
     if (childrenBOM && childrenBOM.length > 0) {
         // Fetch all routes and all bom parents ONCE to build Sets for robust filtering
-        const { data: allRoutes } = await client.from('marshruti').select('Код на детайла');
-        const { data: allBom } = await client.from('bom').select('ID Родител');
+        const { data: allRoutes } = await client.from('marshruti').select('Код на детайла').limit(100000);
+        const { data: allBom } = await client.from('bom').select('ID Родител').limit(100000);
         
         // Helper to strip all non-alphanumeric chars (spaces, dots, dashes, parentheses)
         const normalize = s => String(s).toLowerCase().replace(/[^a-zа-я0-9]/g, '');
@@ -246,36 +253,43 @@ async function renderTree(targetId, dayObj) {
     let parentsHtml = '';
     let rightSpacerHtml = '';
 
-    // Determine Day stats for Center Node
-    let dayStatsHtml = `<div class="node-sub">Няма движения за деня</div>`;
-    if (dayObj) {
-        let prod = 0; let scrap = 0; let other = 0;
+    // Calculate Day stats per Operation
+    let statsByOp = {};
+    if (dayObj && dayObj.records) {
         dayObj.records.forEach(r => {
             let q = parseFloat(r['Количество']) || 0;
-            let op = String(r['Операция'] || '').toUpperCase();
+            let op = String(r['Операция'] || '').trim().toLowerCase();
+            if (!statsByOp[op]) statsByOp[op] = { prod: 0, scrap: 0, other: 0 };
             
-            if (op === 'БРАК') {
-                scrap += Math.abs(q);
-            } else if (q > 0) {
-                prod += q;
-            } else {
-                other += q;
-            }
+            let st = String(r['Статус'] || '').trim().toLowerCase();
+            if (st === 'отчетено' || st === 'завършено') statsByOp[op].prod += q;
+            else if (st === 'брак') statsByOp[op].scrap += Math.abs(q);
+            else statsByOp[op].other += q;
         });
-        dayStatsHtml = `
+    }
+
+    // Helper to generate day stats HTML for a specific operation
+    function getDayStatsHtmlForOp(opName) {
+        if (!dayObj) return `<div class="node-sub" style="margin-top:8px; border-top: 1px dashed var(--border-color); padding-top: 8px;">Изберете дата</div>`;
+        
+        let opKey = String(opName).trim().toLowerCase();
+        let st = statsByOp[opKey];
+        if (!st) {
+            return `<div class="node-sub" style="margin-top:8px; border-top: 1px dashed var(--border-color); padding-top: 8px;">Няма движения за деня</div>`;
+        }
+        return `
             <div style="font-size: 0.85rem; display:flex; justify-content: space-around; margin-top:8px; padding-top: 8px; border-top: 1px dashed var(--border-color);">
-               <span style="color:var(--success)" title="Произведени / Добавени">🟢 +${prod}</span>
-               <span style="color:var(--danger)" title="Бракувани">🔴 -${scrap}</span>
-               <span style="color:var(--warning)" title="Изписани / Трансферирани">🟡 ${other}</span>
+               <span style="color:var(--success)" title="Произведени / Добавени">🟢 +${st.prod}</span>
+               <span style="color:var(--danger)" title="Бракувани">🔴 -${st.scrap}</span>
+               <span style="color:var(--warning)" title="Изписани / Трансферирани">🟡 ${st.other}</span>
             </div>
-            <div class="node-sub" style="margin-top:4px;">Движения на: ${dayObj.displayDate}</div>
+            <div class="node-sub" style="margin-top:4px;">На: ${dayObj.displayDate}</div>
         `;
-    } else {
-        dayStatsHtml = `<div class="node-sub" style="margin-top:8px; border-top: 1px dashed var(--border-color); padding-top: 8px;">Изберете дата от хронологията</div>`;
     }
 
     if (actualParents.length > 0) {
         // Standard view: Target in Center, Parents on Right
+        let centerStats = getDayStatsHtmlForOp(''); // Try to get generic/blank stats for center if any
         centerHtml = `
           <div class="node-col">
             <div class="node main-node">
@@ -283,7 +297,7 @@ async function renderTree(targetId, dayObj) {
               <div class="node-body" style="padding-bottom: 8px;">
                 <div class="node-stat" style="color: var(--primary);" title="Обща наличност в момента">${currentStock} бр.</div>
                 <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Текущ склад</div>
-                ${dayStatsHtml}
+                ${centerStats}
               </div>
             </div>
           </div>
@@ -311,7 +325,7 @@ async function renderTree(targetId, dayObj) {
         parentsHtml = `<div class="node-col">${pNodes}</div>`;
     } else {
         // Pipeline view: First Op in Center, Rest Ops on Right
-        const { data: routes } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`);
+        const { data: routes } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`).limit(100000);
         let sortedRoutes = (routes || []).sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
         
         if (sortedRoutes.length > 0) {
@@ -327,7 +341,7 @@ async function renderTree(targetId, dayObj) {
                   <div class="node-body" style="padding-bottom: 8px;">
                     <div class="node-stat" style="color: var(--warning);" title="Налични на тази операция">${firstOpQty} бр.</div>
                     <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px; font-weight:bold; color:var(--text-main); font-size:1rem;">${firstOpName}</div>
-                    ${dayStatsHtml}
+                    ${getDayStatsHtmlForOp(firstOpName)}
                   </div>
                 </div>
               </div>
@@ -357,9 +371,10 @@ async function renderTree(targetId, dayObj) {
                     subsequentOps += `
                       <div class="node" style="border-style: dashed; border-color: var(--border-color); width:180px;">
                         <div class="node-header" title="${opName}">${opName}</div>
-                        <div class="node-body">
+                        <div class="node-body" style="padding-bottom: 8px;">
                           <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${opQty} бр.</div>
-                          <div class="node-sub">Налични</div>
+                          <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Налични</div>
+                          ${getDayStatsHtmlForOp(opName)}
                         </div>
                       </div>
                     `;
@@ -368,6 +383,7 @@ async function renderTree(targetId, dayObj) {
             }
         } else {
             // No routes at all
+            let genericStats = getDayStatsHtmlForOp('');
             centerHtml = `
               <div class="node-col">
                 <div class="node main-node">
@@ -375,7 +391,7 @@ async function renderTree(targetId, dayObj) {
                   <div class="node-body" style="padding-bottom: 8px;">
                     <div class="node-stat" style="color: var(--accent);">${currentStock} бр.</div>
                     <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Склад (Няма маршрут)</div>
-                    ${dayStatsHtml}
+                    ${genericStats}
                   </div>
                 </div>
               </div>
