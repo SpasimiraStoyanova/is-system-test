@@ -36,11 +36,11 @@ async function startSearch() {
 }
 
 async function fetchTasks(targetId) {
-    // Query marshruti
-    const { data, error } = await client.from('marshruti')
+    // Query plan
+    const { data, error } = await client.from('plan')
         .select('*')
-        .ilike('Код на детайла', `%${targetId}%`)
-        .neq('Статус', 'Готово')
+        .ilike('Вътрешно име', `%${targetId}%`)
+        .eq('Статус', 'Активен')
         .order('id', {ascending: false})
         .limit(50);
         
@@ -56,19 +56,17 @@ async function fetchTasks(targetId) {
     
     let html = '';
     data.forEach(task => {
-        let opName = task['Операция'] || 'Неизвестна';
-        let planId = task['План ID'] || task['ID План'] || '-';
-        let qty = parseFloat(task['Количество']) || 0;
-        let done = parseFloat(task['Изработено']) || 0;
-        let left = qty - done;
-        if(left < 0) left = 0;
+        let month = task['Месец'] || '';
+        let year = task['Година'] || '';
+        let planId = task['id'] || '-';
+        let qty = parseFloat(task['Целево количество']) || 0;
         
         html += `
         <div class="task-card">
-          <div class="task-title">Опер: ${opName}</div>
+          <div class="task-title">План: ${month} ${year}</div>
           <div class="task-stats">
-            <span>Остават: <b style="color:var(--primary)">${left} бр.</b> (от ${qty})</span>
-            <span>План: #${planId}</span>
+            <span>Целево количество: <b style="color:var(--primary)">${qty} бр.</b></span>
+            <span>ID: #${planId}</span>
           </div>
         </div>`;
     });
@@ -198,22 +196,30 @@ async function renderTree(targetId, dayObj) {
     let childrenHtml = '';
     
     // Filter out materials from childrenBOM
-    // A child is a raw material if it has no children of its own AND no routing operations
     let filteredChildren = [];
     if (childrenBOM && childrenBOM.length > 0) {
-        // Fetch all routes and all bom parents ONCE to build Sets for robust filtering
-        const { data: allRoutes } = await client.from('marshruti').select('Код на детайла');
-        const { data: allBom } = await client.from('bom').select('ID Родител');
-        
-        let routesSet = new Set((allRoutes || []).map(r => String(r['Код на детайла']).trim().toLowerCase().replace(/\\s+/g, ' ')));
-        let bomSet = new Set((allBom || []).map(b => String(b['ID Родител']).trim().toLowerCase().replace(/\\s+/g, ' ')));
-
         for (let b of childrenBOM) {
-            let code = String(b['ID Компонент']).trim().toLowerCase().replace(/\\s+/g, ' ');
+            let code = String(b['ID Компонент']).trim().toLowerCase();
             if (!code) continue;
             
-            // It is a raw material ONLY if it has no routes AND no bom children
-            let isRawMaterial = !routesSet.has(code) && !bomSet.has(code);
+            let isRawMaterial = false;
+            
+            // 1. Check if DB explicitly says it's a material
+            let type = String(b['Тип'] || '').trim().toLowerCase();
+            if (type === 'материал' || type === 'material') {
+                isRawMaterial = true;
+            }
+            
+            // 2. Heuristic fallback for common raw materials
+            let matWords = ['шлаух', 'кабел', 'проводник', 'смола', 'лак', 'винт', 'бандаж', 'прешпан', 'изолация', 'тел', 'хартия', 'фолио', 'тръба'];
+            if (matWords.some(w => code.includes(w))) {
+                isRawMaterial = true;
+            }
+            
+            // 3. Keep Stator packs and known WIPs explicitly
+            if (code.includes('статорен пак') || code.includes('статор')) {
+                isRawMaterial = false;
+            }
             
             if (!isRawMaterial) {
                 filteredChildren.push(b);
