@@ -198,28 +198,24 @@ async function renderTree(targetId, dayObj) {
     // Filter out materials from childrenBOM
     let filteredChildren = [];
     if (childrenBOM && childrenBOM.length > 0) {
+        // Fetch all routes and all bom parents ONCE to build Sets for robust filtering
+        const { data: allRoutes } = await client.from('marshruti').select('Код на детайла');
+        const { data: allBom } = await client.from('bom').select('ID Родител');
+        
+        // Helper to strip all non-alphanumeric chars (spaces, dots, dashes, parentheses)
+        const normalize = s => String(s).toLowerCase().replace(/[^a-zа-я0-9]/g, '');
+        
+        let routesSet = new Set((allRoutes || []).map(r => normalize(r['Код на детайла'])));
+        let bomSet = new Set((allBom || []).map(b => normalize(b['ID Родител'])));
+
         for (let b of childrenBOM) {
-            let code = String(b['ID Компонент']).trim().toLowerCase();
-            if (!code) continue;
+            let originalCode = String(b['ID Компонент']).trim();
+            if (!originalCode) continue;
             
-            let isRawMaterial = false;
+            let codeNormalized = normalize(originalCode);
             
-            // 1. Check if DB explicitly says it's a material
-            let type = String(b['Тип'] || '').trim().toLowerCase();
-            if (type === 'материал' || type === 'material') {
-                isRawMaterial = true;
-            }
-            
-            // 2. Heuristic fallback for common raw materials
-            let matWords = ['шлаух', 'кабел', 'пров', 'смола', 'лак', 'винт', 'бандаж', 'прешпан', 'изолация', 'тел', 'хартия', 'фолио', 'тръба', 'опаковк', 'тиксо', 'кашон'];
-            if (matWords.some(w => code.includes(w))) {
-                isRawMaterial = true;
-            }
-            
-            // 3. Keep Stator packs and known WIPs explicitly
-            if (code.includes('статорен пак') || code.includes('статор')) {
-                isRawMaterial = false;
-            }
+            // It is a raw material ONLY if it has no routes AND no bom children
+            let isRawMaterial = !routesSet.has(codeNormalized) && !bomSet.has(codeNormalized);
             
             if (!isRawMaterial) {
                 filteredChildren.push(b);
