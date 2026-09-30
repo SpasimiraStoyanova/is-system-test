@@ -274,6 +274,45 @@ async function renderTree(targetId, dayObj) {
     if (routesData) {
         sortedRoutes = routesData.sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
     }
+    
+    // 1.5 Time Machine (Historical Inventory Calculator)
+    let isHistorical = false;
+    if (dayObj && currentTimelineData && currentTimelineData.length > 0) {
+        let selectedIndex = currentTimelineData.indexOf(dayObj);
+        let isLastDay = (selectedIndex === currentTimelineData.length - 1);
+        
+        if (!isLastDay && selectedIndex !== -1 && sortedRoutes.length > 0) {
+            isHistorical = true;
+            let opList = sortedRoutes.map(x => String(x['Име на операция'] || '').trim().toLowerCase());
+            
+            // Revert all transactions that happened AFTER the selected day
+            for (let i = selectedIndex + 1; i < currentTimelineData.length; i++) {
+                let futureDay = currentTimelineData[i];
+                if (futureDay && futureDay.records) {
+                    futureDay.records.forEach(r => {
+                        let q = parseFloat(r['Количество']) || 0;
+                        let op = String(r['Операция'] || '').trim().toLowerCase();
+                        let st = String(r['Статус'] || '').trim().toLowerCase();
+                        
+                        if (st === 'отчетено' || st === 'завършено') {
+                            let opIdx = opList.indexOf(op);
+                            if (opIdx > 0) {
+                                let prevOp = opList[opIdx - 1];
+                                invQtyByOp[prevOp] = (invQtyByOp[prevOp] || 0) + q;
+                            }
+                            
+                            let isLastOp = (opIdx === opList.length - 1);
+                            if (isLastOp) {
+                                invGpQty -= q;
+                            } else {
+                                invQtyByOp[op] = (invQtyByOp[op] || 0) - q;
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    }
 
     // Calculate Day stats per Operation
     let statsByOp = {};
@@ -377,7 +416,7 @@ async function renderTree(targetId, dayObj) {
                   <div class="node-header">${targetId.toUpperCase()}</div>
                   <div class="node-body" style="padding-bottom: 8px;">
                     <div class="node-stat" style="color: var(--warning);" title="Налични на тази операция">${firstOpQty} бр.</div>
-                    <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px; font-weight:bold; color:var(--text-main); font-size:1rem;">${firstOpName}</div>
+                    <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px; font-weight:bold; color:var(--text-main); font-size:1rem;">${isHistorical ? 'Ист. наличност: ' : ''}${firstOpName}</div>
                     ${getDayStatsHtmlForOp(firstOpName)}
                   </div>
                 </div>
@@ -415,7 +454,7 @@ async function renderTree(targetId, dayObj) {
                         <div class="node-header" title="${opName}">${opName}</div>
                         <div class="node-body" style="padding-bottom: 8px;">
                           <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${opQty} бр.</div>
-                          <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">Налични${isLastOp ? ' (и завършени)' : ''}</div>
+                          <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">${isHistorical ? 'Историческа ' : ''}Налични${isLastOp ? ' (и завършени)' : ''}</div>
                           ${getDayStatsHtmlForOp(opName)}
                         </div>
                       </div>
