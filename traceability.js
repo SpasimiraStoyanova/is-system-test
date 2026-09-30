@@ -53,7 +53,7 @@ async function fetchTasks(targetId) {
     const normalize = s => String(s || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '');
     let tName = normalize(targetId);
     
-    // Build ancestors set (Fuzzy matching to handle R3 variations)
+    // Build ancestors set
     let ancestors = new Set([tName]);
     let added = true;
     while (added) {
@@ -61,19 +61,7 @@ async function fetchTasks(targetId) {
         (bomData || []).forEach(b => {
             let child = normalize(b['ID Компонент']);
             let parent = normalize(b['ID Родител']);
-            
-            if (!child || !parent) return;
-            
-            let isChildInAncestors = false;
-            for (let anc of ancestors) {
-                let ancNoR3 = anc.replace('r3', '');
-                if (anc === child || anc.includes(child) || child.includes(anc) || ancNoR3 === child || child.includes(ancNoR3)) {
-                    isChildInAncestors = true;
-                    break;
-                }
-            }
-            
-            if (isChildInAncestors && !ancestors.has(parent)) {
+            if (ancestors.has(child) && !ancestors.has(parent)) {
                 ancestors.add(parent);
                 added = true;
             }
@@ -90,9 +78,7 @@ async function fetchTasks(targetId) {
         
         // Check if plan matches target or any ancestor
         for (let anc of ancestors) {
-            let ancNoR3 = anc.replace('r3', '');
-            if (pName.includes(anc) || anc.includes(pName) || pInternalName.includes(anc) || anc.includes(pInternalName)) return true;
-            if (ancNoR3.length > 3 && (pName.includes(ancNoR3) || pInternalName.includes(ancNoR3))) return true;
+            if (pName === anc || anc.includes(pName) || pInternalName === anc || anc.includes(pInternalName)) return true;
         }
         return false;
     });
