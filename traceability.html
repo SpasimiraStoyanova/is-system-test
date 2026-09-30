@@ -135,14 +135,22 @@
     
     .tree-workspace {
       flex: 1;
+      overflow: auto;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
+      padding: 40px;
       position: relative;
       /* Background grid pattern */
       background-image: radial-gradient(#334155 1px, transparent 1px);
       background-size: 30px 30px;
+    }
+
+    .tree-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: min-content;
+      min-height: min-content;
+      margin: auto;
     }
 
     /* Tree Nodes */
@@ -275,9 +283,11 @@
         </div>
 
         <div class="tree-workspace" id="treeWorkspace">
-          <!-- Placeholder content -->
-          <div style="color: var(--text-muted); font-size: 1.2rem;" id="treePlaceholder">
-            Въведете детайл за визуализация...
+          <div class="tree-wrapper" id="treeWrapper">
+            <!-- Placeholder content -->
+            <div style="color: var(--text-muted); font-size: 1.2rem;" id="treePlaceholder">
+              Въведете детайл за визуализация...
+            </div>
           </div>
         </div>
       </div>

@@ -20,7 +20,7 @@ async function startSearch() {
   // Show loading states
   document.getElementById('tasksContainer').innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Зареждане на задачи... ⏳</div>';
   document.getElementById('timelineTrack').innerHTML = '<div style="color:var(--text-muted); margin: 0 auto;">Зареждане на хронология... ⏳</div>';
-  document.getElementById('treeWorkspace').innerHTML = '<div style="color: var(--text-muted); font-size: 1.2rem;">Зареждане на дървото... ⏳</div>';
+  document.getElementById('treeWrapper').innerHTML = '<div style="color: var(--text-muted); font-size: 1.2rem;">Зареждане на дървото... ⏳</div>';
   
   try {
     // 1. Fetch tasks
@@ -232,7 +232,7 @@ async function renderTree(targetId, dayObj) {
         dayStatsHtml = `<div class="node-sub" style="margin-top:8px; border-top: 1px dashed var(--border-color); padding-top: 8px;">Изберете дата от хронологията</div>`;
     }
 
-    document.getElementById('treeWorkspace').innerHTML = `
+    document.getElementById('treeWrapper').innerHTML = `
         <!-- CHILDREN (Left) -->
         <div class="node-col">
           ${childrenHtml}
