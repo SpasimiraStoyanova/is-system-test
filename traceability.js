@@ -66,17 +66,17 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     const toTs = new Date(dateTo).getTime() + 86400000;
     globalTimeline = {};
 
-    // 1. Fetch Routes 
-    const { data: rData } = await fetchRobustRows('routes', '*', 'ID Детайл', targetId);
+    // 1. Fetch Routes (Marshruti)
+    const { data: rData } = await fetchRobustRows('marshruti', '*', 'Код на детайла', targetId);
     
     globalAllData.routesSetNorm = new Set();
-    if (rData) rData.forEach(r => globalAllData.routesSetNorm.add(String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
+    if (rData) rData.forEach(r => globalAllData.routesSetNorm.add(String(r['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
     
     globalAllData.tRoutes = rData ? rData.filter(r => {
-        let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let dbId = String(r['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
         return dbId === tNorm;
     }) : [];
-    globalAllData.tRoutes.sort((a,b) => parseInt(a['Номер']||0) - parseInt(b['Номер']||0));
+    globalAllData.tRoutes.sort((a,b) => parseInt(a['№ Операция']||0) - parseInt(b['№ Операция']||0));
 
     // 2. Fetch Target Otcheti
     const { data: rawOtcheti } = await fetchRobustRows('otcheti', '*', 'ID Детайл', targetId);
@@ -235,7 +235,8 @@ async function renderVSM(dateKey) {
 
     let opChain = [];
     if (globalAllData.tRoutes.length > 0) {
-        globalAllData.tRoutes.forEach(r => opChain.push(String(r['Име'] || r['Операция'] || '').trim().toUpperCase()));
+        globalAllData.tRoutes.sort((a,b) => (parseInt(a['№ Операция'])||0) - (parseInt(b['№ Операция'])||0));
+        globalAllData.tRoutes.forEach(r => opChain.push(String(r['Име на операция'] || r['Име'] || '').trim().toUpperCase()));
     } else {
         opChain = globalAllData.fallbackOpChain || [];
         if (opChain.length === 0) opChain = ['Без оп.'];
@@ -263,7 +264,7 @@ async function renderVSM(dateKey) {
                  isRaw = false;
              } else {
                  // Check if it has a route
-                 let { data: rData } = await client.from('routes').select('*').ilike('ID Детайл', `%${cName.trim()}%`).limit(1);
+                 let { data: rData } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${cName.trim()}%`).limit(1);
                  if (rData && rData.length > 0) isRaw = false;
                  
                  // Check if it is a parent in BOM
