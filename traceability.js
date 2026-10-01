@@ -156,12 +156,13 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     }
 
     // 5. Fetch Inventory
-    const { data: invDataRaw } = await fetchAllRows('inventory', 'Количество, "ID Детайл"', 'ID Детайл', `%${targetId}%`);
+    const { data: invDataRaw } = await fetchRobustRows('inventory', 'Количество, "ID Детайл"', 'ID Детайл', targetId);
     globalAllData.currentStock = 0;
     if (invDataRaw) {
         invDataRaw.forEach(i => {
-            if (String(i['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) {
-                globalAllData.currentStock += (parseFloat(i['Количество']) || 0);
+            let dbId = String(i['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            if (dbId === tNorm) {
+                globalAllData.currentStock += (parseFloat(String(i['Количество'] || '0').replace(',', '.')) || 0);
             }
         });
     }
@@ -282,7 +283,8 @@ async function renderVSM(dateKey) {
         let cNodes = [];
         filteredChildren.forEach(b => {
             let cName = String(b['ID Компонент']).toUpperCase();
-            let norm = parseFloat(b['Количество']) || 1;
+            let normStr = String(b['Количество'] || '1').replace(',', '.');
+            let norm = parseFloat(normStr) || 1;
             let consumedChild = targetProduced * norm;
             
             cNodes.push(`
@@ -328,7 +330,8 @@ async function renderVSM(dateKey) {
         let pNodes = [];
         globalAllData.parentsBOM.forEach(b => {
             let pName = String(b['ID Родител']).toUpperCase();
-            let norm = parseFloat(b['Количество']) || 1;
+            let normStr = String(b['Количество'] || '1').replace(',', '.');
+            let norm = parseFloat(normStr) || 1;
             let pProduced = parentStats[pName] || 0;
             let cumPProduced = cumParentStats[pName] || 0;
             
