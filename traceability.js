@@ -22,18 +22,13 @@ async function startSearch() {
   }
   
   globalTargetId = input;
-  document.getElementById('lblTargetId').innerText = input;
   
   // Show loading states
-  document.getElementById('tasksContainer').innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Зареждане на задачи... ⏳</div>';
   document.getElementById('timelineTrack').innerHTML = '<div style="color:var(--text-muted); margin: 0 auto;">Зареждане на хронология... ⏳</div>';
   document.getElementById('treeWrapper').innerHTML = '<div style="color: var(--text-muted); font-size: 1.2rem;">Зареждане на дървото... ⏳</div>';
   
   try {
-    // 1. Fetch tasks
-    fetchTasks(input);
-    
-    // 2. Fetch timeline from otcheti
+    // Fetch timeline from otcheti
     await fetchTimeline(input);
     
   } catch(e) {
@@ -42,47 +37,6 @@ async function startSearch() {
   }
 }
 
-async function fetchTasks(targetId) {
-    let container = document.getElementById('tasksContainer');
-    container.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size: 1.2rem;">Зареждане на задачи от терминала...</div>`;
-    
-    // Intercept renderTasks so terminal-tasks.js doesn't overwrite our container with ALL tasks
-    const originalRender = window.renderTasks;
-    window.renderTasks = function(tasks) {
-        // Filter tasks to match targetId strictly (both code and internal name)
-        let filtered = tasks.filter(t => 
-            String(t.name || '').toLowerCase().includes(targetId.toLowerCase()) ||
-            String(t.internalName || '').toLowerCase().includes(targetId.toLowerCase())
-        );
-        
-        if (filtered.length === 0) {
-            container.innerHTML = `<div style="text-align:center; color:var(--text-muted); margin-top: 20px;">Няма активни задачи за този детайл.</div>`;
-        } else {
-            // Render the filtered terminal cards inside our container
-            originalRender(filtered);
-            
-            // Hide terminal specific action buttons and inputs in the monitor
-            container.querySelectorAll('button').forEach(btn => {
-                if (btn.innerText.includes('ОТЧЕТИ') || 
-                    btn.innerText.includes('БРАК') || 
-                    btn.innerText.includes('ПАУЗА') ||
-                    btn.innerText.includes('ПОЕМИ')) {
-                    btn.style.display = 'none';
-                }
-            });
-            container.querySelectorAll('input').forEach(inp => inp.style.display = 'none');
-        }
-    };
-    
-    try {
-        await loadTasks();
-    } catch(e) {
-        console.error(e);
-        container.innerHTML = `<div style="color:var(--danger); padding:10px;">Грешка при изчисляване на задачи: ${e.message}</div>`;
-    } finally {
-        window.renderTasks = originalRender;
-    }
-}
 
 async function fetchAllRows(table, select, filterCol, filterVal, orderCol) {
     let allData = [];
@@ -273,7 +227,7 @@ async function renderTree(targetId, dayObj) {
             let qty = parseFloat(b['Количество']) || 1;
             childrenHtml += `
               <div class="node">
-                <div class="node-header" title="${childName}">${childName}</div>
+                <div class="node-header" title="${childName}" style="border-top: 3px solid #10b981; background: linear-gradient(180deg, rgba(16,185,129,0.1) 0%, transparent 100%);">${childName}</div>
                 <div class="node-body">
                   <div class="node-stat" style="color:var(--text-main); font-size: 1.1rem;">${qty} бр.</div>
                   <div class="node-sub">Норма (BOM)</div>
@@ -411,7 +365,7 @@ async function renderTree(targetId, dayObj) {
             let pName = b['ID Родител'] || 'Неизвестно';
             pNodes += `
               <div class="node">
-                <div class="node-header" title="${pName}">${pName}</div>
+                <div class="node-header" title="${pName}" style="border-top: 3px solid #ef4444; background: linear-gradient(180deg, rgba(239,68,68,0.1) 0%, transparent 100%);">${pName}</div>
                 <div class="node-body">
                   <div class="node-stat" style="color:var(--text-main); font-size: 1.1rem;">Вложен в</div>
                   <div class="node-sub">Реално изработен</div>
@@ -472,8 +426,8 @@ async function renderTree(targetId, dayObj) {
                     }
                     
                     subsequentOps += `
-                      <div class="node" style="border-style: dashed; border-color: var(--border-color); width:180px;">
-                        <div class="node-header" title="${opName}">${opName}</div>
+                      <div class="node" style="border-style: dashed; border-color: var(--border-color); width:200px;">
+                        <div class="node-header" title="${opName}" style="border-top: 3px solid #f59e0b; background: linear-gradient(180deg, rgba(245,158,11,0.1) 0%, transparent 100%);">${opName}</div>
                         <div class="node-body" style="padding-bottom: 8px;">
                           <div class="node-stat" style="color:var(--warning); font-size: 1.1rem;">${opQty} бр.</div>
                           <div class="node-sub" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">${isHistorical ? 'Историческа ' : ''}Налични${isLastOp ? ' (и завършени)' : ''}</div>
