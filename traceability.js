@@ -4,6 +4,9 @@ document.getElementById('searchInput').addEventListener('keypress', function(e) 
   if(e.key === 'Enter') startSearch();
 });
 
+// Dummy function to satisfy terminal-tasks.js dependency
+window.fetchUserCheckInStatus = async function() { return false; };
+
 let globalTargetId = '';
 let currentTimelineData = [];
 
@@ -114,11 +117,16 @@ async function fetchTimeline(targetId) {
         let sign = change > 0 ? '+' : '';
         let isActive = index === currentTimelineData.length - 1 ? 'active' : ''; // Select last day by default
         
+        let uniqueOps = [...new Set(dayObj.records.map(r => r['Операция']).filter(Boolean))].join(', ');
+        
         html += `
          <div class="timeline-point ${isActive}" onclick="selectTimeline(this, ${index})" id="timeline-pt-${index}">
            <div class="point-info" style="color:${colorClass}">${sign}${change} бр.</div>
            <div class="point-dot"></div>
-           <div class="point-date">${dayObj.displayDate}</div>
+           <div class="point-date">
+             ${dayObj.displayDate}
+             <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${uniqueOps}</div>
+           </div>
          </div>
         `;
     });
