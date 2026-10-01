@@ -4,8 +4,12 @@ document.getElementById('searchInput').addEventListener('keypress', function(e) 
   if(e.key === 'Enter') startSearch();
 });
 
-// Dummy function to satisfy terminal-tasks.js dependency
+// Dummy variables and function to satisfy terminal-tasks.js dependency
 window.fetchUserCheckInStatus = async function() { return false; };
+window.currentOperator = "monitor";
+window.currentMachine = "";
+window.currentTaskFilter = "all";
+window.activeTaskId = null;
 
 let globalTargetId = '';
 let currentTimelineData = [];
@@ -45,8 +49,11 @@ async function fetchTasks(targetId) {
     // Intercept renderTasks so terminal-tasks.js doesn't overwrite our container with ALL tasks
     const originalRender = window.renderTasks;
     window.renderTasks = function(tasks) {
-        // Filter tasks to match targetId strictly
-        let filtered = tasks.filter(t => t.name.toLowerCase().includes(targetId.toLowerCase()));
+        // Filter tasks to match targetId strictly (both code and internal name)
+        let filtered = tasks.filter(t => 
+            String(t.name || '').toLowerCase().includes(targetId.toLowerCase()) ||
+            String(t.internalName || '').toLowerCase().includes(targetId.toLowerCase())
+        );
         
         if (filtered.length === 0) {
             container.innerHTML = `<div style="text-align:center; color:var(--text-muted); margin-top: 20px;">Няма активни задачи за този детайл.</div>`;
@@ -68,6 +75,8 @@ async function fetchTasks(targetId) {
     } catch(e) {
         console.error(e);
         container.innerHTML = `<div style="color:var(--danger); padding:10px;">Грешка при изчисляване на задачи: ${e.message}</div>`;
+    } finally {
+        window.renderTasks = originalRender;
     }
 }
 
