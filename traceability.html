@@ -259,7 +259,9 @@
       </div>
     </div>
     <div class="nav-right">
-      <span id="selectedDateDisplay" style="color: #94a3b8; font-size: 0.9rem; margin-right: 15px;">Днес: 30.09.2026</span>
+      <span id="selectedDateDisplay" style="color: #94a3b8; font-size: 0.9rem; margin-right: 15px;">
+        <script>document.write("Днес: " + new Date().toLocaleDateString('bg-BG'));</script>
+      </span>
       <a href="admin.html" class="btn-back">⬅ Обратно в Админ</a>
     </div>
   </div>
