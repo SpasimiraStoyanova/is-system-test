@@ -95,8 +95,40 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
     let childrenFlowHtml = '';
     
     if (childrenBOM.length > 0) {
-        let cNodes = [];
+        // Filter out raw materials (items with no routes and no children of their own)
+        let childCodes = childrenBOM.map(b => String(b['ID Компонент']).toUpperCase());
+        
+        // Chunk childCodes to avoid large IN clauses if there are many
+        let cChunks = [];
+        for(let i=0; i<childCodes.length; i+=100) cChunks.push(childCodes.slice(i, i+100));
+        
+        let hasRoute = new Set();
+        let hasBom = new Set();
+        
+        for (let chunk of cChunks) {
+            const { data: rChild } = await client.from('routes').select('"ID Детайл"').in('ID Детайл', chunk);
+            if (rChild) rChild.forEach(r => hasRoute.add(String(r['ID Детайл']).toUpperCase()));
+            
+            const { data: bChild } = await client.from('bom').select('"ID Родител"').in('ID Родител', chunk);
+            if (bChild) bChild.forEach(b => hasBom.add(String(b['ID Родител']).toUpperCase()));
+        }
+        
+        let filteredChildren = [];
         childrenBOM.forEach(b => {
+             let cName = String(b['ID Компонент']).toUpperCase();
+             let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+             let isRaw = !hasRoute.has(cName) && !hasBom.has(cName);
+             
+             // Fallback for stator packs
+             if (isRaw && (cNorm.includes('статоренпак') || cNorm.includes('статор'))) {
+                 isRaw = false;
+             }
+             
+             if (!isRaw) filteredChildren.push(b);
+        });
+
+        let cNodes = [];
+        filteredChildren.forEach(b => {
             let cName = String(b['ID Компонент']).toUpperCase();
             let norm = parseFloat(b['Количество']) || 1;
             let consumedChild = targetProduced * norm;
@@ -111,7 +143,11 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
             `);
         });
         
-        childrenFlowHtml = `<div class="col-layout">${cNodes.join('')}</div>`;
+        if (cNodes.length > 0) {
+            childrenFlowHtml = `<div class="col-layout">${cNodes.join('')}</div>`;
+        } else {
+            childrenFlowHtml = `<div class="vsm-node" style="opacity:0.5"><span class="vsm-name">САМО СУРОВИНИ (СКРИТИ)</span></div>`;
+        }
     } else {
          childrenFlowHtml = `<div class="vsm-node" style="opacity:0.5"><span class="vsm-name">ЧИСТА СУРОВИНА</span></div>`;
     }
