@@ -173,10 +173,10 @@ async function renderTree(targetId, dayObj) {
     }
     
     // 2. Fetch BOM where this is parent (Children) - Using 'ID Родител' based on schema
-    const { data: childrenBOM } = await client.from('bom').select('*').ilike('ID Родител', `%${targetId}%`).limit(100000);
+    const { data: childrenBOM } = await client.from('bom').select('*').ilike('ID Родител', `%${targetId}%`).limit(1000);
     
     // 3. Fetch BOM where this is child (Parents) - Using 'ID Компонент'
-    const { data: parentsBOM } = await client.from('bom').select('*').ilike('ID Компонент', `%${targetId}%`).limit(100000);
+    const { data: parentsBOM } = await client.from('bom').select('*').ilike('ID Компонент', `%${targetId}%`).limit(1000);
     
     // 4. Find which parents have actually been produced (meaning they consumed this component)
     let actualParents = [];
@@ -202,14 +202,22 @@ async function renderTree(targetId, dayObj) {
     let filteredChildren = [];
     if (childrenBOM && childrenBOM.length > 0) {
         // Fetch all routes and all bom parents ONCE to build Sets for robust filtering
-        const { data: allRoutes } = await client.from('marshruti').select('Код на детайла').limit(10000);
+        let allRoutes = [];
+        let sr = 0;
+        while(true) {
+            const { data } = await client.from('marshruti').select('Код на детайла').range(sr, sr + 999);
+            if (data) allRoutes.push(...data);
+            if (!data || data.length < 1000) break;
+            sr += 1000;
+        }
+        
         let allBom = [];
         let sb = 0;
         while(true) {
-            const { data } = await client.from('bom').select('ID Родител').range(sb, sb + 9999);
+            const { data } = await client.from('bom').select('ID Родител').range(sb, sb + 999);
             if (data) allBom.push(...data);
-            if (!data || data.length < 10000) break;
-            sb += 10000;
+            if (!data || data.length < 1000) break;
+            sb += 1000;
         }
         
         // Helper to strip all non-alphanumeric chars (spaces, dots, dashes, parentheses)
@@ -262,7 +270,7 @@ async function renderTree(targetId, dayObj) {
     let rightSpacerHtml = '';
 
     let sortedRoutes = [];
-    const { data: routesData } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`).limit(10000);
+    const { data: routesData } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`).limit(1000);
     if (routesData) {
         sortedRoutes = routesData.sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
     }
