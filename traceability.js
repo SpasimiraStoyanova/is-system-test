@@ -61,6 +61,10 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
 
     // 1. Fetch Routes (fetch all to allow partial matching like base routes for (R3) variants)
     const { data: rData } = await fetchAllRows('routes', '*', null, null);
+    
+    globalAllData.routesSetNorm = new Set();
+    if (rData) rData.forEach(r => globalAllData.routesSetNorm.add(String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
+    
     globalAllData.tRoutes = rData ? rData.filter(r => {
         let dbId = String(r['ID Детайл']).trim().toLowerCase();
         let tId = targetId.toLowerCase();
@@ -96,6 +100,11 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     // 3. Fetch BOM Children
     const { data: childrenRaw } = await fetchAllRows('bom', '*', 'ID Родител', `%${targetId}%`);
     globalAllData.childrenBOM = childrenRaw ? childrenRaw.filter(b => String(b['ID Родител']).trim().toLowerCase() === targetId.toLowerCase()) : [];
+    
+    // Fetch all BOM parents for the global set
+    const { data: allBoms } = await fetchAllRows('bom', '"ID Родител"', null, null);
+    globalAllData.bomSetNorm = new Set();
+    if (allBoms) allBoms.forEach(b => globalAllData.bomSetNorm.add(String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
 
     // 4. Fetch BOM Parents & Parent Otcheti
     const { data: parentsRaw } = await fetchAllRows('bom', '*', 'ID Компонент', `%${targetId}%`);
@@ -216,25 +225,11 @@ async function renderVSM(dateKey) {
     // Children 
     let childrenFlowHtml = '';
     if (globalAllData.childrenBOM.length > 0) {
-        let childCodes = globalAllData.childrenBOM.map(b => String(b['ID Компонент']).toUpperCase());
-        let cChunks = [];
-        for(let i=0; i<childCodes.length; i+=100) cChunks.push(childCodes.slice(i, i+100));
-        
-        let hasRoute = new Set();
-        let hasBom = new Set();
-        
-        for (let chunk of cChunks) {
-            const { data: rChild } = await client.from('routes').select('"ID Детайл"').in('ID Детайл', chunk);
-            if (rChild) rChild.forEach(r => hasRoute.add(String(r['ID Детайл']).toUpperCase()));
-            const { data: bChild } = await client.from('bom').select('"ID Родител"').in('ID Родител', chunk);
-            if (bChild) bChild.forEach(b => hasBom.add(String(b['ID Родител']).toUpperCase()));
-        }
-        
         let filteredChildren = [];
         globalAllData.childrenBOM.forEach(b => {
              let cName = String(b['ID Компонент']).toUpperCase();
              let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-             let isRaw = !hasRoute.has(cName) && !hasBom.has(cName);
+             let isRaw = !globalAllData.routesSetNorm.has(cNorm) && !globalAllData.bomSetNorm.has(cNorm);
              if (isRaw && (cNorm.includes('статоренпак') || cNorm.includes('статор'))) isRaw = false;
              if (!isRaw) filteredChildren.push(b);
         });
