@@ -272,9 +272,9 @@
         <div class="panel-header" style="position: absolute; top:0; left:0; right:0; z-index: 10; background: rgba(30,41,59,0.8); backdrop-filter: blur(4px);">
           <span>Дърво на проследимостта (Входове ➡️ Процес ➡️ Изходи)</span>
           <div>
-            <select style="padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); outline:none; font-size:0.85rem; background: var(--bg-light); color: var(--text-main);">
-              <option value="1">Суровини: Само преки деца</option>
-              <option value="all">Суровини: Пълна дълбочина</option>
+            <select id="bomDepthSelect" onchange="if(globalTargetId) startSearch()" style="padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); outline:none; font-size:0.85rem; background: var(--bg-light); color: var(--text-main);">
+              <option value="all">Покажи всички преки деца (вкл. суровини)</option>
+              <option value="filtered">Само полуфабрикати (скрий суровините)</option>
             </select>
           </div>
         </div>

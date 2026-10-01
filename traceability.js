@@ -186,6 +186,8 @@ async function renderTree(targetId, dayObj) {
     
     // Filter out materials from childrenBOM
     let filteredChildren = [];
+    let bomDepthOption = document.getElementById('bomDepthSelect') ? document.getElementById('bomDepthSelect').value : 'all';
+    
     if (childrenBOM && childrenBOM.length > 0) {
         // Fetch all routes and all bom parents ONCE to build Sets for robust filtering
         // Order by a common column or just row number to ensure stable pagination
@@ -215,7 +217,7 @@ async function renderTree(targetId, dayObj) {
                 isRawMaterial = false;
             }
             
-            if (!isRawMaterial) {
+            if (bomDepthOption === 'all' || !isRawMaterial) {
                 filteredChildren.push(b);
             }
         }
