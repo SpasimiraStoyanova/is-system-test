@@ -106,6 +106,21 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     globalAllData.bomSetNorm = new Set();
     if (allBoms) allBoms.forEach(b => globalAllData.bomSetNorm.add(String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
 
+    // 3.5 Check if children are produced internally (have otcheti)
+    globalAllData.producedChildrenNorm = new Set();
+    if (globalAllData.childrenBOM.length > 0) {
+        let childCodes = globalAllData.childrenBOM.map(b => String(b['ID Компонент']));
+        let cChunks = [];
+        for(let i=0; i<childCodes.length; i+=100) cChunks.push(childCodes.slice(i, i+100));
+        
+        for (let chunk of cChunks) {
+            const { data: oChild } = await client.from('otcheti').select('"ID Детайл"').in('ID Детайл', chunk);
+            if (oChild) {
+                oChild.forEach(o => globalAllData.producedChildrenNorm.add(String(o['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
+            }
+        }
+    }
+
     // 4. Fetch BOM Parents & Parent Otcheti
     const { data: parentsRaw } = await fetchAllRows('bom', '*', 'ID Компонент', `%${targetId}%`);
     globalAllData.parentsBOM = parentsRaw ? parentsRaw.filter(b => String(b['ID Компонент']).trim().toLowerCase() === targetId.toLowerCase()) : [];
@@ -229,7 +244,7 @@ async function renderVSM(dateKey) {
         globalAllData.childrenBOM.forEach(b => {
              let cName = String(b['ID Компонент']).toUpperCase();
              let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-             let isRaw = !globalAllData.routesSetNorm.has(cNorm) && !globalAllData.bomSetNorm.has(cNorm);
+             let isRaw = !globalAllData.routesSetNorm.has(cNorm) && !globalAllData.bomSetNorm.has(cNorm) && !globalAllData.producedChildrenNorm.has(cNorm);
              if (isRaw && (cNorm.includes('статоренпак') || cNorm.includes('статор'))) isRaw = false;
              if (!isRaw) filteredChildren.push(b);
         });
