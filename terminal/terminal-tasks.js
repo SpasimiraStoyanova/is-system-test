@@ -5,6 +5,27 @@ function normalizeStr(str) {
     return String(str).replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
 }
 
+async function fetchAllRows(table, select = '*', extraFilter = null, orderBy = null, maxRows = Infinity) {
+    let result = [];
+    let start = 0;
+    while (true) {
+        let query = client.from(table).select(select).range(start, start + 999);
+        if (extraFilter) {
+            query = extraFilter(query);
+        }
+        if (orderBy) {
+            query = query.order(orderBy.col, { ascending: orderBy.asc });
+        }
+        const { data, error } = await query;
+        if (error) throw error;
+        if (data) result.push(...data);
+        if (!data || data.length < 1000 || result.length >= maxRows) break;
+        start += 1000;
+    }
+    if (result.length > maxRows) result = result.slice(0, maxRows);
+    return { data: result };
+}
+
 async function changeMachine(isInitial = false) {
     Swal.fire({ title: 'Зареждане...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     try {
@@ -43,11 +64,11 @@ async function loadTasks(isSilent = false) {
   
   try {
       const [plansRes, bomRes, routesRes, reportsRes, skladRes, nomRes, bufferRes, invRes] = await Promise.all([
-          client.from('plan').select('*').in('Статус', ['Активен']).limit(100000), client.from('bom').select('*').limit(100000),
-          client.from('marshruti').select('*').limit(100000), client.from('otcheti').select('*').order('Дата', {ascending: false}).limit(2000), 
-          client.from('sklad').select('*').limit(100000), client.from('Номенклатура').select('*').limit(100000),
-          client.from('sklad_bufferi').select('*').limit(100000),
-          client.from('inventory').select('*').limit(100000)
+          fetchAllRows('plan', '*', q => q.in('Статус', ['Активен'])), fetchAllRows('bom'),
+          fetchAllRows('marshruti'), fetchAllRows('otcheti', '*', null, { col: 'Дата', asc: false }, 2000), 
+          fetchAllRows('sklad'), fetchAllRows('Номенклатура'),
+          fetchAllRows('sklad_bufferi'),
+          fetchAllRows('inventory')
       ]);
 
       if (plansRes.error) throw plansRes.error; if (bomRes.error) throw bomRes.error;

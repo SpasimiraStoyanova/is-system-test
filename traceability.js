@@ -5,7 +5,7 @@ document.getElementById('searchInput').addEventListener('keypress', function(e) 
 });
 
 // Dummy variables and function to satisfy terminal-tasks.js dependency
-window.fetchUserCheckInStatus = async function() { return false; };
+window.fetchUserCheckInStatus = async function() { return true; };
 window.currentOperator = "monitor";
 window.currentMachine = "";
 window.currentTaskFilter = "all";
