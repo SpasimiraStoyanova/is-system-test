@@ -61,12 +61,16 @@ async function fetchTasks(targetId) {
             // Render the filtered terminal cards inside our container
             originalRender(filtered);
             
-            // Optional: Hide terminal specific buttons in the monitor
+            // Hide terminal specific action buttons and inputs in the monitor
             container.querySelectorAll('button').forEach(btn => {
-                if (btn.innerText.includes('ОТЧЕТИ') || btn.innerText.includes('БРАК') || btn.innerText.includes('ПАУЗА')) {
+                if (btn.innerText.includes('ОТЧЕТИ') || 
+                    btn.innerText.includes('БРАК') || 
+                    btn.innerText.includes('ПАУЗА') ||
+                    btn.innerText.includes('ПОЕМИ')) {
                     btn.style.display = 'none';
                 }
             });
+            container.querySelectorAll('input').forEach(inp => inp.style.display = 'none');
         }
     };
     
