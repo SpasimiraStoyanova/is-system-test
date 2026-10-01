@@ -241,13 +241,35 @@ async function renderVSM(dateKey) {
     let childrenFlowHtml = '';
     if (globalAllData.childrenBOM.length > 0) {
         let filteredChildren = [];
-        globalAllData.childrenBOM.forEach(b => {
-             let cName = String(b['ID Компонент']).toUpperCase();
+        
+        for (let i = 0; i < globalAllData.childrenBOM.length; i++) {
+             let b = globalAllData.childrenBOM[i];
+             let cName = String(b['ID Компонент']);
              let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-             let isRaw = !globalAllData.routesSetNorm.has(cNorm) && !globalAllData.bomSetNorm.has(cNorm) && !globalAllData.producedChildrenNorm.has(cNorm);
-             if (isRaw && (cNorm.includes('статоренпак') || cNorm.includes('статор'))) isRaw = false;
+             let isRaw = true;
+             
+             if (cNorm.includes('статоренпак') || cNorm.includes('статор')) {
+                 isRaw = false;
+             } else {
+                 // Check if it has a route
+                 let { data: rData } = await client.from('routes').select('"ID Детайл"').ilike('ID Детайл', `%${cName.trim()}%`).limit(1);
+                 if (rData && rData.length > 0) isRaw = false;
+                 
+                 // Check if it is a parent in BOM
+                 if (isRaw) {
+                     let { data: bData } = await client.from('bom').select('"ID Родител"').ilike('ID Родител', `%${cName.trim()}%`).limit(1);
+                     if (bData && bData.length > 0) isRaw = false;
+                 }
+                 
+                 // Check if it has EVER been produced
+                 if (isRaw) {
+                     let { data: oData } = await client.from('otcheti').select('"ID Детайл"').ilike('ID Детайл', `%${cName.trim()}%`).limit(1);
+                     if (oData && oData.length > 0) isRaw = false;
+                 }
+             }
+             
              if (!isRaw) filteredChildren.push(b);
-        });
+        }
 
         let cNodes = [];
         filteredChildren.forEach(b => {
