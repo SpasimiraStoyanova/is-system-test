@@ -49,6 +49,9 @@ async function startSearch() {
 
 async function generateMassBalance(targetId, dateFrom, dateTo) {
     // We add 86400000 (1 day) to toTs to include the end date fully
+    const fromTs = new Date(dateFrom).getTime();
+    const toTs = new Date(dateTo).getTime() + 86400000;
+
     // 1. Fetch Routes for the target
     const { data: rData } = await fetchAllRows('routes', '*', 'ID Детайл', `%${targetId}%`);
     let tRoutes = rData ? rData.filter(r => String(r['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) : [];
