@@ -54,6 +54,7 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
 
     // 1. Fetch Target Production & Scrap
     const { data: rawOtcheti } = await fetchAllRows('otcheti', '*', 'ID Детайл', `%${targetId}%`);
+    let opsCount = {};
     let targetProduced = 0;
     let targetScrap = 0;
     
@@ -64,10 +65,27 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
             if (dTs >= fromTs && dTs < toTs) {
                 let st = String(r['Статус'] || '').trim().toLowerCase();
                 let q = parseFloat(r['Количество']) || 0;
-                if (st === 'отчетено' || st === 'завършено') targetProduced += q;
-                else if (st === 'брак') targetScrap += Math.abs(q);
+                let op = String(r['Операция'] || 'Без оп.').trim();
+                
+                if (st === 'отчетено' || st === 'завършено') {
+                    opsCount[op] = (opsCount[op] || 0) + q;
+                }
+                else if (st === 'брак') {
+                    targetScrap += Math.abs(q);
+                }
             }
         });
+    }
+
+    let opsHtml = '';
+    for (let op in opsCount) {
+        if (opsCount[op] > targetProduced) targetProduced = opsCount[op];
+        opsHtml += `
+            <div style="display:flex; justify-content:space-between; font-size:1rem; padding-left:15px; margin-bottom: 2px;">
+              <span style="color:#94a3b8">Оп. ${op}:</span>
+              <span style="color:var(--success)">+${opsCount[op]} бр.</span>
+            </div>
+        `;
     }
 
     // 2. Fetch Children (What went into the Target?)
@@ -191,12 +209,13 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
          <div class="vsm-target-node">
             <div class="target-title">${targetId.toUpperCase()}</div>
             <div class="target-stats">
-               <div class="target-row">
+               <div class="target-row" style="margin-bottom: 5px;">
                  <span style="color:#cbd5e1">Произведени:</span>
-                 <span class="vsm-stat prod">+${targetProduced} бр.</span>
                </div>
-               <div class="target-row">
-                 <span style="color:#cbd5e1">Изразходвани:</span>
+               ${opsHtml || '<div style="color:var(--text-muted); font-size:1rem; padding-left:15px;">Няма отчетени</div>'}
+               
+               <div class="target-row" style="margin-top: 8px;">
+                 <span style="color:#cbd5e1">Изразходвани в други:</span>
                  <span class="vsm-stat consumed">-${totalConsumed} бр.</span>
                </div>
                <div class="target-row">
