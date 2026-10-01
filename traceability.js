@@ -49,14 +49,15 @@ async function startSearch() {
 
 async function generateMassBalance(targetId, dateFrom, dateTo) {
     // We add 86400000 (1 day) to toTs to include the end date fully
-    const fromTs = new Date(dateFrom).getTime();
-    const toTs = new Date(dateTo).getTime() + 86400000;
+    // 1. Fetch Routes for the target
+    const { data: rData } = await fetchAllRows('routes', '*', 'ID Детайл', `%${targetId}%`);
+    let tRoutes = rData ? rData.filter(r => String(r['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) : [];
+    tRoutes.sort((a,b) => parseInt(a['Номер']||0) - parseInt(b['Номер']||0));
 
-    // 1. Fetch Target Production & Scrap
+    // 2. Fetch Target Production & Scrap
     const { data: rawOtcheti } = await fetchAllRows('otcheti', '*', 'ID Детайл', `%${targetId}%`);
-    let opsCount = {};
-    let targetProduced = 0;
-    let targetScrap = 0;
+    let opsProduced = {};
+    let opsScrap = {};
     
     if (rawOtcheti) {
         rawOtcheti.forEach(r => {
@@ -65,27 +66,41 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
             if (dTs >= fromTs && dTs < toTs) {
                 let st = String(r['Статус'] || '').trim().toLowerCase();
                 let q = parseFloat(r['Количество']) || 0;
-                let op = String(r['Операция'] || 'Без оп.').trim();
+                let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
                 
                 if (st === 'отчетено' || st === 'завършено') {
-                    opsCount[op] = (opsCount[op] || 0) + q;
+                    opsProduced[op] = (opsProduced[op] || 0) + q;
                 }
                 else if (st === 'брак') {
-                    targetScrap += Math.abs(q);
+                    opsScrap[op] = (opsScrap[op] || 0) + Math.abs(q);
                 }
             }
         });
     }
 
-    let opsHtml = '';
-    for (let op in opsCount) {
-        if (opsCount[op] > targetProduced) targetProduced = opsCount[op];
-        opsHtml += `
-            <div style="display:flex; justify-content:space-between; font-size:1rem; padding-left:15px; margin-bottom: 2px;">
-              <span style="color:#94a3b8">Оп. ${op}:</span>
-              <span style="color:var(--success)">+${opsCount[op]} бр.</span>
-            </div>
-        `;
+    // Determine the operations chain
+    let opChain = [];
+    if (tRoutes.length > 0) {
+        tRoutes.forEach(r => {
+            opChain.push(String(r['Име'] || r['Операция'] || '').trim().toUpperCase());
+        });
+    } else {
+        // Fallback: if no routes, just use whatever operations are in reports
+        opChain = Object.keys(opsProduced);
+        if (opChain.length === 0) opChain = ['Без оп.'];
+    }
+    
+    // In some cases, names in otcheti might be slightly different. 
+    // We try to find the closest match or just use the exact upper case.
+    let targetProduced = 0; // Total produced (for child consumption)
+    if (opChain.length > 0) {
+        let firstOp = opChain[0];
+        // The children consumption should be based on the FIRST operation's production
+        targetProduced = opsProduced[firstOp] || 0; 
+        // fallback to max if first is 0
+        if (targetProduced === 0) {
+            targetProduced = Math.max(0, ...Object.values(opsProduced));
+        }
     }
 
     // 2. Fetch Children (What went into the Target?)
@@ -217,20 +232,82 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
          parentsFlowHtml = `<div class="vsm-node"><span class="vsm-stat" style="color:var(--text-muted)">Не се влага никъде (Краен продукт)</span></div>`;
     }
 
-    // 3. Balance Calculation
-    let balance = targetProduced - totalConsumed - targetScrap;
-    let balanceColor = balance < 0 ? 'var(--danger)' : (balance > 0 ? 'var(--success)' : 'var(--text-main)');
-    let balanceSign = balance > 0 ? '+' : '';
-
-    // 4. Fetch Current Physical Inventory (just for reference)
-    const { data: invDataRaw } = await fetchAllRows('inventory', 'Количество, "ID Детайл"', 'ID Детайл', `%${targetId}%`);
-    let currentStock = 0;
-    if (invDataRaw) {
-        invDataRaw.forEach(i => {
-            if (String(i['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) {
-                currentStock += (parseFloat(i['Количество']) || 0);
+    // 4. Balance Calculation & Target Windows HTML
+    let targetFlowHtml = '';
+    
+    for (let i = 0; i < opChain.length; i++) {
+        let opName = opChain[i];
+        let prodHere = 0;
+        let scrapHere = 0;
+        
+        // Find matching operation in opsProduced/opsScrap
+        for (let k in opsProduced) {
+            if (k.includes(opName) || opName.includes(k)) prodHere += opsProduced[k];
+        }
+        for (let k in opsScrap) {
+            if (k.includes(opName) || opName.includes(k)) scrapHere += opsScrap[k];
+        }
+        
+        let movedForward = 0;
+        if (i < opChain.length - 1) {
+            let nextOp = opChain[i+1];
+            for (let k in opsProduced) {
+                 if (k.includes(nextOp) || nextOp.includes(k)) movedForward += opsProduced[k];
             }
-        });
+        }
+        
+        let isLastOp = (i === opChain.length - 1);
+        let consumedDisplay = isLastOp ? totalConsumed : 0;
+        
+        let balance = prodHere - movedForward - scrapHere - consumedDisplay;
+        let balanceColor = balance < 0 ? 'var(--danger)' : (balance > 0 ? 'var(--success)' : 'var(--text-main)');
+        let balanceSign = balance > 0 ? '+' : '';
+        
+        let physicalStockHtml = '';
+        if (isLastOp) {
+             physicalStockHtml = `
+               <div style="margin-top:15px; font-size: 0.95rem; text-align:center; color:var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px;">
+                 Склад (текущо за детайла): <b style="color:white; font-size: 1.1rem; margin-left: 5px;">${currentStock} бр.</b>
+               </div>
+             `;
+        }
+        
+        let windowHtml = `
+         <div class="vsm-target-node" style="${!isLastOp ? 'border-color:#475569;' : ''}">
+            <div class="target-title" style="font-size:1.4rem;">${targetId.toUpperCase()} <br><span style="font-size:1rem; color:var(--primary)">(${opName})</span></div>
+            <div class="target-stats">
+               <div class="target-row">
+                 <span style="color:#cbd5e1">Произведени:</span>
+                 <span class="vsm-stat prod">+${prodHere} бр.</span>
+               </div>
+               ${i < opChain.length - 1 ? `
+               <div class="target-row">
+                 <span style="color:#cbd5e1">Към следваща оп.:</span>
+                 <span class="vsm-stat" style="color:var(--text-muted)">-${movedForward} бр.</span>
+               </div>` : `
+               <div class="target-row">
+                 <span style="color:#cbd5e1">Изразходвани в други:</span>
+                 <span class="vsm-stat consumed">-${consumedDisplay} бр.</span>
+               </div>
+               `}
+               <div class="target-row">
+                 <span style="color:#cbd5e1">Брак:</span>
+                 <span class="vsm-stat scrap">-${scrapHere} бр.</span>
+               </div>
+               <div style="border-top: 1px solid #334155; margin: 5px 0;"></div>
+               <div class="target-row" style="margin-top: 5px;">
+                 <span style="color:#cbd5e1; font-weight:900;">НЕТЕН БАЛАНС (WIP):</span>
+                 <span class="vsm-stat" style="color:${balanceColor}; font-weight:900; font-size: 1.4rem;">${balanceSign}${balance} бр.</span>
+               </div>
+               ${physicalStockHtml}
+            </div>
+         </div>
+        `;
+        
+        targetFlowHtml += windowHtml;
+        if (i < opChain.length - 1) {
+            targetFlowHtml += `<div class="vsm-arrow">--▶</div>`;
+        }
     }
 
     // Render VSM Flow
@@ -241,34 +318,8 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
          
          <div class="vsm-arrow">--▶</div>
       
-         <!-- TARGET NODE -->
-         <div class="vsm-target-node">
-            <div class="target-title">${targetId.toUpperCase()}</div>
-            <div class="target-stats">
-               <div class="target-row" style="margin-bottom: 5px;">
-                 <span style="color:#cbd5e1">Произведени:</span>
-               </div>
-               ${opsHtml || '<div style="color:var(--text-muted); font-size:1rem; padding-left:15px;">Няма отчетени</div>'}
-               
-               <div class="target-row" style="margin-top: 8px;">
-                 <span style="color:#cbd5e1">Изразходвани в други:</span>
-                 <span class="vsm-stat consumed">-${totalConsumed} бр.</span>
-               </div>
-               <div class="target-row">
-                 <span style="color:#cbd5e1">Брак:</span>
-                 <span class="vsm-stat scrap">-${targetScrap} бр.</span>
-               </div>
-               <div style="border-top: 1px solid #334155; margin: 5px 0;"></div>
-               <div class="target-row" style="margin-top: 5px;">
-                 <span style="color:#cbd5e1; font-weight:900;">НЕТЕН БАЛАНС ЗА ПЕРИОДА:</span>
-                 <span class="vsm-stat" style="color:${balanceColor}; font-weight:900; font-size: 1.4rem;">${balanceSign}${balance} бр.</span>
-               </div>
-               
-               <div style="margin-top:15px; font-size: 0.95rem; text-align:center; color:var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px;">
-                 Физически в склада в момента: <b style="color:white; font-size: 1.1rem; margin-left: 5px;">${currentStock} бр.</b>
-               </div>
-            </div>
-         </div>
+         <!-- TARGET OPERATIONS CHAIN -->
+         ${targetFlowHtml}
          
          <div class="vsm-arrow">--▶</div>
          
