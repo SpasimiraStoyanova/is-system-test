@@ -14,12 +14,18 @@ document.getElementById('dateFrom').value = thirtyDaysAgo.toISOString().split('T
 
 window.fetchUserCheckInStatus = async function() { return true; };
 
-async function fetchAllRows(table, select, filterCol, filterVal) {
+async function fetchRobustRows(table, select, searchCol, searchStr) {
     let allData = [];
     let sr = 0;
+    let tokens = searchStr ? searchStr.split(/[^а-яА-Яa-zA-Z0-9]+/).filter(t => t.length > 0) : [];
+    
     while(true) {
         let q = client.from(table).select(select).range(sr, sr + 999);
-        if (filterCol && filterVal) q = q.ilike(filterCol, filterVal);
+        if (searchCol && tokens.length > 0) {
+            tokens.forEach(t => {
+                q = q.ilike(searchCol, `%${t}%`);
+            });
+        }
         let { data, error } = await q;
         if (error || !data || data.length === 0) break;
         allData.push(...data);
@@ -55,29 +61,30 @@ async function startSearch() {
 
 async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     globalAllData.targetId = targetId;
+    let tNorm = targetId.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
     const fromTs = new Date(dateFrom).getTime();
     const toTs = new Date(dateTo).getTime() + 86400000;
     globalTimeline = {};
 
-    // 1. Fetch Routes (fetch all to allow partial matching like base routes for (R3) variants)
-    const { data: rData } = await fetchAllRows('routes', '*', null, null);
+    // 1. Fetch Routes 
+    const { data: rData } = await fetchRobustRows('routes', '*', 'ID Детайл', targetId);
     
     globalAllData.routesSetNorm = new Set();
     if (rData) rData.forEach(r => globalAllData.routesSetNorm.add(String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
     
     globalAllData.tRoutes = rData ? rData.filter(r => {
         let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        let tNormRoute = targetId.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        return dbId === tNormRoute;
+        return dbId === tNorm;
     }) : [];
     globalAllData.tRoutes.sort((a,b) => parseInt(a['Номер']||0) - parseInt(b['Номер']||0));
 
     // 2. Fetch Target Otcheti
-    const { data: rawOtcheti } = await fetchAllRows('otcheti', '*', 'ID Детайл', `%${targetId}%`);
+    const { data: rawOtcheti } = await fetchRobustRows('otcheti', '*', 'ID Детайл', targetId);
     globalAllData.rawOtcheti = [];
     if (rawOtcheti) {
         rawOtcheti.forEach(r => {
-            if (String(r['ID Детайл']).trim().toLowerCase() !== targetId.toLowerCase()) return;
+            let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            if (dbId !== tNorm) return;
             let dTs = new Date(r['Дата']).getTime();
             if (dTs >= fromTs && dTs < toTs) {
                 globalAllData.rawOtcheti.push(r);
@@ -97,16 +104,9 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         globalAllData.fallbackOpChain = Array.from(fChainSet);
     }
 
-    let tNorm = targetId.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-
-    // Fetch the entire BOM table to do loose matching in memory
-    const { data: allBomsFull } = await fetchAllRows('bom', '*', null, null);
-    
-    globalAllData.bomSetNorm = new Set();
-    if (allBomsFull) allBomsFull.forEach(b => globalAllData.bomSetNorm.add(String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
-
     // 3. Fetch BOM Children
-    globalAllData.childrenBOM = allBomsFull ? allBomsFull.filter(b => {
+    const { data: childrenRaw } = await fetchRobustRows('bom', '*', 'ID Родител', targetId);
+    globalAllData.childrenBOM = childrenRaw ? childrenRaw.filter(b => {
         let dbId = String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
         return dbId === tNorm;
     }) : [];
@@ -127,7 +127,8 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     }
 
     // 4. Fetch BOM Parents & Parent Otcheti
-    globalAllData.parentsBOM = allBomsFull ? allBomsFull.filter(b => {
+    const { data: parentsRaw } = await fetchRobustRows('bom', '*', 'ID Компонент', targetId);
+    globalAllData.parentsBOM = parentsRaw ? parentsRaw.filter(b => {
         let dbId = String(b['ID Компонент']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
         return dbId === tNorm;
     }) : [];
