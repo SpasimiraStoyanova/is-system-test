@@ -85,10 +85,12 @@ async function fetchTasks(targetId) {
 }
 
 async function fetchTimeline(targetId) {
-    const { data, error } = await client.from('otcheti')
+    const { data: rawData, error } = await client.from('otcheti')
         .select('*')
-        .ilike('ID Детайл', targetId)
+        .ilike('ID Детайл', `%${targetId}%`)
         .order('Дата', {ascending: true});
+        
+    let data = rawData ? rawData.filter(r => String(r['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) : [];
         
     if (error) {
         console.error("Timeline error:", error);
@@ -171,7 +173,8 @@ async function renderTree(targetId, dayObj) {
     let invGpQty = 0;
     
     // Check inventory (WIP and Finished Goods are now both in inventory)
-    const { data: invData } = await client.from('inventory').select('Количество, Операция').ilike('ID Детайл', targetId);
+    const { data: invDataRaw } = await client.from('inventory').select('Количество, Операция, "ID Детайл"').ilike('ID Детайл', `%${targetId}%`);
+    let invData = invDataRaw ? invDataRaw.filter(i => String(i['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) : [];
     if (invData && invData.length > 0) {
         invData.forEach(i => {
             let qty = parseFloat(i['Количество']) || 0;
@@ -186,10 +189,12 @@ async function renderTree(targetId, dayObj) {
     }
     
     // 2. Fetch BOM where this is parent (Children) - Using 'ID Родител' based on schema
-    const { data: childrenBOM } = await client.from('bom').select('*').ilike('ID Родител', targetId).limit(1000);
+    const { data: childrenRaw } = await client.from('bom').select('*').ilike('ID Родител', `%${targetId}%`).limit(2000);
+    let childrenBOM = childrenRaw ? childrenRaw.filter(b => String(b['ID Родител']).trim().toLowerCase() === targetId.toLowerCase()) : [];
     
     // 3. Fetch BOM where this is child (Parents) - Using 'ID Компонент'
-    const { data: parentsBOM } = await client.from('bom').select('*').ilike('ID Компонент', targetId).limit(1000);
+    const { data: parentsRaw } = await client.from('bom').select('*').ilike('ID Компонент', `%${targetId}%`).limit(2000);
+    let parentsBOM = parentsRaw ? parentsRaw.filter(b => String(b['ID Компонент']).trim().toLowerCase() === targetId.toLowerCase()) : [];
     
     // 4. Find which parents have actually been produced (meaning they consumed this component)
     let actualParents = [];
@@ -283,8 +288,9 @@ async function renderTree(targetId, dayObj) {
     let rightSpacerHtml = '';
 
     let sortedRoutes = [];
-    const { data: routesData } = await client.from('marshruti').select('*').ilike('Код на детайла', targetId).limit(1000);
-    if (routesData) {
+    const { data: routesRaw } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`).limit(2000);
+    let routesData = routesRaw ? routesRaw.filter(r => String(r['Код на детайла']).trim().toLowerCase() === targetId.toLowerCase()) : null;
+    if (routesData && routesData.length > 0) {
         sortedRoutes = routesData.sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
     }
     
