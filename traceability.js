@@ -235,7 +235,18 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
          parentsFlowHtml = `<div class="vsm-node"><span class="vsm-stat" style="color:var(--text-muted)">Не се влага никъде (Краен продукт)</span></div>`;
     }
 
-    // 4. Balance Calculation & Target Windows HTML
+    // 4. Fetch Current Physical Inventory
+    const { data: invDataRaw } = await fetchAllRows('inventory', 'Количество, "ID Детайл"', 'ID Детайл', `%${targetId}%`);
+    let currentStock = 0;
+    if (invDataRaw) {
+        invDataRaw.forEach(i => {
+            if (String(i['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) {
+                currentStock += (parseFloat(i['Количество']) || 0);
+            }
+        });
+    }
+
+    // 5. Balance Calculation & Target Windows HTML
     let targetFlowHtml = '';
     
     for (let i = 0; i < opChain.length; i++) {
