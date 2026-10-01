@@ -97,14 +97,19 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         globalAllData.fallbackOpChain = Array.from(fChainSet);
     }
 
-    // 3. Fetch BOM Children
-    const { data: childrenRaw } = await fetchAllRows('bom', '*', 'ID Родител', `%${targetId}%`);
-    globalAllData.childrenBOM = childrenRaw ? childrenRaw.filter(b => String(b['ID Родител']).trim().toLowerCase() === targetId.toLowerCase()) : [];
+    let tNorm = targetId.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+
+    // Fetch the entire BOM table to do loose matching in memory
+    const { data: allBomsFull } = await fetchAllRows('bom', '*', null, null);
     
-    // Fetch all BOM parents for the global set
-    const { data: allBoms } = await fetchAllRows('bom', '"ID Родител"', null, null);
     globalAllData.bomSetNorm = new Set();
-    if (allBoms) allBoms.forEach(b => globalAllData.bomSetNorm.add(String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
+    if (allBomsFull) allBomsFull.forEach(b => globalAllData.bomSetNorm.add(String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
+
+    // 3. Fetch BOM Children
+    globalAllData.childrenBOM = allBomsFull ? allBomsFull.filter(b => {
+        let dbId = String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        return dbId === tNorm || (dbId.length > 5 && tNorm.startsWith(dbId));
+    }) : [];
 
     // 3.5 Check if children are produced internally (have otcheti)
     globalAllData.producedChildrenNorm = new Set();
@@ -122,8 +127,10 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     }
 
     // 4. Fetch BOM Parents & Parent Otcheti
-    const { data: parentsRaw } = await fetchAllRows('bom', '*', 'ID Компонент', `%${targetId}%`);
-    globalAllData.parentsBOM = parentsRaw ? parentsRaw.filter(b => String(b['ID Компонент']).trim().toLowerCase() === targetId.toLowerCase()) : [];
+    globalAllData.parentsBOM = allBomsFull ? allBomsFull.filter(b => {
+        let dbId = String(b['ID Компонент']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        return dbId === tNorm || (dbId.length > 5 && tNorm.startsWith(dbId));
+    }) : [];
     
     globalAllData.parentOtcheti = [];
     if (globalAllData.parentsBOM.length > 0) {
