@@ -70,7 +70,35 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
         });
     }
 
-    // 2. Fetch Parents (Where is it consumed?)
+    // 2. Fetch Children (What went into the Target?)
+    const { data: childrenRaw } = await fetchAllRows('bom', '*', 'ID Родител', `%${targetId}%`);
+    let childrenBOM = childrenRaw ? childrenRaw.filter(b => String(b['ID Родител']).trim().toLowerCase() === targetId.toLowerCase()) : [];
+    
+    let childrenFlowHtml = '';
+    
+    if (childrenBOM.length > 0) {
+        let cNodes = [];
+        childrenBOM.forEach(b => {
+            let cName = String(b['ID Компонент']).toUpperCase();
+            let norm = parseFloat(b['Количество']) || 1;
+            let consumedChild = targetProduced * norm;
+            
+            cNodes.push(`
+              <div class="vsm-node" style="justify-content: flex-end;">
+                <span class="vsm-stat consumed" style="color:var(--text-muted); font-size:1rem;">(Норма: ${norm})</span>
+                <span class="vsm-stat consumed" style="color:var(--warning)">Изразходвани: ${consumedChild} бр.</span>
+                <span class="vsm-divider">|</span>
+                <span class="vsm-name">${cName}</span>
+              </div>
+            `);
+        });
+        
+        childrenFlowHtml = `<div class="col-layout">${cNodes.join('')}</div>`;
+    } else {
+         childrenFlowHtml = `<div class="vsm-node" style="opacity:0.5"><span class="vsm-name">ЧИСТА СУРОВИНА</span></div>`;
+    }
+
+    // 3. Fetch Parents (Where is it consumed?)
     const { data: parentsRaw } = await fetchAllRows('bom', '*', 'ID Компонент', `%${targetId}%`);
     let parentsBOM = parentsRaw ? parentsRaw.filter(b => String(b['ID Компонент']).trim().toLowerCase() === targetId.toLowerCase()) : [];
     
@@ -154,10 +182,8 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
     // Render VSM Flow
     document.getElementById('workspace').innerHTML = `
       <div class="vsm-flow">
-         <!-- INPUT NODE (Placeholder) -->
-         <div class="vsm-node" style="opacity: 0.5;">
-            <span class="vsm-name">ВХОДОВЕ</span>
-         </div>
+         <!-- INPUTS / CHILDREN -->
+         ${childrenFlowHtml}
          
          <div class="vsm-arrow">--▶</div>
       
