@@ -172,6 +172,22 @@ async function renderVSM(dateKey) {
 
     let opsProduced = {};
     let opsScrap = {};
+    let cumProduced = {};
+    let cumScrap = {};
+    
+    let targetTs = dateKey === 'ALL' ? Infinity : new Date(dateKey).getTime() + 86400000;
+
+    (globalAllData.rawOtcheti || []).forEach(r => {
+        let dTs = new Date(r['Дата']).getTime();
+        let st = String(r['Статус'] || '').trim().toLowerCase();
+        let q = parseFloat(r['Количество']) || 0;
+        let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
+        
+        if (dTs < targetTs) {
+             if (st === 'отчетено' || st === 'завършено') cumProduced[op] = (cumProduced[op] || 0) + q;
+             else if (st === 'брак') cumScrap[op] = (cumScrap[op] || 0) + Math.abs(q);
+        }
+    });
     
     (dataSlice.rawOtcheti || []).forEach(r => {
         let st = String(r['Статус'] || '').trim().toLowerCase();
@@ -246,6 +262,7 @@ async function renderVSM(dateKey) {
 
     // Parents
     let totalConsumed = 0;
+    let cumTotalConsumed = 0;
     let parentsFlowHtml = '';
     
     if (globalAllData.parentsBOM.length > 0) {
@@ -258,13 +275,26 @@ async function renderVSM(dateKey) {
             }
         });
         
+        let cumParentStats = {};
+        (globalAllData.parentOtcheti || []).forEach(r => {
+            let dTs = new Date(r['Дата']).getTime();
+            let st = String(r['Статус'] || '').trim().toLowerCase();
+            if (dTs < targetTs && (st === 'отчетено' || st === 'завършено')) {
+                 let pName = String(r['ID Детайл']).toUpperCase();
+                 cumParentStats[pName] = (cumParentStats[pName] || 0) + (parseFloat(r['Количество']) || 0);
+            }
+        });
+        
         let pNodes = [];
         globalAllData.parentsBOM.forEach(b => {
             let pName = String(b['ID Родител']).toUpperCase();
             let norm = parseFloat(b['Количество']) || 1;
             let pProduced = parentStats[pName] || 0;
+            let cumPProduced = cumParentStats[pName] || 0;
+            
             let consumedHere = pProduced * norm;
             totalConsumed += consumedHere;
+            cumTotalConsumed += (cumPProduced * norm);
             
             if (consumedHere > 0) {
                 pNodes.push(`
@@ -289,28 +319,50 @@ async function renderVSM(dateKey) {
         let prodHere = 0;
         let scrapHere = 0;
         
+        let cProdHere = 0;
+        let cScrapHere = 0;
+        
         for (let k in opsProduced) if (k.includes(opName) || opName.includes(k)) prodHere += opsProduced[k];
         for (let k in opsScrap) if (k.includes(opName) || opName.includes(k)) scrapHere += opsScrap[k];
         
+        for (let k in cumProduced) if (k.includes(opName) || opName.includes(k)) cProdHere += cumProduced[k];
+        for (let k in cumScrap) if (k.includes(opName) || opName.includes(k)) cScrapHere += cumScrap[k];
+        
         let movedForward = 0;
+        let cMovedForward = 0;
         if (i < opChain.length - 1) {
             let nextOp = opChain[i+1];
             for (let k in opsProduced) if (k.includes(nextOp) || nextOp.includes(k)) movedForward += opsProduced[k];
+            for (let k in cumProduced) if (k.includes(nextOp) || nextOp.includes(k)) cMovedForward += cumProduced[k];
         }
         
         let isLastOp = (i === opChain.length - 1);
         let consumedDisplay = isLastOp ? totalConsumed : 0;
+        let cConsumedDisplay = isLastOp ? cumTotalConsumed : 0;
         
         let balance = prodHere - movedForward - scrapHere - consumedDisplay;
         let balanceColor = balance < 0 ? 'var(--danger)' : (balance > 0 ? 'var(--success)' : 'var(--text-main)');
         let balanceSign = balance > 0 ? '+' : '';
+        
+        let cBalance = cProdHere - cMovedForward - cScrapHere - cConsumedDisplay;
+        let cBalanceColor = cBalance < 0 ? 'var(--danger)' : (cBalance > 0 ? 'var(--success)' : 'var(--text-main)');
+        let cBalanceSign = cBalance > 0 ? '+' : '';
         
         let physicalStockHtml = isLastOp ? `
                <div style="margin-top:15px; font-size: 0.95rem; text-align:center; color:var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px;">
                  Склад (текущо): <b style="color:white; font-size: 1.1rem; margin-left: 5px;">${globalAllData.currentStock} бр.</b>
                </div>` : '';
         
-        let dateLabel = dateKey === 'ALL' ? 'ОБЩО НАТРУПАНИ (WIP)' : `ДНЕВНО ДВИЖЕНИЕ ЗА ${dateKey.split('-').reverse().join('.')}`;
+        let dailyBalanceHtml = '';
+        if (dateKey !== 'ALL') {
+             dailyBalanceHtml = `
+               <div class="target-row" style="margin-top: 5px;">
+                 <span style="color:#94a3b8; font-weight:700; font-size:0.90rem;">ДНЕВНО ДВИЖЕНИЕ ЗА ${dateKey.split('-').reverse().join('.')}:</span>
+                 <span class="vsm-stat" style="color:${balanceColor}; font-weight:700; font-size: 1.1rem;">${balanceSign}${balance} бр.</span>
+               </div>
+               <div style="border-top: 1px dashed #334155; margin: 5px 0;"></div>
+             `;
+        }
         
         let windowHtml = `
          <div class="vsm-target-node" style="${!isLastOp ? 'border-color:#475569;' : ''}">
@@ -334,9 +386,10 @@ async function renderVSM(dateKey) {
                  <span class="vsm-stat scrap">-${scrapHere} бр.</span>
                </div>
                <div style="border-top: 1px solid #334155; margin: 5px 0;"></div>
+               ${dailyBalanceHtml}
                <div class="target-row" style="margin-top: 5px;">
-                 <span style="color:#cbd5e1; font-weight:900; font-size:0.90rem;">${dateLabel}:</span>
-                 <span class="vsm-stat" style="color:${balanceColor}; font-weight:900; font-size: 1.4rem;">${balanceSign}${balance} бр.</span>
+                 <span style="color:#cbd5e1; font-weight:900; font-size:0.90rem;">ОБЩО НАТРУПАНИ (WIP):</span>
+                 <span class="vsm-stat" style="color:${cBalanceColor}; font-weight:900; font-size: 1.4rem;">${cBalanceSign}${cBalance} бр.</span>
                </div>
                ${physicalStockHtml}
             </div>
