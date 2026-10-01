@@ -84,11 +84,25 @@ async function fetchTasks(targetId) {
     }
 }
 
+async function fetchAllRows(table, select, filterCol, filterVal, orderCol) {
+    let allData = [];
+    let sr = 0;
+    while(true) {
+        let q = client.from(table).select(select).range(sr, sr + 999);
+        if (filterCol && filterVal) q = q.ilike(filterCol, filterVal);
+        if (orderCol) q = q.order(orderCol, { ascending: true });
+        
+        let { data, error } = await q;
+        if (error || !data || data.length === 0) break;
+        allData.push(...data);
+        if (data.length < 1000) break;
+        sr += 1000;
+    }
+    return { data: allData };
+}
+
 async function fetchTimeline(targetId) {
-    const { data: rawData, error } = await client.from('otcheti')
-        .select('*')
-        .ilike('ID Детайл', `%${targetId}%`)
-        .order('Дата', {ascending: true});
+    const { data: rawData, error } = await fetchAllRows('otcheti', '*', 'ID Детайл', `%${targetId}%`, 'Дата');
         
     let data = rawData ? rawData.filter(r => String(r['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) : [];
         
@@ -173,7 +187,7 @@ async function renderTree(targetId, dayObj) {
     let invGpQty = 0;
     
     // Check inventory (WIP and Finished Goods are now both in inventory)
-    const { data: invDataRaw } = await client.from('inventory').select('Количество, Операция, "ID Детайл"').ilike('ID Детайл', `%${targetId}%`);
+    const { data: invDataRaw } = await fetchAllRows('inventory', 'Количество, Операция, "ID Детайл"', 'ID Детайл', `%${targetId}%`);
     let invData = invDataRaw ? invDataRaw.filter(i => String(i['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) : [];
     if (invData && invData.length > 0) {
         invData.forEach(i => {
@@ -189,11 +203,11 @@ async function renderTree(targetId, dayObj) {
     }
     
     // 2. Fetch BOM where this is parent (Children) - Using 'ID Родител' based on schema
-    const { data: childrenRaw } = await client.from('bom').select('*').ilike('ID Родител', `%${targetId}%`).limit(2000);
+    const { data: childrenRaw } = await fetchAllRows('bom', '*', 'ID Родител', `%${targetId}%`);
     let childrenBOM = childrenRaw ? childrenRaw.filter(b => String(b['ID Родител']).trim().toLowerCase() === targetId.toLowerCase()) : [];
     
     // 3. Fetch BOM where this is child (Parents) - Using 'ID Компонент'
-    const { data: parentsRaw } = await client.from('bom').select('*').ilike('ID Компонент', `%${targetId}%`).limit(2000);
+    const { data: parentsRaw } = await fetchAllRows('bom', '*', 'ID Компонент', `%${targetId}%`);
     let parentsBOM = parentsRaw ? parentsRaw.filter(b => String(b['ID Компонент']).trim().toLowerCase() === targetId.toLowerCase()) : [];
     
     // 4. Find which parents have actually been produced (meaning they consumed this component)
@@ -220,23 +234,12 @@ async function renderTree(targetId, dayObj) {
     let filteredChildren = [];
     if (childrenBOM && childrenBOM.length > 0) {
         // Fetch all routes and all bom parents ONCE to build Sets for robust filtering
-        let allRoutes = [];
-        let sr = 0;
-        while(true) {
-            const { data } = await client.from('marshruti').select('Код на детайла').range(sr, sr + 999);
-            if (data) allRoutes.push(...data);
-            if (!data || data.length < 1000) break;
-            sr += 1000;
-        }
+        // Order by a common column or just row number to ensure stable pagination
+        const { data: allRoutesData } = await fetchAllRows('marshruti', 'Код на детайла', null, null, 'Код на детайла');
+        let allRoutes = allRoutesData || [];
         
-        let allBom = [];
-        let sb = 0;
-        while(true) {
-            const { data } = await client.from('bom').select('ID Родител').range(sb, sb + 999);
-            if (data) allBom.push(...data);
-            if (!data || data.length < 1000) break;
-            sb += 1000;
-        }
+        const { data: allBomData } = await fetchAllRows('bom', 'ID Родител', null, null, 'ID Родител');
+        let allBom = allBomData || [];
         
         // Helper to strip all non-alphanumeric chars (spaces, dots, dashes, parentheses)
         const normalize = s => String(s).toLowerCase().replace(/[^a-zа-я0-9]/g, '');
@@ -288,7 +291,7 @@ async function renderTree(targetId, dayObj) {
     let rightSpacerHtml = '';
 
     let sortedRoutes = [];
-    const { data: routesRaw } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${targetId}%`).limit(2000);
+    const { data: routesRaw } = await fetchAllRows('marshruti', '*', 'Код на детайла', `%${targetId}%`);
     let routesData = routesRaw ? routesRaw.filter(r => String(r['Код на детайла']).trim().toLowerCase() === targetId.toLowerCase()) : null;
     if (routesData && routesData.length > 0) {
         sortedRoutes = routesData.sort((a, b) => parseInt(a['№ Операция']) - parseInt(b['№ Операция']));
