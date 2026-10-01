@@ -310,7 +310,7 @@ async function renderVSM(dateKey) {
                  Склад (текущо): <b style="color:white; font-size: 1.1rem; margin-left: 5px;">${globalAllData.currentStock} бр.</b>
                </div>` : '';
         
-        let dateLabel = dateKey === 'ALL' ? 'ЗА ПЕРИОДА' : `НА ${dateKey.split('-').reverse().join('.')}`;
+        let dateLabel = dateKey === 'ALL' ? 'ОБЩО НАТРУПАНИ (WIP)' : `ДНЕВНО ДВИЖЕНИЕ ЗА ${dateKey.split('-').reverse().join('.')}`;
         
         let windowHtml = `
          <div class="vsm-target-node" style="${!isLastOp ? 'border-color:#475569;' : ''}">
@@ -335,7 +335,7 @@ async function renderVSM(dateKey) {
                </div>
                <div style="border-top: 1px solid #334155; margin: 5px 0;"></div>
                <div class="target-row" style="margin-top: 5px;">
-                 <span style="color:#cbd5e1; font-weight:900; font-size:0.95rem;">БАЛАНС (${dateLabel}):</span>
+                 <span style="color:#cbd5e1; font-weight:900; font-size:0.90rem;">${dateLabel}:</span>
                  <span class="vsm-stat" style="color:${balanceColor}; font-weight:900; font-size: 1.4rem;">${balanceSign}${balance} бр.</span>
                </div>
                ${physicalStockHtml}
