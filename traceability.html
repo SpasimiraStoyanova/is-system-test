@@ -3,319 +3,96 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ИС-СИСТЕМС - Проследимост (Traceability)</title>
+  <title>ИС-СИСТЕМС - Инвентарен Детектив</title>
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;900&display=swap" rel="stylesheet">
   
   <style>
-    /* CSS Variables & Global Reset (Dark Theme) */
     :root {
-      --bg-light: #0f172a;
-      --panel-bg: #1e293b;
+      --bg-color: #0f172a;
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
-      --border-color: #334155;
       --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --success: #22c55e;
-      --warning: #f59e0b;
+      --success: #10b981;
       --danger: #ef4444;
-      --header-bg: #020617;
+      --warning: #f59e0b;
     }
-
-    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    body, html { margin: 0; padding: 0; height: 100vh; background-color: var(--bg-light); color: var(--text-main); overflow: hidden; }
-
-    /* Top Navigation */
+    body { font-family: 'Sofia Sans', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh;}
+    
     .navbar {
-      height: 60px;
-      background-color: var(--header-bg);
-      display: flex;
-      align-items: center;
-      padding: 0 20px;
-      color: white;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--border-color);
+      height: 60px; background: #020617; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid #334155; gap: 15px;
+    }
+    .search-input, .date-input { padding: 8px 12px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; outline: none; font-family: 'Sofia Sans'; font-size: 1rem; }
+    .search-input:focus, .date-input:focus { border-color: var(--primary); }
+    .btn { background: var(--primary); color: white; border: none; padding: 8px 18px; border-radius: 4px; cursor: pointer; font-weight: 600; font-family: 'Sofia Sans'; font-size: 1rem; transition: background 0.2s;}
+    .btn:hover { background: #2563eb; }
+    
+    .workspace {
+      flex: 1; padding: 40px; display: flex; align-items: center; justify-content: flex-start; overflow-x: auto;
+      background-image: radial-gradient(#334155 1px, transparent 1px); background-size: 30px 30px;
     }
     
-    .nav-left { display: flex; align-items: center; gap: 15px; }
-    .brand { font-size: 1.2rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+    /* VSM Styles */
+    .vsm-flow {
+      display: flex; align-items: center; gap: 15px; flex-wrap: nowrap; min-width: max-content; margin: auto;
+    }
+    .vsm-node {
+      font-size: 1.25rem; font-weight: 900; letter-spacing: 0.5px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .vsm-name { color: #f8fafc; text-transform: uppercase; }
+    .vsm-divider { color: #475569; }
+    .vsm-stat { font-weight: 600; font-size: 1.2rem; }
+    .vsm-stat.prod { color: var(--success); }
+    .vsm-stat.scrap { color: var(--danger); }
+    .vsm-stat.consumed { color: var(--warning); }
     
-    .search-container { display: flex; align-items: center; gap: 10px; margin-left: 30px; }
-    .search-input { 
-      padding: 8px 15px; 
-      border-radius: 20px; 
-      border: 1px solid #475569; 
-      background: #0f172a; 
-      color: white; 
-      width: 300px;
-      outline: none;
-    }
-    .search-input:focus { border-color: var(--primary); background: #1e293b; }
-    .search-btn {
-      background: var(--primary); color: white; border: none; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-weight: 600;
-    }
-    .search-btn:hover { background: var(--primary-hover); }
-
-    .nav-right { display: flex; align-items: center; gap: 15px; }
-    .btn-back { background: transparent; border: 1px solid #64748b; color: #cbd5e1; padding: 6px 12px; border-radius: 6px; cursor: pointer; text-decoration: none; }
-    .btn-back:hover { background: #334155; color: white; }
-
-    /* Main Layout */
-    .main-layout {
-      display: flex;
-      height: calc(100vh - 60px);
-      padding: 15px;
-      gap: 15px;
+    .vsm-arrow {
+      color: #475569; font-size: 1.2rem; display: flex; align-items: center; padding: 0 10px; font-weight: 900;
     }
 
-    /* Main Panel Layout */
-    .main-panel {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-      min-width: 0;
+    /* Complex Target Node */
+    .vsm-target-node {
+      border: 2px solid var(--primary); background: linear-gradient(180deg, rgba(59,130,246,0.1) 0%, rgba(15,23,42,0.9) 100%); 
+      padding: 20px 30px; border-radius: 8px;
+      display: flex; flex-direction: column; gap: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+      min-width: 300px;
     }
-
-    /* Top Monitor View */
-    .tree-container {
-      flex: 1;
-      background: var(--panel-bg);
-      border-radius: 12px;
-      border: 1px solid var(--border-color);
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-      position: relative;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
+    .target-title { font-size: 1.8rem; font-weight: 900; color: #f8fafc; text-align: center; border-bottom: 2px dashed #334155; padding-bottom: 15px; text-transform: uppercase;}
+    .target-stats { display: flex; flex-direction: column; gap: 8px; font-size: 1.2rem; }
+    .target-row { display: flex; justify-content: space-between; gap: 40px; align-items: center; }
     
-    .tree-workspace {
-      flex: 1;
-      overflow: auto;
-      display: flex;
-      padding: 40px;
-      position: relative;
-      /* Background grid pattern */
-      background-image: radial-gradient(#334155 1px, transparent 1px);
-      background-size: 30px 30px;
-    }
-
-    .tree-wrapper {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-width: min-content;
-      min-height: min-content;
-      margin: auto;
-    }
-
-    /* Tree Nodes */
-    .node-col { display: flex; flex-direction: column; gap: 20px; align-items: center; z-index: 2;}
-    .node-spacer { width: 100px; display: flex; align-items: center; justify-content: center; position: relative; z-index: 1;}
-    
-    .connection-line {
-      height: 2px;
-      width: 100%;
-      background: #475569;
-      position: relative;
-    }
-    .connection-line::after {
-      content: ''; position: absolute; right: 0; top: -4px;
-      border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 8px solid #475569;
-    }
-    
-    .line-label {
-      position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
-      background: var(--panel-bg); padding: 2px 6px; border-radius: 10px; font-size: 0.75rem; border: 1px solid var(--border-color); font-weight: bold; color: var(--success);
-    }
-
-    .panel-header {
-      padding: 15px;
-      background: #0f172a;
-      border-bottom: 1px solid var(--border-color);
-      font-weight: 600;
-      color: #e2e8f0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .node {
-      background: var(--panel-bg); 
-      border: 1px solid var(--border-color); 
-      border-radius: 6px; 
-      width: 220px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.4); 
-      text-align: center; 
-      overflow: hidden; 
-      transition: transform 0.2s;
-      display: flex;
-      flex-direction: column;
-    }
-    .node:hover { transform: translateY(-2px); border-color: #64748b; }
-    
-    .node.main-node { border: 2px solid var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); width: 260px; }
-    
-    .node-header { 
-      color: #f8fafc; 
-      padding: 10px 14px; 
-      font-size: 14px; 
-      font-weight: 900; 
-      letter-spacing: 1px; 
-      text-transform: uppercase; 
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      border-top: 3px solid #64748b;
-      background: linear-gradient(180deg, rgba(100,116,139,0.1) 0%, transparent 100%);
-      white-space: nowrap; 
-      overflow: hidden; 
-      text-overflow: ellipsis; 
-    }
-    .node.main-node .node-header { 
-      border-top: 3px solid var(--primary);
-      background: linear-gradient(180deg, rgba(59,130,246,0.2) 0%, transparent 100%);
-    }
-    
-    .node-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; flex-grow: 1; }
-    .node-stat { font-size: 1.4rem; font-weight: 800; color: #f8fafc; margin-bottom: 2px; }
-    .node-sub { font-size: 0.85rem; color: var(--text-muted); }
-
-    /* Bottom Timeline */
-    .timeline-container {
-      height: 180px;
-      background: var(--panel-bg);
-      border-radius: 12px;
-      border: 1px solid var(--border-color);
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-      display: flex;
-      flex-direction: column;
-    }
-    
-    .timeline-scroll {
-      flex: 1;
-      overflow-x: auto;
-      overflow-y: hidden;
-      padding: 20px;
-      display: flex;
-      align-items: center;
-      position: relative;
-    }
-    
-    .timeline-track {
-      height: 4px;
-      background: #334155;
-      width: max-content;
-      min-width: 100%;
-      position: relative;
-      display: flex;
-      align-items: center;
-      padding: 0 100px;
-      gap: 100px;
-    }
-    
-    .timeline-point {
-      position: relative;
-      cursor: pointer;
-      z-index: 2;
-    }
-    
-    .point-dot {
-      width: 16px; height: 16px; border-radius: 50%; background: var(--panel-bg); border: 3px solid #64748b; transition: all 0.2s;
-    }
-    
-    .timeline-point:hover .point-dot { border-color: var(--primary); transform: scale(1.2); }
-    
-    .timeline-point.active .point-dot { border-color: var(--primary); background: var(--primary); box-shadow: 0 0 0 4px rgba(59,130,246,0.3); }
-    
-    .point-date {
-      position: absolute; top: 25px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-weight: bold; font-size: 0.85rem; color: #cbd5e1;
-    }
-    
-    .point-info {
-      position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 0.8rem; background: #0f172a; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border-color); color: var(--success); font-weight: bold;
-    }
-
+    .col-layout { display: flex; flex-direction: column; gap: 20px; }
   </style>
 </head>
 <body>
-
-  <!-- Top Navigation -->
   <div class="navbar">
-    <div class="nav-left">
-      <div class="brand">
-        <img src="icon.png" style="height: 28px; border-radius: 4px;" onerror="this.style.display='none'"> 
-        ПРОСЛЕДИМОСТ (TRACEABILITY)
-      </div>
-      <div class="search-container">
-        <input type="text" id="searchInput" class="search-input" placeholder="Сканирай или въведи ID на детайл...">
-        <button class="search-btn" onclick="startSearch()">Търси</button>
-      </div>
-    </div>
-    <div class="nav-right">
-      <span id="selectedDateDisplay" style="color: #94a3b8; font-size: 0.9rem; margin-right: 15px;">
-        <script>document.write("Днес: " + new Date().toLocaleDateString('bg-BG'));</script>
-      </span>
-      <a href="admin.html" class="btn-back">⬅ Обратно в Админ</a>
-    </div>
-  </div>
-
-  <!-- Main Layout -->
-  <div class="main-layout">
+    <div style="font-size:1.3rem; font-weight:900; margin-right: 20px; color: var(--primary);">ИНВЕНТАРЕН ДЕТЕКТИВ</div>
     
-    <!-- Main Panel -->
-    <div class="main-panel">
-      
-      <!-- Top Monitor View (BOM Tree) -->
-      <div class="tree-container">
-        <div class="panel-header" style="position: absolute; top:0; left:0; right:0; z-index: 10; background: rgba(30,41,59,0.8); backdrop-filter: blur(4px);">
-          <span>Дърво на проследимостта (Входове ➡️ Процес ➡️ Изходи)</span>
-          <div>
-            <select id="bomDepthSelect" onchange="if(globalTargetId) startSearch()" style="padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); outline:none; font-size:0.85rem; background: var(--bg-light); color: var(--text-main);">
-              <option value="all">Покажи всички преки деца (вкл. суровини)</option>
-              <option value="filtered">Само полуфабрикати (скрий суровините)</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="tree-workspace" id="treeWorkspace">
-          <div class="tree-wrapper" id="treeWrapper">
-            <!-- Placeholder content -->
-            <div style="color: var(--text-muted); font-size: 1.2rem;" id="treePlaceholder">
-              Въведете детайл за визуализация...
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Bottom Timeline -->
-      <div class="timeline-container">
-        <div class="panel-header">
-          <span>Хронология по дни (Движение на количествата)</span>
-        </div>
-        <div class="timeline-scroll">
-          <div class="timeline-track" id="timelineTrack">
-             <div style="color:var(--text-muted); margin: 0 auto;">Няма заредени данни...</div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-
+    <input type="text" id="searchInput" class="search-input" placeholder="Код на детайл..." style="width: 250px;">
+    
+    <span style="color:var(--text-muted); font-weight:600; font-size:1rem; margin-left: 10px;">ОТ:</span>
+    <input type="date" id="dateFrom" class="date-input">
+    <span style="color:var(--text-muted); font-weight:600; font-size:1rem;">ДО:</span>
+    <input type="date" id="dateTo" class="date-input">
+    
+    <button class="btn" onclick="startSearch()">АНАЛИЗИРАЙ</button>
+    <a href="admin.html" style="margin-left:auto; color:#94a3b8; text-decoration:none; font-weight:600; font-size: 1.1rem;">⬅ Обратно</a>
   </div>
 
-
+  <div class="workspace" id="workspace">
+    <div style="margin: auto; color: #475569; font-size: 1.5rem; font-weight:900; letter-spacing: 1px;">ВЪВЕДЕТЕ ДЕТАЙЛ И ПЕРИОД ЗА АНАЛИЗ...</div>
   </div>
 
-  <!-- Dummy elements for terminal-tasks.js to prevent crashing -->
+  <!-- Dummy elements for scripts if needed -->
   <div id="bigLoginScreen" style="display:none"></div>
   <div id="mainAppContent" style="display:none"></div>
   <div id="uiMachineName" style="display:none"></div>
   <div id="filter_all" style="display:none"></div>
 
   <script src="admin/admin-config.js"></script>
-  <script src="terminal/terminal-tasks.js"></script>
   <script src="traceability.js"></script>
 </body>
 </html>
