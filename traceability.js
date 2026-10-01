@@ -139,7 +139,7 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         let pNorms = parentNames.map(p => p.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase());
         
         for (let pName of parentNames) {
-            const { data: pOtch } = await fetchRobustRows('otcheti', 'ID Детайл,Дата,Количество,Статус', 'ID Детайл', pName);
+            const { data: pOtch } = await fetchRobustRows('otcheti', '*', 'ID Детайл', pName);
             if (pOtch) {
                 pOtch.forEach(r => {
                     let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
