@@ -135,20 +135,22 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     
     globalAllData.parentOtcheti = [];
     if (globalAllData.parentsBOM.length > 0) {
-        let parentNames = globalAllData.parentsBOM.map(b => b['ID Родител']).filter(Boolean);
-        let pChunks = [];
-        for(let i=0; i<parentNames.length; i+=100) pChunks.push(parentNames.slice(i, i+100));
+        let parentNames = globalAllData.parentsBOM.map(b => String(b['ID Родител'])).filter(Boolean);
+        let pNorms = parentNames.map(p => p.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase());
         
-        for (let chunk of pChunks) {
-            const { data: parentsOtcheti } = await client.from('otcheti').select('ID Детайл, Дата, Количество, Статус').in('ID Детайл', chunk);
-            if (parentsOtcheti) {
-                parentsOtcheti.forEach(r => {
-                    let dTs = new Date(r['Дата']).getTime();
-                    if (dTs >= fromTs && dTs < toTs) {
-                        globalAllData.parentOtcheti.push(r);
-                        let dateStr = r['Дата'].split('T')[0];
-                        if (!globalTimeline[dateStr]) globalTimeline[dateStr] = { rawOtcheti: [], parentOtcheti: [] };
-                        globalTimeline[dateStr].parentOtcheti.push(r);
+        for (let pName of parentNames) {
+            const { data: pOtch } = await fetchRobustRows('otcheti', 'ID Детайл, Дата, Количество, Статус', 'ID Детайл', pName);
+            if (pOtch) {
+                pOtch.forEach(r => {
+                    let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                    if (pNorms.includes(dbId)) {
+                        let dTs = new Date(r['Дата']).getTime();
+                        if (dTs >= fromTs && dTs < toTs) {
+                            globalAllData.parentOtcheti.push(r);
+                            let dateStr = r['Дата'].split('T')[0];
+                            if (!globalTimeline[dateStr]) globalTimeline[dateStr] = { rawOtcheti: [], parentOtcheti: [] };
+                            globalTimeline[dateStr].parentOtcheti.push(r);
+                        }
                     }
                 });
             }
