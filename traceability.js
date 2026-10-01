@@ -1,4 +1,4 @@
-// traceability.js - Inventory Detective Logic
+// traceability.js - Inventory Detective Logic with Timeline
 
 document.getElementById('searchInput').addEventListener('keypress', function(e) {
   if(e.key === 'Enter') startSearch();
@@ -29,6 +29,9 @@ async function fetchAllRows(table, select, filterCol, filterVal) {
     return { data: allData };
 }
 
+let globalTimeline = {}; // { 'YYYY-MM-DD': { rawOtcheti: [], parentOtcheti: [] } }
+let globalAllData = { rawOtcheti: [], parentOtcheti: [], childrenBOM: [], parentsBOM: [], tRoutes: [], currentStock: 0, targetId: '' };
+
 async function startSearch() {
   const input = document.getElementById('searchInput').value.trim();
   const dateFrom = document.getElementById('dateFrom').value;
@@ -38,85 +41,153 @@ async function startSearch() {
   if (!dateFrom || !dateTo) return Swal.fire('Грешка', 'Изберете период!', 'warning');
 
   document.getElementById('workspace').innerHTML = '<div style="margin:auto; color:var(--text-muted); font-size:1.2rem; font-weight: 600;">Анализиране на потока... ⏳</div>';
+  document.getElementById('timelineContainer').innerHTML = '';
 
   try {
-      await generateMassBalance(input, dateFrom, dateTo);
+      await fetchDataForPeriod(input, dateFrom, dateTo);
+      renderTimeline();
+      renderVSM('ALL');
   } catch (e) {
       console.error(e);
       document.getElementById('workspace').innerHTML = `<div style="margin:auto; color:var(--danger); font-size: 1.2rem;">Грешка: ${e.message}</div>`;
   }
 }
 
-async function generateMassBalance(targetId, dateFrom, dateTo) {
-    // We add 86400000 (1 day) to toTs to include the end date fully
+async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
+    globalAllData.targetId = targetId;
     const fromTs = new Date(dateFrom).getTime();
     const toTs = new Date(dateTo).getTime() + 86400000;
+    globalTimeline = {};
 
-    // 1. Fetch Routes for the target
+    // 1. Fetch Routes
     const { data: rData } = await fetchAllRows('routes', '*', 'ID Детайл', `%${targetId}%`);
-    let tRoutes = rData ? rData.filter(r => String(r['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) : [];
-    tRoutes.sort((a,b) => parseInt(a['Номер']||0) - parseInt(b['Номер']||0));
+    globalAllData.tRoutes = rData ? rData.filter(r => String(r['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) : [];
+    globalAllData.tRoutes.sort((a,b) => parseInt(a['Номер']||0) - parseInt(b['Номер']||0));
 
-    // 2. Fetch Target Production & Scrap
+    // 2. Fetch Target Otcheti
     const { data: rawOtcheti } = await fetchAllRows('otcheti', '*', 'ID Детайл', `%${targetId}%`);
-    let opsProduced = {};
-    let opsScrap = {};
-    
+    globalAllData.rawOtcheti = [];
     if (rawOtcheti) {
         rawOtcheti.forEach(r => {
             if (String(r['ID Детайл']).trim().toLowerCase() !== targetId.toLowerCase()) return;
             let dTs = new Date(r['Дата']).getTime();
             if (dTs >= fromTs && dTs < toTs) {
-                let st = String(r['Статус'] || '').trim().toLowerCase();
-                let q = parseFloat(r['Количество']) || 0;
-                let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
-                
-                if (st === 'отчетено' || st === 'завършено') {
-                    opsProduced[op] = (opsProduced[op] || 0) + q;
-                }
-                else if (st === 'брак') {
-                    opsScrap[op] = (opsScrap[op] || 0) + Math.abs(q);
-                }
+                globalAllData.rawOtcheti.push(r);
+                let dateStr = r['Дата'].split('T')[0];
+                if (!globalTimeline[dateStr]) globalTimeline[dateStr] = { rawOtcheti: [], parentOtcheti: [] };
+                globalTimeline[dateStr].rawOtcheti.push(r);
             }
         });
     }
 
-    // Determine the operations chain
-    let opChain = [];
-    if (tRoutes.length > 0) {
-        tRoutes.forEach(r => {
-            opChain.push(String(r['Име'] || r['Операция'] || '').trim().toUpperCase());
+    // 3. Fetch BOM Children
+    const { data: childrenRaw } = await fetchAllRows('bom', '*', 'ID Родител', `%${targetId}%`);
+    globalAllData.childrenBOM = childrenRaw ? childrenRaw.filter(b => String(b['ID Родител']).trim().toLowerCase() === targetId.toLowerCase()) : [];
+
+    // 4. Fetch BOM Parents & Parent Otcheti
+    const { data: parentsRaw } = await fetchAllRows('bom', '*', 'ID Компонент', `%${targetId}%`);
+    globalAllData.parentsBOM = parentsRaw ? parentsRaw.filter(b => String(b['ID Компонент']).trim().toLowerCase() === targetId.toLowerCase()) : [];
+    
+    globalAllData.parentOtcheti = [];
+    if (globalAllData.parentsBOM.length > 0) {
+        let parentNames = globalAllData.parentsBOM.map(b => b['ID Родител']).filter(Boolean);
+        let pChunks = [];
+        for(let i=0; i<parentNames.length; i+=100) pChunks.push(parentNames.slice(i, i+100));
+        
+        for (let chunk of pChunks) {
+            const { data: parentsOtcheti } = await client.from('otcheti').select('ID Детайл, Дата, Количество, Статус').in('ID Детайл', chunk);
+            if (parentsOtcheti) {
+                parentsOtcheti.forEach(r => {
+                    let dTs = new Date(r['Дата']).getTime();
+                    if (dTs >= fromTs && dTs < toTs) {
+                        globalAllData.parentOtcheti.push(r);
+                        let dateStr = r['Дата'].split('T')[0];
+                        if (!globalTimeline[dateStr]) globalTimeline[dateStr] = { rawOtcheti: [], parentOtcheti: [] };
+                        globalTimeline[dateStr].parentOtcheti.push(r);
+                    }
+                });
+            }
+        }
+    }
+
+    // 5. Fetch Inventory
+    const { data: invDataRaw } = await fetchAllRows('inventory', 'Количество, "ID Детайл"', 'ID Детайл', `%${targetId}%`);
+    globalAllData.currentStock = 0;
+    if (invDataRaw) {
+        invDataRaw.forEach(i => {
+            if (String(i['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) {
+                globalAllData.currentStock += (parseFloat(i['Количество']) || 0);
+            }
         });
+    }
+}
+
+function renderTimeline() {
+    const container = document.getElementById('timelineContainer');
+    let dates = Object.keys(globalTimeline).sort();
+    
+    if (dates.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-muted); margin:auto;">Няма събития за избрания период.</div>';
+        return;
+    }
+    
+    let html = `
+        <div style="cursor:pointer; display:flex; flex-direction:column; align-items:center;" onclick="renderVSM('ALL')">
+            <div style="width:12px; height:12px; background:var(--primary); border-radius:50%; margin-bottom:5px; box-shadow:0 0 10px var(--primary);"></div>
+            <div style="color:white; font-size:0.8rem; font-weight:bold;">ЦЕЛИЯТ ПЕРИОД</div>
+        </div>
+        <div style="width:2px; height:20px; background:#475569;"></div>
+    `;
+    
+    dates.forEach(d => {
+        let displayD = d.split('-').reverse().join('.');
+        html += `
+        <div style="cursor:pointer; display:flex; flex-direction:column; align-items:center; opacity:0.8; transition:0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" onclick="renderVSM('${d}')">
+            <div style="width:10px; height:10px; background:#94a3b8; border-radius:50%; margin-bottom:5px;"></div>
+            <div style="color:#cbd5e1; font-size:0.75rem;">${displayD}</div>
+        </div>
+        <div style="height:1px; width:30px; background:#334155;"></div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+async function renderVSM(dateKey) {
+    let dataSlice = dateKey === 'ALL' ? globalAllData : globalTimeline[dateKey];
+    if (!dataSlice) return;
+
+    let opsProduced = {};
+    let opsScrap = {};
+    
+    (dataSlice.rawOtcheti || []).forEach(r => {
+        let st = String(r['Статус'] || '').trim().toLowerCase();
+        let q = parseFloat(r['Количество']) || 0;
+        let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
+        
+        if (st === 'отчетено' || st === 'завършено') opsProduced[op] = (opsProduced[op] || 0) + q;
+        else if (st === 'брак') opsScrap[op] = (opsScrap[op] || 0) + Math.abs(q);
+    });
+
+    let opChain = [];
+    if (globalAllData.tRoutes.length > 0) {
+        globalAllData.tRoutes.forEach(r => opChain.push(String(r['Име'] || r['Операция'] || '').trim().toUpperCase()));
     } else {
-        // Fallback: if no routes, just use whatever operations are in reports
         opChain = Object.keys(opsProduced);
         if (opChain.length === 0) opChain = ['Без оп.'];
     }
     
-    // In some cases, names in otcheti might be slightly different. 
-    // We try to find the closest match or just use the exact upper case.
-    let targetProduced = 0; // Total produced (for child consumption)
+    let targetProduced = 0; 
     if (opChain.length > 0) {
         let firstOp = opChain[0];
-        // The children consumption should be based on the FIRST operation's production
         targetProduced = opsProduced[firstOp] || 0; 
-        // fallback to max if first is 0
-        if (targetProduced === 0) {
-            targetProduced = Math.max(0, ...Object.values(opsProduced));
-        }
+        if (targetProduced === 0) targetProduced = Math.max(0, ...Object.values(opsProduced));
     }
 
-    // 2. Fetch Children (What went into the Target?)
-    const { data: childrenRaw } = await fetchAllRows('bom', '*', 'ID Родител', `%${targetId}%`);
-    let childrenBOM = childrenRaw ? childrenRaw.filter(b => String(b['ID Родител']).trim().toLowerCase() === targetId.toLowerCase()) : [];
-    
+    // Children 
     let childrenFlowHtml = '';
-    
-    if (childrenBOM.length > 0) {
-        // Filter out raw materials (items with no routes and no children of their own)
-        let childCodes = childrenBOM.map(b => String(b['ID Компонент']).toUpperCase());
-        
-        // Chunk childCodes to avoid large IN clauses if there are many
+    if (globalAllData.childrenBOM.length > 0) {
+        let childCodes = globalAllData.childrenBOM.map(b => String(b['ID Компонент']).toUpperCase());
         let cChunks = [];
         for(let i=0; i<childCodes.length; i+=100) cChunks.push(childCodes.slice(i, i+100));
         
@@ -126,22 +197,16 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
         for (let chunk of cChunks) {
             const { data: rChild } = await client.from('routes').select('"ID Детайл"').in('ID Детайл', chunk);
             if (rChild) rChild.forEach(r => hasRoute.add(String(r['ID Детайл']).toUpperCase()));
-            
             const { data: bChild } = await client.from('bom').select('"ID Родител"').in('ID Родител', chunk);
             if (bChild) bChild.forEach(b => hasBom.add(String(b['ID Родител']).toUpperCase()));
         }
         
         let filteredChildren = [];
-        childrenBOM.forEach(b => {
+        globalAllData.childrenBOM.forEach(b => {
              let cName = String(b['ID Компонент']).toUpperCase();
              let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
              let isRaw = !hasRoute.has(cName) && !hasBom.has(cName);
-             
-             // Fallback for stator packs
-             if (isRaw && (cNorm.includes('статоренпак') || cNorm.includes('статор'))) {
-                 isRaw = false;
-             }
-             
+             if (isRaw && (cNorm.includes('статоренпак') || cNorm.includes('статор'))) isRaw = false;
              if (!isRaw) filteredChildren.push(b);
         });
 
@@ -161,58 +226,31 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
             `);
         });
         
-        if (cNodes.length > 0) {
-            childrenFlowHtml = `<div class="col-layout">${cNodes.join('')}</div>`;
-        } else {
-            childrenFlowHtml = `<div class="vsm-node" style="opacity:0.5"><span class="vsm-name">САМО СУРОВИНИ (СКРИТИ)</span></div>`;
-        }
+        childrenFlowHtml = cNodes.length > 0 ? `<div class="col-layout">${cNodes.join('')}</div>` : `<div class="vsm-node" style="opacity:0.5"><span class="vsm-name">САМО СУРОВИНИ (СКРИТИ)</span></div>`;
     } else {
          childrenFlowHtml = `<div class="vsm-node" style="opacity:0.5"><span class="vsm-name">ЧИСТА СУРОВИНА</span></div>`;
     }
 
-    // 3. Fetch Parents (Where is it consumed?)
-    const { data: parentsRaw } = await fetchAllRows('bom', '*', 'ID Компонент', `%${targetId}%`);
-    let parentsBOM = parentsRaw ? parentsRaw.filter(b => String(b['ID Компонент']).trim().toLowerCase() === targetId.toLowerCase()) : [];
-    
+    // Parents
     let totalConsumed = 0;
     let parentsFlowHtml = '';
     
-    if (parentsBOM.length > 0) {
-        let parentNames = parentsBOM.map(b => b['ID Родител']).filter(Boolean);
-        
-        // Fetch production of parents in the timeframe
-        let parentStats = {}; // { parentName: qtyProduced }
-        
-        // chunk parent names to avoid huge IN clauses
-        let pChunks = [];
-        for(let i=0; i<parentNames.length; i+=100) pChunks.push(parentNames.slice(i, i+100));
-        
-        for (let chunk of pChunks) {
-            const { data: parentsOtcheti } = await client.from('otcheti')
-                .select('ID Детайл, Дата, Количество, Статус')
-                .in('ID Детайл', chunk);
-                
-            if (parentsOtcheti) {
-                parentsOtcheti.forEach(r => {
-                    let dTs = new Date(r['Дата']).getTime();
-                    if (dTs >= fromTs && dTs < toTs) {
-                        let st = String(r['Статус'] || '').trim().toLowerCase();
-                        if (st === 'отчетено' || st === 'завършено') {
-                            let pName = String(r['ID Детайл']).toUpperCase();
-                            parentStats[pName] = (parentStats[pName] || 0) + (parseFloat(r['Количество']) || 0);
-                        }
-                    }
-                });
+    if (globalAllData.parentsBOM.length > 0) {
+        let parentStats = {}; 
+        (dataSlice.parentOtcheti || []).forEach(r => {
+            let st = String(r['Статус'] || '').trim().toLowerCase();
+            if (st === 'отчетено' || st === 'завършено') {
+                let pName = String(r['ID Детайл']).toUpperCase();
+                parentStats[pName] = (parentStats[pName] || 0) + (parseFloat(r['Количество']) || 0);
             }
-        }
+        });
         
         let pNodes = [];
-        parentsBOM.forEach(b => {
+        globalAllData.parentsBOM.forEach(b => {
             let pName = String(b['ID Родител']).toUpperCase();
             let norm = parseFloat(b['Количество']) || 1;
             let pProduced = parentStats[pName] || 0;
             let consumedHere = pProduced * norm;
-            
             totalConsumed += consumedHere;
             
             if (consumedHere > 0) {
@@ -226,48 +264,25 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
             }
         });
         
-        if (pNodes.length > 0) {
-            parentsFlowHtml = `<div class="col-layout">${pNodes.join('')}</div>`;
-        } else {
-            parentsFlowHtml = `<div class="vsm-node"><span class="vsm-stat" style="color:var(--text-muted)">Няма изразходвани в този период</span></div>`;
-        }
+        parentsFlowHtml = pNodes.length > 0 ? `<div class="col-layout">${pNodes.join('')}</div>` : `<div class="vsm-node"><span class="vsm-stat" style="color:var(--text-muted)">Няма изразходвани</span></div>`;
     } else {
          parentsFlowHtml = `<div class="vsm-node"><span class="vsm-stat" style="color:var(--text-muted)">Не се влага никъде (Краен продукт)</span></div>`;
     }
 
-    // 4. Fetch Current Physical Inventory
-    const { data: invDataRaw } = await fetchAllRows('inventory', 'Количество, "ID Детайл"', 'ID Детайл', `%${targetId}%`);
-    let currentStock = 0;
-    if (invDataRaw) {
-        invDataRaw.forEach(i => {
-            if (String(i['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) {
-                currentStock += (parseFloat(i['Количество']) || 0);
-            }
-        });
-    }
-
-    // 5. Balance Calculation & Target Windows HTML
+    // Windows
     let targetFlowHtml = '';
-    
     for (let i = 0; i < opChain.length; i++) {
         let opName = opChain[i];
         let prodHere = 0;
         let scrapHere = 0;
         
-        // Find matching operation in opsProduced/opsScrap
-        for (let k in opsProduced) {
-            if (k.includes(opName) || opName.includes(k)) prodHere += opsProduced[k];
-        }
-        for (let k in opsScrap) {
-            if (k.includes(opName) || opName.includes(k)) scrapHere += opsScrap[k];
-        }
+        for (let k in opsProduced) if (k.includes(opName) || opName.includes(k)) prodHere += opsProduced[k];
+        for (let k in opsScrap) if (k.includes(opName) || opName.includes(k)) scrapHere += opsScrap[k];
         
         let movedForward = 0;
         if (i < opChain.length - 1) {
             let nextOp = opChain[i+1];
-            for (let k in opsProduced) {
-                 if (k.includes(nextOp) || nextOp.includes(k)) movedForward += opsProduced[k];
-            }
+            for (let k in opsProduced) if (k.includes(nextOp) || nextOp.includes(k)) movedForward += opsProduced[k];
         }
         
         let isLastOp = (i === opChain.length - 1);
@@ -277,18 +292,16 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
         let balanceColor = balance < 0 ? 'var(--danger)' : (balance > 0 ? 'var(--success)' : 'var(--text-main)');
         let balanceSign = balance > 0 ? '+' : '';
         
-        let physicalStockHtml = '';
-        if (isLastOp) {
-             physicalStockHtml = `
+        let physicalStockHtml = isLastOp ? `
                <div style="margin-top:15px; font-size: 0.95rem; text-align:center; color:var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px;">
-                 Склад (текущо за детайла): <b style="color:white; font-size: 1.1rem; margin-left: 5px;">${currentStock} бр.</b>
-               </div>
-             `;
-        }
+                 Склад (текущо): <b style="color:white; font-size: 1.1rem; margin-left: 5px;">${globalAllData.currentStock} бр.</b>
+               </div>` : '';
+        
+        let dateLabel = dateKey === 'ALL' ? 'ЗА ПЕРИОДА' : `НА ${dateKey.split('-').reverse().join('.')}`;
         
         let windowHtml = `
          <div class="vsm-target-node" style="${!isLastOp ? 'border-color:#475569;' : ''}">
-            <div class="target-title" style="font-size:1.4rem;">${targetId.toUpperCase()} <br><span style="font-size:1rem; color:var(--primary)">(${opName})</span></div>
+            <div class="target-title" style="font-size:1.4rem;">${globalAllData.targetId.toUpperCase()} <br><span style="font-size:1rem; color:var(--primary)">(${opName})</span></div>
             <div class="target-stats">
                <div class="target-row">
                  <span style="color:#cbd5e1">Произведени:</span>
@@ -302,15 +315,14 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
                <div class="target-row">
                  <span style="color:#cbd5e1">Изразходвани в други:</span>
                  <span class="vsm-stat consumed">-${consumedDisplay} бр.</span>
-               </div>
-               `}
+               </div>`}
                <div class="target-row">
                  <span style="color:#cbd5e1">Брак:</span>
                  <span class="vsm-stat scrap">-${scrapHere} бр.</span>
                </div>
                <div style="border-top: 1px solid #334155; margin: 5px 0;"></div>
                <div class="target-row" style="margin-top: 5px;">
-                 <span style="color:#cbd5e1; font-weight:900;">НЕТЕН БАЛАНС (WIP):</span>
+                 <span style="color:#cbd5e1; font-weight:900; font-size:0.95rem;">БАЛАНС (${dateLabel}):</span>
                  <span class="vsm-stat" style="color:${balanceColor}; font-weight:900; font-size: 1.4rem;">${balanceSign}${balance} бр.</span>
                </div>
                ${physicalStockHtml}
@@ -319,25 +331,15 @@ async function generateMassBalance(targetId, dateFrom, dateTo) {
         `;
         
         targetFlowHtml += windowHtml;
-        if (i < opChain.length - 1) {
-            targetFlowHtml += `<div class="vsm-arrow">--▶</div>`;
-        }
+        if (i < opChain.length - 1) targetFlowHtml += `<div class="vsm-arrow">--▶</div>`;
     }
 
-    // Render VSM Flow
     document.getElementById('workspace').innerHTML = `
       <div class="vsm-flow">
-         <!-- INPUTS / CHILDREN -->
          ${childrenFlowHtml}
-         
          <div class="vsm-arrow">--▶</div>
-      
-         <!-- TARGET OPERATIONS CHAIN -->
          ${targetFlowHtml}
-         
          <div class="vsm-arrow">--▶</div>
-         
-         <!-- PARENTS / OUTPUTS -->
          ${parentsFlowHtml}
       </div>
     `;
