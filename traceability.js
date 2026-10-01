@@ -314,7 +314,7 @@ async function renderVSM(dateKey) {
         (dataSlice.parentOtcheti || []).forEach(r => {
             let st = String(r['Статус'] || '').trim().toLowerCase();
             if (st === 'отчетено' || st === 'завършено') {
-                let pName = String(r['ID Детайл']).toUpperCase();
+                let pName = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
                 parentStats[pName] = (parentStats[pName] || 0) + (parseFloat(r['Количество']) || 0);
             }
         });
@@ -324,14 +324,15 @@ async function renderVSM(dateKey) {
             let dTs = new Date(r['Дата']).getTime();
             let st = String(r['Статус'] || '').trim().toLowerCase();
             if (dTs < targetTs && (st === 'отчетено' || st === 'завършено')) {
-                 let pName = String(r['ID Детайл']).toUpperCase();
+                 let pName = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
                  cumParentStats[pName] = (cumParentStats[pName] || 0) + (parseFloat(r['Количество']) || 0);
             }
         });
         
         let pNodes = [];
         globalAllData.parentsBOM.forEach(b => {
-            let pName = String(b['ID Родител']).toUpperCase();
+            let originalName = String(b['ID Родител']).trim().toUpperCase();
+            let pName = String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
             let normStr = String(b['Количество'] || '1').replace(',', '.');
             let norm = parseFloat(normStr) || 1;
             let pProduced = parentStats[pName] || 0;
@@ -344,7 +345,7 @@ async function renderVSM(dateKey) {
             if (consumedHere > 0) {
                 pNodes.push(`
                   <div class="vsm-node">
-                    <span class="vsm-name">${pName}</span>
+                    <span class="vsm-name">${originalName}</span>
                     <span class="vsm-divider">|</span>
                     <span class="vsm-stat consumed">Вложени: ${consumedHere} бр.</span>
                   </div>
