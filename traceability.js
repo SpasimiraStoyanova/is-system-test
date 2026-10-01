@@ -66,9 +66,9 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     if (rData) rData.forEach(r => globalAllData.routesSetNorm.add(String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
     
     globalAllData.tRoutes = rData ? rData.filter(r => {
-        let dbId = String(r['ID Детайл']).trim().toLowerCase();
-        let tId = targetId.toLowerCase();
-        return dbId === tId || tId.includes(dbId) || dbId.includes(tId);
+        let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let tNormRoute = targetId.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        return dbId === tNormRoute;
     }) : [];
     globalAllData.tRoutes.sort((a,b) => parseInt(a['Номер']||0) - parseInt(b['Номер']||0));
 
@@ -108,7 +108,7 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     // 3. Fetch BOM Children
     globalAllData.childrenBOM = allBomsFull ? allBomsFull.filter(b => {
         let dbId = String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        return dbId === tNorm || (dbId.length > 5 && tNorm.startsWith(dbId));
+        return dbId === tNorm;
     }) : [];
 
     // 3.5 Check if children are produced internally (have otcheti)
@@ -129,7 +129,7 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     // 4. Fetch BOM Parents & Parent Otcheti
     globalAllData.parentsBOM = allBomsFull ? allBomsFull.filter(b => {
         let dbId = String(b['ID Компонент']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        return dbId === tNorm || (dbId.length > 5 && tNorm.startsWith(dbId));
+        return dbId === tNorm;
     }) : [];
     
     globalAllData.parentOtcheti = [];
