@@ -227,12 +227,15 @@ async function renderTree(targetId, dayObj) {
         filteredChildren.forEach(b => {
             let childName = b['ID Компонент'] || 'Неизвестно';
             let qty = parseFloat(b['Количество']) || 1;
+            
+            // To be replaced below after statsByOp calculation
             childrenHtml += `
-              <div class="node">
+              <div class="node child-node-placeholder" data-child="${childName}" data-norm="${qty}">
                 <div class="node-header" title="${childName}" style="border-top: 3px solid #10b981; background: linear-gradient(180deg, rgba(16,185,129,0.1) 0%, transparent 100%);">${childName}</div>
                 <div class="node-body">
                   <div class="node-stat" style="color:var(--text-main); font-size: 1.1rem;">${qty} бр.</div>
                   <div class="node-sub">Норма (BOM)</div>
+                  <!-- DYNAMIC_CONSUMED_PLACEHOLDER -->
                 </div>
               </div>
             `;
@@ -338,6 +341,55 @@ async function renderTree(targetId, dayObj) {
             </div>
             <div class="node-sub" style="margin-top:4px;">На: ${dayObj.displayDate}</div>
         `;
+    }
+    
+    // Replace children placeholders with consumed calculation for the day
+    let maxProduced = 0;
+    for (let k in statsByOp) {
+        if (statsByOp[k].prod > maxProduced) maxProduced = statsByOp[k].prod;
+    }
+    // If no specific operations matched, we can fall back to the totalQtyChange if it's positive
+    if (maxProduced === 0 && dayObj && dayObj.totalQtyChange > 0) {
+        maxProduced = dayObj.totalQtyChange;
+    }
+    
+    // Inject consumed HTML into children string
+    if (filteredChildren.length > 0) {
+        let newChildrenHtml = '';
+        filteredChildren.forEach(b => {
+            let childName = b['ID Компонент'] || 'Неизвестно';
+            let norm = parseFloat(b['Количество']) || 1;
+            
+            let consumedHtml = '';
+            if (dayObj) {
+                let consumedToday = maxProduced * norm;
+                consumedHtml = `
+                  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color);">
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">Вложени (за деня)</div>
+                    <div style="color: var(--danger); font-weight: bold; font-size: 1.1rem;">-${consumedToday} бр.</div>
+                  </div>
+                `;
+            } else {
+                 consumedHtml = `
+                  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color);">
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">Вложени (за деня)</div>
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">Изберете дата</div>
+                  </div>
+                `;
+            }
+            
+            newChildrenHtml += `
+              <div class="node">
+                <div class="node-header" title="${childName}" style="border-top: 3px solid #10b981; background: linear-gradient(180deg, rgba(16,185,129,0.1) 0%, transparent 100%);">${childName}</div>
+                <div class="node-body">
+                  <div class="node-stat" style="color:var(--text-main); font-size: 1.1rem;">${norm} бр.</div>
+                  <div class="node-sub">Норма (BOM)</div>
+                  ${consumedHtml}
+                </div>
+              </div>
+            `;
+        });
+        childrenHtml = newChildrenHtml;
     }
 
     if (actualParents.length > 0) {
