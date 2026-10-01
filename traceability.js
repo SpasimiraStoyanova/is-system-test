@@ -139,7 +139,7 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         let pNorms = parentNames.map(p => p.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase());
         
         for (let pName of parentNames) {
-            const { data: pOtch } = await fetchRobustRows('otcheti', 'ID Детайл, Дата, Количество, Статус', 'ID Детайл', pName);
+            const { data: pOtch } = await fetchRobustRows('otcheti', 'ID Детайл,Дата,Количество,Статус', 'ID Детайл', pName);
             if (pOtch) {
                 pOtch.forEach(r => {
                     let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
@@ -263,18 +263,18 @@ async function renderVSM(dateKey) {
                  isRaw = false;
              } else {
                  // Check if it has a route
-                 let { data: rData } = await client.from('routes').select('"ID Детайл"').ilike('ID Детайл', `%${cName.trim()}%`).limit(1);
+                 let { data: rData } = await client.from('routes').select('*').ilike('ID Детайл', `%${cName.trim()}%`).limit(1);
                  if (rData && rData.length > 0) isRaw = false;
                  
                  // Check if it is a parent in BOM
                  if (isRaw) {
-                     let { data: bData } = await client.from('bom').select('"ID Родител"').ilike('ID Родител', `%${cName.trim()}%`).limit(1);
+                     let { data: bData } = await client.from('bom').select('*').ilike('ID Родител', `%${cName.trim()}%`).limit(1);
                      if (bData && bData.length > 0) isRaw = false;
                  }
                  
                  // Check if it has EVER been produced
                  if (isRaw) {
-                     let { data: oData } = await client.from('otcheti').select('"ID Детайл"').ilike('ID Детайл', `%${cName.trim()}%`).limit(1);
+                     let { data: oData } = await client.from('otcheti').select('*').ilike('ID Детайл', `%${cName.trim()}%`).limit(1);
                      if (oData && oData.length > 0) isRaw = false;
                  }
              }
