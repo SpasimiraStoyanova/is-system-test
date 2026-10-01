@@ -59,9 +59,13 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     const toTs = new Date(dateTo).getTime() + 86400000;
     globalTimeline = {};
 
-    // 1. Fetch Routes
-    const { data: rData } = await fetchAllRows('routes', '*', 'ID Детайл', `%${targetId}%`);
-    globalAllData.tRoutes = rData ? rData.filter(r => String(r['ID Детайл']).trim().toLowerCase() === targetId.toLowerCase()) : [];
+    // 1. Fetch Routes (fetch all to allow partial matching like base routes for (R3) variants)
+    const { data: rData } = await fetchAllRows('routes', '*', null, null);
+    globalAllData.tRoutes = rData ? rData.filter(r => {
+        let dbId = String(r['ID Детайл']).trim().toLowerCase();
+        let tId = targetId.toLowerCase();
+        return dbId === tId || tId.includes(dbId) || dbId.includes(tId);
+    }) : [];
     globalAllData.tRoutes.sort((a,b) => parseInt(a['Номер']||0) - parseInt(b['Номер']||0));
 
     // 2. Fetch Target Otcheti
@@ -78,6 +82,15 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
                 globalTimeline[dateStr].rawOtcheti.push(r);
             }
         });
+        
+        // Sort chronologically and build a global fallback chain of operations
+        globalAllData.rawOtcheti.sort((a,b) => new Date(a['Дата']).getTime() - new Date(b['Дата']).getTime());
+        let fChainSet = new Set();
+        globalAllData.rawOtcheti.forEach(r => {
+            let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
+            fChainSet.add(op);
+        });
+        globalAllData.fallbackOpChain = Array.from(fChainSet);
     }
 
     // 3. Fetch BOM Children
@@ -173,7 +186,7 @@ async function renderVSM(dateKey) {
     if (globalAllData.tRoutes.length > 0) {
         globalAllData.tRoutes.forEach(r => opChain.push(String(r['Име'] || r['Операция'] || '').trim().toUpperCase()));
     } else {
-        opChain = Object.keys(opsProduced);
+        opChain = globalAllData.fallbackOpChain || [];
         if (opChain.length === 0) opChain = ['Без оп.'];
     }
     
