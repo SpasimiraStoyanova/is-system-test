@@ -85,9 +85,9 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         rawOtcheti.forEach(r => {
             let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
             if (dbId !== tNorm) return;
+            globalAllData.rawOtcheti.push(r);
             let dTs = new Date(r['Дата']).getTime();
             if (dTs >= fromTs && dTs < toTs) {
-                globalAllData.rawOtcheti.push(r);
                 let dateStr = r['Дата'].split('T')[0];
                 if (!globalTimeline[dateStr]) globalTimeline[dateStr] = { rawOtcheti: [], parentOtcheti: [] };
                 globalTimeline[dateStr].rawOtcheti.push(r);
@@ -111,19 +111,35 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         return dbId === tNorm;
     }) : [];
 
-    // 3.5 Check if children are produced internally (have otcheti)
-    globalAllData.producedChildrenNorm = new Set();
+    // 3.5 Check if children are raw materials
     if (globalAllData.childrenBOM.length > 0) {
-        let childCodes = globalAllData.childrenBOM.map(b => String(b['ID Компонент']));
+        let childCodes = [...new Set(globalAllData.childrenBOM.map(b => String(b['ID Компонент']).trim()))];
+        let rSet = new Set(), bSet = new Set(), oSet = new Set();
         let cChunks = [];
         for(let i=0; i<childCodes.length; i+=100) cChunks.push(childCodes.slice(i, i+100));
-        
         for (let chunk of cChunks) {
-            const { data: oChild } = await client.from('otcheti').select('"ID Детайл"').in('ID Детайл', chunk);
-            if (oChild) {
-                oChild.forEach(o => globalAllData.producedChildrenNorm.add(String(o['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
-            }
+            let [{data:rData}, {data:bData}, {data:oData}] = await Promise.all([
+                client.from('marshruti').select('"Код на детайла"').in('Код на детайла', chunk),
+                client.from('bom').select('"ID Родител"').in('ID Родител', chunk),
+                client.from('otcheti').select('"ID Детайл"').in('ID Детайл', chunk)
+            ]);
+            if (rData) rData.forEach(x => rSet.add(String(x['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
+            if (bData) bData.forEach(x => bSet.add(String(x['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
+            if (oData) oData.forEach(x => oSet.add(String(x['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
         }
+        let finalChildren = [];
+        for (let b of globalAllData.childrenBOM) {
+             let cName = String(b['ID Компонент']);
+             let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+             let isRaw = true;
+             if (cNorm.includes('статоренпак') || cNorm.includes('статор')) {
+                 isRaw = false;
+             } else if (rSet.has(cNorm) || bSet.has(cNorm) || oSet.has(cNorm)) {
+                 isRaw = false;
+             }
+             if (!isRaw) finalChildren.push(b);
+        }
+        globalAllData.childrenBOM = finalChildren;
     }
 
     // 4. Fetch BOM Parents & Parent Otcheti
@@ -137,16 +153,48 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     if (globalAllData.parentsBOM.length > 0) {
         let parentNames = globalAllData.parentsBOM.map(b => String(b['ID Родител'])).filter(Boolean);
         let pNorms = parentNames.map(p => p.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase());
+        let parentNamesUnique = [...new Set(parentNames)];
         
-        for (let pName of parentNames) {
+        globalAllData.parentRoutes = {};
+        let pChunks = [];
+        for(let i=0; i<parentNamesUnique.length; i+=100) pChunks.push(parentNamesUnique.slice(i, i+100));
+        for (let chunk of pChunks) {
+             let { data: pRoutes } = await client.from('marshruti').select('*').in('Код на детайла', chunk);
+             if (pRoutes) {
+                 pRoutes.forEach(r => {
+                     let pN = String(r['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                     if (!globalAllData.parentRoutes[pN]) globalAllData.parentRoutes[pN] = [];
+                     globalAllData.parentRoutes[pN].push(r);
+                 });
+             }
+        }
+        for (let pN in globalAllData.parentRoutes) {
+             globalAllData.parentRoutes[pN].sort((a,b) => (parseInt(a['№ Операция'])||0) - (parseInt(b['№ Операция'])||0));
+        }
+        globalAllData.parentsBOM.forEach(b => {
+             let pNorm = String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+             let injOpNum = parseInt(b['Влага се на Оп. №']);
+             let pR = globalAllData.parentRoutes[pNorm] || [];
+             let targetOpName = null;
+             if (pR.length > 0) {
+                 if (!isNaN(injOpNum)) {
+                     let match = pR.find(r => parseInt(r['№ Операция']) === injOpNum);
+                     if (match) targetOpName = String(match['Име на операция']).trim().toUpperCase();
+                 }
+                 if (!targetOpName) targetOpName = String(pR[0]['Име на операция']).trim().toUpperCase();
+             }
+             b.targetOpNameCache = targetOpName; 
+        });
+
+        for (let pName of parentNamesUnique) {
             const { data: pOtch } = await fetchRobustRows('otcheti', '*', 'ID Детайл', pName);
             if (pOtch) {
                 pOtch.forEach(r => {
                     let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
                     if (pNorms.includes(dbId)) {
+                        globalAllData.parentOtcheti.push(r);
                         let dTs = new Date(r['Дата']).getTime();
                         if (dTs >= fromTs && dTs < toTs) {
-                            globalAllData.parentOtcheti.push(r);
                             let dateStr = r['Дата'].split('T')[0];
                             if (!globalTimeline[dateStr]) globalTimeline[dateStr] = { rawOtcheti: [], parentOtcheti: [] };
                             globalTimeline[dateStr].parentOtcheti.push(r);
@@ -272,36 +320,7 @@ async function renderVSM(dateKey) {
     // Children 
     let childrenFlowHtml = '';
     if (globalAllData.childrenBOM.length > 0) {
-        let filteredChildren = [];
-        
-        for (let i = 0; i < globalAllData.childrenBOM.length; i++) {
-             let b = globalAllData.childrenBOM[i];
-             let cName = String(b['ID Компонент']);
-             let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-             let isRaw = true;
-             
-             if (cNorm.includes('статоренпак') || cNorm.includes('статор')) {
-                 isRaw = false;
-             } else {
-                 // Check if it has a route
-                 let { data: rData } = await client.from('marshruti').select('*').ilike('Код на детайла', `%${cName.trim()}%`).limit(1);
-                 if (rData && rData.length > 0) isRaw = false;
-                 
-                 // Check if it is a parent in BOM
-                 if (isRaw) {
-                     let { data: bData } = await client.from('bom').select('*').ilike('ID Родител', `%${cName.trim()}%`).limit(1);
-                     if (bData && bData.length > 0) isRaw = false;
-                 }
-                 
-                 // Check if it has EVER been produced
-                 if (isRaw) {
-                     let { data: oData } = await client.from('otcheti').select('*').ilike('ID Детайл', `%${cName.trim()}%`).limit(1);
-                     if (oData && oData.length > 0) isRaw = false;
-                 }
-             }
-             
-             if (!isRaw) filteredChildren.push(b);
-        }
+        let filteredChildren = globalAllData.childrenBOM;
 
         let cNodes = [];
         filteredChildren.forEach(b => {
@@ -331,22 +350,26 @@ async function renderVSM(dateKey) {
     let parentsFlowHtml = '';
     
     if (globalAllData.parentsBOM.length > 0) {
-        let parentStats = {}; 
+        let parentOpStats = {}; 
         (dataSlice.parentOtcheti || []).forEach(r => {
             let st = String(r['Статус'] || '').trim().toLowerCase();
             if (st === 'отчетено' || st === 'завършено') {
                 let pName = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-                parentStats[pName] = (parentStats[pName] || 0) + (parseFloat(r['Количество']) || 0);
+                let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
+                if (!parentOpStats[pName]) parentOpStats[pName] = {};
+                parentOpStats[pName][op] = (parentOpStats[pName][op] || 0) + (parseFloat(r['Количество']) || 0);
             }
         });
         
-        let cumParentStats = {};
+        let cumParentOpStats = {};
         (globalAllData.parentOtcheti || []).forEach(r => {
             let dTs = new Date(r['Дата']).getTime();
             let st = String(r['Статус'] || '').trim().toLowerCase();
             if (dTs < targetTs && (st === 'отчетено' || st === 'завършено')) {
                  let pName = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-                 cumParentStats[pName] = (cumParentStats[pName] || 0) + (parseFloat(r['Количество']) || 0);
+                 let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
+                 if (!cumParentOpStats[pName]) cumParentOpStats[pName] = {};
+                 cumParentOpStats[pName][op] = (cumParentOpStats[pName][op] || 0) + (parseFloat(r['Количество']) || 0);
             }
         });
         
@@ -356,19 +379,38 @@ async function renderVSM(dateKey) {
             let pName = String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
             let normStr = String(b['Количество'] || '1').replace(',', '.');
             let norm = parseFloat(normStr) || 1;
-            let pProduced = parentStats[pName] || 0;
-            let cumPProduced = cumParentStats[pName] || 0;
+            
+            let targetOpName = b.targetOpNameCache;
+            let pProduced = 0;
+            let cumPProduced = 0;
+            
+            if (targetOpName && parentOpStats[pName] && parentOpStats[pName][targetOpName]) {
+                pProduced = parentOpStats[pName][targetOpName];
+            } else if (!targetOpName && parentOpStats[pName]) {
+                pProduced = Math.max(0, ...Object.values(parentOpStats[pName]));
+            }
+            
+            if (targetOpName && cumParentOpStats[pName] && cumParentOpStats[pName][targetOpName]) {
+                cumPProduced = cumParentOpStats[pName][targetOpName];
+            } else if (!targetOpName && cumParentOpStats[pName]) {
+                cumPProduced = Math.max(0, ...Object.values(cumParentOpStats[pName]));
+            }
             
             let consumedHere = pProduced * norm;
+            let cumConsumedHere = cumPProduced * norm;
             totalConsumed += consumedHere;
-            cumTotalConsumed += (cumPProduced * norm);
+            cumTotalConsumed += cumConsumedHere;
             
-            if (consumedHere > 0) {
+            if (consumedHere > 0 || cumConsumedHere > 0) {
+                let displayConsumed = consumedHere > 0 ? consumedHere : 0;
                 pNodes.push(`
-                  <div class="vsm-node">
-                    <span class="vsm-name">${originalName}</span>
-                    <span class="vsm-divider">|</span>
-                    <span class="vsm-stat consumed">Вложени: ${consumedHere} бр.</span>
+                  <div class="vsm-node" style="display:flex; flex-direction:column; align-items:flex-start;">
+                    <div style="display:flex; gap: 8px; align-items:center;">
+                        <span class="vsm-name">${originalName}</span>
+                        <span class="vsm-divider">|</span>
+                        <span class="vsm-stat consumed">Вложени: ${displayConsumed} бр.</span>
+                    </div>
+                    ${targetOpName ? `<div style="font-size:0.85rem; color:#94a3b8; margin-top: -3px;">(на оп. ${targetOpName})</div>` : ''}
                   </div>
                 `);
             }
