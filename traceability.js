@@ -205,19 +205,20 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         }
     }
 
-    // 5. Fetch Inventory from inventory_wip and inventory_gp
+    // 5. Fetch Inventory from the unified 'inventory' table
     globalAllData.currentStock = 0;
     
-    let [ {data: wipData}, {data: gpData} ] = await Promise.all([
-        client.from('inventory_wip').select('"Количество", "ID Детайл"').ilike('ID Детайл', `%${tNorm.substring(0, 5)}%`), // use a broad filter and precise match in JS
-        client.from('inventory_gp').select('"Количество", "ID Детайл"').ilike('ID Детайл', `%${tNorm.substring(0, 5)}%`)
-    ]);
+    let { data: invData } = await client
+        .from('inventory')
+        .select('"Общо", "Свободни", "Количество", "ID Детайл"')
+        .ilike('ID Детайл', `%${tNorm.substring(0, 5)}%`); // Broad filter to catch variants
     
-    let allStock = [...(wipData || []), ...(gpData || [])];
+    let allStock = invData || [];
     allStock.forEach(i => {
         let dbId = String(i['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
         if (dbId === tNorm) {
-            globalAllData.currentStock += (parseFloat(String(i['Количество'] || '0').replace(',', '.')) || 0);
+            let qty = i['Количество'] !== undefined ? i['Количество'] : (i['Общо'] !== undefined ? i['Общо'] : i['Свободни']);
+            globalAllData.currentStock += (parseFloat(String(qty || '0').replace(',', '.')) || 0);
         }
     });
 }
