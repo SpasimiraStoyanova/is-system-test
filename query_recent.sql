@@ -1,0 +1,1 @@
+SELECT * FROM otcheti ORDER BY "Дата" DESC LIMIT 50;

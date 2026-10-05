@@ -157,16 +157,36 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         }
     }
 
-    // 5. Fetch Inventory
-    const { data: invDataRaw } = await fetchRobustRows('inventory', 'Количество, "ID Детайл"', 'ID Детайл', targetId);
+    // 5. Fetch Inventory from sklad or sklad_history
+    let todayStr = new Date().toISOString().split('T')[0];
     globalAllData.currentStock = 0;
-    if (invDataRaw) {
-        invDataRaw.forEach(i => {
-            let dbId = String(i['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-            if (dbId === tNorm) {
-                globalAllData.currentStock += (parseFloat(String(i['Количество'] || '0').replace(',', '.')) || 0);
-            }
-        });
+    
+    if (dateTo === todayStr || dateTo > todayStr) {
+        const { data: skladRaw } = await fetchRobustRows('sklad', 'Остатък, "ID Детайл"', 'ID Детайл', targetId);
+        if (skladRaw) {
+            skladRaw.forEach(i => {
+                let dbId = String(i['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                if (dbId === tNorm) {
+                    globalAllData.currentStock += (parseFloat(String(i['Остатък'] || '0').replace(',', '.')) || 0);
+                }
+            });
+        }
+    } else {
+        let q = client.from('sklad_history').select('Остатък, "ID Детайл"').eq('snapshot_date', dateTo);
+        let tokens = targetId ? targetId.split(/[^а-яА-Яa-zA-Z0-9]+/).filter(t => t.length > 0) : [];
+        if (tokens.length > 0) {
+            tokens.forEach(t => { q = q.ilike('ID Детайл', `%${t}%`); });
+        }
+        const { data: histDataRaw } = await q;
+        
+        if (histDataRaw) {
+            histDataRaw.forEach(i => {
+                let dbId = String(i['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                if (dbId === tNorm) {
+                    globalAllData.currentStock += (parseFloat(String(i['Остатък'] || '0').replace(',', '.')) || 0);
+                }
+            });
+        }
     }
 }
 

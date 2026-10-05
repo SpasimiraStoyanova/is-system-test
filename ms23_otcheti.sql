@@ -1,0 +1,1 @@
+SELECT * FROM otcheti WHERE "ID Детайл" ILIKE '%MS-23%' ORDER BY "Дата" DESC LIMIT 20;
