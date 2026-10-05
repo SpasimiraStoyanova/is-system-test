@@ -205,37 +205,21 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         }
     }
 
-    // 5. Fetch Inventory from sklad or sklad_history
-    let todayStr = new Date().toISOString().split('T')[0];
+    // 5. Fetch Inventory from inventory_wip and inventory_gp
     globalAllData.currentStock = 0;
     
-    if (dateTo === todayStr || dateTo > todayStr) {
-        const { data: skladRaw } = await fetchRobustRows('sklad', 'Остатък, "ID Детайл"', 'ID Детайл', targetId);
-        if (skladRaw) {
-            skladRaw.forEach(i => {
-                let dbId = String(i['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-                if (dbId === tNorm) {
-                    globalAllData.currentStock += (parseFloat(String(i['Остатък'] || '0').replace(',', '.')) || 0);
-                }
-            });
+    let [ {data: wipData}, {data: gpData} ] = await Promise.all([
+        client.from('inventory_wip').select('"Количество", "ID Детайл"').ilike('ID Детайл', `%${tNorm.substring(0, 5)}%`), // use a broad filter and precise match in JS
+        client.from('inventory_gp').select('"Количество", "ID Детайл"').ilike('ID Детайл', `%${tNorm.substring(0, 5)}%`)
+    ]);
+    
+    let allStock = [...(wipData || []), ...(gpData || [])];
+    allStock.forEach(i => {
+        let dbId = String(i['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        if (dbId === tNorm) {
+            globalAllData.currentStock += (parseFloat(String(i['Количество'] || '0').replace(',', '.')) || 0);
         }
-    } else {
-        let q = client.from('sklad_history').select('Остатък, "ID Детайл"').eq('snapshot_date', dateTo);
-        let tokens = targetId ? targetId.split(/[^а-яА-Яa-zA-Z0-9]+/).filter(t => t.length > 0) : [];
-        if (tokens.length > 0) {
-            tokens.forEach(t => { q = q.ilike('ID Детайл', `%${t}%`); });
-        }
-        const { data: histDataRaw } = await q;
-        
-        if (histDataRaw) {
-            histDataRaw.forEach(i => {
-                let dbId = String(i['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-                if (dbId === tNorm) {
-                    globalAllData.currentStock += (parseFloat(String(i['Остатък'] || '0').replace(',', '.')) || 0);
-                }
-            });
-        }
-    }
+    });
 }
 
 function renderTimeline() {
