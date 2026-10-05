@@ -210,7 +210,7 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     
     let { data: invData } = await client
         .from('inventory')
-        .select('"Общо", "Свободни", "Количество", "ID Детайл"')
+        .select('*')
         .ilike('ID Детайл', `%${tNorm.substring(0, 5)}%`); // Broad filter to catch variants
     
     let allStock = invData || [];
