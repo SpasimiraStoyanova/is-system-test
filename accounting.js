@@ -211,6 +211,10 @@ window.addEventListener('load', () => {
     const parts = today.split('-');
     document.getElementById('invoice-header-date').value = `${parts[2]}.${parts[1]}.${parts[0]}`;
 
+    // Default month/year for the plan fetch
+    document.getElementById('plan-month').value = PLAN_MONTHS[new Date().getMonth()];
+    document.getElementById('plan-year').value = new Date().getFullYear();
+
     loadData('acc_nomenklatura', hotNom);
     loadData('acc_data', hotData);
     loadData('acc_plan', hotPlan);
@@ -382,6 +386,50 @@ async function fetchExchangeRate() {
     } catch(err) {
         console.error('Exchange rate error:', err);
         Swal.fire('Внимание', 'Не успях да изтегля курса автоматично. Въведи го ръчно.', 'warning');
+    }
+}
+
+const PLAN_MONTHS = ['Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни', 'Юли', 'Август', 'Септември', 'Октомври', 'Ноември', 'Декември'];
+
+// Извлича ВСИЧКИ детайли от плана за избран месец/година, независимо от статуса
+// (Активен, Опакован, Изпратен и т.н.). Еднаквите номера се сумират.
+async function fetchMonthPlan() {
+    try {
+        const month = document.getElementById('plan-month').value;
+        const year = parseInt(document.getElementById('plan-year').value, 10);
+        if (!month || !year) {
+            Swal.fire('Внимание', 'Избери месец и година!', 'warning');
+            return;
+        }
+        const monthNum = String(PLAN_MONTHS.indexOf(month) + 1);
+
+        const { data, error } = await client.from('plan').select('*').eq('Година', year);
+        if (error) throw error;
+
+        const rows = (data || []).filter(p => {
+            const m = String(p['Месец'] || '').trim();
+            return m.toLowerCase() === month.toLowerCase() || m === monthNum || m === monthNum.padStart(2, '0');
+        });
+
+        if (rows.length === 0) {
+            Swal.fire('Информация', `Няма намерени записи в плана за ${month} ${year}!`, 'info');
+            return;
+        }
+
+        const totals = new Map();
+        rows.forEach(p => {
+            const name = String(p['Вътрешно име'] || '').trim();
+            if (!name) return;
+            totals.set(name, (totals.get(name) || 0) + (parseFloat(p['Целево количество']) || 0));
+        });
+
+        const mappedData = [...totals.entries()].map(([name, qty]) => ({ 'бр.': qty, 'Номер': name }));
+
+        hotPlan.loadData(mappedData);
+        Swal.fire('Успех', `Извлечени са ${mappedData.length} детайла от плана за ${month} ${year} (всички статуси). Натисни "Запази промените", за да ги съхраниш.`, 'success');
+    } catch (err) {
+        console.error(err);
+        Swal.fire('Грешка при извличане', err.message, 'error');
     }
 }
 

@@ -126,7 +126,25 @@
             <div class="action-bar">
                 <button class="btn btn-success" onclick="saveData('acc_plan', hotPlan)"><i class="fas fa-save"></i> Запази промените</button>
                 <button class="btn btn-outline-secondary" onclick="loadData('acc_plan', hotPlan)"><i class="fas fa-sync"></i> Презареди</button>
-                <button class="btn btn-info ml-auto" onclick="fetchActivePlan()" style="background-color: #0ea5e9; color: white;"><i class="fas fa-download"></i> Извлечи Активния План от системата</button>
+                <div class="ml-auto d-flex align-items-center" style="gap: 8px;">
+                    <select id="plan-month" class="form-control form-control-sm" style="width: auto;">
+                        <option value="Януари">Януари</option>
+                        <option value="Февруари">Февруари</option>
+                        <option value="Март">Март</option>
+                        <option value="Април">Април</option>
+                        <option value="Май">Май</option>
+                        <option value="Юни">Юни</option>
+                        <option value="Юли">Юли</option>
+                        <option value="Август">Август</option>
+                        <option value="Септември">Септември</option>
+                        <option value="Октомври">Октомври</option>
+                        <option value="Ноември">Ноември</option>
+                        <option value="Декември">Декември</option>
+                    </select>
+                    <input type="number" id="plan-year" class="form-control form-control-sm" style="width: 90px;" min="2020" max="2100">
+                    <button class="btn btn-info" onclick="fetchMonthPlan()" style="background-color: #0ea5e9; color: white;"><i class="fas fa-download"></i> Извлечи плана за месеца</button>
+                    <button class="btn btn-outline-info btn-sm" onclick="fetchActivePlan()" title="Само детайлите със статус Активен"><i class="fas fa-bolt"></i> Само активни</button>
+                </div>
             </div>
             <div id="grid-plan" class="hot-container"></div>
         </div>
