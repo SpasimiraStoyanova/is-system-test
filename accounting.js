@@ -36,7 +36,8 @@ const nomColumns = [
     { data: 'СУМА AL_бр.', title: 'СУМА AL/бр.' },
     { data: 'СУМА kg', title: 'СУМА [kg]' },
     { data: 'Тегло на цялото изделие g', title: 'Тегло на цялото изделие [g]' },
-    { data: 'Тегло на цялото издели_тегло на AL в', title: 'Тегло на цялото издели/тегло на AL в него' }
+    { data: 'Тегло на цялото издели_тегло на AL в', title: 'Тегло на цялото издели/тегло на AL в него' },
+    { data: 'Процент на АЛ в детайл', title: 'Процент на АЛ в детайл' }
 ];
 
 // Define columns for Data
@@ -286,10 +287,11 @@ function generateInvoice() {
                 return isNaN(num) ? null : num;
             };
 
-            // Percentage from new Nomenklatura (last column, index 32)
-            let p = parseNumber(nomRow[32]); 
+            // Процент на АЛ в детайл (колона "Процент на АЛ в детайл", индекс 33). Приема 100, 100%, 100 %, 1, 0,5
+            let pRaw = nomRow[33];
+            let p = parseNumber(pRaw);
             if (p !== null) {
-                alPercent = p > 1 ? p / 100 : p;
+                alPercent = (String(pRaw).includes('%') || p > 1) ? p / 100 : p;
             }
 
             // Helper to get price
@@ -329,10 +331,10 @@ function generateInvoice() {
 
         let amount = qty * unitCost;
         
-        // Колона 8: Aluminum Content Value = Unit Cost * Процент АЛ
-        let alContentValue = unitCost * alPercent;
+        // Колона 8: Aluminum Content Value = сума от цените на всеки вид алуминий в детайла (Price 1 + Price 2 + Price 3)
+        let alContentValue = (al_price_1 || 0) + (al_price_2 || 0) + (al_price_3 || 0);
         
-        // Колона 9: Total AL Value = Qty * Aluminum Content Value
+        // Колона 9: Total AL Value = Qty (от месечния план) * Aluminum Content Value
         let totalAlValue = qty * alContentValue;
 
         // Колона 10: Value of the rest = Amount - Total AL Value
