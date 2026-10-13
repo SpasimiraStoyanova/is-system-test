@@ -60,6 +60,9 @@ const materialsColumns = [
 ];
 
 // Initialize Handsontables
+// Фиксирани ширини на колоните на Номенклатурата (без автоматично измерване, което стискаше колоните)
+const nomColWidths = { 0: 260, 1: 130, 15: 220, 16: 90 };
+
 const hotNom = new Handsontable(document.getElementById('grid-nom'), {
     data: [],
     columns: nomColumns,
@@ -69,6 +72,10 @@ const hotNom = new Handsontable(document.getElementById('grid-nom'), {
     contextMenu: true,
     stretchH: 'all',
     width: '100%',
+    colWidths: (index) => nomColWidths[index] || 110,
+    rowHeights: 28,
+    autoRowSize: false,
+    autoColumnSize: false,
     search: true,
     filters: true,
     dropdownMenu: true,
@@ -166,6 +173,7 @@ async function loadData(tableName, hotInstance) {
             data = [];
         }
         hotInstance.loadData(data && data.length > 0 ? data : []);
+        hotInstance.render();
     } catch(e) {
         console.error("Load data error:", e);
     }
