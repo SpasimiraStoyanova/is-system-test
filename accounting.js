@@ -196,14 +196,35 @@ async function saveData(tableName, hotInstance) {
             return hasData ? obj : null;
         }).filter(r => r !== null);
         
+        if (validRows.length === 0) {
+            Swal.fire('Внимание', 'Няма въведени данни за запазване!', 'warning');
+            return;
+        }
+
         // Clear table and insert new
         let { error: delErr } = await client.from(tableName).delete().neq('id', 0); 
-        // if table is new, this might error if no rows, it's fine.
         
-        if (validRows.length > 0) {
-            let { error: insErr } = await client.from(tableName).insert(validRows);
-            if (insErr) throw insErr;
+        let { error: insErr } = await client.from(tableName).insert(validRows);
+        
+        // If insert failed due to missing schema column (e.g. 'Процент на АЛ в детайл' not yet added to Supabase)
+        if (insErr && insErr.message && insErr.message.includes("schema cache")) {
+            console.warn("Schema cache error detected, retrying without unmapped columns:", insErr.message);
+            let fallbackRows = validRows.map(r => {
+                let copy = { ...r };
+                delete copy['Процент на АЛ в детайл'];
+                delete copy['Процент АЛ в детайл'];
+                return copy;
+            });
+            let retry = await client.from(tableName).insert(fallbackRows);
+            if (!retry.error) {
+                Swal.fire('Запазено с предупреждение', 'Данните са запазени, но колоната "Процент на АЛ в детайл" все още не съществува в Supabase таблицата. Добавете я през SQL Editor: ALTER TABLE public.acc_nomenklatura ADD COLUMN "Процент на АЛ в детайл" text;', 'warning');
+                loadData(tableName, hotInstance);
+                return;
+            }
+            throw retry.error;
         }
+
+        if (insErr) throw insErr;
         
         Swal.fire('Успех', 'Данните са запазени!', 'success');
         loadData(tableName, hotInstance);
