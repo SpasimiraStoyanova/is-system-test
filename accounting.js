@@ -168,24 +168,24 @@ function weightRenderer(instance, td, row, col, prop, value, cellProperties) {
 const invoiceColumns = [
     { data: 'index', readOnly: true },
     { data: 'item_no', readOnly: true },
-    { data: 'description', readOnly: true },
-    { data: 'qty', type: 'numeric', readOnly: true },
-    { data: 'hts_code', readOnly: true },
-    { data: 'unit_cost', renderer: currencyRenderer, readOnly: true },
+    { data: 'description', readOnly: false },
+    { data: 'qty', type: 'numeric', readOnly: false },
+    { data: 'hts_code', readOnly: false },
+    { data: 'unit_cost', renderer: currencyRenderer, readOnly: false },
     { data: 'amount', renderer: currencyRenderer, readOnly: true },
-    { data: 'al_content_value', renderer: currencyRenderer, readOnly: true },
+    { data: 'al_content_value', renderer: currencyRenderer, readOnly: false },
     { data: 'total_al_value', renderer: currencyRenderer, readOnly: true },
     { data: 'value_of_rest', renderer: currencyRenderer, readOnly: true },
-    { data: 'al_weight_percent', renderer: percentRenderer, readOnly: true },
-    { data: 'al_type_1', readOnly: true },
-    { data: 'al_weight_1', renderer: weightRenderer, readOnly: true },
-    { data: 'al_price_1', renderer: currencyRenderer, readOnly: true },
-    { data: 'al_type_2', readOnly: true },
-    { data: 'al_weight_2', renderer: weightRenderer, readOnly: true },
-    { data: 'al_price_2', renderer: currencyRenderer, readOnly: true },
-    { data: 'al_type_3', readOnly: true },
-    { data: 'al_weight_3', renderer: weightRenderer, readOnly: true },
-    { data: 'al_price_3', renderer: currencyRenderer, readOnly: true }
+    { data: 'al_weight_percent', renderer: percentRenderer, readOnly: false },
+    { data: 'al_type_1', readOnly: false },
+    { data: 'al_weight_1', renderer: weightRenderer, readOnly: false },
+    { data: 'al_price_1', renderer: currencyRenderer, readOnly: false },
+    { data: 'al_type_2', readOnly: false },
+    { data: 'al_weight_2', renderer: weightRenderer, readOnly: false },
+    { data: 'al_price_2', renderer: currencyRenderer, readOnly: false },
+    { data: 'al_type_3', readOnly: false },
+    { data: 'al_weight_3', renderer: weightRenderer, readOnly: false },
+    { data: 'al_price_3', renderer: currencyRenderer, readOnly: false }
 ];
 
 const hotInvoice = new Handsontable(document.getElementById('grid-invoice'), {
@@ -203,6 +203,35 @@ const hotInvoice = new Handsontable(document.getElementById('grid-invoice'), {
     width: '100%',
     className: 'htCenter htMiddle',
     wordWrap: true,
+    afterChange: function(changes, source) {
+        if (!changes || source === 'loadData' || source === 'calc') return;
+        let setProps = [];
+        changes.forEach(([row, prop, oldVal, newVal]) => {
+            if (oldVal === newVal) return;
+            if (prop === 'qty' || prop === 'unit_cost' || prop === 'al_content_value') {
+                let rowData = hotInvoice.getSourceDataAtRow(row);
+                if (!rowData) return;
+                let qty = parseFloat(rowData.qty) || 0;
+                let unitCost = parseFloat(rowData.unit_cost) || 0;
+                let alContent = parseFloat(rowData.al_content_value) || 0;
+                
+                let amount = qty * unitCost;
+                let totalAl = (alContent > 0) ? (qty * alContent) : null;
+                let valueRest = (totalAl !== null) ? (amount - totalAl) : null;
+                
+                setProps.push([row, 'amount', amount]);
+                setProps.push([row, 'total_al_value', totalAl]);
+                setProps.push([row, 'value_of_rest', valueRest]);
+            }
+        });
+        if (setProps.length > 0) {
+            hotInvoice.setDataAtRowProp(setProps, 'calc');
+            setTimeout(() => {
+                let total = hotInvoice.getData().reduce((sum, r) => sum + (parseFloat(r[6]) || 0), 0);
+                document.getElementById('invoice-total').innerText = total.toFixed(2);
+            }, 50);
+        }
+    },
     licenseKey: 'non-commercial-and-evaluation'
 });
 
@@ -295,60 +324,161 @@ window.addEventListener('load', () => {
 });
 
 function generateInvoice() {
-    let planData = hotPlan.getData().filter(r => r[0] || r[1]);
-    let nomData = hotNom.getData().filter(r => r[0]);
-    let htsData = hotData.getData().filter(r => r[0]);
+    let planData = hotPlan.getData().filter(r => r && (r[0] || r[1]));
+    let nomData = hotNom.getData().filter(r => r && (r[0] || r[1] || r[2] || r[3] || r[4] || r[5]));
+    let htsData = hotData.getData().filter(r => r && (r[0] || r[1]));
 
     if (planData.length === 0) {
         Swal.fire('Грешка', 'Планът е празен!', 'error');
         return;
     }
 
-    let invoiceRows = [];
-    
-    // Create lookups for faster search
-    let nomMap = {};
-    // Внимание: Първата колона r[0] е Описание, втората r[1] е Номер/Вътрешно име
-    nomData.forEach(r => nomMap[r[1]] = r);
-    
-    let htsMap = {};
-    htsData.forEach(r => htsMap[r[0]] = r);
+    const normalizeKey = (str) => {
+        if (!str) return '';
+        return String(str)
+            .trim()
+            .toLowerCase()
+            .replace(/,/g, '.')
+            .replace(/\s+/g, ' ')
+            // Cyrillic to Latin homoglyphs for reliable cross-matching
+            .replace(/а/g, 'a')
+            .replace(/в/g, 'b')
+            .replace(/с/g, 'c')
+            .replace(/е/g, 'e')
+            .replace(/к/g, 'k')
+            .replace(/м/g, 'm')
+            .replace(/н/g, 'h')
+            .replace(/о/g, 'o')
+            .replace(/р/g, 'p')
+            .replace(/т/g, 't')
+            .replace(/х/g, 'x');
+    };
 
+    const parseNumber = (val) => {
+        if (val === null || val === undefined || val === '') return null;
+        let str = String(val).replace(',', '.').replace(/[^\d.-]/g, '');
+        let num = parseFloat(str);
+        return isNaN(num) ? null : num;
+    };
+
+    const addLookup = (map, rawKey, value) => {
+        if (!rawKey) return;
+        let k = normalizeKey(rawKey);
+        if (!k) return;
+        if (!map.has(k)) map.set(k, value);
+        let noSpace = k.replace(/\s+/g, '');
+        if (!map.has(noSpace)) map.set(noSpace, value);
+    };
+
+    const getLookup = (map, rawKey) => {
+        if (!rawKey) return null;
+        let k = normalizeKey(rawKey);
+        if (!k) return null;
+        return map.get(k) || map.get(k.replace(/\s+/g, '')) || null;
+    };
+
+    // Build lookups for Nomenklatura
+    let nomMap = new Map();
+    let nomComponentMap = new Map();
+
+    nomData.forEach(r => {
+        // r[0]: Описание, r[1]: Номер/Вътрешно име
+        addLookup(nomMap, r[1], r);
+        addLookup(nomMap, r[0], r);
+
+        // Component columns in Nomenklatura:
+        // 4: Заден капак (напр. 'Ф62,7 201А')
+        // 3: Преден капак
+        // 2: Тяло
+        // 5: Вал
+        // 6: Ротор
+        // 7: Статор
+        // 8: Макари R
+        [4, 3, 2, 5, 6, 7, 8].forEach(colIdx => {
+            let val = r[colIdx];
+            if (val) {
+                addLookup(nomComponentMap, val, r);
+            }
+        });
+    });
+
+    // Build lookups for Data (HTS & Unit cost)
+    let htsMap = new Map();
+    htsData.forEach(r => {
+        // r[0]: Номер, r[1]: Описание
+        addLookup(htsMap, r[0], r);
+        addLookup(htsMap, r[1], r);
+    });
+
+    // Materials map for aluminum price calculation
+    let materialsData = hotMaterials.getData().filter(r => r && r[0]);
+    let materialsMap = {};
+    materialsData.forEach(r => {
+        let priceStr = String(r[1] || '').replace(',', '.').replace(/[^\d.-]/g, '');
+        let price = parseFloat(priceStr);
+        if (!isNaN(price)) materialsMap[r[0]] = price;
+    });
+
+    let invoiceRows = [];
     let idx = 1;
     let totalUSD = 0;
+
     planData.forEach(row => {
         let qty = parseFloat(row[0]) || 0;
-        let itemNo = row[1];
+        let itemNo = row[1] || '';
         
+        // 1. Resolve Nomenklatura row:
+        // Try exact code/description, then try component columns (e.g. Заден капак 'Ф62,7 201А')
+        let nomRow = getLookup(nomMap, itemNo) || getLookup(nomComponentMap, itemNo);
+
+        // 2. Resolve HTS / Data row:
+        // Try direct itemNo lookup, or via resolved Nomenklatura code/description
+        let htsRow = getLookup(htsMap, itemNo);
+        if (!htsRow && nomRow) {
+            htsRow = getLookup(htsMap, nomRow[1]) || getLookup(htsMap, nomRow[0]);
+        }
+
+        // 3. Resolve Description
         let desc = '';
-        let alPercent = 0;
-        
-        // 9 columns for Breakdown
+        if (htsRow && htsRow[1]) {
+            desc = htsRow[1];
+        } else if (nomRow && nomRow[0]) {
+            desc = nomRow[0];
+        } else if (nomRow && nomRow[1]) {
+            desc = nomRow[1];
+        } else {
+            desc = itemNo;
+        }
+
+        // 4. Resolve HTS Code
+        let htsCode = '';
+        if (htsRow && htsRow[3]) {
+            htsCode = String(htsRow[3]).trim();
+        }
+
+        // 5. Resolve Unit Cost:
+        // Priority 1: Unit cost from Data (htsRow[2])
+        // Priority 2: Цена на изделие за брой from Nomenklatura (nomRow[17])
+        let unitCost = 0;
+        if (htsRow) {
+            let c = parseNumber(htsRow[2]);
+            if (c !== null && c > 0) unitCost = c;
+        }
+        if ((!unitCost || unitCost === 0) && nomRow) {
+            let c = parseNumber(nomRow[17]); // "Цена на изделие лв_бр"
+            if (c !== null && c > 0) unitCost = c;
+        }
+
+        let amount = qty * unitCost;
+
+        // Aluminum Breakdown & Percent
+        let alPercent = null;
         let al_type_1 = '', al_weight_1 = null, al_price_1 = null;
         let al_type_2 = '', al_weight_2 = null, al_price_2 = null;
         let al_type_3 = '', al_weight_3 = null, al_price_3 = null;
 
-        // Build materials map for pricing
-        let materialsData = hotMaterials.getData().filter(r => r[0]);
-        let materialsMap = {};
-        materialsData.forEach(r => {
-            let priceStr = String(r[1] || '').replace(',', '.').replace(/[^\d.-]/g, '');
-            let price = parseFloat(priceStr);
-            if (!isNaN(price)) materialsMap[r[0]] = price;
-        });
-
-        let nomRow = nomMap[itemNo];
         if (nomRow) {
-            desc = nomRow[0]; // Описание е в първата колона (индекс 0)
-            
-            const parseNumber = (val) => {
-                if (!val) return null;
-                let str = String(val).replace(',', '.').replace(/[^\d.-]/g, '');
-                let num = parseFloat(str);
-                return isNaN(num) ? null : num;
-            };
-
-            // Процент на АЛ в детайл (колона "Процент на АЛ в детайл", индекс 33). Приема 100, 100%, 100 %, 1, 0,5
+            // Процент на АЛ в детайл (колона индекс 33). Приема 100, 100%, 100 %, 1, 0,5
             let pRaw = nomRow[33];
             let p = parseNumber(pRaw);
             if (p !== null && p > 0) {
@@ -357,11 +487,9 @@ function generateInvoice() {
                 alPercent = null;
             }
 
-            // Helper to get price
             const getPrice = (typeStr, weightStr, manualPriceStr) => {
                 let manual = parseNumber(manualPriceStr);
-                if (manual !== null && manual > 0) return manual; // Prefer manual if filled
-                
+                if (manual !== null && manual > 0) return manual; // Manual override if entered
                 let weight = parseNumber(weightStr) || 0;
                 let matPrice = materialsMap[typeStr] || 0;
                 if (weight > 0 && matPrice > 0) return weight * matPrice;
@@ -384,17 +512,7 @@ function generateInvoice() {
             al_price_3 = getPrice(al_type_3, al_weight_3, nomRow[23]);
         }
 
-        let htsCode = '';
-        let unitCost = 0;
-        let htsRow = htsMap[itemNo];
-        if (htsRow) {
-            unitCost = parseFloat(htsRow[2]) || 0; // Unit cost
-            htsCode = htsRow[3]; // HTS Code
-        }
-
-        let amount = qty * unitCost;
-        
-        // Проверка дали детайлът съдържа алуминий и дали не е от изключените HTS кодове (напр. 8543.70.4500)
+        // Excluded HTS Code or Non-aluminum check
         let isExcludedHts = (String(htsCode).trim() === '8543.70.4500');
         let rawAlContentValue = (al_price_1 || 0) + (al_price_2 || 0) + (al_price_3 || 0);
         let hasAluminum = !isExcludedHts && (rawAlContentValue > 0 || (alPercent !== null && alPercent > 0));
