@@ -125,27 +125,67 @@ const hotMaterials = new Handsontable(document.getElementById('grid-materials'),
     licenseKey: 'non-commercial-and-evaluation'
 });
 
+// Renderers for formatted and clean empty cell display
+function currencyRenderer(instance, td, row, col, prop, value, cellProperties) {
+    Handsontable.renderers.NumericRenderer.apply(this, arguments);
+    if (value !== null && value !== undefined && value !== '') {
+        let num = parseFloat(value);
+        if (!isNaN(num)) {
+            td.innerText = '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            td.className = td.className + ' htRight';
+            return;
+        }
+    }
+    td.innerText = '';
+}
+
+function percentRenderer(instance, td, row, col, prop, value, cellProperties) {
+    Handsontable.renderers.NumericRenderer.apply(this, arguments);
+    if (value !== null && value !== undefined && value !== '') {
+        let num = parseFloat(value);
+        if (!isNaN(num)) {
+            td.innerText = (num * 100).toFixed(2) + '%';
+            td.className = td.className + ' htCenter';
+            return;
+        }
+    }
+    td.innerText = '';
+}
+
+function weightRenderer(instance, td, row, col, prop, value, cellProperties) {
+    Handsontable.renderers.NumericRenderer.apply(this, arguments);
+    if (value !== null && value !== undefined && value !== '') {
+        let num = parseFloat(value);
+        if (!isNaN(num)) {
+            td.innerText = num.toFixed(3);
+            td.className = td.className + ' htRight';
+            return;
+        }
+    }
+    td.innerText = '';
+}
+
 const invoiceColumns = [
     { data: 'index', readOnly: true },
     { data: 'item_no', readOnly: true },
     { data: 'description', readOnly: true },
     { data: 'qty', type: 'numeric', readOnly: true },
     { data: 'hts_code', readOnly: true },
-    { data: 'unit_cost', type: 'numeric', format: '$0,0.00', readOnly: true },
-    { data: 'amount', type: 'numeric', format: '$0,0.00', readOnly: true },
-    { data: 'al_content_value', type: 'numeric', format: '$0,0.00', readOnly: true },
-    { data: 'total_al_value', type: 'numeric', format: '$0,0.00', readOnly: true },
-    { data: 'value_of_rest', type: 'numeric', format: '$0,0.00', readOnly: true },
-    { data: 'al_weight_percent', type: 'numeric', format: '0.00%', readOnly: true },
+    { data: 'unit_cost', renderer: currencyRenderer, readOnly: true },
+    { data: 'amount', renderer: currencyRenderer, readOnly: true },
+    { data: 'al_content_value', renderer: currencyRenderer, readOnly: true },
+    { data: 'total_al_value', renderer: currencyRenderer, readOnly: true },
+    { data: 'value_of_rest', renderer: currencyRenderer, readOnly: true },
+    { data: 'al_weight_percent', renderer: percentRenderer, readOnly: true },
     { data: 'al_type_1', readOnly: true },
-    { data: 'al_weight_1', type: 'numeric', readOnly: true },
-    { data: 'al_price_1', type: 'numeric', readOnly: true },
+    { data: 'al_weight_1', renderer: weightRenderer, readOnly: true },
+    { data: 'al_price_1', renderer: currencyRenderer, readOnly: true },
     { data: 'al_type_2', readOnly: true },
-    { data: 'al_weight_2', type: 'numeric', readOnly: true },
-    { data: 'al_price_2', type: 'numeric', readOnly: true },
+    { data: 'al_weight_2', renderer: weightRenderer, readOnly: true },
+    { data: 'al_price_2', renderer: currencyRenderer, readOnly: true },
     { data: 'al_type_3', readOnly: true },
-    { data: 'al_weight_3', type: 'numeric', readOnly: true },
-    { data: 'al_price_3', type: 'numeric', readOnly: true }
+    { data: 'al_weight_3', renderer: weightRenderer, readOnly: true },
+    { data: 'al_price_3', renderer: currencyRenderer, readOnly: true }
 ];
 
 const hotInvoice = new Handsontable(document.getElementById('grid-invoice'), {
@@ -311,8 +351,10 @@ function generateInvoice() {
             // Процент на АЛ в детайл (колона "Процент на АЛ в детайл", индекс 33). Приема 100, 100%, 100 %, 1, 0,5
             let pRaw = nomRow[33];
             let p = parseNumber(pRaw);
-            if (p !== null) {
+            if (p !== null && p > 0) {
                 alPercent = (String(pRaw).includes('%') || p > 1) ? p / 100 : p;
+            } else {
+                alPercent = null;
             }
 
             // Helper to get price
@@ -352,14 +394,40 @@ function generateInvoice() {
 
         let amount = qty * unitCost;
         
-        // Колона 8: Aluminum Content Value = сума от цените на всеки вид алуминий в детайла (Price 1 + Price 2 + Price 3)
-        let alContentValue = (al_price_1 || 0) + (al_price_2 || 0) + (al_price_3 || 0);
-        
-        // Колона 9: Total AL Value = Qty (от месечния план) * Aluminum Content Value
-        let totalAlValue = qty * alContentValue;
+        // Проверка дали детайлът съдържа алуминий и дали не е от изключените HTS кодове (напр. 8543.70.4500)
+        let isExcludedHts = (String(htsCode).trim() === '8543.70.4500');
+        let rawAlContentValue = (al_price_1 || 0) + (al_price_2 || 0) + (al_price_3 || 0);
+        let hasAluminum = !isExcludedHts && (rawAlContentValue > 0 || (alPercent !== null && alPercent > 0));
 
-        // Колона 10: Value of the rest = Amount - Total AL Value
-        let valueOfRest = amount - totalAlValue;
+        let alContentValue = null;
+        let totalAlValue = null;
+        let valueOfRest = null;
+        let alWeightPercent = null;
+
+        if (hasAluminum) {
+            alContentValue = rawAlContentValue > 0 ? rawAlContentValue : null;
+            if (alContentValue !== null) {
+                totalAlValue = qty * alContentValue;
+                valueOfRest = amount - totalAlValue;
+            }
+            if (alPercent !== null && alPercent > 0) {
+                alWeightPercent = alPercent;
+            }
+
+            // Запазваме само видовете алуминий, които реално участват с тегло или цена
+            if (!al_weight_1 && !al_price_1) { al_type_1 = ''; al_weight_1 = null; al_price_1 = null; }
+            if (!al_weight_2 && !al_price_2) { al_type_2 = ''; al_weight_2 = null; al_price_2 = null; }
+            if (!al_weight_3 && !al_price_3) { al_type_3 = ''; al_weight_3 = null; al_price_3 = null; }
+        } else {
+            // Без алуминий или изключен HTS код: всички алуминиеви колони остават напълно празни
+            alContentValue = null;
+            totalAlValue = null;
+            valueOfRest = null;
+            alWeightPercent = null;
+            al_type_1 = ''; al_weight_1 = null; al_price_1 = null;
+            al_type_2 = ''; al_weight_2 = null; al_price_2 = null;
+            al_type_3 = ''; al_weight_3 = null; al_price_3 = null;
+        }
 
         invoiceRows.push({
             'index': idx++,
@@ -372,7 +440,7 @@ function generateInvoice() {
             'al_content_value': alContentValue, // Колона 8
             'total_al_value': totalAlValue, // Колона 9
             'value_of_rest': valueOfRest, // Колона 10
-            'al_weight_percent': alPercent, // Колона 11
+            'al_weight_percent': alWeightPercent, // Колона 11
             'al_type_1': al_type_1, 'al_weight_1': al_weight_1, 'al_price_1': al_price_1,
             'al_type_2': al_type_2, 'al_weight_2': al_weight_2, 'al_price_2': al_price_2,
             'al_type_3': al_type_3, 'al_weight_3': al_weight_3, 'al_price_3': al_price_3
@@ -383,7 +451,7 @@ function generateInvoice() {
 
     hotInvoice.loadData(invoiceRows);
     document.getElementById('invoice-total').innerText = totalUSD.toFixed(2);
-    Swal.fire('Успех', 'Генерирани са колони 1-8 и колона 11!', 'success');
+    Swal.fire('Успех', 'INVOICE е генериран успешно!', 'success');
 }
 
 async function fetchExchangeRate() {
@@ -536,8 +604,22 @@ window.exportToExcel = function() {
     data.forEach((r, idx) => {
         let bg = (idx % 2 === 0) ? '#ffffff' : '#f2f2f2';
         html += '<tr style="background-color: ' + bg + ';">';
-        r.forEach(cell => {
-            let val = (cell === null || cell === undefined) ? '' : cell;
+        r.forEach((cell, cellIdx) => {
+            let val = '';
+            if (cell !== null && cell !== undefined && cell !== '') {
+                if (cellIdx === 10) { // Aluminum Content weight percentage
+                    let num = parseFloat(cell);
+                    val = !isNaN(num) ? (num * 100).toFixed(2) + '%' : cell;
+                } else if ([5, 6, 7, 8, 9, 13, 16, 19].includes(cellIdx)) { // Currency
+                    let num = parseFloat(cell);
+                    val = !isNaN(num) ? '$' + num.toFixed(2) : cell;
+                } else if ([12, 15, 18].includes(cellIdx)) { // Weight
+                    let num = parseFloat(cell);
+                    val = !isNaN(num) ? num.toFixed(3) : cell;
+                } else {
+                    val = cell;
+                }
+            }
             html += '<td style="border: 1px solid #000; padding: 5px; text-align: center;">' + val + '</td>';
         });
         html += '</tr>';
