@@ -344,11 +344,11 @@ function renderResolverView() {
                         <thead>
                             <tr>
                                 <th>Детайл / Подвъзел</th>
-                                <th style="text-align:center;">Норма (1 бр.)</th>
-                                <th style="text-align:center;">За ${currentResolverMultiplier} бр.</th>
-                                <th>Склад Детайли (Наличност)</th>
-                                <th>Технологичен маршрут</th>
-                                <th style="text-align:right;">Действие</th>
+                                <th style="text-align:center; width: 85px;">Норма</th>
+                                <th style="text-align:center; width: 95px;">За ${currentResolverMultiplier} бр.</th>
+                                <th style="width: 180px;">Склад Детайли</th>
+                                <th>Маршрут</th>
+                                <th style="text-align:right; width: 120px;">Действие</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -381,9 +381,7 @@ function renderResolverView() {
                                         <td>${stockBadge}</td>
                                         <td><div style="display:flex; flex-wrap:wrap; gap:4px;">${routesText}</div></td>
                                         <td style="text-align:right;">
-                                            <button class="resolver-drill-btn" onclick="drillDownResolverPart(decodeURIComponent('${safeChild}'))" title="Виж рецептата на този детайл">
-                                                🔍 Виж състав ${p.subChildrenCount > 0 ? `(${p.subChildrenCount})` : ''}
-                                            </button>
+                                            <button class="resolver-drill-btn" style="padding: 4px 10px; font-size: 0.82em; white-space: nowrap;" onclick="drillDownResolverPart(decodeURIComponent('${safeChild}'))" title="Виж рецептата на този детайл">🔍 Виж състав</button>
                                         </td>
                                     </tr>
                                 `;
