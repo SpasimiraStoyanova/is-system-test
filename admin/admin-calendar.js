@@ -524,6 +524,53 @@ window.saveEventCompletion = async function(e) {
 // ----------------------------------------------------
 // СЪЗДАВАНЕ И РЕДАКЦИЯ НА СЪБИТИЕ (MODAL)
 // ----------------------------------------------------
+
+window.onEvMachineChange = function() {
+    const sel = document.getElementById('evMachineSelect');
+    const customBox = document.getElementById('evCustomObjectBox');
+    const catSel = document.getElementById('evCategorySelect');
+    const termCb = document.getElementById('evTerminalCb');
+    const termWrap = document.getElementById('evTerminalCbWrap');
+    const adminNotice = document.getElementById('evAdminOnlyNotice');
+
+    if (!sel) return;
+    const val = sel.value;
+
+    if (val === '__custom__') {
+        if (customBox) customBox.style.display = 'block';
+        if (termWrap) termWrap.style.display = 'none';
+        if (adminNotice) adminNotice.style.display = 'block';
+        if (termCb) termCb.checked = false;
+        return;
+    } else {
+        if (customBox) customBox.style.display = 'none';
+    }
+
+    if (val === 'Админ' || val === 'Офис' || val === 'Счетоводство') {
+        if (catSel) catSel.value = 'Администрация';
+        if (termWrap) termWrap.style.display = 'none';
+        if (adminNotice) {
+            adminNotice.style.display = 'block';
+            adminNotice.innerHTML = `🔒 Обектът е <strong>${val}</strong> — това събитие се вижда САМО в Админ панела и никога на терминалите в цеха.`;
+        }
+        if (termCb) termCb.checked = false;
+    } else if (val === 'Автопарк') {
+        if (catSel) catSel.value = 'Автопарк';
+        if (termWrap) termWrap.style.display = 'none';
+        if (adminNotice) {
+            adminNotice.style.display = 'block';
+            adminNotice.innerHTML = `🔒 Обектът е <strong>Автопарк</strong> — това събитие се вижда САМО в Админ панела и никога на терминалите в цеха.`;
+        }
+        if (termCb) termCb.checked = false;
+    } else if (val) {
+        if (catSel) catSel.value = 'Машини';
+        if (termWrap) termWrap.style.display = 'block';
+        if (adminNotice) adminNotice.style.display = 'none';
+        if (termCb) termCb.checked = true;
+    }
+};
+
+
 window.onEvCategoryChange = function() {
     const cat = document.getElementById('evCategorySelect').value;
     const machineBox = document.getElementById('evMachineSelectBox');
@@ -1319,7 +1366,7 @@ function initCalendarModalHtml() {
                         </div>
                         <div>
                             <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Машина / Обект:</label>
-                            <select id="evMachineSelect" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
+                            <select id="evMachineSelect" onchange="onEvMachineChange()" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
                                 <option value="">(Цял завод / Общо)</option>
                             </select>
                         </div>
@@ -1462,3 +1509,189 @@ function initCalendarModalHtml() {
 
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
+
+
+// ========================================================
+// АВТОМАТИЧНИ ИЗВЕСТИЯ ЗА АДМИН ПАНЕЛА (ДНЕС, УТРЕ, ПРОСРОЧЕНИ)
+// ========================================================
+window.checkAdminCalendarAlertsOnLoad = async function(isSilent = false) {
+    if (typeof client === 'undefined') return;
+
+    try {
+        const { data: events, error } = await client
+            .from('factory_events')
+            .select('*')
+            .eq('status', 'pending')
+            .order('event_date', { ascending: true });
+
+        if (error) throw error;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let overdue = [];
+        let todayEvents = [];
+        let tomorrowEvents = [];
+        let upcomingEvents = [];
+
+        (events || []).forEach(ev => {
+            const evDate = new Date(ev.event_date);
+            evDate.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((evDate - today) / (1000 * 60 * 60 * 24));
+            const notifyDays = ev.notify_days_before !== undefined ? ev.notify_days_before : 30;
+
+            if (diffDays < 0) {
+                overdue.push({ ev, diffDays: Math.abs(diffDays) });
+            } else if (diffDays === 0) {
+                todayEvents.push({ ev, diffDays });
+            } else if (diffDays === 1) {
+                tomorrowEvents.push({ ev, diffDays });
+            } else if (diffDays <= notifyDays) {
+                upcomingEvents.push({ ev, diffDays });
+            }
+        });
+
+        // 1. Обновяване на баджа на бутона "📅 Календар & Поддръжка"
+        const badge = document.getElementById('adminCalBadge');
+        const navBtn = document.getElementById('btnAdminCalendarNav');
+        const urgentCount = overdue.length + todayEvents.length + tomorrowEvents.length;
+        const totalAlerts = urgentCount + upcomingEvents.length;
+
+        if (badge) {
+            if (totalAlerts > 0) {
+                badge.innerText = totalAlerts;
+                badge.style.display = 'inline-block';
+                if (urgentCount > 0) {
+                    badge.style.background = '#ef4444';
+                } else {
+                    badge.style.background = '#f59e0b';
+                }
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        // 2. Глобален известителен банер над контролите в Админ панела
+        const globalBanner = document.getElementById('adminGlobalAlertBanner');
+        if (globalBanner) {
+            if (urgentCount > 0) {
+                let bannerHtml = '';
+                if (overdue.length > 0) {
+                    bannerHtml += `
+                        <div style="background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border-left: 5px solid #dc2626; border: 1px solid #fca5a5; color: #991b1b; padding: 12px 18px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 10px; box-shadow: 0 2px 6px rgba(220,38,38,0.15);">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.5em;">🚨</span>
+                                <div>
+                                    <div style="font-weight: 800;">СПЕШНО: Имате ${overdue.length} просрочени събития в Календара!</div>
+                                    <div style="font-size: 0.9em; margin-top: 2px;">${overdue.map(i => `<strong>${escapeHtml(getEventObjectDisplay(i.ev))}:</strong> ${escapeHtml(i.ev.title)} (просрочено с ${i.diffDays} дни)`).join(', ')}</div>
+                                </div>
+                            </div>
+                            <button onclick="openCalendarModal()" style="background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 800; cursor: pointer;">📅 Отвори Календара</button>
+                        </div>
+                    `;
+                }
+
+                if (todayEvents.length > 0) {
+                    bannerHtml += `
+                        <div style="background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border-left: 5px solid #ea580c; border: 1px solid #fdba74; color: #9a3412; padding: 12px 18px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 10px; box-shadow: 0 2px 6px rgba(234,88,12,0.15);">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.5em;">⚠️</span>
+                                <div>
+                                    <div style="font-weight: 800;">ВНИМАНИЕ: ДНЕС изтича срок за ${todayEvents.length} събитие!</div>
+                                    <div style="font-size: 0.9em; margin-top: 2px;">${todayEvents.map(i => `<strong>${escapeHtml(getEventObjectDisplay(i.ev))}:</strong> ${escapeHtml(i.ev.title)}`).join(', ')}</div>
+                                </div>
+                            </div>
+                            <button onclick="openCalendarModal()" style="background: #ea580c; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 800; cursor: pointer;">📅 Прегледай</button>
+                        </div>
+                    `;
+                }
+
+                if (tomorrowEvents.length > 0) {
+                    bannerHtml += `
+                        <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-left: 5px solid #2563eb; border: 1px solid #93c5fd; color: #1e40af; padding: 12px 18px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 10px; box-shadow: 0 2px 6px rgba(37,99,235,0.15);">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.5em;">🔔</span>
+                                <div>
+                                    <div style="font-weight: 800;">НАПОМНЯНЕ: След 1 ден (утре) наближава краен срок:</div>
+                                    <div style="font-size: 0.9em; margin-top: 2px;">${tomorrowEvents.map(i => `<strong>${getEventCategoryIcon(i.ev.category)} ${escapeHtml(getEventObjectDisplay(i.ev))}:</strong> ${escapeHtml(i.ev.title)} (Срок: ${formatDateDisplay(i.ev.event_date)})`).join(', ')}</div>
+                                </div>
+                            </div>
+                            <button onclick="openCalendarModal()" style="background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 800; cursor: pointer;">📅 Отвори Календара</button>
+                        </div>
+                    `;
+                }
+
+                globalBanner.innerHTML = bannerHtml;
+                globalBanner.style.display = 'block';
+            } else {
+                globalBanner.innerHTML = '';
+                globalBanner.style.display = 'none';
+            }
+        }
+
+        // 3. Изскачащо Toast известие при първоначално влизане в админ панела
+        if (!isSilent && (tomorrowEvents.length > 0 || todayEvents.length > 0 || overdue.length > 0)) {
+            const hasShownToast = sessionStorage.getItem('mes_cal_toast_shown');
+            if (!hasShownToast) {
+                sessionStorage.setItem('mes_cal_toast_shown', '1');
+                let toastTitle = '';
+                let toastText = '';
+                let toastIcon = 'warning';
+
+                if (overdue.length > 0) {
+                    toastTitle = `🚨 ${overdue.length} просрочени задачи!`;
+                    toastText = overdue.map(i => `${escapeHtml(getEventObjectDisplay(i.ev))}: ${escapeHtml(i.ev.title)}`).join(', ');
+                    toastIcon = 'error';
+                } else if (todayEvents.length > 0) {
+                    toastTitle = `⚠️ Днес изтича срок!`;
+                    toastText = todayEvents.map(i => `${escapeHtml(getEventObjectDisplay(i.ev))}: ${escapeHtml(i.ev.title)}`).join(', ');
+                } else if (tomorrowEvents.length > 0) {
+                    toastTitle = `🔔 Напомняне: Събитие утре (след 1 ден)!`;
+                    toastText = tomorrowEvents.map(i => `${escapeHtml(getEventObjectDisplay(i.ev))}: ${escapeHtml(i.ev.title)}`).join(', ');
+                    toastIcon = 'info';
+                }
+
+                const Toast = Swal.mixin({
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: true,
+                    confirmButtonText: '📅 Виж в календара',
+                    confirmButtonColor: '#4338ca',
+                    timer: 8000,
+                    timerProgressBar: true
+                });
+
+                Toast.fire({
+                    icon: toastIcon,
+                    title: toastTitle,
+                    text: toastText
+                }).then((res) => {
+                    if (res.isConfirmed) {
+                        openCalendarModal();
+                    }
+                });
+            }
+        }
+
+    } catch (err) {
+        if (!isSilent) console.error('Грешка при проверка за известия в админ панела:', err);
+    }
+};
+
+// Автоматичен старт при зареждане на админ панела
+function bootAdminCalendarAlerts() {
+    setTimeout(() => {
+        checkAdminCalendarAlertsOnLoad();
+    }, 1200);
+
+    setInterval(() => {
+        checkAdminCalendarAlertsOnLoad(true);
+    }, 60000);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootAdminCalendarAlerts);
+} else {
+    bootAdminCalendarAlerts();
+}
+
