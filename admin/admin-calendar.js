@@ -37,7 +37,8 @@ let calendarState = {
     logs: [],
     machines: [],
     currentDate: new Date(),
-    activeSubTab: 'calendar', // 'calendar' | 'log' | 'machines'
+    activeSubTab: 'calendar',
+    calMode: 'grid', // 'calendar' | 'log' | 'machines'
     filterCategory: 'all',
     filterMachine: 'all',
     filterLogMachine: 'all',
@@ -220,6 +221,144 @@ function renderCalendarDashboardAlerts() {
 // ----------------------------------------------------
 // МЕСЕЧЕН КАЛЕНДАР (GRID VIEW)
 // ----------------------------------------------------
+
+window.setCalendarMode = function(mode) {
+    calendarState.calMode = mode;
+    const btnGrid = document.getElementById('btnCalModeGrid');
+    const btnList = document.getElementById('btnCalModeList');
+    const navBox = document.getElementById('calNavControlsBox');
+    const weekdaysHeader = document.querySelector('.cal-weekdays-header');
+    const gridContainer = document.getElementById('calendarMonthGrid');
+
+    if (btnGrid) {
+        btnGrid.style.background = mode === 'grid' ? '#4338ca' : 'transparent';
+        btnGrid.style.color = mode === 'grid' ? 'white' : '#475569';
+    }
+    if (btnList) {
+        btnList.style.background = mode === 'list' ? '#4338ca' : 'transparent';
+        btnList.style.color = mode === 'list' ? 'white' : '#475569';
+    }
+
+    if (mode === 'grid') {
+        if (navBox) navBox.style.display = 'flex';
+        if (weekdaysHeader) weekdaysHeader.style.display = 'grid';
+        if (gridContainer) gridContainer.style.display = 'grid';
+        renderCalendarMonthView();
+    } else {
+        if (navBox) navBox.style.display = 'none';
+        if (weekdaysHeader) weekdaysHeader.style.display = 'none';
+        renderCalendarListView();
+    }
+};
+
+function renderCalendarListView() {
+    const gridContainer = document.getElementById('calendarMonthGrid');
+    const weekdaysHeader = document.querySelector('.cal-weekdays-header');
+    if (!gridContainer) return;
+
+    if (weekdaysHeader) weekdaysHeader.style.display = 'none';
+    gridContainer.style.display = 'block';
+
+    let filteredEvents = calendarState.events.filter(ev => {
+        if (ev.status === 'completed') return false;
+        if (calendarState.filterCategory !== 'all' && ev.category !== calendarState.filterCategory) return false;
+        if (calendarState.filterMachine !== 'all' && ev.machine_name !== calendarState.filterMachine) return false;
+        return true;
+    });
+
+    filteredEvents.sort((a,b) => new Date(a.event_date) - new Date(b.event_date));
+
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    if (filteredEvents.length === 0) {
+        gridContainer.innerHTML = `
+            <div style="background: white; border-radius: 12px; padding: 40px; text-align: center; color: #64748b; font-size: 1.05em; border: 1px solid #e2e8f0;">
+                Няма намерени бъдещи насрочени задачи за избраните филтри.
+            </div>
+        `;
+        return;
+    }
+
+    let tableHtml = `
+        <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+            <div style="padding: 12px 18px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 800; color: #1e293b;">📋 Списък на всички бъдещи насрочени задачи (${filteredEvents.length}):</span>
+                <span style="font-size: 0.85em; color: #64748b;">Подредени по дата на изпълнение</span>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                <thead>
+                    <tr style="background: #f1f5f9; border-bottom: 2px solid #e2e8f0; text-align: left;">
+                        <th style="padding: 12px 16px; width: 140px;">Дата</th>
+                        <th style="padding: 12px 16px; width: 190px;">Машина / Обект</th>
+                        <th style="padding: 12px 16px;">Задача / Инструкция</th>
+                        <th style="padding: 12px 16px; width: 160px;">Повторяемост</th>
+                        <th style="padding: 12px 16px; width: 150px;">Срок</th>
+                        <th style="padding: 12px 16px; width: 90px; text-align: right;">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    tableHtml += filteredEvents.map(ev => {
+        const evDate = new Date(ev.event_date);
+        evDate.setHours(0,0,0,0);
+        const diffDays = Math.ceil((evDate - today) / (1000 * 60 * 60 * 24));
+        let deadlineBadge = '';
+        if (diffDays < 0) {
+            deadlineBadge = `<span style="background: #fef2f2; color: #dc2626; padding: 3px 8px; border-radius: 6px; font-weight: 700;">🚨 Просрочено с ${Math.abs(diffDays)} дни</span>`;
+        } else if (diffDays === 0) {
+            deadlineBadge = `<span style="background: #fff7ed; color: #ea580c; padding: 3px 8px; border-radius: 6px; font-weight: 700;">⚠️ ДНЕС</span>`;
+        } else if (diffDays === 1) {
+            deadlineBadge = `<span style="background: #eff6ff; color: #2563eb; padding: 3px 8px; border-radius: 6px; font-weight: 700;">🔔 УТРЕ</span>`;
+        } else {
+            deadlineBadge = `<span style="background: #f1f5f9; color: #475569; padding: 3px 8px; border-radius: 6px; font-weight: 600;">след ${diffDays} дни</span>`;
+        }
+
+        const recurrenceText = ev.is_recurring 
+            ? `🔄 На всеки ${ev.repeat_interval_value} ${formatUnitBg(ev.repeat_interval_unit)}`
+            : 'Еднократно';
+
+        return `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 12px 16px; font-weight: 800; color: #1e3a8a; white-space: nowrap;">
+                    📅 ${formatDateDisplay(ev.event_date)}
+                </td>
+                <td style="padding: 12px 16px;">
+                    <div style="font-weight: 700; color: #1e293b;">${getEventCategoryIcon(ev.category)} ${escapeHtml(getEventObjectDisplay(ev))}</div>
+                    <div style="font-size: 0.8em; color: #64748b;">${escapeHtml(ev.category)}</div>
+                </td>
+                <td style="padding: 12px 16px;">
+                    <div style="font-weight: 700; color: #0f172a; cursor: pointer; text-decoration: underline;" onclick="openEventDetailsModal(${ev.id})">
+                        ${escapeHtml(ev.title)}
+                    </div>
+                    ${ev.notes ? `<div style="font-size: 0.85em; color: #64748b; margin-top: 2px;">${escapeHtml(ev.notes)}</div>` : ''}
+                </td>
+                <td style="padding: 12px 16px; font-size: 0.88em; color: #475569;">
+                    ${recurrenceText}
+                </td>
+                <td style="padding: 12px 16px; font-size: 0.88em;">
+                    ${deadlineBadge}
+                </td>
+                <td style="padding: 12px 16px; text-align: right; white-space: nowrap;">
+                    <button onclick="openEventDetailsModal(${ev.id})" style="background: #0284c7; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: 700;">
+                        👁️ Детайли
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tableHtml += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    gridContainer.innerHTML = tableHtml;
+}
+
+
 window.calendarNavPrev = function() {
     calendarState.currentDate.setMonth(calendarState.currentDate.getMonth() - 1);
     renderCalendarMonthView();
