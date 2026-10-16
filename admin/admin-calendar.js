@@ -1160,7 +1160,11 @@ function renderMachinesDirectory() {
                         <div class="machine-card-name">⚙️ ${escapeHtml(mac.name)}</div>
                         <div class="machine-card-dept">${escapeHtml(mac.department || 'Производствен цех')} ${mac.code ? `• Инв. №: ${escapeHtml(mac.code)}` : ''}</div>
                     </div>
-                    <span class="machine-status-badge ${mac.status || 'active'}">${mac.status === 'maintenance' ? 'В ремонт' : 'Активна'}</span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="machine-status-badge ${mac.status || 'active'}">${mac.status === 'maintenance' ? 'В ремонт' : 'Активна'}</span>
+                        <button onclick="openEditMachineModal(${mac.id})" title="Редактирай машина" style="border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.9em;">✏️</button>
+                        <button onclick="deleteMachine(${mac.id}, '${escapeHtml(mac.name)}')" title="Изтрий машина" style="border: 1px solid #fecaca; background: #fef2f2; color: #dc2626; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.9em;">🗑️</button>
+                    </div>
                 </div>
                 <div class="machine-card-body">
                     <div class="machine-stat">
@@ -1200,6 +1204,9 @@ function renderMachinesDirectory() {
                     <button class="btn-mac-action btn-mac-add" onclick="scheduleTaskForMachine('${escapeHtml(mac.name)}')">
                         + Насрочи
                     </button>
+                    <button class="btn-mac-action" onclick="deleteMachine(${mac.id}, '${escapeHtml(mac.name)}')" style="background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; padding: 6px 10px; border-radius: 6px; font-weight: 700; font-size: 0.82em; cursor: pointer;" title="Изтрий машина">
+                        🗑️ Изтрий
+                    </button>
                 </div>
             </div>
         `;
@@ -1222,6 +1229,102 @@ window.viewMachineHistory = function(macName) {
 window.scheduleTaskForMachine = function(macName) {
     openAddEventModal();
     document.getElementById('evMachineSelect').value = macName;
+};
+
+window.openEditMachineModal = function(machineId) {
+    const mac = calendarState.machines.find(m => m.id === machineId);
+    if (!mac) return;
+
+    Swal.fire({
+        title: `✏️ Редакция на машина`,
+        html: `
+            <div style="display: flex; flex-direction: column; gap: 12px; text-align: left; font-size: 0.9em;">
+                <div>
+                    <label style="font-weight: 700; color: #475569;">Име на машината: *</label>
+                    <input id="swalEditMacName" class="swal2-input" value="${escapeHtml(mac.name)}" style="margin: 4px 0 0; width: 100%; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="font-weight: 700; color: #475569;">Инвентарен / Фабричен номер:</label>
+                    <input id="swalEditMacCode" class="swal2-input" value="${escapeHtml(mac.code || '')}" style="margin: 4px 0 0; width: 100%; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="font-weight: 700; color: #475569;">Цех / Местоположение:</label>
+                    <input id="swalEditMacDept" class="swal2-input" value="${escapeHtml(mac.department || '')}" style="margin: 4px 0 0; width: 100%; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="font-weight: 700; color: #475569;">Модел / Производител:</label>
+                    <input id="swalEditMacModel" class="swal2-input" value="${escapeHtml(mac.model || '')}" style="margin: 4px 0 0; width: 100%; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="font-weight: 700; color: #475569;">Статус:</label>
+                    <select id="swalEditMacStatus" class="swal2-input" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 42px;">
+                        <option value="active" ${mac.status === 'active' ? 'selected' : ''}>Активна (в експлоатация)</option>
+                        <option value="maintenance" ${mac.status === 'maintenance' ? 'selected' : ''}>В ремонт / профилактика</option>
+                    </select>
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Запази промените',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#4338ca',
+        preConfirm: () => {
+            const name = document.getElementById('swalEditMacName').value.trim();
+            if (!name) {
+                Swal.showValidationMessage('Моля, въведете име на машината!');
+                return false;
+            }
+            return {
+                name: name,
+                code: document.getElementById('swalEditMacCode').value.trim() || null,
+                department: document.getElementById('swalEditMacDept').value.trim() || null,
+                model: document.getElementById('swalEditMacModel').value.trim() || null,
+                status: document.getElementById('swalEditMacStatus').value
+            };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            showCalendarLoading(true);
+            try {
+                const { error } = await client.from('factory_machines').update(result.value).eq('id', machineId);
+                if (error) throw error;
+                await reloadAllCalendarData();
+                Swal.fire({ icon: 'success', title: 'Данните на машината са обновени!', timer: 1500, showConfirmButton: false });
+            } catch (err) {
+                Swal.fire('Грешка', err.message, 'error');
+            } finally {
+                showCalendarLoading(false);
+            }
+        }
+    });
+};
+
+window.deleteMachine = async function(machineId, machineName) {
+    const result = await Swal.fire({
+        title: `Изтриване на машина?`,
+        html: `Сигурни ли сте, че искате да премахнете <strong>${escapeHtml(machineName)}</strong> от заводския парк?<br><small style="color: #64748b; margin-top: 6px; display: block;">Забележка: Записите в сервизния дневник ще се запазят за историческа справка.</small>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc2626',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Да, изтрий!',
+        cancelButtonText: 'Отказ'
+    });
+
+    if (result.isConfirmed) {
+        showCalendarLoading(true);
+        try {
+            const { error } = await client.from('factory_machines').delete().eq('id', machineId);
+            if (error) throw error;
+            await reloadAllCalendarData();
+            Swal.fire({ icon: 'success', title: 'Машината е изтрита успешно!', timer: 1500, showConfirmButton: false });
+        } catch (err) {
+            Swal.fire('Грешка', 'Неуспешно изтриване: ' + (err.message || err), 'error');
+        } finally {
+            showCalendarLoading(false);
+        }
+    }
 };
 
 window.openAddMachineModal = function() {
