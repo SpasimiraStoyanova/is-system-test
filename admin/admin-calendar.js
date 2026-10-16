@@ -548,6 +548,25 @@ window.openEventDetailsModal = function(eventId) {
     document.getElementById('evDetailAssigned').innerText = ev.assigned_to || 'Не е посочен';
     document.getElementById('evDetailNotes').innerText = ev.notes || 'Няма въведени забележки.';
 
+    const compBox = document.getElementById('evDetailCompletionInfo');
+    if (ev.status === 'completed') {
+        const relatedLog = calendarState.logs.find(l => l.event_id === ev.id) || 
+                           calendarState.logs.find(l => l.title === ev.title && (l.machine_name === ev.machine_name || l.machine_name === getEventObjectDisplay(ev)));
+        if (relatedLog && compBox) {
+            compBox.style.display = 'block';
+            document.getElementById('evDetailCompDate').innerText = formatDateDisplay(relatedLog.completed_date);
+            document.getElementById('evDetailCompBy').innerText = relatedLog.completed_by || '-';
+            const costVal = parseFloat(relatedLog.cost) || 0;
+            document.getElementById('evDetailCompCost').innerText = costVal > 0 ? `${costVal.toFixed(2)} лв.` : '0.00 лв.';
+            document.getElementById('evDetailCompParts').innerText = relatedLog.parts_replaced || 'Няма';
+            document.getElementById('evDetailCompNotes').innerText = relatedLog.notes || 'Няма въведени забележки';
+        } else if (compBox) {
+            compBox.style.display = 'none';
+        }
+    } else if (compBox) {
+        compBox.style.display = 'none';
+    }
+
     const actionsContainer = document.getElementById('evDetailActions');
     if (ev.status === 'completed') {
         actionsContainer.innerHTML = `
@@ -570,6 +589,8 @@ window.openEventDetailsModal = function(eventId) {
 window.closeEventDetailsModal = function() {
     const modal = document.getElementById('eventDetailsModalBackdrop');
     if (modal) modal.style.display = 'none';
+    const compBox = document.getElementById('evDetailCompletionInfo');
+    if (compBox) compBox.style.display = 'none';
 };
 
 window.openCompleteEventModal = function(eventId) {
@@ -964,8 +985,14 @@ function renderMaintenanceLogTable() {
         );
     }
 
+    const totalCost = filtered.reduce((acc, cur) => acc + (parseFloat(cur.cost) || 0), 0);
+    const totalCostEl = document.getElementById('calLogTotalCostVal');
+    if (totalCostEl) {
+        totalCostEl.innerText = `${totalCost.toFixed(2)} лв.`;
+    }
+
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 40px; color: #64748b;">Няма намерени записи в Сервизния дневник.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 40px; color: #64748b;">Няма намерени записи в Сервизния дневник.</td></tr>`;
         return;
     }
 
@@ -982,6 +1009,12 @@ function renderMaintenanceLogTable() {
                 <div style="font-weight: 700; color: #0f172a;">${escapeHtml(log.title)}</div>
                 ${log.notes ? `<div style="font-size: 0.85em; color: #64748b; margin-top: 3px;">${escapeHtml(log.notes)}</div>` : ''}
                 ${log.parts_replaced ? `<div style="font-size: 0.8em; color: #4338ca; margin-top: 3px;">📦 Вложени части: ${escapeHtml(log.parts_replaced)}</div>` : ''}
+            </td>
+            <td style="text-align: right; white-space: nowrap;">
+                ${(parseFloat(log.cost) > 0)
+                    ? `<span style="background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 0.95em; white-space: nowrap; display: inline-block;">💰 ${parseFloat(log.cost).toFixed(2)} лв.</span>`
+                    : `<span style="color: #94a3b8; font-size: 0.88em;">—</span>`
+                }
             </td>
             <td>${escapeHtml(log.completed_by || '-')}</td>
             <td>
@@ -1258,8 +1291,14 @@ function updateMachineDropdowns() {
     const optionsHtml = '<option value="">(Няма / Общо за завода)</option>' +
         calendarState.machines.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('');
 
-    const filterOptionsHtml = '<option value="all">Всички машини</option>' +
-        calendarState.machines.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('');
+    const allObjectsSet = new Set();
+    calendarState.machines.forEach(m => { if (m.name) allObjectsSet.add(m.name); });
+    calendarState.events.forEach(e => { if (e.machine_name && e.machine_name.trim()) allObjectsSet.add(e.machine_name.trim()); });
+    calendarState.logs.forEach(l => { if (l.machine_name && l.machine_name.trim()) allObjectsSet.add(l.machine_name.trim()); });
+    const allObjects = Array.from(allObjectsSet).sort();
+
+    const filterOptionsHtml = '<option value="all">Всички машини и обекти</option>' +
+        allObjects.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
 
     if (evSel) evSel.innerHTML = optionsHtml;
     if (manualLogSel) manualLogSel.innerHTML = '<option value="">-- Изберете машина --</option>' + calendarState.machines.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('');
@@ -1421,8 +1460,11 @@ function initCalendarModalHtml() {
                     <div style="display: flex; gap: 12px; align-items: center; flex: 1; flex-wrap: wrap;">
                         <input type="text" id="logSearchInput" placeholder="🔍 Търси в сервизен дневник (машина, дейност, майстор)..." oninput="onLogFilterChange()" style="flex: 1; min-width: 250px; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.9em; outline: none;">
                         <select id="logMachineFilterSelect" onchange="onLogFilterChange()" class="cal-filter-select" style="min-width: 200px;">
-                            <option value="all">Всички машини</option>
+                            <option value="all">Всички машини и обекти</option>
                         </select>
+                        <div id="calLogTotalCostBox" style="background: #f0fdf4; border: 1px solid #86efac; color: #166534; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 0.9em; white-space: nowrap;">
+                            💰 Общ разход: <span id="calLogTotalCostVal">0.00 лв.</span>
+                        </div>
                     </div>
                     <button class="btn-cal-action" onclick="openAddManualLogModal()" style="background: #0d9488; color: white;">
                         ✍️ Впиши извънреден ремонт
@@ -1437,6 +1479,7 @@ function initCalendarModalHtml() {
                                 <th style="padding: 12px 16px; width: 180px;">Машина</th>
                                 <th style="padding: 12px 16px; width: 150px;">Вид дейност</th>
                                 <th style="padding: 12px 16px;">Какво е извършено / Забележки</th>
+                                <th style="padding: 12px 16px; width: 120px; text-align: right;">💰 Разход</th>
                                 <th style="padding: 12px 16px; width: 150px;">Извършил</th>
                                 <th style="padding: 12px 16px; width: 110px;">Източник</th>
                                 <th style="padding: 12px 16px; width: 60px; text-align: right;">Действия</th>
@@ -1511,6 +1554,16 @@ function initCalendarModalHtml() {
                 <div style="background: #f8fafc; padding: 10px 14px; border-radius: 8px; grid-column: span 2;">
                     <div style="color: #64748b; font-size: 0.8em; text-transform: uppercase; font-weight: 700;">Инструкции и бележки:</div>
                     <div id="evDetailNotes" style="color: #334155; margin-top: 4px; white-space: pre-wrap;"></div>
+                </div>
+                <div id="evDetailCompletionInfo" style="display: none; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 12px 14px; grid-column: span 2;">
+                    <div style="font-weight: 800; color: #065f46; font-size: 0.95em; margin-bottom: 8px;">✅ Информация за отчитането:</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9em;">
+                        <div><span style="color: #047857; font-weight: 700;">Дата на завършване:</span> <span id="evDetailCompDate" style="font-weight: 700; color: #1e293b;"></span></div>
+                        <div><span style="color: #047857; font-weight: 700;">Извършил:</span> <span id="evDetailCompBy" style="font-weight: 700; color: #1e293b;"></span></div>
+                        <div><span style="color: #047857; font-weight: 700;">💰 Изразходена сума:</span> <span id="evDetailCompCost" style="font-weight: 800; color: #065f46; background: white; padding: 2px 8px; border-radius: 4px; border: 1px solid #86efac;"></span></div>
+                        <div><span style="color: #047857; font-weight: 700;">Вложени части:</span> <span id="evDetailCompParts" style="font-weight: 700; color: #1e293b;"></span></div>
+                    </div>
+                    <div id="evDetailCompNotesBox" style="margin-top: 8px; font-size: 0.88em; color: #065f46; border-top: 1px dashed #a7f3d0; padding-top: 6px;"><span style="font-weight: 700;">Забележки при отчитане:</span> <span id="evDetailCompNotes" style="color: #1e293b;"></span></div>
                 </div>
             </div>
             <div id="evDetailActions" style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e2e8f0; padding-top: 16px;"></div>
