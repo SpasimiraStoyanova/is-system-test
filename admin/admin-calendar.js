@@ -2,6 +2,36 @@
 // IS-SYSTEMS: КАЛЕНДАР, ПЛАНОВА ПОДДРЪЖКА И СЕРВИЗЕН ДНЕВНИК
 // ========================================================
 
+
+// Помощни функции за обекти, категории и видимост
+function getEventObjectDisplay(ev) {
+    if (ev.machine_name && ev.machine_name.trim() !== '') {
+        return ev.machine_name.trim();
+    }
+    if (ev.category === 'Автопарк') return 'Служебно МПС';
+    if (ev.category === 'Администрация') return 'Администрация';
+    if (ev.category === 'ЗБУТ / ЧР') return 'ЗБУТ / ЧР';
+    if (ev.category === 'Инфраструктура') return 'Сграда / Инфраструктура';
+    return 'Цял завод';
+}
+
+function getEventCategoryIcon(cat) {
+    if (cat === 'Машини') return '🔧';
+    if (cat === 'Автопарк') return '🚗';
+    if (cat === 'Администрация') return '🔒';
+    if (cat === 'ЗБУТ / ЧР') return '🩺';
+    if (cat === 'Инфраструктура') return '🏢';
+    return '📌';
+}
+
+function getEventVisibilityBadge(ev) {
+    if (ev.allow_terminal_completion && ev.category === 'Машини') {
+        return '<span style="background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 2px 8px; border-radius: 6px; font-size: 0.85em; font-weight: 700;">🏭 Видимо на терминалите в цеха</span>';
+    }
+    return '<span style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 2px 8px; border-radius: 6px; font-size: 0.85em; font-weight: 700;">🔒 Само за Административния панел (скрито от цеха)</span>';
+}
+
+
 let calendarState = {
     events: [],
     logs: [],
@@ -153,7 +183,7 @@ function renderCalendarDashboardAlerts() {
                     <div style="margin-top: 5px; font-size: 0.9em; display: flex; flex-wrap: wrap; gap: 6px;">
                         ${overdueList.map(item => `
                             <span style="background: white; border: 1px solid #f87171; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="openEventDetailsModal(${item.ev.id})" title="Кликнете за детайли">
-                                <strong>${escapeHtml(item.ev.machine_name || 'Завод')}:</strong> ${escapeHtml(item.ev.title)} 
+                                ${getEventCategoryIcon(item.ev.category)} <strong>${escapeHtml(getEventObjectDisplay(item.ev))}:</strong> ${escapeHtml(item.ev.title)} 
                                 <span style="color: #dc2626; font-weight: 700;">(просрочено с ${item.diffDays} д.)</span>
                             </span>
                         `).join('')}
@@ -173,7 +203,7 @@ function renderCalendarDashboardAlerts() {
                     <div style="margin-top: 5px; font-size: 0.9em; display: flex; flex-wrap: wrap; gap: 6px;">
                         ${approachingList.map(item => `
                             <span style="background: white; border: 1px solid #fcd34d; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="openEventDetailsModal(${item.ev.id})" title="Кликнете за детайли">
-                                <strong>${escapeHtml(item.ev.machine_name || 'Завод')}:</strong> ${escapeHtml(item.ev.title)} 
+                                ${getEventCategoryIcon(item.ev.category)} <strong>${escapeHtml(getEventObjectDisplay(item.ev))}:</strong> ${escapeHtml(item.ev.title)} 
                                 <span style="color: #b45309; font-weight: 700;">(след ${item.diffDays === 0 ? 'ДНЕС!' : item.diffDays + ' дни'})</span>
                             </span>
                         `).join('')}
@@ -283,9 +313,9 @@ function renderCalendarMonthView() {
             }
 
             eventsHtml += `
-                <div class="cal-event-badge ${statusClass}" style="border-left: 3px solid ${catColor};" onclick="event.stopPropagation(); openEventDetailsModal(${ev.id})" title="${escapeHtml(ev.title)} (${escapeHtml(ev.machine_name || 'Завод')})">
+                <div class="cal-event-badge ${statusClass}" style="border-left: 3px solid ${catColor};" onclick="event.stopPropagation(); openEventDetailsModal(${ev.id})" title="${escapeHtml(ev.title)} (${escapeHtml(getEventObjectDisplay(ev))})">
                     <span class="ev-badge-icon">${statusIcon}</span>
-                    <span class="ev-badge-title"><strong>${escapeHtml(ev.machine_name ? ev.machine_name + ': ' : '')}</strong>${escapeHtml(ev.title)}</span>
+                    <span class="ev-badge-title"><strong>${escapeHtml(getEventObjectDisplay(ev))}:</strong> ${escapeHtml(ev.title)}</span>
                 </div>
             `;
         });
@@ -339,7 +369,7 @@ window.openEventDetailsModal = function(eventId) {
 
     document.getElementById('evDetailTitle').innerText = ev.title;
     document.getElementById('evDetailStatus').innerHTML = statusBadge;
-    document.getElementById('evDetailMachine').innerText = ev.machine_name || 'Цял завод / Общо';
+    document.getElementById('evDetailMachine').innerHTML = `${getEventCategoryIcon(ev.category)} ${escapeHtml(getEventObjectDisplay(ev))}`; const visEl = document.getElementById('evDetailVisibility'); if (visEl) visEl.innerHTML = getEventVisibilityBadge(ev);
     document.getElementById('evDetailCategory').innerText = ev.category;
     document.getElementById('evDetailDate').innerText = formatDateDisplay(ev.event_date);
     document.getElementById('evDetailNotify').innerText = `${ev.notify_days_before || 30} дни предварително`;
@@ -494,6 +524,62 @@ window.saveEventCompletion = async function(e) {
 // ----------------------------------------------------
 // СЪЗДАВАНЕ И РЕДАКЦИЯ НА СЪБИТИЕ (MODAL)
 // ----------------------------------------------------
+window.onEvCategoryChange = function() {
+    const cat = document.getElementById('evCategorySelect').value;
+    const machineBox = document.getElementById('evMachineSelectBox');
+    const customBox = document.getElementById('evCustomObjectBox');
+    const objLabel = document.getElementById('evObjectLabel');
+    const customInp = document.getElementById('evCustomObjectInput');
+    const termWrap = document.getElementById('evTerminalCbWrap');
+    const adminNotice = document.getElementById('evAdminOnlyNotice');
+    const termCb = document.getElementById('evTerminalCb');
+
+    if (!objLabel || !machineBox || !customBox) return;
+
+    if (cat === 'Машини') {
+        objLabel.innerText = 'Машина от цеха: *';
+        machineBox.style.display = 'block';
+        customBox.style.display = 'none';
+        if (termWrap) termWrap.style.display = 'block';
+        if (adminNotice) adminNotice.style.display = 'none';
+        if (termCb) termCb.checked = true;
+    } else if (cat === 'Автопарк') {
+        objLabel.innerText = 'Автомобил / МПС (рег. № или модел):';
+        machineBox.style.display = 'none';
+        customBox.style.display = 'block';
+        if (customInp) customInp.placeholder = 'напр. Служебен бус СА1234ВТ, Шкода Октавия...';
+        if (termWrap) termWrap.style.display = 'none';
+        if (adminNotice) adminNotice.style.display = 'block';
+        if (termCb) termCb.checked = false;
+    } else if (cat === 'Администрация') {
+        objLabel.innerText = 'Звено / Направление:';
+        machineBox.style.display = 'none';
+        customBox.style.display = 'block';
+        if (customInp) customInp.placeholder = 'напр. Счетоводство, Договори, Офис...';
+        if (termWrap) termWrap.style.display = 'none';
+        if (adminNotice) adminNotice.style.display = 'block';
+        if (termCb) termCb.checked = false;
+    } else if (cat === 'Инфраструктура') {
+        objLabel.innerText = 'Обект / Инсталация:';
+        machineBox.style.display = 'none';
+        customBox.style.display = 'block';
+        if (customInp) customInp.placeholder = 'напр. Компресорно, Пожарогасители цех 1, Климатизация...';
+        if (termWrap) termWrap.style.display = 'none';
+        if (adminNotice) adminNotice.style.display = 'block';
+        if (termCb) termCb.checked = false;
+    } else { // ЗБУТ / ЧР or Общи
+        objLabel.innerText = 'Обхват / Локация:';
+        machineBox.style.display = 'none';
+        customBox.style.display = 'block';
+        if (customInp) customInp.placeholder = 'напр. Цял завод, Механичен цех, Всички служители...';
+        if (termWrap) termWrap.style.display = 'none';
+        if (adminNotice) adminNotice.style.display = 'block';
+        if (termCb) termCb.checked = false;
+    }
+};
+
+
+
 window.openAddEventModal = function(defaultDate) {
     calendarState.editingEventId = null;
     const modal = document.getElementById('addEventModalBackdrop');
@@ -1039,7 +1125,9 @@ function initCalendarModalHtml() {
                                 <option value="Машини">🔧 Машини и оборудване</option>
                                 <option value="ЗБУТ / ЧР">🩺 ЗБУТ / ЧР (Медицински)</option>
                                 <option value="Инфраструктура">🏢 Инфраструктура & Сграда</option>
-                                <option value="Общи">📌 Общи събития</option>
+                                <option value="Автопарк">🚗 Автопарк / МПС (Винетки, ГТП)</option>
+                                <option value="Администрация">🔒 Администрация & Финанси</option>
+                                <option value="Общи">📌 Общи фирмени събития</option>
                             </select>
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px;">

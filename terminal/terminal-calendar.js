@@ -3,6 +3,10 @@
 // Комбинация от:
 // 1. Известителна карта непосредствено над работните задачи
 // 2. Бутон "📅 ПОДДРЪЖКА (N)" в горната лента с модал и история
+// ПРАВИЛО ЗА СИГУРНОСТ:
+// На терминала се показват ЕДИНСТВЕНО задачи за МАШИНИ с изрично
+// разрешено отчитане (allow_terminal_completion = true)!
+// Служебни, административни, винетки и автопарк записи са САМО за админ панела.
 // ========================================================
 
 let terminalMaintenanceState = {
@@ -149,11 +153,13 @@ window.checkTerminalMaintenance = async function(isSilent = false) {
         }
         terminalMaintenanceState.selectedMachines = myMachines;
 
-        // Извличане на активни задачи от Supabase
+        // Извличане на активни задачи от Supabase - САМО категория "Машини" с позволено отчитане на терминал
         const { data: events, error } = await client
             .from('factory_events')
             .select('*')
             .eq('status', 'pending')
+            .eq('category', 'Машини')
+            .eq('allow_terminal_completion', true)
             .order('event_date', { ascending: true });
 
         if (error) throw error;
@@ -164,15 +170,13 @@ window.checkTerminalMaintenance = async function(isSilent = false) {
         let activeForMe = [];
 
         (events || []).forEach(ev => {
-            // Филтър по машина за цеховия под / терминала
+            // Филтър по конкретна машина за цеховия под
             const evMachine = (ev.machine_name || '').trim().toLowerCase();
             let matchesMachine = false;
 
             if (myMachines.length === 0) {
-                // Избрано е ВСИЧКИ -> показваме само задачи за машини или с изрично позволено отчитане на терминал
-                if (ev.category === 'Машини' || ev.allow_terminal_completion) {
-                    matchesMachine = true;
-                }
+                // Избрано е ВСИЧКИ -> вижда само задачи по машините в цеха
+                matchesMachine = true;
             } else {
                 // Избрана е конкретна машина -> показваме задачите точно за тази машина
                 if (evMachine && myMachines.includes(evMachine)) {
@@ -240,11 +244,7 @@ function renderTerminalMaintenanceCards(activeItems) {
         const ev = item.ev;
         const isOverdue = item.isOverdue;
         const diffDays = item.diffDays;
-
-        let icon = '🛢️';
-        if (ev.category === 'ЗБУТ / ЧР') icon = '🩺';
-        else if (ev.category === 'Инфраструктура') icon = '🏢';
-        else if (ev.category === 'Общи') icon = '📌';
+        const icon = '🔧';
 
         let deadlineText = '';
         if (isOverdue) {
@@ -290,7 +290,6 @@ window.completeTerminalMaintenance = async function(eventId) {
     const item = terminalMaintenanceState.activeEvents.find(i => i.ev.id === eventId);
     let ev = item ? item.ev : null;
 
-    // Ако не е в activeEvents, го търсим директно
     if (!ev) {
         try {
             const { data } = await client.from('factory_events').select('*').eq('id', eventId).single();
@@ -308,7 +307,7 @@ window.completeTerminalMaintenance = async function(eventId) {
         html: `
             <div style="text-align: left; font-size: 0.95em; display: flex; flex-direction: column; gap: 12px;">
                 <div style="background: #f1f5f9; padding: 10px 14px; border-radius: 8px;">
-                    <div><strong>Машина:</strong> ${escapeHtml(ev.machine_name || 'Цял завод')}</div>
+                    <div><strong>Машина:</strong> ${escapeHtml(ev.machine_name || 'Машина')}</div>
                     <div><strong>Задача:</strong> ${escapeHtml(ev.title)}</div>
                 </div>
                 <div>
@@ -349,8 +348,8 @@ window.completeTerminalMaintenance = async function(eventId) {
         // 1. Вписване в сервизния дневник (бъдещ паспорт на машината)
         const { error: logErr } = await client.from('factory_maintenance_log').insert([{
             event_id: ev.id,
-            machine_name: ev.machine_name || 'Цял завод',
-            activity_type: ev.category === 'Машини' ? 'Планова поддръжка' : ev.category,
+            machine_name: ev.machine_name || 'Машина',
+            activity_type: 'Планова поддръжка',
             title: ev.title,
             completed_date: todayStr,
             completed_by: formValues.completedBy,
@@ -383,7 +382,7 @@ window.completeTerminalMaintenance = async function(eventId) {
 
             await client.from('factory_events').insert([{
                 title: ev.title,
-                category: ev.category,
+                category: 'Машини',
                 machine_name: ev.machine_name,
                 department: ev.department,
                 event_date: nextDateStr,
@@ -394,7 +393,7 @@ window.completeTerminalMaintenance = async function(eventId) {
                 status: 'pending',
                 assigned_to: ev.assigned_to,
                 notes: ev.notes,
-                allow_terminal_completion: ev.allow_terminal_completion
+                allow_terminal_completion: true
             }]);
         }
 
@@ -434,18 +433,18 @@ window.openTerminalCalendarModal = async function() {
             myMachines = rawMachine.split(',').map(m => m.trim());
         }
 
-        // 1. Предстоящи задачи за обслужване
+        // 1. Предстоящи задачи за обслужване - САМО Машини с позволено отчитане
         let eventsQuery = client
             .from('factory_events')
             .select('*')
             .eq('status', 'pending')
+            .eq('category', 'Машини')
+            .eq('allow_terminal_completion', true)
             .order('event_date', { ascending: true })
             .limit(20);
 
         if (myMachines.length > 0) {
             eventsQuery = eventsQuery.in('machine_name', myMachines);
-        } else {
-            eventsQuery = eventsQuery.eq('category', 'Машини');
         }
         const { data: upcomingEvents } = await eventsQuery;
 
@@ -463,7 +462,7 @@ window.openTerminalCalendarModal = async function() {
 
         Swal.close();
 
-        const machineTitle = myMachines.length > 0 ? myMachines.join(', ') : 'Всички машини';
+        const machineTitle = myMachines.length > 0 ? myMachines.join(', ') : 'Всички машини в цеха';
 
         let upcomingHtml = '';
         if (!upcomingEvents || upcomingEvents.length === 0) {
