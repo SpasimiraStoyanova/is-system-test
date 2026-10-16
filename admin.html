@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IS-SYSTEMS Глобален Административен Панел</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="admin/admin.css?v=10">
+    <link rel="stylesheet" href="admin/admin.css?v=11">
     <link rel="stylesheet" href="admin/admin-calendar.css?v=5">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -20,6 +20,7 @@
     <script src="admin/admin-resolver.js?v=5" defer></script>
     <script src="admin/admin-transform.js?v=1" defer></script>
     <script src="admin/admin-calendar.js?v=8" defer></script>
+    <script src="admin/admin-report.js?v=1" defer></script>
   </head>
   <body>
     <div id="appContent" style="display: none;">
@@ -47,6 +48,7 @@
                 </button>
                 <button class="btn-primary" onclick="window.forceReloadTerminals()" style="background-color: #dc2626; box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3);" title="Принудително рестартира всички таблети в цеха">🔄 Синхронизирай Терминалите</button>
                 <button class="btn-primary" onclick="openNotificationDialog()" style="background-color: #f59e0b; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);">📢 Известие</button>
+                <button class="btn-primary" id="btnAdminReportNav" onclick="openExecutiveReportModal()" style="background-color: #0d9488; box-shadow: 0 2px 4px rgba(13, 148, 136, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span>📊 Сводка &amp; Отчет</span></button>
                 <button class="btn-primary" id="logisticsBtn" onclick="openLogisticsModal()" style="display: none; background-color: #8b5cf6; box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3);">📦 Логистика на План</button>
                 <button class="btn-primary" id="mrpBtn" onclick="openMrpModal()" style="display: none; background-color: #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);">🚨 Анализ на доставките</button>
                 <button class="btn-primary" id="transformResolverBtn" onclick="openTransformModal()" style="display: none; background-color: #6366f1; box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);">🔄 Трансформация</button>
@@ -210,6 +212,25 @@
                 <div style="text-align:right; margin-top:10px;">
                     <button class="btn-primary" onclick="executeTransformation()" style="background-color: #6366f1; padding:10px 20px; font-size:1.1em;">Възложи Трансформация</button>
                 </div>
+            </div>
+          </div>
+        </div>
+
+    
+        <div class="modal-backdrop" id="reportModalBackdrop">
+          <div class="modal" style="max-width: 1100px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
+            <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="font-size: 1.5em; background: #ccfbf1; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(13, 148, 136, 0.15);">📊</div>
+                    <div>
+                        <div style="font-size: 1.15em; font-weight: 800; color: #0f172a;">Оперативна сводка и периодичен отчет</div>
+                        <div style="font-size: 0.85em; color: #64748b; font-weight: 600; margin-top: 2px;">Производство, брак, критичен склад и сервизни събития</div>
+                    </div>
+                </div>
+                <button onclick="closeExecutiveReportModal()" style="border:none; background:#f1f5f9; cursor:pointer; font-size:1.3em; color:#64748b; line-height:1; width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition: all 0.15s ease;" onmouseover="this.style.background='#fee2e2'; this.style.color='#b91c1c';" onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';">✖</button>
+            </div>
+            <div id="reportModalContent" style="padding: 20px; overflow-y: auto; flex: 1; background: #f8fafc;">
+                Зареждане на отчет...
             </div>
           </div>
         </div>

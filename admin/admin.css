@@ -384,3 +384,104 @@ tr:hover td { background-color: #f8fafc; }
     padding: 10px 16px;
     box-shadow: 0 1px 2px rgba(37, 99, 235, 0.05);
 }
+
+/* ============================================================
+   Executive Report & Periodic Summary Styles
+   ============================================================ */
+.report-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    font-family: inherit;
+    color: #1e293b;
+}
+
+.report-controls-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #ffffff;
+    padding: 12px 18px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.report-period-pills {
+    display: inline-flex;
+    background: #f1f5f9;
+    padding: 4px;
+    border-radius: 8px;
+    gap: 4px;
+}
+
+.report-pill-btn {
+    border: none;
+    background: transparent;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.88em;
+    font-weight: 700;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.report-pill-btn:hover {
+    color: #0f172a;
+}
+
+.report-pill-btn.active {
+    background: #0d9488;
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(13, 148, 136, 0.3);
+}
+
+.report-actions-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.report-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+}
+
+.report-kpi-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 5px solid #0d9488;
+    border-radius: 10px;
+    padding: 14px 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.report-kpi-label {
+    font-size: 0.82em;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.report-kpi-value {
+    font-size: 1.85em;
+    font-weight: 900;
+    line-height: 1.1;
+    color: #0f172a;
+    font-family: monospace;
+}
+
+.report-kpi-sub {
+    font-size: 0.8em;
+    color: #94a3b8;
+    margin-top: 2px;
+}
