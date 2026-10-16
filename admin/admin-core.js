@@ -280,9 +280,10 @@ function renderDynamicTable(itemsToRender = null) {
       if (currentTab === 'chekiraniya' && f.name === 'Локация' && val && val.includes(',')) { let coords = val.replace(/\s/g, ''); td.innerHTML = `<a href="https://www.google.com/maps?q=${coords}" target="_blank" style="color:#2563eb; font-weight:bold; text-decoration:none;">📍 Карта</a>`; row.appendChild(td); return; }
       if (currentTab === 'chekiraniya' && f.name === 'Бележка' && val.includes('ИЗВЪН ОБЕКТА')) { td.innerHTML = `⚠️ <b style="color:#dc2626;">${val}</b>`; row.appendChild(td); return; }
       if (typeof val === 'string' && val.startsWith('http')) { td.innerHTML = `<a href="${val}" target="_blank" style="background:#e0e7ff; color:#4338ca; padding:5px 12px; border-radius:6px; font-weight:800; text-decoration:none; font-size:0.85em; display:inline-block;">🔗 Отвори</a>`; row.appendChild(td); return; }
-      if (currentTab === 'plan' && f.name === 'ID Детайл' && val) {
+      if ((currentTab === 'plan' || currentTab === 'nomenklatura' || currentTab === 'sklad_inventory') && f.name === 'ID Детайл' && val) {
           let safeVal = String(val).replace(/"/g, '&quot;').replace(/'/g, '\\\'');
-          td.innerHTML = `<button onclick="openResolverTree('${safeVal}')" style="background:none; border:none; color:#2563eb; font-weight:900; text-decoration:underline; cursor:pointer; font-size:1em; padding:0;">${val}</button>`;
+          let encVal = encodeURIComponent(String(val));
+          td.innerHTML = `<button data-part="${encVal}" onclick="if(typeof openResolverTreeFromBtn==='function'){openResolverTreeFromBtn(this)}else{openResolverTree('${safeVal}')}" style="background:none; border:none; color:#2563eb; font-weight:900; text-decoration:underline; cursor:pointer; font-size:1em; padding:0; text-align:left;" title="🔍 Виж вложени детайли и материали">${val}</button>`;
           if (item['__packaged_info']) td.innerHTML += item['__packaged_info'];
           row.appendChild(td); return;
       }
