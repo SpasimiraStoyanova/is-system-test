@@ -1,0 +1,25 @@
+name: Weekly Executive Report
+
+on:
+  schedule:
+    # Runs every Monday at 05:30 UTC (08:30 Bulgarian Time EEST / 07:30 EET)
+    - cron: '30 5 * * 1'
+  workflow_dispatch: # Allows manual trigger anytime from GitHub Actions tab
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Send Weekly Report via Resend
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RECIPIENT_EMAIL: 'sstoyanova.amci@gmail.com'
+        run: node scripts/send_weekly_report.js
