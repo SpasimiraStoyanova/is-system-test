@@ -64,7 +64,7 @@ async function openResolverTree(partCode, isBreadcrumbDrilldown = false) {
             <div style="text-align:center; padding: 40px 20px; color:#64748b;">
                 <div style="font-size: 2.2em; margin-bottom: 12px; animation: spin 1s infinite linear;">⚙️</div>
                 <div style="font-size: 1.1em; font-weight: 700; color:#1e293b;">Зареждане на състава и наличностите...</div>
-                <div style="font-size: 0.9em; margin-top: 5px;">Проверка на рецепти (BOM), Склад Детайли и Склад Материали</div>
+                <div style="font-size: 0.9em; margin-top: 5px;">Проверка на рецепти (BOM), Склад Детайли, Склад Материали и Номенклатура</div>
             </div>
         `;
     }
@@ -272,6 +272,7 @@ function renderResolverView() {
             codeUpper: childUpper,
             unitQty: unitQty,
             totalQty: totalQty,
+            unitName: itemNom['Единици'] || (skladMap[childUpper] ? skladMap[childUpper].unit : 'бр.'),
             opNum: c.opNum,
             hasSubChildren: hasSubChildren,
             subChildrenCount: (bomMap[childUpper] || []).length,
@@ -279,7 +280,8 @@ function renderResolverView() {
             routes: routesMap[childUpper] || [],
             sklad: skladMap[childUpper] || null,
             inv: invMap[childUpper] || null,
-            nom: itemNom
+            nom: itemNom,
+            isFromNomenclature: false
         };
 
         if (isPart) {
@@ -289,25 +291,103 @@ function renderResolverView() {
         }
     });
 
+    // Check if Nomenklatura specifies a parent material/blank (Изходен материал / Заготовка):
+    const nomParent = String(nomInfo['ID Родител'] || '').trim();
+    let originMaterialInfo = null;
+    if (nomParent) {
+        const nomParentUpper = nomParent.toUpperCase();
+        const norm = parseFloat(nomInfo['Разходна норма']) || 1;
+        const unit = nomInfo['Единици'] || (skladMap[nomParentUpper] ? skladMap[nomParentUpper].unit : 'бр.');
+        const totalQty = norm * currentResolverMultiplier;
+        const skladItem = skladMap[nomParentUpper] || null;
+
+        originMaterialInfo = {
+            code: nomParent,
+            norm: norm,
+            unit: unit,
+            totalQty: totalQty,
+            sklad: skladItem
+        };
+
+        // Also add to materialsList if not already present from BOM
+        const alreadyInMaterials = materialsList.some(m => m.codeUpper === nomParentUpper);
+        const alreadyInParts = partsList.some(p => p.codeUpper === nomParentUpper);
+        if (!alreadyInMaterials && !alreadyInParts) {
+            materialsList.unshift({
+                code: nomParent,
+                codeUpper: nomParentUpper,
+                unitQty: norm,
+                totalQty: totalQty,
+                unitName: unit,
+                isFromNomenclature: true,
+                opNum: null,
+                hasSubChildren: false,
+                subChildrenCount: 0,
+                hasRoutes: !!(routesMap[nomParentUpper] && routesMap[nomParentUpper].length > 0),
+                routes: routesMap[nomParentUpper] || [],
+                sklad: skladItem,
+                inv: invMap[nomParentUpper] || null,
+                nom: nomMap[nomParentUpper] || null
+            });
+        }
+    }
+
     // Hero Header for Current Part
     const partType = nomInfo['Тип'] || 'Детайл';
     const drawingLink = nomInfo['Линк към чертеж'] || '';
     const desc = nomInfo['Описание'] || nomInfo['Вътрешно име'] || '';
 
+    let originBoxHtml = '';
+    if (originMaterialInfo) {
+        let stockBadge = '<span class="resolver-stock-none">⚪ Без складов запис</span>';
+        if (originMaterialInfo.sklad) {
+            if (originMaterialInfo.sklad.stock >= originMaterialInfo.totalQty) {
+                stockBadge = `<span class="resolver-stock-ok">🟢 В наличност: ${originMaterialInfo.sklad.stock.toLocaleString('bg-BG')} ${originMaterialInfo.unit}</span>`;
+            } else {
+                const def = originMaterialInfo.totalQty - originMaterialInfo.sklad.stock;
+                stockBadge = `<span class="resolver-stock-deficit">🔴 Недостиг: ${originMaterialInfo.sklad.stock.toLocaleString('bg-BG')} ${originMaterialInfo.unit} (дефицит: ${def.toLocaleString('bg-BG')})</span>`;
+            }
+        }
+        originBoxHtml = `
+            <div class="resolver-raw-origin-box">
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="font-size:1.5em; background:#dbeafe; width:40px; height:40px; border-radius:8px; display:flex; align-items:center; justify-content:center;">✂️</span>
+                        <div>
+                            <div style="font-size:0.8em; color:#1e40af; font-weight:800; text-transform:uppercase; letter-spacing:0.04em;">Изходен материал / Заготовка (от Номенклатура):</div>
+                            <div style="display:flex; align-items:center; gap:10px; margin-top:2px; flex-wrap:wrap;">
+                                <span style="font-size:1.15em; font-weight:900; color:#0f172a; font-family:monospace; background:#ffffff; padding:2px 10px; border-radius:6px; border:1.5px solid #93c5fd; box-shadow:0 1px 2px rgba(0,0,0,0.05);">${originMaterialInfo.code}</span>
+                                <span style="font-size:0.92em; font-weight:700; color:#1e3a8a;">Разходна норма: <b>${originMaterialInfo.norm} ${originMaterialInfo.unit}</b> / бр.</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        ${stockBadge}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     const heroHtml = `
         <div class="resolver-hero-card">
-            <div>
-                <div class="resolver-hero-title">
-                    <span>${currentPartCode}</span>
-                    <span class="resolver-pill resolver-pill-type">🏷️ ${partType}</span>
-                    ${drawingLink ? `<a href="${drawingLink}" target="_blank" class="resolver-drill-btn" style="background:#0284c7; text-decoration:none;">📐 Чертеж</a>` : ''}
+            <div style="width:100%;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+                    <div>
+                        <div class="resolver-hero-title">
+                            <span>${currentPartCode}</span>
+                            <span class="resolver-pill resolver-pill-type">🏷️ ${partType}</span>
+                            ${drawingLink ? `<a href="${drawingLink}" target="_blank" class="resolver-drill-btn" style="background:#0284c7; text-decoration:none;">📐 Чертеж</a>` : ''}
+                        </div>
+                        ${desc && desc !== currentPartCode ? `<div class="resolver-hero-desc">📝 ${desc}</div>` : ''}
+                    </div>
+                    <div class="resolver-hero-badges">
+                        <span class="resolver-pill resolver-pill-stat">🛠️ <b>${partsList.length}</b> полуфабриката / детайла</span>
+                        <span class="resolver-pill resolver-pill-stat">📦 <b>${materialsList.length}</b> суровини / консуматива</span>
+                        ${rootRoutes.length > 0 ? `<span class="resolver-pill resolver-pill-stat" style="background:#fef3c7; color:#92400e; border-color:#fde68a;">🔄 <b>${rootRoutes.length}</b> операции</span>` : ''}
+                    </div>
                 </div>
-                ${desc && desc !== currentPartCode ? `<div class="resolver-hero-desc">📝 ${desc}</div>` : ''}
-            </div>
-            <div class="resolver-hero-badges">
-                <span class="resolver-pill resolver-pill-stat">🛠️ <b>${partsList.length}</b> полуфабриката / детайла</span>
-                <span class="resolver-pill resolver-pill-stat">📦 <b>${materialsList.length}</b> суровини / консуматива</span>
-                ${rootRoutes.length > 0 ? `<span class="resolver-pill resolver-pill-stat" style="background:#fef3c7; color:#92400e; border-color:#fde68a;">🔄 <b>${rootRoutes.length}</b> операции</span>` : ''}
+                ${originBoxHtml}
             </div>
         </div>
     `;
@@ -319,7 +399,7 @@ function renderResolverView() {
                 ${heroHtml}
                 <div class="resolver-section" style="padding: 20px;">
                     <ul class="tree-root">
-                        ${renderTreeNode(currentUpper, bomMap, routesMap, skladMap, invMap, currentResolverMultiplier)}
+                        ${renderTreeNode(currentUpper, bomMap, routesMap, skladMap, invMap, nomMap, currentResolverMultiplier)}
                     </ul>
                 </div>
             </div>
@@ -381,7 +461,9 @@ function renderResolverView() {
                                         <td>${stockBadge}</td>
                                         <td><div style="display:flex; flex-wrap:wrap; gap:4px;">${routesText}</div></td>
                                         <td style="text-align:right;">
-                                            <button class="resolver-drill-btn" style="padding: 4px 10px; font-size: 0.82em; white-space: nowrap;" onclick="drillDownResolverPart(decodeURIComponent('${safeChild}'))" title="Виж рецептата на този детайл">🔍 Виж състав</button>
+                                            <button class="resolver-drill-btn" style="padding: 4px 10px; font-size: 0.82em; white-space: nowrap;" onclick="drillDownResolverPart(decodeURIComponent('${safeChild}'))" title="Виж рецептата на този детайл">
+                                                🔍 Виж състав
+                                            </button>
                                         </td>
                                     </tr>
                                 `;
@@ -424,11 +506,10 @@ function renderResolverView() {
                         <tbody>
                             ${materialsList.map(m => {
                                 let stockBadge = '<span class="resolver-stock-none">⚪ Без складов запис</span>';
-                                let unit = 'бр.';
+                                const unit = m.unitName || (m.sklad ? m.sklad.unit : 'бр.');
                                 let bufferText = '—';
 
                                 if (m.sklad) {
-                                    unit = m.sklad.unit || 'бр.';
                                     bufferText = m.sklad.minStock ? `Мин: ${m.sklad.minStock.toLocaleString('bg-BG')}` : '—';
                                     if (m.sklad.stock >= m.totalQty) {
                                         stockBadge = `<span class="resolver-stock-ok">🟢 В наличност: ${m.sklad.stock.toLocaleString('bg-BG')} ${unit}</span>`;
@@ -438,11 +519,18 @@ function renderResolverView() {
                                     }
                                 }
 
+                                const tagHtml = m.isFromNomenclature 
+                                    ? `<span style="background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:4px; font-size:0.75em; font-weight:800; margin-left:6px; border:1px solid #bfdbfe;">✂️ Изходна заготовка (Номенклатура)</span>`
+                                    : '';
+
                                 return `
                                     <tr>
                                         <td>
-                                            <div style="font-weight: 700; color: #1e293b;">${m.code}</div>
-                                            ${m.opNum ? `<div style="font-size:0.8em; color:#d97706;">Влага се на Оп. № ${m.opNum}</div>` : ''}
+                                            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
+                                                <span style="font-weight: 700; color: #1e293b;">${m.code}</span>
+                                                ${tagHtml}
+                                            </div>
+                                            ${m.opNum ? `<div style="font-size:0.8em; color:#d97706; margin-top:2px;">Влага се на Оп. № ${m.opNum}</div>` : ''}
                                         </td>
                                         <td style="text-align:center; font-weight:bold; color:#475569;">${m.unitQty} ${unit}</td>
                                         <td style="text-align:center; font-weight:800; color:#0f172a; background:#f8fafc;">${m.totalQty.toLocaleString('bg-BG')} ${unit}</td>
@@ -500,7 +588,7 @@ function renderResolverView() {
     `;
 }
 
-function renderTreeNode(codeUpper, bomMap, routesMap, skladMap, invMap, requiredQty) {
+function renderTreeNode(codeUpper, bomMap, routesMap, skladMap, invMap, nomMap, requiredQty) {
     let stockBadge = '';
     if (skladMap[codeUpper]) {
         const s = skladMap[codeUpper];
@@ -534,9 +622,30 @@ function renderTreeNode(codeUpper, bomMap, routesMap, skladMap, invMap, required
         html += `<ul>`;
         children.forEach(c => {
             const childUpper = String(c.child).trim().toUpperCase();
-            html += renderTreeNode(childUpper, bomMap, routesMap, skladMap, invMap, requiredQty * c.qty);
+            html += renderTreeNode(childUpper, bomMap, routesMap, skladMap, invMap, nomMap, requiredQty * c.qty);
         });
         html += `</ul>`;
+    } else if (nomMap[codeUpper] && nomMap[codeUpper]['ID Родител']) {
+        const pCode = String(nomMap[codeUpper]['ID Родител']).trim();
+        if (pCode) {
+            const pUpper = pCode.toUpperCase();
+            const pNorm = parseFloat(nomMap[codeUpper]['Разходна норма']) || 1;
+            const pUnit = nomMap[codeUpper]['Единици'] || (skladMap[pUpper] ? skladMap[pUpper].unit : 'бр.');
+            let pStockBadge = '';
+            if (skladMap[pUpper]) {
+                const s = skladMap[pUpper];
+                pStockBadge = `<span class="resolver-stock-ok" style="font-size:0.75em; padding:2px 6px;">🟢 ${s.stock} ${s.unit}</span>`;
+            }
+            html += `<ul><li>
+                <div class="tree-node">
+                    <span style="font-size:0.9em;">✂️</span>
+                    <span class="tree-part" style="background:#475569;">${pCode}</span> 
+                    <span class="tree-qty">[${(requiredQty * pNorm).toLocaleString('bg-BG')} ${pUnit}]</span>
+                    <span style="font-size:0.75em; color:#1e40af; font-weight:bold;">(Изходен материал по Номенклатура)</span>
+                    ${pStockBadge}
+                </div>
+            </li></ul>`;
+        }
     }
     
     html += `</li>`;
