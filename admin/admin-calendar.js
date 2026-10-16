@@ -110,6 +110,17 @@ function showCalendarLoading(show) {
 
 // Превключване между подтабовете (Календар, Сервизен дневник, Машини)
 window.switchCalendarSubTab = function(subTab) {
+    if (subTab === 'upcoming') {
+        calendarState.activeSubTab = 'calendar';
+        document.querySelectorAll('.cal-nav-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === 'upcoming');
+        });
+        document.querySelectorAll('.cal-subtab-view').forEach(view => {
+            view.style.display = (view.id === 'calView_calendar') ? 'block' : 'none';
+        });
+        setCalendarMode('list');
+        return;
+    }
     calendarState.activeSubTab = subTab;
     document.querySelectorAll('.cal-nav-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === subTab);
@@ -117,7 +128,11 @@ window.switchCalendarSubTab = function(subTab) {
     document.querySelectorAll('.cal-subtab-view').forEach(view => {
         view.style.display = (view.id === 'calView_' + subTab) ? 'block' : 'none';
     });
-    renderActiveSubTab();
+    if (subTab === 'calendar') {
+        setCalendarMode('grid');
+    } else {
+        renderActiveSubTab();
+    }
 };
 
 function renderActiveSubTab() {
@@ -227,8 +242,21 @@ window.setCalendarMode = function(mode) {
     const btnGrid = document.getElementById('btnCalModeGrid');
     const btnList = document.getElementById('btnCalModeList');
     const navBox = document.getElementById('calNavControlsBox');
+    const listTitle = document.getElementById('calListModeTitle');
     const weekdaysHeader = document.querySelector('.cal-weekdays-header');
     const gridContainer = document.getElementById('calendarMonthGrid');
+
+    const tabUpcoming = document.querySelector('.cal-nav-btn[data-tab="upcoming"]');
+    const tabCal = document.querySelector('.cal-nav-btn[data-tab="calendar"]');
+    if (tabUpcoming && tabCal) {
+        if (mode === 'list') {
+            tabUpcoming.classList.add('active');
+            tabCal.classList.remove('active');
+        } else {
+            tabCal.classList.add('active');
+            tabUpcoming.classList.remove('active');
+        }
+    }
 
     if (btnGrid) {
         btnGrid.style.background = mode === 'grid' ? '#4338ca' : 'transparent';
@@ -241,11 +269,13 @@ window.setCalendarMode = function(mode) {
 
     if (mode === 'grid') {
         if (navBox) navBox.style.display = 'flex';
+        if (listTitle) listTitle.style.display = 'none';
         if (weekdaysHeader) weekdaysHeader.style.display = 'grid';
         if (gridContainer) gridContainer.style.display = 'grid';
         renderCalendarMonthView();
     } else {
         if (navBox) navBox.style.display = 'none';
+        if (listTitle) listTitle.style.display = 'block';
         if (weekdaysHeader) weekdaysHeader.style.display = 'none';
         renderCalendarListView();
     }
@@ -1084,7 +1114,11 @@ function renderMachinesDirectory() {
 
     container.innerHTML = calendarState.machines.map(mac => {
         const logCount = calendarState.logs.filter(l => l.machine_name === mac.name).length;
-        const pendingCount = calendarState.events.filter(e => e.machine_name === mac.name && e.status === 'pending').length;
+        const pendingEvents = calendarState.events
+            .filter(e => e.machine_name === mac.name && e.status === 'pending')
+            .sort((a,b) => new Date(a.event_date) - new Date(b.event_date));
+        const pendingCount = pendingEvents.length;
+        const nextEvent = pendingEvents[0];
 
         return `
             <div class="machine-card">
@@ -1100,6 +1134,21 @@ function renderMachinesDirectory() {
                         <span class="stat-label">Предстоящи задачи:</span>
                         <span class="stat-val ${pendingCount > 0 ? 'highlight-amber' : ''}">${pendingCount} бр.</span>
                     </div>
+                    ${nextEvent ? `
+                        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 8px 10px; margin: 8px 0;">
+                            <div style="color: #166534; font-size: 0.75em; font-weight: 800; text-transform: uppercase;">📅 Следващо планирано обслужване:</div>
+                            <div style="font-weight: 800; color: #1e3a8a; font-size: 0.95em; margin-top: 2px;">
+                                📅 ${formatDateDisplay(nextEvent.event_date)}
+                            </div>
+                            <div style="color: #0f766e; font-weight: 700; font-size: 0.88em; cursor: pointer; text-decoration: underline; margin-top: 2px;" onclick="openEventDetailsModal(${nextEvent.id})" title="Кликнете за подробности">
+                                🔧 ${escapeHtml(nextEvent.title)}
+                            </div>
+                        </div>
+                    ` : `
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; margin: 8px 0; color: #94a3b8; font-size: 0.82em;">
+                            Няма насрочени предстоящи задачи
+                        </div>
+                    `}
                     <div class="machine-stat">
                         <span class="stat-label">Сервизни записи:</span>
                         <span class="stat-val highlight-blue">${logCount} записа</span>
@@ -1110,6 +1159,11 @@ function renderMachinesDirectory() {
                     <button class="btn-mac-action btn-mac-log" onclick="viewMachineHistory('${escapeHtml(mac.name)}')">
                         📋 Сервизен дневник (${logCount})
                     </button>
+                    ${pendingCount > 0 ? `
+                        <button class="btn-mac-action" onclick="viewMachineUpcoming('${escapeHtml(mac.name)}')" style="background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; padding: 6px 10px; border-radius: 6px; font-weight: 700; font-size: 0.82em; cursor: pointer;">
+                            📅 Задачи (${pendingCount})
+                        </button>
+                    ` : ''}
                     <button class="btn-mac-action btn-mac-add" onclick="scheduleTaskForMachine('${escapeHtml(mac.name)}')">
                         + Насрочи
                     </button>
@@ -1118,6 +1172,14 @@ function renderMachinesDirectory() {
         `;
     }).join('');
 }
+
+window.viewMachineUpcoming = function(macName) {
+    switchCalendarSubTab('upcoming');
+    calendarState.filterMachine = macName;
+    const filterSelect = document.getElementById('calMachineFilterSelect');
+    if (filterSelect) filterSelect.value = macName;
+    renderCalendarListView();
+};
 
 window.viewMachineHistory = function(macName) {
     switchCalendarSubTab('log');
@@ -1210,7 +1272,11 @@ window.onCalendarFilterChange = function() {
     const macSel = document.getElementById('calMachineFilterSelect');
     if (catSel) calendarState.filterCategory = catSel.value;
     if (macSel) calendarState.filterMachine = macSel.value;
-    renderCalendarMonthView();
+    if (calendarState.calMode === 'list') {
+        renderCalendarListView();
+    } else {
+        renderCalendarMonthView();
+    }
 };
 
 function formatDateDisplay(dateStr) {
@@ -1269,6 +1335,9 @@ function initCalendarModalHtml() {
                 <button class="cal-nav-btn active" data-tab="calendar" onclick="switchCalendarSubTab('calendar')">
                     📅 Календар & График
                 </button>
+                <button class="cal-nav-btn" data-tab="upcoming" onclick="switchCalendarSubTab('upcoming')">
+                    📋 Всички насрочени задачи
+                </button>
                 <button class="cal-nav-btn" data-tab="log" onclick="switchCalendarSubTab('log')">
                     📋 Сервизен дневник (История)
                 </button>
@@ -1296,11 +1365,19 @@ function initCalendarModalHtml() {
             <div id="calView_calendar" class="cal-subtab-view">
                 
                 <div style="background: white; padding: 14px 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <button class="cal-btn-nav" onclick="calendarNavPrev()">◀</button>
-                        <button class="cal-btn-today" onclick="calendarNavToday()">Днес</button>
-                        <button class="cal-btn-nav" onclick="calendarNavNext()">▶</button>
-                        <div id="calendarMonthTitle" style="font-size: 1.3em; font-weight: 800; color: #1e293b; margin-left: 10px; min-width: 220px;"></div>
+                    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                        <div id="calNavControlsBox" style="display: flex; align-items: center; gap: 10px;">
+                            <button class="cal-btn-nav" onclick="calendarNavPrev()">◀</button>
+                            <button class="cal-btn-today" onclick="calendarNavToday()">Днес</button>
+                            <button class="cal-btn-nav" onclick="calendarNavNext()">▶</button>
+                            <div id="calendarMonthTitle" style="font-size: 1.3em; font-weight: 800; color: #1e293b; margin-left: 10px; min-width: 220px;"></div>
+                        </div>
+                        <div id="calListModeTitle" style="font-size: 1.25em; font-weight: 800; color: #1e293b; display: none;">📋 Всички насрочени задачи</div>
+
+                        <div style="display: flex; background: #e2e8f0; padding: 3px; border-radius: 8px; gap: 3px;">
+                            <button id="btnCalModeGrid" onclick="setCalendarMode('grid')" style="background: #4338ca; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-weight: 700; font-size: 0.85em; cursor: pointer;">🗓️ Месец</button>
+                            <button id="btnCalModeList" onclick="setCalendarMode('list')" style="background: transparent; color: #475569; border: none; padding: 6px 14px; border-radius: 6px; font-weight: 700; font-size: 0.85em; cursor: pointer;">📋 Всички насрочени задачи</button>
+                        </div>
                     </div>
 
                     <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
