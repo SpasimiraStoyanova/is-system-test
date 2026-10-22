@@ -321,6 +321,11 @@ window.addEventListener('load', () => {
     
     // Fetch rate for today
     fetchExchangeRate();
+
+    // Preload archive
+    if (typeof loadInvoiceArchive === 'function') {
+        loadInvoiceArchive();
+    }
 });
 
 function generateInvoice() {
@@ -765,4 +770,346 @@ window.exportToExcel = function() {
     a.click();
     URL.revokeObjectURL(url);
 };
+
+// ==========================================
+// 📁 АРХИВ И ИСТОРИЯ НА ГЕНЕРИРАНИТЕ ФАКТУРИ
+// ==========================================
+let archivedInvoicesList = [];
+
+window.saveInvoiceToArchive = async function() {
+    if (!hotInvoice) return;
+    const rawData = hotInvoice.getSourceData();
+    const validRows = rawData.filter(r => r && (r.item_no || r.description) && (parseFloat(r.qty) > 0 || parseFloat(r.amount) > 0));
+    
+    if (validRows.length === 0) {
+        Swal.fire('Няма данни', 'Първо генерирайте INVOICE с данни, преди да запазите в архива.', 'warning');
+        return;
+    }
+
+    const invNum = (document.getElementById('invoice-number')?.value || 'Без номер').trim();
+    const invDate = (document.getElementById('invoice-header-date')?.value || document.getElementById('invoice-date')?.value || '').trim();
+    const planMonth = (document.getElementById('plan-month')?.value || '').trim();
+    const planYear = (document.getElementById('plan-year')?.value || '').trim();
+    const rate = parseFloat(document.getElementById('invoice-rate')?.value) || 0;
+    const totalUSD = parseFloat(document.getElementById('invoice-total')?.innerText) || 0;
+
+    const confirmRes = await Swal.fire({
+        title: 'Запазване в архив',
+        html: `Искате ли да архивирате фактура <b>№ ${invNum}</b> от <b>${invDate}</b>?<br>` +
+              `План: <b>${planMonth} ${planYear}</b><br>` +
+              `Обща сума: <b style="color: #16a34a; font-size: 1.15em;">$${totalUSD.toFixed(2)}</b> (${validRows.length} позиции)`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#0284c7',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: '💾 Да, архивирай',
+        cancelButtonText: 'Отказ'
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
+    try {
+        Swal.fire({ title: 'Запазване...', text: 'Записване на фактурата в архива...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+        const record = {
+            invoice_number: invNum,
+            invoice_date: invDate,
+            plan_month: planMonth,
+            plan_year: planYear,
+            rate_usd_eur: rate,
+            total_usd: totalUSD,
+            items_count: validRows.length,
+            invoice_rows: validRows,
+            created_at: new Date().toISOString()
+        };
+
+        const { data, error } = await client.from('acc_invoices_archive').insert([record]).select();
+        if (error) throw error;
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Успешно архивирана!',
+            html: `Фактура <b>№ ${invNum}</b> беше успешно съхранена в архива.`,
+            confirmButtonText: 'Към архива',
+            showCancelButton: true,
+            cancelButtonText: 'Остани тук'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $('#accTabs a[href="#content-archive"]').tab('show');
+                loadInvoiceArchive();
+            }
+        });
+
+    } catch (err) {
+        console.error('Грешка при архивиране на фактура:', err);
+        Swal.fire('Грешка при архивиране', err.message || 'Неуспешен запис в базата данни.', 'error');
+    }
+};
+
+window.loadInvoiceArchive = async function() {
+    const tbody = document.getElementById('archive-tbody');
+    const badge = document.getElementById('archive-count-badge');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> Зареждане на архивирани фактури...</td></tr>';
+
+    try {
+        const { data, error } = await client.from('acc_invoices_archive').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+
+        archivedInvoicesList = data || [];
+        if (badge) badge.innerText = `${archivedInvoicesList.length} архивирани фактури`;
+
+        renderArchiveTable(archivedInvoicesList);
+    } catch (err) {
+        console.error('Грешка при зареждане на архива:', err);
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4"><i class="fas fa-exclamation-triangle"></i> Грешка при зареждане: ${err.message}</td></tr>`;
+    }
+};
+
+function renderArchiveTable(list) {
+    const tbody = document.getElementById('archive-tbody');
+    if (!tbody) return;
+
+    if (!list || list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Все още няма запазени фактури в архива.</td></tr>';
+        return;
+    }
+
+    let html = '';
+    list.forEach(item => {
+        let createdFormatted = '';
+        if (item.created_at) {
+            const d = new Date(item.created_at);
+            createdFormatted = d.toLocaleDateString('bg-BG') + ' ' + d.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        const totalFormatted = (parseFloat(item.total_usd) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const planStr = (item.plan_month ? item.plan_month + ' ' : '') + (item.plan_year || '');
+
+        html += `
+            <tr id="archive-row-${item.id}">
+                <td style="font-weight: 800; font-family: monospace; font-size: 1.05em; color: #1e3a8a;">
+                    <span class="badge badge-light border border-secondary" style="font-size: 1em; padding: 5px 8px;">${item.invoice_number || 'Н/А'}</span>
+                </td>
+                <td>${item.invoice_date || '-'}</td>
+                <td><span class="badge badge-info" style="font-size: 0.9em; padding: 5px 8px; background-color: #0284c7;">${planStr || '-'}</span></td>
+                <td>${item.rate_usd_eur ? item.rate_usd_eur : '-'}</td>
+                <td style="text-align: center;"><span class="badge badge-secondary" style="font-size: 0.85em;">${item.items_count || (item.invoice_rows ? item.invoice_rows.length : 0)} бр.</span></td>
+                <td style="text-align: right; font-weight: 800; color: #15803d; font-size: 1.05em;">$ ${totalFormatted}</td>
+                <td style="color: #64748b; font-size: 0.9em;"><i class="far fa-clock"></i> ${createdFormatted}</td>
+                <td style="text-align: right; white-space: nowrap;">
+                    <button class="btn btn-sm btn-primary" onclick="restoreArchivedInvoice(${item.id})" title="Зареди фактурата обратно в таблицата за печат или преглед">
+                        <i class="fas fa-eye"></i> Преглед
+                    </button>
+                    <button class="btn btn-sm btn-success ml-1" onclick="downloadArchivedExcel(${item.id})" title="Свали директно в Excel формат">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger ml-1" onclick="deleteArchivedInvoice(${item.id})" title="Изтрий от архива">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+}
+
+window.filterArchiveTable = function() {
+    const q = (document.getElementById('archive-search')?.value || '').trim().toLowerCase();
+    if (!q) {
+        renderArchiveTable(archivedInvoicesList);
+        return;
+    }
+    const filtered = archivedInvoicesList.filter(item => {
+        const num = String(item.invoice_number || '').toLowerCase();
+        const date = String(item.invoice_date || '').toLowerCase();
+        const plan = String(item.plan_month || '').toLowerCase() + ' ' + String(item.plan_year || '').toLowerCase();
+        return num.includes(q) || date.includes(q) || plan.includes(q);
+    });
+    renderArchiveTable(filtered);
+};
+
+window.restoreArchivedInvoice = function(id) {
+    const item = archivedInvoicesList.find(x => x.id === id);
+    if (!item) return;
+
+    if (!hotInvoice) return;
+
+    Swal.fire({
+        title: 'Зареждане на фактура',
+        html: `Искате ли да презаредите фактура <b>№ ${item.invoice_number}</b> в главния екран?<br><small class="text-muted">Текущите редове в таблицата ще бъдат заменени с оригиналните данни от архива.</small>`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'Да, зареди',
+        cancelButtonText: 'Отказ'
+    }).then((res) => {
+        if (!res.isConfirmed) return;
+
+        // Populate fields
+        if (document.getElementById('invoice-number')) document.getElementById('invoice-number').value = item.invoice_number || '';
+        if (document.getElementById('invoice-header-date')) document.getElementById('invoice-header-date').value = item.invoice_date || '';
+        if (document.getElementById('invoice-date')) document.getElementById('invoice-date').value = item.invoice_date || '';
+        if (document.getElementById('invoice-rate')) document.getElementById('invoice-rate').value = item.rate_usd_eur || '';
+        if (document.getElementById('invoice-total')) document.getElementById('invoice-total').innerText = (parseFloat(item.total_usd) || 0).toFixed(2);
+
+        // Load rows into Handsontable
+        hotInvoice.loadData(item.invoice_rows || []);
+
+        // Switch tab
+        $('#accTabs a[href="#content-invoice"]').tab('show');
+        setTimeout(() => hotInvoice.render(), 100);
+
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: `Фактура № ${item.invoice_number} е заредена успешно!`,
+            showConfirmButton: false,
+            timer: 2500
+        });
+    });
+};
+
+window.downloadArchivedExcel = function(id) {
+    const item = archivedInvoicesList.find(x => x.id === id);
+    if (!item) return;
+
+    const invoiceNo = item.invoice_number || '0000000511';
+    const dateStr = item.invoice_date || '';
+    const rate = item.rate_usd_eur || '';
+    const rows = item.invoice_rows || [];
+
+    let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+    html += '<head><meta charset="utf-8"></head><body>';
+    html += '<table style="font-family: Arial, sans-serif; font-size: 11pt; border-collapse: collapse;">';
+    
+    // Header
+    html += '<tr><td colspan="4" style="font-size: 18pt; font-weight: bold; text-align: left;">INVOICE</td></tr>';
+    html += '<tr><td colspan="4" style="font-size: 14pt; font-weight: bold; text-align: left;">No.' + invoiceNo + '/' + dateStr + '</td></tr>';
+    html += '<tr><td colspan="4"></td></tr>';
+    
+    html += '<tr><td colspan="3" style="border-bottom: 1px solid #000; padding-bottom: 5px;">Customer:</td><td colspan="3" style="border-bottom: 1px solid #000; padding-bottom: 5px;">Seller:</td></tr>';
+    html += '<tr><td colspan="3">Advanced Micro Controls Incorporated</td><td colspan="3">AMCI AD</td></tr>';
+    html += '<tr><td colspan="3">20 Gear Drive, Plymouth Industrial Park</td><td colspan="3">14 Lubata str.</td></tr>';
+    html += '<tr><td colspan="3"></td><td colspan="3">Sofia 1407, Bulgaria</td></tr>';
+    html += '<tr><td colspan="4"></td></tr>';
+    
+    // Rate Table at top right
+    html += '<tr><td colspan="15"></td><td colspan="2" style="border: 1px solid #000; background: #e0e0e0; font-weight: bold; text-align: center;">Дата</td><td colspan="2" style="border: 1px solid #000; background: #e0e0e0; font-weight: bold; text-align: center;">USD/EUR</td></tr>';
+    html += '<tr><td colspan="15"></td><td colspan="2" style="border: 1px solid #000; text-align: center;">' + dateStr + '</td><td colspan="2" style="border: 1px solid #000; text-align: center;">' + rate + '</td></tr>';
+    html += '<tr><td colspan="4"></td></tr>';
+    
+    // Table Headers
+    const exportHeaders = [
+        '#', 'Item No', 'Description', 'Qty', 'HTS Code', 'Unit cost', 'Amount', 
+        'Aluminum Content Value', 'Total AL Value', 'Value of the rest', 'Aluminum Content weight percentage', 
+        'AL type 1', 'Weight', 'Price', 'AL type 2', 'Weight', 'Price', 'AL type 3', 'Weight', 'Price'
+    ];
+    const colWidths = [40, 120, 350, 60, 110, 80, 90, 130, 100, 100, 130, 100, 70, 70, 100, 70, 70, 100, 70, 70];
+    
+    html += '<tr>';
+    exportHeaders.forEach((h, i) => {
+        html += '<td style="background-color: #d9d9d9; font-weight: bold; border: 1px solid #000; text-align: center; vertical-align: middle; width: ' + colWidths[i] + 'px; padding: 5px;">' + h + '</td>';
+    });
+    html += '</tr>';
+    
+    // Data rows
+    rows.forEach((r, idx) => {
+        const bg = (idx % 2 === 0) ? '#ffffff' : '#f2f2f2';
+        html += '<tr style="background-color: ' + bg + ';">';
+        
+        const rowCells = [
+            r.index || (idx + 1),
+            r.item_no || '',
+            r.description || '',
+            r.qty || '',
+            r.hts_code || '',
+            r.unit_cost !== null && r.unit_cost !== undefined ? '$' + parseFloat(r.unit_cost).toFixed(2) : '',
+            r.amount !== null && r.amount !== undefined ? '$' + parseFloat(r.amount).toFixed(2) : '',
+            r.al_content_value !== null && r.al_content_value !== undefined ? '$' + parseFloat(r.al_content_value).toFixed(2) : '',
+            r.total_al_value !== null && r.total_al_value !== undefined ? '$' + parseFloat(r.total_al_value).toFixed(2) : '',
+            r.value_of_rest !== null && r.value_of_rest !== undefined ? '$' + parseFloat(r.value_of_rest).toFixed(2) : '',
+            r.al_weight_percent !== null && r.al_weight_percent !== undefined ? (parseFloat(r.al_weight_percent) * 100).toFixed(2) + '%' : '',
+            r.al_type_1 || '',
+            r.al_weight_1 !== null && r.al_weight_1 !== undefined ? parseFloat(r.al_weight_1).toFixed(3) : '',
+            r.al_price_1 !== null && r.al_price_1 !== undefined ? '$' + parseFloat(r.al_price_1).toFixed(2) : '',
+            r.al_type_2 || '',
+            r.al_weight_2 !== null && r.al_weight_2 !== undefined ? parseFloat(r.al_weight_2).toFixed(3) : '',
+            r.al_price_2 !== null && r.al_price_2 !== undefined ? '$' + parseFloat(r.al_price_2).toFixed(2) : '',
+            r.al_type_3 || '',
+            r.al_weight_3 !== null && r.al_weight_3 !== undefined ? parseFloat(r.al_weight_3).toFixed(3) : '',
+            r.al_price_3 !== null && r.al_price_3 !== undefined ? '$' + parseFloat(r.al_price_3).toFixed(2) : ''
+        ];
+
+        rowCells.forEach(cell => {
+            html += '<td style="border: 1px solid #000; padding: 5px; text-align: center;">' + cell + '</td>';
+        });
+        html += '</tr>';
+    });
+    
+    // Total
+    const total = (parseFloat(item.total_usd) || 0).toFixed(2);
+    html += '<tr><td colspan="5"></td><td style="font-weight: bold; border: 1px solid #000; text-align: right; font-size: 14px; padding: 5px;">TOTAL USD</td><td style="font-weight: bold; border: 1px solid #000; text-align: center; font-size: 14px; padding: 5px;">$' + total + '</td></tr>';
+    html += '<tr><td colspan="4"></td></tr>';
+    
+    // Footer
+    const footers = ['Shipment: C.I.F New York', 'Country of origin: Bulgaria', 'Payment Details: Bank Transfer', 'United Bulgarian Bank', 'IBAN:BG29UBBS888100479603', 'Swift:UBBSBGSF'];
+    footers.forEach(f => {
+        html += '<tr><td colspan="5">' + f + '</td></tr>';
+    });
+    
+    html += '</table></body></html>';
+    
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "Invoice_" + (invoiceNo || 'archived') + ".xls";
+    a.click();
+    URL.revokeObjectURL(url);
+};
+
+window.deleteArchivedInvoice = async function(id) {
+    const item = archivedInvoicesList.find(x => x.id === id);
+    const num = item ? item.invoice_number : id;
+
+    const confirmRes = await Swal.fire({
+        title: 'Изтриване от архива',
+        html: `Сигурни ли сте, че искате да изтриете фактура <b>№ ${num}</b> от архива?<br><small class="text-danger">Това действие е необратимо.</small>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc2626',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: '🗑️ Да, изтрий',
+        cancelButtonText: 'Отказ'
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
+    try {
+        const { error } = await client.from('acc_invoices_archive').delete().eq('id', id);
+        if (error) throw error;
+
+        archivedInvoicesList = archivedInvoicesList.filter(x => x.id !== id);
+        renderArchiveTable(archivedInvoicesList);
+
+        const badge = document.getElementById('archive-count-badge');
+        if (badge) badge.innerText = `${archivedInvoicesList.length} архивирани фактури`;
+
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: `Фактура № ${num} беше изтрита.`,
+            showConfirmButton: false,
+            timer: 2000
+        });
+    } catch (err) {
+        console.error('Грешка при изтриване:', err);
+        Swal.fire('Грешка', err.message, 'error');
+    }
+};
+
 
