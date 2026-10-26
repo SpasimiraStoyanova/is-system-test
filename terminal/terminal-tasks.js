@@ -444,8 +444,37 @@ async function loadTasks(isSilent = false) {
                       let isTaken = takenOps[opKey] === true;
                       if (maxAllowed < 0) maxAllowed = 0; 
                       let isBlocked = hasLimit && maxAllowed <= 0; 
-                      let machineName = route['Машина'] || '';
-                      
+                      let origMachine = route['Машина'] || '';
+                      let taskDetailCode = normalizeStr(route['Код на детайла']);
+                      let taskOpNumber = parseInt(route['№ Операция']) || 0;
+
+                      let effectiveMachine = origMachine;
+                      let isTransferred = false;
+                      let origMachineDisplay = origMachine;
+
+                      if (prioRes && prioRes.data) {
+                          let overrideRec = prioRes.data.find(p => 
+                              normalizeStr(p.detail_id) === taskDetailCode && 
+                              parseInt(p.op_num) === taskOpNumber
+                          );
+
+                          if (overrideRec) {
+                              let assignedM = overrideRec.machine;
+                              let origM = overrideRec.original_machine || null;
+                              if (!origM && overrideRec.notes && overrideRec.notes.includes('[ORIG:')) {
+                                  let match = overrideRec.notes.match(/\[ORIG:(.*?)\]/);
+                                  if (match) origM = match[1].trim();
+                              }
+
+                              if (origM && normalizeStr(assignedM) !== normalizeStr(origM)) {
+                                  effectiveMachine = assignedM;
+                                  isTransferred = true;
+                                  origMachineDisplay = origM;
+                              }
+                          }
+                      }
+
+                      let machineName = effectiveMachine;
                       let matchMachine = false;
                       if (!currentMachine || currentMachine.trim() === "" || isTaken) {
                           matchMachine = true;
@@ -505,6 +534,8 @@ async function loadTasks(isSilent = false) {
                               let manualPriority = taskPrioritiesMap[taskKey] !== undefined ? taskPrioritiesMap[taskKey] : null;
                               
                               globalTasks.push({
+                                  isTransferred: isTransferred,
+                                  origMachineDisplay: origMachineDisplay,
                                   manualPriority: manualPriority, 
                                   id: safeIdBase + typeSuffix, 
                                   plan_id: pNameOverride === 'БУФЕРИ' ? null : pIdForCard, 
@@ -689,14 +720,15 @@ function renderTasks(tasks) {
   var html = '';
   filteredTasks.forEach(function(t) {
     let borderStyle = t.isGreenCard ? 'border-left: 6px solid #16a34a;' : 'border-left: 6px solid #3b82f6;';
+    let transferBadgeHtml = (t.isTransferred && t.origMachineDisplay) ? `<span class="plan-label" style="background:#f3e8ff; color:#7e22ce; border:1px solid #d8b4fe; font-weight:900; margin-right:6px;">🔄 ПРЕХВЪРЛЕНА ОТ ${t.origMachineDisplay}</span>` : '';
     let priorityBadgeHtml = (t.manualPriority !== null && t.manualPriority !== undefined) ? `<span class="plan-label" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-weight:900; margin-right:6px;">⭐ ПРИОРИТЕТ #${t.manualPriority}</span>` : '';
     let labelHtml = '';
     if (t.isGreenCard) {
-        labelHtml = priorityBadgeHtml + `<span class="plan-label" style="color: #16a34a;">ЗЕЛЕНА КАРТА: ${t.plan_name}</span>`;
+        labelHtml = priorityBadgeHtml + transferBadgeHtml + `<span class="plan-label" style="color: #16a34a;">ЗЕЛЕНА КАРТА: ${t.plan_name}</span>`;
     } else if (t.plan_name === 'КОМПОНЕНТ') {
-        labelHtml = priorityBadgeHtml + `<span class="plan-label">КОМПОНЕНТ</span>`;
+        labelHtml = priorityBadgeHtml + transferBadgeHtml + `<span class="plan-label">КОМПОНЕНТ</span>`;
     } else {
-        labelHtml = priorityBadgeHtml + `<span class="plan-label">ПЛАН: ${t.plan_name}</span>`;
+        labelHtml = priorityBadgeHtml + transferBadgeHtml + `<span class="plan-label">ПЛАН: ${t.plan_name}</span>`;
     }
     let badgeStyle = t.isGreenCard ? 'background-color:#16a34a;' : '';
 
@@ -789,6 +821,7 @@ function renderTasks(tasks) {
   });
   container.innerHTML = html;
 }
+
 
 
 

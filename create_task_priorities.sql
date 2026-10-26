@@ -48,3 +48,7 @@ FOR EACH ROW
 EXECUTE FUNCTION update_task_priorities_updated_at();
 
 COMMENT ON TABLE public.task_priorities IS 'Съхранява ръчно зададени или алгоритмично изчислени приоритети за задачи по машини и месечен план.';
+
+-- Добавяне на колона за временно прехвърляне на операция към друга машина за текущия месец
+ALTER TABLE public.task_priorities 
+ADD COLUMN IF NOT EXISTS original_machine text;

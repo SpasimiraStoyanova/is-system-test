@@ -1,4 +1,4 @@
-﻿// ==============================================================================
+// ==============================================================================
 // Multi-Machine Workplace Tasks & Priority Board (Табло Машини & Задачи)
 // IS-SYSTEMS MES Test Environment
 // ==============================================================================
@@ -6,6 +6,15 @@
 const supabaseUrl = 'https://zdythzcgcjxwbxufunuh.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkeXRoemNnY2p4d2J4dWZ1bnVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MTcxNTMsImV4cCI6MjA5NjE5MzE1M30.XGZX5DHhJCGz9X5s__3iuSghukjanyJmGKv8MLig_jE';
 const client = supabase.createClient(supabaseUrl, supabaseKey);
+
+// Allowed machines for cross-machine transfer
+const TRANSFER_MACHINES = ['emco (стар)', 'emco', 'haas st 10', 'haas st10'];
+
+function isTransferAllowed(machineName) {
+    if (!machineName) return false;
+    let norm = normalize(machineName);
+    return TRANSFER_MACHINES.some(tm => norm === tm || norm.replace(/\s+/g, '') === tm.replace(/\s+/g, ''));
+}
 
 // Global Data
 let rawPlans = [];
@@ -15,6 +24,7 @@ let rawNom = [];
 let rawInventory = [];
 let rawReports = [];
 let rawPriorities = [];
+let hasOriginalMachineColumn = false;
 
 // Calculated State: machineName -> [tasks...]
 let machineTasksMap = {};
@@ -76,6 +86,9 @@ async function loadAllData() {
         rawInventory = inv || [];
         rawPriorities = priorities || [];
         rawReports = reports || [];
+
+        // Check if original_machine column exists
+        hasOriginalMachineColumn = rawPriorities.length > 0 && ('original_machine' in rawPriorities[0]);
 
         // Extract all unique machine names
         let machineSet = new Set();
@@ -158,7 +171,7 @@ function calculateAllMachineTasks() {
         if (name) codeByName[normalize(name)] = code;
     });
 
-    let neededDetails = {}; // detailCode -> { targetQty: N, planSources: Set }
+    let neededDetails = {};
 
     filteredPlans.forEach(plan => {
         let planItemName = String(plan['Вътрешно име'] || '').trim();
@@ -169,7 +182,6 @@ function calculateAllMachineTasks() {
         neededDetails[rootCode].targetQty += planQty;
         neededDetails[rootCode].planSources.add(planItemName);
 
-        // Recursively add children
         function expandChildren(parentCode, currentQty) {
             let children = rawBom.filter(b => normalize(b['ID Родител']) === parentCode);
             children.forEach(c => {
@@ -206,22 +218,47 @@ function calculateAllMachineTasks() {
         stockMap[key] = (stockMap[key] || 0) + qty;
     });
 
-    // 5. Load saved priorities
+    // 5. Load saved priorities and machine transfers
     let priorityMap = {};
+    let transferMap = {}; // detailId||opNum -> { assignedMachine, originalMachine, order, notes }
+
     rawPriorities.forEach(p => {
-        let pMachine = normalize(p.machine);
+        let pMachine = String(p.machine || '').trim();
         let pMonth = String(p.plan_month || '').trim();
         let pYear = parseInt(p.plan_year);
 
         let matchesPeriod = (selectedMonth === 'ALL') ? true : (pYear === selectedYear && pMonth.toLowerCase() === selectedMonth.toLowerCase());
 
         if (matchesPeriod) {
-            let key = pMachine + '||' + normalize(p.detail_id) + '||' + parseInt(p.op_num);
+            let detailCode = normalize(p.detail_id);
+            let opNum = parseInt(p.op_num);
+            let key = normalize(pMachine) + '||' + detailCode + '||' + opNum;
+            let rawNotes = p.notes || '';
+
+            // Check original_machine from column or from [ORIG:...] in notes
+            let origM = p.original_machine || null;
+            if (!origM && rawNotes.includes('[ORIG:')) {
+                let match = rawNotes.match(/\[ORIG:(.*?)\]/);
+                if (match) origM = match[1].trim();
+            }
+
+            let cleanNotes = rawNotes.replace(/\[ORIG:.*?\]\s*/g, '').trim();
+
             priorityMap[key] = {
                 order: parseInt(p.priority_order) || 100,
                 score: parseFloat(p.priority_score) || 0,
-                notes: p.notes || ''
+                notes: cleanNotes,
+                original_machine: origM
             };
+
+            if (origM && normalize(origM) !== normalize(pMachine)) {
+                transferMap[detailCode + '||' + opNum] = {
+                    assignedMachine: pMachine,
+                    originalMachine: origM,
+                    order: parseInt(p.priority_order) || 100,
+                    notes: cleanNotes
+                };
+            }
         }
     });
 
@@ -247,12 +284,24 @@ function calculateAllMachineTasks() {
         let routes = routesByDetail[detailCode] || [];
 
         routes.forEach((route, idx) => {
-            let machineName = String(route['Машина'] || '').trim();
-            if (!machineName || !machineTasksMap[machineName]) return;
+            let origMachine = String(route['Машина'] || '').trim();
+            if (!origMachine) return;
 
             let opNum = parseInt(route['№ Операция']) || 0;
             let opName = String(route['Име на операция'] || '').trim();
             let opKey = detailCode + '||' + normalize(opName);
+
+            // Determine effective machine for this month (check transferMap)
+            let transferInfo = transferMap[detailCode + '||' + opNum];
+            let effectiveMachine = origMachine;
+            let isTransferred = false;
+
+            if (transferInfo && isTransferAllowed(origMachine) && isTransferAllowed(transferInfo.assignedMachine)) {
+                effectiveMachine = transferInfo.assignedMachine;
+                isTransferred = true;
+            }
+
+            if (!machineTasksMap[effectiveMachine]) machineTasksMap[effectiveMachine] = [];
 
             let nomItem = nomMap[detailCode] || {};
             let detailName = nomItem['Вътрешно име'] || detailCode;
@@ -288,13 +337,15 @@ function calculateAllMachineTasks() {
             }
 
             // Check saved priority
-            let prioKey = normalize(machineName) + '||' + detailCode + '||' + opNum;
+            let prioKey = normalize(effectiveMachine) + '||' + detailCode + '||' + opNum;
             let savedPrio = priorityMap[prioKey];
             let priorityOrder = savedPrio ? savedPrio.order : 999;
-            let notes = savedPrio ? savedPrio.notes : '';
+            let notes = savedPrio ? savedPrio.notes : (transferInfo ? transferInfo.notes : '');
 
-            machineTasksMap[machineName].push({
-                machine: machineName,
+            machineTasksMap[effectiveMachine].push({
+                machine: effectiveMachine,
+                original_machine: origMachine,
+                is_transferred: isTransferred,
                 detail_id: String(route['Код на детайла']).trim(),
                 detail_name: detailName,
                 drawing_link: drawingLink,
@@ -329,7 +380,6 @@ function calculateAllMachineTasks() {
             return a.op_num - b.op_num;
         });
 
-        // Renumber consecutively 1..N
         list.forEach((t, i) => {
             t.priority_order = i + 1;
         });
@@ -343,11 +393,9 @@ function renderAllMachines() {
     const taskFilterText = normalize(document.getElementById('searchTaskInput').value);
     const onlyWithTasks = document.getElementById('chkOnlyWithTasks').checked;
 
-    // Clean up existing Sortable instances
     sortableInstances.forEach(s => s.destroy());
     sortableInstances = [];
 
-    // Filter machines
     let machinesToDisplay = allUniqueMachines.filter(m => {
         if (machineFilterText && !normalize(m).includes(machineFilterText)) return false;
         let tasks = machineTasksMap[m] || [];
@@ -355,7 +403,6 @@ function renderAllMachines() {
         return true;
     });
 
-    // Global counts
     let totalAllTasks = 0;
     let totalReadyTasks = 0;
     let totalWaitingTasks = 0;
@@ -394,7 +441,6 @@ function renderAllMachines() {
     machinesToDisplay.forEach(machineName => {
         let allTasksForMachine = machineTasksMap[machineName] || [];
 
-        // Apply status & task text filters
         let visibleTasks = allTasksForMachine.filter(t => {
             if (currentStatusFilter !== 'all' && t.status !== currentStatusFilter) return false;
             if (taskFilterText) {
@@ -407,11 +453,14 @@ function renderAllMachines() {
         let readyCount = allTasksForMachine.filter(t => t.status === 'ready').length;
         let waitingCount = allTasksForMachine.filter(t => t.status === 'waiting').length;
 
+        let canCrossTransfer = isTransferAllowed(machineName);
+
         let machineHeaderHtml = `
-            <div class="machine-header">
+            <div class="machine-header" style="${canCrossTransfer ? 'border-top: 4px solid #a855f7;' : ''}">
                 <div class="machine-title">
                     <i class="fas fa-microchip"></i>
                     <span>${escapeHtml(machineName)}</span>
+                    ${canCrossTransfer ? `<span class="badge" style="background:#7e22ce; color:#f3e8ff; font-size:0.65em; padding:2px 5px; border-radius:4px;" title="Може да приема и прехвърля операции с EMCO и HAAS ST 10">🔄 CNC група</span>` : ''}
                 </div>
                 <div class="machine-header-badges">
                     <span class="m-badge m-badge-total" title="Общо задачи">${allTasksForMachine.length}</span>
@@ -454,13 +503,39 @@ function renderAllMachines() {
                     ? `<a href="${t.drawing_link}" target="_blank" class="btn-drawing" style="width:22px; height:22px; font-size:0.75em;" title="Чертеж"><i class="fas fa-drafting-compass"></i></a>` 
                     : '';
 
+                let transferBannerHtml = '';
+                if (t.is_transferred) {
+                    transferBannerHtml = `
+                        <div style="background:#f3e8ff; border:1px solid #d8b4fe; border-radius:4px; padding:3px 6px; font-size:0.75em; font-weight:800; color:#6b21a8; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center;">
+                            <span><i class="fas fa-exchange-alt"></i> От: ${escapeHtml(t.original_machine)}</span>
+                            <button onclick="revertTaskTransfer('${escapeHtml(machineName)}', '${escapeHtml(t.detail_id)}', ${t.op_num})" style="background:#7e22ce; color:white; border:none; border-radius:3px; padding:1px 5px; font-size:0.85em; cursor:pointer;" title="Върни на оригиналната машина за този месец">↩️ Върни</button>
+                        </div>
+                    `;
+                }
+
+                let quickTransferBtn = '';
+                if (canCrossTransfer && isTransferAllowed(t.original_machine)) {
+                    quickTransferBtn = `
+                        <button onclick="openTransferDialog('${escapeHtml(machineName)}', '${escapeHtml(t.detail_id)}', ${t.op_num})" class="btn-arrow" style="font-size:0.85em; color:#7e22ce; font-weight:bold; margin-top:4px;" title="Прехвърли на друга машина за този месец">
+                            <i class="fas fa-exchange-alt"></i>
+                        </button>
+                    `;
+                }
+
                 tasksListHtml += `
-                    <div class="task-item ${statusClass}" data-machine="${escapeHtml(machineName)}" data-detail="${escapeHtml(t.detail_id)}" data-op="${t.op_num}">
+                    <div class="task-item ${statusClass} ${t.is_transferred ? 'task-transferred' : ''}" 
+                        data-machine="${escapeHtml(machineName)}" 
+                        data-orig-machine="${escapeHtml(t.original_machine)}" 
+                        data-detail="${escapeHtml(t.detail_id)}" 
+                        data-op="${t.op_num}">
+                        
                         <div class="task-left">
                             <span class="prio-badge ${isTop3 ? 'top-3' : ''}">${t.priority_order}</span>
                             <span class="drag-handle" title="Хванете и преместете с мишката">⋮⋮</span>
+                            ${quickTransferBtn}
                         </div>
                         <div class="task-content">
+                            ${transferBannerHtml}
                             <div class="task-header-row">
                                 <div class="task-detail-name">
                                     ${escapeHtml(t.detail_name)}
@@ -507,17 +582,105 @@ function renderAllMachines() {
 function initAllSortables() {
     document.querySelectorAll('.machine-tasks-list').forEach(listEl => {
         let machineName = listEl.getAttribute('data-machine');
+        let canCrossTransfer = isTransferAllowed(machineName);
+
         let sortable = new Sortable(listEl, {
+            group: canCrossTransfer ? { name: 'cnc_transfer_group', pull: true, put: true } : 'machine_' + machineName,
             handle: '.drag-handle',
             animation: 150,
             ghostClass: 'sortable-ghost',
             chosenClass: 'sortable-chosen',
+            onAdd: function (evt) {
+                let toMachine = machineName;
+                let fromMachine = evt.from.getAttribute('data-machine');
+                let detail = evt.item.getAttribute('data-detail');
+                let op = parseInt(evt.item.getAttribute('data-op'));
+                handleTaskTransferred(detail, op, fromMachine, toMachine);
+            },
             onEnd: function () {
                 reindexMachineTasks(machineName, listEl);
             }
         });
         sortableInstances.push(sortable);
     });
+}
+
+function handleTaskTransferred(detailId, opNum, fromMachine, toMachine) {
+    if (!isTransferAllowed(fromMachine) || !isTransferAllowed(toMachine)) {
+        Swal.fire('Непозволено прехвърляне', 'Прехвърляне на операции е разрешено единствено между: EMCO (стар), EMCO и HAAS ST 10.', 'warning');
+        renderAllMachines();
+        return;
+    }
+
+    let fromList = machineTasksMap[fromMachine] || [];
+    let toList = machineTasksMap[toMachine] || [];
+
+    let taskIdx = fromList.findIndex(t => t.detail_id === detailId && t.op_num === opNum);
+    if (taskIdx === -1) {
+        renderAllMachines();
+        return;
+    }
+
+    let task = fromList.splice(taskIdx, 1)[0];
+    task.machine = toMachine;
+    task.is_transferred = (normalize(task.machine) !== normalize(task.original_machine));
+    toList.push(task);
+
+    fromList.forEach((t, i) => t.priority_order = i + 1);
+    toList.forEach((t, i) => t.priority_order = i + 1);
+
+    setSaveStatus(true);
+    renderAllMachines();
+
+    const toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000
+    });
+    toast.fire({
+        icon: 'info',
+        title: `Оп. ${opNum} (${detailId}) преместена на ${toMachine}`
+    });
+}
+
+function openTransferDialog(currentMachine, detailId, opNum) {
+    const list = machineTasksMap[currentMachine] || [];
+    const task = list.find(t => t.detail_id === detailId && t.op_num === opNum);
+    if (!task) return;
+
+    const targets = ['EMCO (стар)', 'EMCO', 'HAAS ST 10'].filter(m => normalize(m) !== normalize(currentMachine));
+
+    let optionsHtml = targets.map(m => `<button class="swal2-confirm swal2-styled" onclick="confirmQuickTransfer('${escapeHtml(currentMachine)}', '${escapeHtml(m)}', '${escapeHtml(detailId)}', ${opNum})" style="background-color:#7e22ce; width:100%; margin:8px 0; font-size:1.05em;">🏭 Прехвърли на ${escapeHtml(m)}</button>`).join('');
+
+    Swal.fire({
+        title: 'Прехвърляне на операция',
+        html: `
+            <div style="text-align:left; font-size:0.95em; color:#334155;">
+                <p>Детайл: <b>${escapeHtml(task.detail_name)}</b> (${escapeHtml(task.detail_id)})</p>
+                <p>Операция: <b>Оп. ${task.op_num} - ${escapeHtml(task.op_name)}</b></p>
+                <p>Текущо работно място: <b>${escapeHtml(currentMachine)}</b></p>
+                <p style="color:#6b21a8; font-weight:700;">Изберете машина, на която да се изпълнява тази операция за текущия месечен план:</p>
+                <div style="margin-top:15px;">${optionsHtml}</div>
+            </div>
+        `,
+        showConfirmButton: false,
+        showCancelButton: true,
+        cancelButtonText: 'Отказ'
+    });
+}
+
+window.confirmQuickTransfer = function(fromMachine, toMachine, detailId, opNum) {
+    Swal.close();
+    handleTaskTransferred(detailId, opNum, fromMachine, toMachine);
+};
+
+function revertTaskTransfer(currentMachine, detailId, opNum) {
+    let list = machineTasksMap[currentMachine] || [];
+    let task = list.find(t => t.detail_id === detailId && t.op_num === opNum);
+    if (!task || !task.original_machine) return;
+
+    handleTaskTransferred(detailId, opNum, currentMachine, task.original_machine);
 }
 
 function reindexMachineTasks(machineName, listEl) {
@@ -533,7 +696,6 @@ function reindexMachineTasks(machineName, listEl) {
         if (task) {
             task.priority_order = index + 1;
             newOrderList.push(task);
-            // Update badge in DOM immediately
             const badge = el.querySelector('.prio-badge');
             if (badge) {
                 badge.innerText = task.priority_order;
@@ -543,7 +705,6 @@ function reindexMachineTasks(machineName, listEl) {
         }
     });
 
-    // Re-attach any filtered-out tasks
     machineTasks.forEach(t => {
         if (!newOrderList.includes(t)) {
             t.priority_order = newOrderList.length + 1;
@@ -614,16 +775,28 @@ function setSaveStatus(hasChanges) {
     }
 }
 
-// Global Save: Upsert all priorities across all machines to Supabase
+// Global Save: Upsert priorities & transfers to Supabase
 async function saveAllPriorities() {
     const selectedYear = parseInt(document.getElementById('selectYear').value) || 2026;
     const selectedMonth = document.getElementById('selectMonth').value;
 
     let allTasksToSave = [];
+    let transferredToClean = [];
+
     Object.keys(machineTasksMap).forEach(m => {
         let tasks = machineTasksMap[m] || [];
         tasks.forEach(t => {
-            allTasksToSave.push({
+            let noteContent = t.notes || '';
+            if (t.is_transferred && t.original_machine) {
+                noteContent = `[ORIG:${t.original_machine}] ` + noteContent.replace(/\[ORIG:.*?\]\s*/g, '').trim();
+                transferredToClean.push({
+                    original_machine: t.original_machine,
+                    detail_id: t.detail_id,
+                    op_num: t.op_num
+                });
+            }
+
+            let rowObj = {
                 plan_year: selectedYear,
                 plan_month: selectedMonth,
                 machine: t.machine,
@@ -633,9 +806,15 @@ async function saveAllPriorities() {
                 detail_name: t.detail_name,
                 priority_order: t.priority_order,
                 priority_score: 0,
-                notes: t.notes || null,
+                notes: noteContent.trim() || null,
                 updated_at: new Date().toISOString()
-            });
+            };
+
+            if (hasOriginalMachineColumn) {
+                rowObj.original_machine = t.original_machine;
+            }
+
+            allTasksToSave.push(rowObj);
         });
     });
 
@@ -645,14 +824,27 @@ async function saveAllPriorities() {
     }
 
     Swal.fire({
-        title: 'Запазване на приоритетите...',
-        html: `Записване на подредбата за всички <b>${Object.keys(machineTasksMap).length} машини</b>...`,
+        title: 'Запазване на промените...',
+        html: `Записване на подредбата и прехвърлянията за <b>${Object.keys(machineTasksMap).length} машини</b>...`,
         allowOutsideClick: false,
         didOpen: () => Swal.showLoading()
     });
 
     try {
-        // Upsert in batches of 500
+        // 1. Clean up old machine records for transferred tasks
+        if (transferredToClean.length > 0) {
+            for (let item of transferredToClean) {
+                await client.from('task_priorities')
+                    .delete()
+                    .eq('plan_year', selectedYear)
+                    .eq('plan_month', selectedMonth)
+                    .eq('machine', item.original_machine)
+                    .eq('detail_id', item.detail_id)
+                    .eq('op_num', item.op_num);
+            }
+        }
+
+        // 2. Upsert in batches of 500
         for (let i = 0; i < allTasksToSave.length; i += 500) {
             let chunk = allTasksToSave.slice(i, i + 500);
             const { error } = await client
@@ -667,8 +859,8 @@ async function saveAllPriorities() {
 
         Swal.fire({
             icon: 'success',
-            title: 'Приоритетите са запазени!',
-            html: `Успешно бяха обновени приоритетите на <b>${allTasksToSave.length} задачи</b> по всички машини.<br><small class="text-muted">Терминалите в цеха вече показват новия ред.</small>`,
+            title: 'Успешно запазване!',
+            html: `Приоритетите и прехвърлянията на <b>${allTasksToSave.length} задачи</b> бяха записани.<br><small class="text-muted">Терминалите в цеха веднага отразяват промените за този месец.</small>`,
             confirmButtonColor: '#2563eb',
             timer: 2500
         });
@@ -687,7 +879,9 @@ function exportToExcel() {
         let tasks = machineTasksMap[m] || [];
         tasks.forEach(t => {
             exportData.push({
-                'Машина': t.machine,
+                'Машина (Текущ месец)': t.machine,
+                'Оригинална Машина (Маршрутна карта)': t.original_machine,
+                'Прехвърлена': t.is_transferred ? 'ДА' : 'НЕ',
                 'Приоритет': t.priority_order,
                 'Детайл Код': t.detail_id,
                 'Детайл Име': t.detail_name,
