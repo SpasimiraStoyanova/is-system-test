@@ -1,4 +1,4 @@
-function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
+﻿function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
 
 function normalizeStr(str) {
     if (!str) return '';
@@ -68,7 +68,8 @@ async function loadTasks(isSilent = false) {
           fetchAllRows('marshruti'), fetchAllRows('otcheti', '*', null, { col: 'Дата', asc: false }, 2000), 
           fetchAllRows('sklad'), fetchAllRows('Номенклатура'),
           fetchAllRows('sklad_bufferi'),
-          fetchAllRows('inventory')
+          fetchAllRows('inventory'),
+          fetchAllRows('task_priorities', '*').catch(() => ({ data: [] }))
       ]);
 
       if (plansRes.error) throw plansRes.error; if (bomRes.error) throw bomRes.error;
@@ -96,6 +97,16 @@ async function loadTasks(isSilent = false) {
               if (bufVal > 0) bufferMap[bKey] = bufVal;
               if (scrapVal > 0) bufferScrapMap[bKey] = scrapVal;
               if (opVal) bufferOpMap[bKey] = opVal;
+          });
+      }
+
+      let taskPrioritiesMap = {};
+      if (prioRes && prioRes.data) {
+          prioRes.data.forEach(p => {
+              let m = normalizeStr(p.machine);
+              let d = normalizeStr(p.detail_id);
+              let op = parseInt(p.op_num);
+              taskPrioritiesMap[m + '_' + d + '_' + op] = parseInt(p.priority_order) || 100;
           });
       }
 
@@ -490,8 +501,11 @@ async function loadTasks(isSilent = false) {
                               
                               let totalDone = (originalTarget > 0 ? originalTarget : shortage) - shortage;
                               if (totalDone < 0) totalDone = 0;
+                              let taskKey = normalizeStr(machineName) + '_' + normalizeStr(displayName) + '_' + (parseInt(route['№ Операция']) || 0);
+                              let manualPriority = taskPrioritiesMap[taskKey] !== undefined ? taskPrioritiesMap[taskKey] : null;
                               
-                              globalTasks.push({ 
+                              globalTasks.push({
+                                  manualPriority: manualPriority, 
                                   id: safeIdBase + typeSuffix, 
                                   plan_id: pNameOverride === 'БУФЕРИ' ? null : pIdForCard, 
                                   plan_name: pNameOverride,
@@ -584,6 +598,10 @@ async function loadTasks(isSilent = false) {
       */
 
       globalTasks.sort((a, b) => {
+          let aPrio = (a.manualPriority !== null && a.manualPriority !== undefined) ? a.manualPriority : 9999;
+          let bPrio = (b.manualPriority !== null && b.manualPriority !== undefined) ? b.manualPriority : 9999;
+          if (aPrio !== bPrio) return aPrio - bPrio;
+
           let getWeight = (t) => {
               if (t.plan_name === "БУФЕРИ") return Infinity;
               if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") return 9999999;
@@ -671,13 +689,14 @@ function renderTasks(tasks) {
   var html = '';
   filteredTasks.forEach(function(t) {
     let borderStyle = t.isGreenCard ? 'border-left: 6px solid #16a34a;' : 'border-left: 6px solid #3b82f6;';
+    let priorityBadgeHtml = (t.manualPriority !== null && t.manualPriority !== undefined) ? `<span class="plan-label" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-weight:900; margin-right:6px;">⭐ ПРИОРИТЕТ #${t.manualPriority}</span>` : '';
     let labelHtml = '';
     if (t.isGreenCard) {
-        labelHtml = `<span class="plan-label" style="color: #16a34a;">ЗЕЛЕНА КАРТА: ${t.plan_name}</span>`;
+        labelHtml = priorityBadgeHtml + `<span class="plan-label" style="color: #16a34a;">ЗЕЛЕНА КАРТА: ${t.plan_name}</span>`;
     } else if (t.plan_name === 'КОМПОНЕНТ') {
-        labelHtml = `<span class="plan-label">КОМПОНЕНТ</span>`;
+        labelHtml = priorityBadgeHtml + `<span class="plan-label">КОМПОНЕНТ</span>`;
     } else {
-        labelHtml = `<span class="plan-label">ПЛАН: ${t.plan_name}</span>`;
+        labelHtml = priorityBadgeHtml + `<span class="plan-label">ПЛАН: ${t.plan_name}</span>`;
     }
     let badgeStyle = t.isGreenCard ? 'background-color:#16a34a;' : '';
 
@@ -770,3 +789,7 @@ function renderTasks(tasks) {
   });
   container.innerHTML = html;
 }
+
+
+
+
