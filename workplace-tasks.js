@@ -1,4 +1,4 @@
-// ==============================================================================
+﻿// ==============================================================================
 // Multi-Machine Workplace Tasks & Priority Board (Табло Машини & Задачи)
 // IS-SYSTEMS MES Test Environment
 // ==============================================================================
@@ -148,16 +148,14 @@ function calculateAllMachineTasks() {
     const selectedYear = parseInt(document.getElementById('selectYear').value) || 2026;
     const selectedMonth = document.getElementById('selectMonth').value;
 
-    // 1. Filter relevant plans
+    // 1. Filter relevant plans (only truly active plans)
     let filteredPlans = rawPlans.filter(p => {
         let pStatus = String(p['Статус'] || '').trim();
-        if (pStatus === '🚚 Изпратен') return false;
+        if (pStatus !== 'Активен') return false;
         let pYear = parseInt(p['Година']);
         let pMonth = String(p['Месец'] || '').trim();
 
-        if (selectedMonth === 'ALL') {
-            return pStatus === 'Активен';
-        }
+        if (selectedMonth === 'ALL') return true;
         return pYear === selectedYear && pMonth.toLowerCase() === selectedMonth.toLowerCase();
     });
 
