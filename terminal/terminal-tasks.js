@@ -1,4 +1,4 @@
-﻿function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
+function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
 
 function normalizeStr(str) {
     if (!str) return '';
@@ -459,14 +459,15 @@ async function loadTasks(isSilent = false) {
                           );
 
                           if (overrideRec) {
-                              let assignedM = overrideRec.machine;
+                              let assignedM = String(overrideRec.machine || '').trim();
                               let origM = overrideRec.original_machine || null;
                               if (!origM && overrideRec.notes && overrideRec.notes.includes('[ORIG:')) {
                                   let match = overrideRec.notes.match(/\[ORIG:(.*?)\]/);
                                   if (match) origM = match[1].trim();
                               }
+                              if (!origM) origM = origMachine;
 
-                              if (origM && normalizeStr(assignedM) !== normalizeStr(origM)) {
+                              if (assignedM && normalizeStr(assignedM) !== normalizeStr(origMachine)) {
                                   effectiveMachine = assignedM;
                                   isTransferred = true;
                                   origMachineDisplay = origM;
@@ -479,8 +480,9 @@ async function loadTasks(isSilent = false) {
                       if (!currentMachine || currentMachine.trim() === "" || isTaken) {
                           matchMachine = true;
                       } else {
-                          let selectedMachines = currentMachine.split(',').map(m => m.toLowerCase().trim()); 
-                          matchMachine = selectedMachines.some(m => machineName.toLowerCase().includes(m));
+                          let selectedMachines = currentMachine.split(',').map(m => normalizeStr(m)).filter(Boolean); 
+                          let currentTaskMachines = machineName.split(',').map(m => normalizeStr(m)).filter(Boolean);
+                          matchMachine = selectedMachines.some(sm => currentTaskMachines.includes(sm));
                       }
 
                       if (matchMachine) {
