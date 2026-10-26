@@ -64,7 +64,7 @@ async function loadTasks(isSilent = false) {
   
   try {
       const [plansRes, bomRes, routesRes, reportsRes, skladRes, nomRes, bufferRes, invRes, prioRes] = await Promise.all([
-          fetchAllRows('plan', '*', q => q.in('Статус', ['Активен'])), fetchAllRows('bom'),
+          fetchAllRows('plan', '*', q => q.in('Статус', ['Активен', 'Завършен', '📦 Опакован'])), fetchAllRows('bom'),
           fetchAllRows('marshruti'), fetchAllRows('otcheti', '*', null, { col: 'Дата', asc: false }, 2000), 
           fetchAllRows('sklad'), fetchAllRows('Номенклатура'),
           fetchAllRows('sklad_bufferi'),
