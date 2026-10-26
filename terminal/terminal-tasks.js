@@ -63,7 +63,7 @@ async function loadTasks(isSilent = false) {
   if (!isSilent) container.innerHTML = '<div id="loadingMsg" style="text-align:center; padding: 40px; font-weight:bold; color:#64748b; font-size: 1.2em;">Търсене на задачи... 🔄</div>';
   
   try {
-      const [plansRes, bomRes, routesRes, reportsRes, skladRes, nomRes, bufferRes, invRes] = await Promise.all([
+      const [plansRes, bomRes, routesRes, reportsRes, skladRes, nomRes, bufferRes, invRes, prioRes] = await Promise.all([
           fetchAllRows('plan', '*', q => q.in('Статус', ['Активен'])), fetchAllRows('bom'),
           fetchAllRows('marshruti'), fetchAllRows('otcheti', '*', null, { col: 'Дата', asc: false }, 2000), 
           fetchAllRows('sklad'), fetchAllRows('Номенклатура'),
@@ -789,6 +789,7 @@ function renderTasks(tasks) {
   });
   container.innerHTML = html;
 }
+
 
 
 
