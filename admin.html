@@ -86,7 +86,10 @@
                         <span class="dropdown-caret">▼</span>
                     </button>
                     <div class="admin-dropdown-menu">
-                        <button type="button" class="admin-dropdown-item" onclick="openCalendarModal()">📅 Календар &amp; Поддръжка</button>
+                        <button type="button" class="admin-dropdown-item" onclick="openCalendarModal()" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>📅 Календар &amp; Поддръжка</span>
+                            <span id="adminCalSubBadge" style="display: none; margin-left: auto; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
+                        </button>
                         <button type="button" class="admin-dropdown-item" onclick="openNotificationDialog()">📢 Изпрати Известие до Цеха</button>
                         <div class="admin-dropdown-divider"></div>
                         <button type="button" class="admin-dropdown-item" onclick="window.forceReloadTerminals()" style="color: #dc2626; font-weight: 700;" title="Принудително рестартира всички таблети в цеха">🔄 Синхронизирай Терминалите</button>

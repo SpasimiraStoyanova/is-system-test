@@ -1924,24 +1924,23 @@ window.checkAdminCalendarAlertsOnLoad = async function(isSilent = false) {
         });
 
         // 1. Обновяване на баджа на бутона "📅 Календар & Поддръжка"
-        const badge = document.getElementById('adminCalBadge');
+        const badge = document.getElementById('adminCalBadge'); const subBadge = document.getElementById('adminCalSubBadge');
         const navBtn = document.getElementById('btnAdminCalendarNav');
         const urgentCount = overdue.length + todayEvents.length + tomorrowEvents.length;
         const totalAlerts = urgentCount + upcomingEvents.length;
 
-        if (badge) {
+        const updateBadgeDisplay = (el) => {
+            if (!el) return;
             if (totalAlerts > 0) {
-                badge.innerText = totalAlerts;
-                badge.style.display = 'inline-block';
-                if (urgentCount > 0) {
-                    badge.style.background = '#ef4444';
-                } else {
-                    badge.style.background = '#f59e0b';
-                }
+                el.innerText = totalAlerts;
+                el.style.display = 'inline-block';
+                el.style.background = urgentCount > 0 ? '#ef4444' : '#f59e0b';
             } else {
-                badge.style.display = 'none';
+                el.style.display = 'none';
             }
-        }
+        };
+        updateBadgeDisplay(badge);
+        updateBadgeDisplay(subBadge);
 
         // 2. Глобален известителен банер над контролите в Админ панела
         const globalBanner = document.getElementById('adminGlobalAlertBanner');
