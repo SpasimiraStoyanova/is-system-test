@@ -132,15 +132,35 @@ function exportCurrentTableToExcel() {
     });
 }
 
+// ==========================================
+// ⚡ ЛОКАЛНО КЕШИРАНЕ НА ТАБОВЕТЕ (СВЕТКАВИЧНО ПРЕВКЛЮЧВАНЕ)
+// ==========================================
+const adminTabCache = {};
+const adminCacheTimestamps = {};
+const ADMIN_CACHE_TTL_MS = 2.5 * 60 * 1000; // 2.5 минути валидност
+
+window.invalidateAdminCache = function(tabKey = null) {
+    if (tabKey) {
+        delete adminTabCache[tabKey];
+        delete adminCacheTimestamps[tabKey];
+    } else {
+        Object.keys(adminTabCache).forEach(k => delete adminTabCache[k]);
+        Object.keys(adminCacheTimestamps).forEach(k => delete adminCacheTimestamps[k]);
+    }
+};
+
 function buildNavbar() {
   const container = document.getElementById('tabsContainer'); container.innerHTML = '';
   Object.keys(tableConfigs).forEach(key => {
     const btn = document.createElement('button'); btn.className = `tab-btn ${key === currentTab ? 'active' : ''}`;
-    btn.innerText = tableConfigs[key].label; btn.onclick = () => switchTab(key); container.appendChild(btn);
+    btn.innerText = tableConfigs[key].label; 
+    btn.onclick = () => switchTab(key, key === currentTab);
+    container.appendChild(btn);
   });
 }
 
-function switchTab(tabKey) {
+function switchTab(tabKey, force = false) {
+  const isSameTab = (currentTab === tabKey);
   currentTab = tabKey; buildNavbar(); document.getElementById('searchInput').value = '';
   selectedIndices.clear(); updateMassActionBar();
   globalColumnFilters = {}; document.getElementById('tableHead').innerHTML = '';
@@ -155,7 +175,7 @@ function switchTab(tabKey) {
 
   // Тук прехвърлихме показването на папките само когато сме в менюто Персонал
   if (tabKey === 'personal') { sidebar.style.display = 'block'; loadPersonnelSidebar(); } else { sidebar.style.display = 'none'; }
-  loadCurrentTableData();
+  loadCurrentTableData(force || isSameTab);
 }
 
 function toggleSelectAll(event) {
@@ -186,13 +206,14 @@ async function deleteSelectedItems() {
             const { error } = await client.from(config.table).delete().in(config.key, keysToDelete); 
             if (error) throw error; 
             selectedIndices.clear(); updateMassActionBar();
-            Swal.fire({icon: 'success', title: 'Изтрити!', timer: 1500, showConfirmButton: false}); loadCurrentTableData(); 
+            if (window.invalidateAdminCache) window.invalidateAdminCache();
+            Swal.fire({icon: 'success', title: 'Изтрити!', timer: 1500, showConfirmButton: false}); loadCurrentTableData(true); 
         } catch(err) { Swal.fire('Грешка', err.message, 'error'); } 
     }
 }
 
-async function loadCurrentTableData() {
-  const config = tableConfigs[currentTab]; document.getElementById('loadingLayout').style.display = 'block'; document.getElementById('mainTable').style.display = 'none';
+async function loadCurrentTableData(forceRefresh = false) {
+  const config = tableConfigs[currentTab];
   selectedIndices.clear(); updateMassActionBar();
   const requestedTab = currentTab;
   try {
@@ -203,6 +224,19 @@ async function loadCurrentTableData() {
           if (typeof renderArchivesTab === 'function') renderArchivesTab();
           return;
       }
+
+      // ⚡ Бърз път: Проверка за валиден локален кеш (мигновено показване)
+      const now = Date.now();
+      if (!forceRefresh && adminTabCache[currentTab] && (now - (adminCacheTimestamps[currentTab] || 0) < ADMIN_CACHE_TTL_MS)) {
+          document.getElementById('loadingLayout').style.display = 'none';
+          document.getElementById('mainTable').style.display = 'table';
+          globalRows = adminTabCache[currentTab];
+          filterTable();
+          return;
+      }
+
+      document.getElementById('loadingLayout').style.display = 'block'; 
+      document.getElementById('mainTable').style.display = 'none';
 
       let query;
       if (currentTab === 'sklad_inventory') {
@@ -294,6 +328,9 @@ async function loadCurrentTableData() {
       }
 
       if (currentTab !== requestedTab) return;
+      // ⚡ Записваме в локалния кеш
+      adminTabCache[requestedTab] = rows;
+      adminCacheTimestamps[requestedTab] = Date.now();
       globalRows = rows; filterTable();
   } catch (err) { document.getElementById('loadingLayout').innerHTML = '❌ Грешка: ' + err.message; }
 }
@@ -900,7 +937,8 @@ async function saveForm(e) {
               
               Swal.fire({icon: 'success', title: 'Успешен запис!', timer: 1500, showConfirmButton: false});
           }
-          closeModal(); loadCurrentTableData();
+          if (window.invalidateAdminCache) window.invalidateAdminCache();
+          closeModal(); loadCurrentTableData(true);
       } catch (err) { Swal.fire('Грешка', err.message, 'error'); } finally { btn.innerText = 'Запази запис'; btn.disabled = false; }
       return;
   }
@@ -1054,7 +1092,8 @@ async function saveForm(e) {
             window.open(gmailUrl, 'GmailPopup', 'width=800,height=600,left=200,top=100,scrollbars=yes');
         }
     }
-    closeModal(); loadCurrentTableData();
+    if (window.invalidateAdminCache) window.invalidateAdminCache();
+    closeModal(); loadCurrentTableData(true);
   } catch (err) { Swal.fire('Грешка', err.message, 'error'); } finally { btn.innerText = 'Запази запис'; btn.disabled = false; }
 }
 
@@ -1079,8 +1118,9 @@ async function deleteItem(index) {
               let auditNewData = { "ID Детайл": cleanDet, "Ново Количество": 0 };
               if (currentTab === 'sklad_wip') auditNewData["Операция"] = opName;
               await client.from('audit_logs').insert([{ table_name: tName, action_type: 'DELETE', old_data: { "Количество": row['Общо'] }, new_data: auditNewData }]);
+              if (window.invalidateAdminCache) window.invalidateAdminCache();
               Swal.fire({icon: 'success', title: 'Изтрито!', timer: 1000, showConfirmButton: false}); 
-              loadCurrentTableData(); 
+              loadCurrentTableData(true); 
           } catch(err) { Swal.fire('Грешка', err.message, 'error'); } 
       }
       return;
@@ -1088,7 +1128,16 @@ async function deleteItem(index) {
 
   const keyVal = row[config.key];
   const res = await Swal.fire({ title: 'Сигурни ли сте?', text: "Записът ще бъде изтрит безвъзвратно!", icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Да, изтрий!', cancelButtonText: 'Отказ' });
-  if (res.isConfirmed) { try { Swal.fire({title: 'Изтриване...', allowOutsideClick: false, didOpen: () => Swal.showLoading()}); const { error } = await client.from(config.table).delete().eq(config.key, keyVal); if (error) throw error; Swal.fire({icon: 'success', title: 'Изтрито!', timer: 1000, showConfirmButton: false}); loadCurrentTableData(); } catch(err) { Swal.fire('Грешка', err.message, 'error'); } }
+  if (res.isConfirmed) { 
+      try { 
+          Swal.fire({title: 'Изтриване...', allowOutsideClick: false, didOpen: () => Swal.showLoading()}); 
+          const { error } = await client.from(config.table).delete().eq(config.key, keyVal); 
+          if (error) throw error; 
+          if (window.invalidateAdminCache) window.invalidateAdminCache();
+          Swal.fire({icon: 'success', title: 'Изтрито!', timer: 1000, showConfirmButton: false}); 
+          loadCurrentTableData(true); 
+      } catch(err) { Swal.fire('Грешка', err.message, 'error'); } 
+  }
 }
 
 async function loadSkladOperations(detailCode) {
