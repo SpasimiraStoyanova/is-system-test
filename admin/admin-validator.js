@@ -80,7 +80,7 @@ window.runPlanValidation = async function() {
         <div style="text-align: center; padding: 50px 20px;">
             <div style="font-size: 2.2em; animation: spin 1s linear infinite; display: inline-block;">⚙️</div>
             <div style="font-size: 1.1em; font-weight: 700; color: #475569; margin-top: 15px;">Анализиране на план за ${selectedMonth} ${selectedYear}...</div>
-            <div style="font-size: 0.85em; color: #94a3b8; margin-top: 5px;">Проверка на технологични маршрути, BOM състав, цехови детайли и склад материали</div>
+            <div style="font-size: 0.85em; color: #94a3b8; margin-top: 5px;">Проверка на технологични маршрути, Номенклатура (заготовки), BOM състав и склад материали</div>
         </div>
     `;
     if (statusText) statusText.innerText = 'Зареждане...';
@@ -120,14 +120,22 @@ window.runPlanValidation = async function() {
         const invData = invRes.data || [];
         const nomData = nomRes.data || [];
 
-        // Build Nomenclature mapping (Name <-> Code)
+        // Build Nomenclature map (Keyed by both ID Детайл and Вътрешно име)
         const nomMap = {};
         nomData.forEach(n => {
             const code = String(n['ID Детайл'] || '').trim().toUpperCase();
             const name = String(n['Вътрешно име'] || '').trim().toUpperCase();
             if (code) nomMap[code] = n;
-            if (name && !nomMap[name]) nomMap[name] = n;
+            if (name) nomMap[name] = n;
         });
+
+        function findNomFor(code, name) {
+            const upperC = (code || '').trim().toUpperCase();
+            const upperN = (name || '').trim().toUpperCase();
+            if (upperC && nomMap[upperC]) return nomMap[upperC];
+            if (upperN && nomMap[upperN]) return nomMap[upperN];
+            return null;
+        }
 
         // Group Marshruti by normalized detail code/name
         const marshrutiMap = {};
@@ -137,7 +145,6 @@ window.runPlanValidation = async function() {
             if (!marshrutiMap[code]) marshrutiMap[code] = [];
             marshrutiMap[code].push(r);
         });
-        // Sort operations by operation number
         Object.keys(marshrutiMap).forEach(k => {
             marshrutiMap[k].sort((a,b) => (parseInt(a['№ Операция'])||0) - (parseInt(b['№ Операция'])||0));
         });
@@ -151,7 +158,7 @@ window.runPlanValidation = async function() {
             bomMap[parent].push(b);
         });
 
-        // Map Sklad (Raw materials & purchased parts)
+        // Map Sklad (Raw materials & blanks)
         const skladMap = {};
         skladData.forEach(s => {
             const itemCode = String(s['ID Детайл'] || s['Код'] || '').trim().toUpperCase();
@@ -159,6 +166,19 @@ window.runPlanValidation = async function() {
             const qty = parseFloat(s['Остатък'] !== undefined && s['Остатък'] !== null ? s['Остатък'] : (s['Наличност'] || s['Количество'] || 0)) || 0;
             skladMap[itemCode] = (skladMap[itemCode] || 0) + qty;
         });
+
+        function getSkladStock(materialName) {
+            if (!materialName) return 0;
+            const upper = materialName.trim().toUpperCase();
+            if (skladMap[upper] !== undefined) return skladMap[upper];
+            const cleanUpper = upper.replace(/\s+/g, ' ');
+            for (const key of Object.keys(skladMap)) {
+                if (key.replace(/\s+/g, ' ') === cleanUpper) {
+                    return skladMap[key];
+                }
+            }
+            return 0;
+        }
 
         // Map Inventory (WIP / shopfloor semi-finished products & buffers)
         const invMap = {};
@@ -171,30 +191,32 @@ window.runPlanValidation = async function() {
 
         // Helper to find routes
         function findRoutesFor(code, name) {
-            const upperC = (code || '').toUpperCase();
-            const upperN = (name || '').toUpperCase();
+            const upperC = (code || '').trim().toUpperCase();
+            const upperN = (name || '').trim().toUpperCase();
             if (upperC && marshrutiMap[upperC]) return marshrutiMap[upperC];
             if (upperN && marshrutiMap[upperN]) return marshrutiMap[upperN];
-            if (upperN && nomMap[upperN] && marshrutiMap[String(nomMap[upperN]['ID Детайл']).toUpperCase()]) {
-                return marshrutiMap[String(nomMap[upperN]['ID Детайл']).toUpperCase()];
-            }
-            if (upperC && nomMap[upperC] && marshrutiMap[String(nomMap[upperC]['Вътрешно име']).toUpperCase()]) {
-                return marshrutiMap[String(nomMap[upperC]['Вътрешно име']).toUpperCase()];
+            const nomItem = findNomFor(upperC, upperN);
+            if (nomItem) {
+                const nomCode = String(nomItem['ID Детайл'] || '').trim().toUpperCase();
+                const nomName = String(nomItem['Вътрешно име'] || '').trim().toUpperCase();
+                if (nomCode && marshrutiMap[nomCode]) return marshrutiMap[nomCode];
+                if (nomName && marshrutiMap[nomName]) return marshrutiMap[nomName];
             }
             return [];
         }
 
         // Helper to find BOM
         function findBomsFor(code, name) {
-            const upperC = (code || '').toUpperCase();
-            const upperN = (name || '').toUpperCase();
+            const upperC = (code || '').trim().toUpperCase();
+            const upperN = (name || '').trim().toUpperCase();
             if (upperC && bomMap[upperC]) return bomMap[upperC];
             if (upperN && bomMap[upperN]) return bomMap[upperN];
-            if (upperN && nomMap[upperN] && bomMap[String(nomMap[upperN]['ID Детайл']).toUpperCase()]) {
-                return bomMap[String(nomMap[upperN]['ID Детайл']).toUpperCase()];
-            }
-            if (upperC && nomMap[upperC] && bomMap[String(nomMap[upperC]['Вътрешно име']).toUpperCase()]) {
-                return bomMap[String(nomMap[upperC]['Вътрешно име']).toUpperCase()];
+            const nomItem = findNomFor(upperC, upperN);
+            if (nomItem) {
+                const nomCode = String(nomItem['ID Детайл'] || '').trim().toUpperCase();
+                const nomName = String(nomItem['Вътрешно име'] || '').trim().toUpperCase();
+                if (nomCode && bomMap[nomCode]) return bomMap[nomCode];
+                if (nomName && bomMap[nomName]) return bomMap[nomName];
             }
             return [];
         }
@@ -213,6 +235,13 @@ window.runPlanValidation = async function() {
 
             // Find matching BOM for main product
             const boms = findBomsFor(upperCode, upperName);
+
+            // Find Nomenclature entry
+            const nomItem = findNomFor(upperCode, upperName);
+            const nomParent = nomItem ? String(nomItem['ID Родител'] || '').trim() : '';
+            const norm = nomItem ? (parseFloat(nomItem['Разходна норма']) || 0) : 0;
+            const unit = nomItem ? String(nomItem['Единици'] || 'бр.').trim() : 'бр.';
+            const drawingLink = nomItem ? String(nomItem['Линк към чертеж'] || '').trim() : '';
 
             const errors = [];
             const warnings = [];
@@ -238,16 +267,12 @@ window.runPlanValidation = async function() {
                 }
             }
 
-            // Check 2: BOM Breakdown
-            if (boms.length === 0) {
-                // If it's a finished product or assembly, warn about missing BOM
-                warnings.push({
-                    type: 'missing_bom',
-                    title: 'Няма въведен BOM',
-                    desc: 'Липсва рецепта за вложени материали/заготовки.'
-                });
-            } else {
-                // Check 3: Process BOM components
+            // Check 2: Recipe (BOM or Nomenclature Source Material / Заготовка)
+            let recipeType = 'none'; // 'bom' or 'nom' or 'none'
+
+            if (boms.length > 0) {
+                // Assembly / Resolver with multi-part BOM
+                recipeType = 'bom';
                 boms.forEach(b => {
                     const compCode = String(b['ID Компонент'] || b['ID Съставна част'] || b['ID Материал'] || b['Съставна част'] || b['Материал'] || '').trim();
                     if (!compCode) return;
@@ -255,27 +280,22 @@ window.runPlanValidation = async function() {
                     const ratio = parseFloat(b['Количество']) || 1;
                     const needed = Math.ceil(targetQty * ratio);
 
-                    // Check if component has workshop routes or sub-BOM
                     const compRoutes = findRoutesFor(compUpper, compUpper);
                     const hasRoutes = compRoutes.length > 0;
                     const subBoms = findBomsFor(compUpper, compUpper);
                     const hasSubBom = subBoms.length > 0;
                     const isTrackedInSklad = skladMap[compUpper] !== undefined || (nomMap[compUpper] && skladMap[String(nomMap[compUpper]['ID Детайл']).toUpperCase()] !== undefined);
 
-                    // Check shop buffer in inventory
                     const shopBuffer = invMap[compUpper] !== undefined ? invMap[compUpper] : 
                                       (nomMap[compUpper] && invMap[String(nomMap[compUpper]['ID Детайл']).toUpperCase()] !== undefined ? invMap[String(nomMap[compUpper]['ID Детайл']).toUpperCase()] : 0);
 
-                    // Check warehouse stock in sklad
-                    const skladStock = skladMap[compUpper] !== undefined ? skladMap[compUpper] : 
-                                      (nomMap[compUpper] && skladMap[String(nomMap[compUpper]['ID Детайл']).toUpperCase()] !== undefined ? skladMap[String(nomMap[compUpper]['ID Детайл']).toUpperCase()] : 0);
+                    const skladStock = getSkladStock(compCode);
 
-                    // Differentiate in-house manufactured child detail vs warehouse material
+                    // Child detail manufactured in-house vs warehouse material
                     const isChildPart = hasRoutes || hasSubBom || !isTrackedInSklad;
 
                     if (isChildPart) {
-                        // In-house child detail (дете на резолвер / цехов детайл):
-                        // Produced in the workshop according to routes! Not ordered from outside.
+                        // In-house child detail (дете на резолвер):
                         if (!hasRoutes && !hasSubBom) {
                             warnings.push({
                                 type: 'missing_child_route',
@@ -292,13 +312,14 @@ window.runPlanValidation = async function() {
                             opsSummary: compRoutes.map(o => o['Име на операция'] || o['Операция']).filter(Boolean).slice(0, 3).join(' → ')
                         });
                     } else {
-                        // Warehouse material / purchased standard part (лагери, крепежи, пръти):
+                        // Purchased material / standard component from warehouse
                         if (skladStock < needed) {
                             const def = needed - skladStock;
                             materialDeficits.push({
                                 code: compCode,
                                 needed,
                                 available: skladStock,
+                                unit: 'бр.',
                                 deficit: def
                             });
                             errors.push({
@@ -310,15 +331,52 @@ window.runPlanValidation = async function() {
                             warehouseMaterialsOk.push({
                                 code: compCode,
                                 needed,
-                                available: skladStock
+                                available: skladStock,
+                                unit: 'бр.'
                             });
                         }
                     }
                 });
+            } else if (nomParent) {
+                // Single machined / fabricated detail:
+                // Source material (заготовка / родител) and consumption norm are defined in Nomenclature!
+                recipeType = 'nom';
+                const totalMatNeeded = Math.ceil(targetQty * (norm > 0 ? norm : 1));
+                const skladStock = getSkladStock(nomParent);
+
+                if (skladStock < totalMatNeeded) {
+                    const def = totalMatNeeded - skladStock;
+                    materialDeficits.push({
+                        code: nomParent,
+                        needed: totalMatNeeded,
+                        available: skladStock,
+                        unit: unit,
+                        deficit: def
+                    });
+                    errors.push({
+                        type: 'material_deficit',
+                        title: `Дефицит на заготовка: ${nomParent}`,
+                        desc: `Нужни за плана: ${totalMatNeeded} ${unit} | На склад: ${skladStock} ${unit} (Недостигат: ${def} ${unit})`
+                    });
+                } else {
+                    warehouseMaterialsOk.push({
+                        code: nomParent,
+                        needed: totalMatNeeded,
+                        available: skladStock,
+                        unit: unit
+                    });
+                }
+            } else {
+                // Neither BOM nor Nomenclature parent material found
+                warnings.push({
+                    type: 'missing_recipe',
+                    title: 'Няма въведена заготовка или BOM',
+                    desc: 'Липсва посочен изходен материал (ID Родител) в Номенклатура и няма въведена BOM разбивка.'
+                });
             }
 
             // Overall rating:
-            // Error only if main detail lacks route OR warehouse material is actually missing
+            // Error only if main detail lacks route OR required raw materials are in deficit
             let rating = 'ok';
             if (errors.length > 0) rating = 'error';
             else if (warnings.length > 0) rating = 'warn';
@@ -330,7 +388,12 @@ window.runPlanValidation = async function() {
                 targetQty,
                 status,
                 routesCount: routes.length,
+                recipeType,
                 bomsCount: boms.length,
+                nomParent,
+                norm,
+                unit,
+                drawingLink,
                 inHouseParts,
                 warehouseMaterialsOk,
                 materialDeficits,
@@ -375,13 +438,13 @@ function renderValidatorResults() {
     let subTitle = '';
     if (errorsCount > 0) {
         headerTitle = `Открити са ${errorsCount} блокиращи проблема в плана`;
-        subTitle = `Има детайли без маршрутна карта или с реален недостиг на изходни суровини в Склад Материали.`;
+        subTitle = `Има детайли без маршрутна карта или с недостиг на изходни суровини в Склад Материали.`;
     } else if (warnsCount > 0) {
-        headerTitle = `Няма блокиращи проблеми (${warnsCount} детайла с препоръки)`;
-        subTitle = `${okCount} от ${total} позиции (${okPct}%) са напълно готови. Препоръките са за липсващ BOM или ненасочена машина.`;
+        headerTitle = `Няма блокиращи проблеми (${warnsCount} позиции с препоръки)`;
+        subTitle = `${okCount} от ${total} позиции (${okPct}%) са напълно готови. Препоръките са за липсващ материал в Номенклатура или ненасочена машина.`;
     } else {
         headerTitle = `Планът е 100% готов за старт!`;
-        subTitle = `Всички ${total} детайла са обезпечени с маршрутни карти и материали.`;
+        subTitle = `Всички ${total} детайла са напълно обезпечени с маршрутни карти и заготовки.`;
     }
 
     let html = `
@@ -468,8 +531,11 @@ function renderValidatorResults() {
                             <span style="margin-left: 10px; background: #f1f5f9; color: #334155; font-weight: 700; padding: 2px 8px; border-radius: 6px; font-size: 0.82em;">План: ${item.targetQty} бр.</span>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            ${item.bomsCount > 0 ? `
+                            ${item.recipeType === 'bom' ? `
                                 <button type="button" onclick="openResolverTree('${item.code || item.name}')" style="background:#f1f5f9; color:#0284c7; border:1px solid #cbd5e1; padding:4px 10px; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.8em;" title="Визуален състав и дърво на изделието">🌳 Състав (Резолвер)</button>
+                            ` : ''}
+                            ${item.drawingLink ? `
+                                <a href="${item.drawingLink}" target="_blank" rel="noopener" style="background:#f8fafc; color:#475569; border:1px solid #cbd5e1; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.8em; text-decoration:none; display:inline-flex; align-items:center; gap:4px;" title="Отвори чертеж">📐 Чертеж</a>
                             ` : ''}
                             <span style="background: ${badgeBg}; color: ${badgeColor}; font-weight: 800; font-size: 0.78em; padding: 4px 10px; border-radius: 12px; letter-spacing: 0.3px;">${badgeText}</span>
                         </div>
@@ -481,20 +547,28 @@ function renderValidatorResults() {
                             ${item.routesCount > 0 ? `✅ <b>Маршрут:</b> ${item.routesCount} операции` : `<span style="color:#dc2626; font-weight:bold;">❌ Липсва технологичен маршрут</span>`}
                         </div>
                         <div>
-                            ${item.bomsCount > 0 ? `✅ <b>BOM:</b> ${item.bomsCount} съставни части` : `<span style="color:#d97706; font-weight:bold;">⚠️ Няма въведен BOM</span>`}
+                            ${item.recipeType === 'bom' ? `
+                                ✅ <b>BOM:</b> ${item.bomsCount} съставни части
+                            ` : (item.recipeType === 'nom' ? `
+                                ✅ <b>Заготовка:</b> ${item.nomParent} <span style="color:#64748b;">(${item.norm > 0 ? item.norm + ' ' + item.unit + '/бр.' : 'по спецификация'})</span>
+                            ` : `
+                                <span style="color:#d97706; font-weight:bold;">⚠️ Липсва заготовка / BOM</span>
+                            `)}
                         </div>
                         <div>
                             ${item.materialDeficits.length > 0 ? `
                                 <span style="color:#dc2626; font-weight:bold;">🚨 Дефицит на склад: ${item.materialDeficits.length} позиции</span>
                             ` : (item.inHouseParts.length > 0 ? `
                                 <span style="color:#0284c7; font-weight:bold;">⚙️ Цехови детайли: ${item.inHouseParts.length} бр.</span>
+                            ` : (item.warehouseMaterialsOk.length > 0 ? `
+                                <span style="color:#16a34a; font-weight:bold;">✅ Материал на склад: Наличен (${item.warehouseMaterialsOk[0].available} ${item.warehouseMaterialsOk[0].unit || ''})</span>
                             ` : `
                                 <span style="color:#16a34a; font-weight:bold;">✅ Материали: На склад</span>
-                            `)}
+                            `))}
                         </div>
                     </div>
 
-                    <!-- In-house child parts list (if any) -->
+                    <!-- In-house child parts list (for assemblies/resolvers) -->
                     ${item.inHouseParts.length > 0 ? `
                         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; font-size: 0.84em; display: flex; flex-direction: column; gap: 6px;">
                             <div style="font-weight: 700; color: #475569; display: flex; justify-content: space-between; align-items: center;">
@@ -536,8 +610,8 @@ function renderValidatorResults() {
                             ${item.warnings.map(w => `
                                 <div style="display: flex; align-items: center; justify-content: space-between; background: #fffbeb; border: 1px solid #fef3c7; padding: 6px 12px; border-radius: 6px; font-size: 0.85em; color: #92400e;">
                                     <div><b>⚠️ ${w.title}:</b> ${w.desc}</div>
-                                    ${w.type === 'missing_bom' ? `
-                                        <button type="button" onclick="quickAddBomFromValidator('${item.code || item.name}')" style="background:#d97706; color:white; border:none; padding:4px 10px; border-radius:4px; font-weight:700; cursor:pointer; font-size:0.8em; white-space:nowrap; margin-left:10px;">➕ Добави BOM</button>
+                                    ${w.type === 'missing_recipe' ? `
+                                        <button type="button" onclick="quickEditNomenclatureFromValidator('${item.code || item.name}')" style="background:#d97706; color:white; border:none; padding:4px 10px; border-radius:4px; font-weight:700; cursor:pointer; font-size:0.8em; white-space:nowrap; margin-left:10px;">➕ Задай в Номенклатура</button>
                                     ` : ''}
                                 </div>
                             `).join('')}
@@ -565,14 +639,14 @@ window.quickAddRouteFromValidator = function(detailName) {
     }, 100);
 };
 
-window.quickAddBomFromValidator = function(detailName) {
+window.quickEditNomenclatureFromValidator = function(detailName) {
     window.closePlanValidatorModal();
-    switchTab('bom');
+    switchTab('nomenklatura');
     setTimeout(() => {
-        openAddModal();
-        setTimeout(() => {
-            const el = document.getElementById('inp_ID Родител') || document.getElementById('inp_ID Детайл') || document.getElementById('inp_Детайл');
-            if (el) el.value = detailName;
-        }, 150);
-    }, 100);
+        const searchInput = document.getElementById('adminGlobalSearch');
+        if (searchInput) {
+            searchInput.value = detailName;
+            filterTableRows();
+        }
+    }, 200);
 };
