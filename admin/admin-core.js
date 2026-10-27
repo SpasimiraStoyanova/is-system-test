@@ -146,17 +146,12 @@ function switchTab(tabKey) {
   globalColumnFilters = {}; document.getElementById('tableHead').innerHTML = '';
   
   const config = tableConfigs[tabKey]; const addBtn = document.getElementById('addNewBtn');
-  const pdfBtn = document.getElementById('pdfBtn'); const logBtn = document.getElementById('logisticsBtn'); const mrpBtn = document.getElementById('mrpBtn'); const sidebar = document.getElementById('personnelSidebar');
-  const transBtn = document.getElementById('transformResolverBtn');
-  const traceBtn = document.getElementById('traceabilityBtn');
+  const pdfBtn = document.getElementById('pdfBtn'); const mrpBtn = document.getElementById('mrpBtn'); const sidebar = document.getElementById('personnelSidebar');
   
   addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`; 
   addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_inventory') ? 'none' : 'flex';
   if (pdfBtn) pdfBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
-  if (logBtn) logBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
   if (mrpBtn) mrpBtn.style.display = (tabKey === 'porachki') ? 'flex' : 'none';
-  if (transBtn) transBtn.style.display = (tabKey === 'sklad_inventory') ? 'flex' : 'none';
-  if (traceBtn) traceBtn.style.display = (tabKey === 'sklad_inventory' || tabKey === 'sklad_wip') ? 'flex' : 'none';
 
   // Тук прехвърлихме показването на папките само когато сме в менюто Персонал
   if (tabKey === 'personal') { sidebar.style.display = 'block'; loadPersonnelSidebar(); } else { sidebar.style.display = 'none'; }
@@ -1120,12 +1115,28 @@ async function loadSkladOperations(detailCode) {
         console.error(err);
     }
 }
-window.openLogisticsModal = function() {
-    if (currentTab !== 'plan') return;
+window.openLogisticsModal = async function() {
+    const modalBackdrop = document.getElementById('logisticsModalBackdrop');
+    const contentEl = document.getElementById('logisticsContent');
+    if (modalBackdrop) modalBackdrop.style.display = 'flex';
+    if (contentEl) contentEl.innerHTML = '<div style="text-align:center; padding:30px; color:#0284c7; font-weight:600;">⏳ Зареждане на данни за плановете...</div>';
+
+    let rows = (currentTab === 'plan' && globalRows && globalRows.length > 0) ? globalRows : null;
+    if (!rows) {
+        try {
+            const { data, error } = await client.from('plan').select('*');
+            if (error) throw error;
+            rows = data || [];
+        } catch (err) {
+            console.error('Error fetching plan for logistics:', err);
+            if (contentEl) contentEl.innerHTML = '<div style="text-align:center; padding:20px; color:#ef4444;">Грешка при зареждане на плановете: ' + err.message + '</div>';
+            return;
+        }
+    }
     
     // Group active plan rows
     let plansMap = {};
-    globalRows.forEach(row => {
+    rows.forEach(row => {
         let key = row['Месец'] + ' ' + row['Година'];
         if (!plansMap[key]) plansMap[key] = { name: key, month: row['Месец'], year: row['Година'], total: 0, done: 0, packed: 0, fullyPacked: true };
         
@@ -1165,8 +1176,7 @@ window.openLogisticsModal = function() {
         });
     }
 
-    document.getElementById('logisticsContent').innerHTML = html;
-    document.getElementById('logisticsModalBackdrop').style.display = 'flex';
+    if (contentEl) contentEl.innerHTML = html;
 };
 
 window.massLogisticsAction = async function(month, year) {
