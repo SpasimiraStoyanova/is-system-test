@@ -107,16 +107,18 @@ window.runPlanValidation = async function() {
         }
 
         // 2. Fetch routes, BOMs, inventory and nomenclature
-        const [routesRes, bomRes, skladRes, nomRes] = await Promise.all([
+        const [routesRes, bomRes, skladRes, invRes, nomRes] = await Promise.all([
             client.from('marshruti').select('*'),
             client.from('bom').select('*'),
             client.from('sklad').select('*'),
+            client.from('inventory').select('*'),
             client.from('Номенклатура').select('*')
         ]);
 
         const routesData = routesRes.data || [];
         const bomData = bomRes.data || [];
         const skladData = skladRes.data || [];
+        const invData = invRes.data || [];
         const nomData = nomRes.data || [];
 
         // Build Nomenclature mapping (Name <-> Code)
@@ -139,22 +141,31 @@ window.runPlanValidation = async function() {
             marshrutiMap[code].push(r);
         });
 
-        // Group BOM by normalized detail code/name
+        // Group BOM by normalized parent code/name
+        // In Supabase, the parent detail code in BOM is stored under 'ID Родител'
         const bomMap = {};
         bomData.forEach(b => {
-            const parent = String(b['ID Детайл'] || b['Детайл'] || b['Вътрешно име'] || '').trim().toUpperCase();
+            const parent = String(b['ID Родител'] || b['ID Детайл'] || b['Детайл'] || b['Вътрешно име'] || '').trim().toUpperCase();
             if (!parent) return;
             if (!bomMap[parent]) bomMap[parent] = [];
             bomMap[parent].push(b);
         });
 
-        // Sum available inventory stock
+        // Sum available stock from both sklad (materials) and inventory (semi-finished products)
         const stockMap = {};
+        // 1. Sklad (materials & blanks)
         skladData.forEach(s => {
             const itemCode = String(s['ID Детайл'] || s['Код'] || '').trim().toUpperCase();
             if (!itemCode) return;
-            const qty = parseFloat(s['Наличност'] || s['Количество'] || 0) || 0;
+            const qty = parseFloat(s['Остатък'] !== undefined && s['Остатък'] !== null ? s['Остатък'] : (s['Наличност'] || s['Количество'] || 0)) || 0;
             stockMap[itemCode] = (stockMap[itemCode] || 0) + qty;
+        });
+        // 2. Inventory (WIP / shopfloor semi-finished products)
+        invData.forEach(item => {
+            const itemCode = String(item['ID Детайл'] || item['Име'] || '').trim().toUpperCase();
+            if (!itemCode) return;
+            const freeQty = parseFloat(item['Свободни'] !== undefined && item['Свободни'] !== null ? item['Свободни'] : (item['Общо'] || 0)) || 0;
+            stockMap[itemCode] = (stockMap[itemCode] || 0) + freeQty;
         });
 
         // 3. Analyze each detail in the plan
@@ -193,7 +204,7 @@ window.runPlanValidation = async function() {
                     warnings.push({
                         type: 'unassigned_machine',
                         title: 'Операция без машина',
-                        desc: `${unassignedOps.length} оп. нямат посочена машина: ` + unassignedOps.map(o => o['Операция'] || 'Без име').join(', ')
+                        desc: `${unassignedOps.length} оп. нямат посочена машина: ` + unassignedOps.map(o => o['Име на операция'] || o['Операция'] || 'Без име').join(', ')
                     });
                 }
             }
@@ -206,13 +217,16 @@ window.runPlanValidation = async function() {
                     desc: 'Липсва рецепта за вложени материали/заготовки.'
                 });
             } else {
-                // Check 3: Material Availability
+                // Check 3: Material / Component Availability
                 boms.forEach(b => {
-                    const compCode = String(b['ID Съставна част'] || b['ID Материал'] || b['Съставна част'] || b['Материал'] || '').trim();
+                    const compCode = String(b['ID Компонент'] || b['ID Съставна част'] || b['ID Материал'] || b['Съставна част'] || b['Материал'] || '').trim();
+                    if (!compCode) return;
                     const compUpper = compCode.toUpperCase();
                     const ratio = parseFloat(b['Количество']) || 1;
                     const needed = Math.ceil(targetQty * ratio);
-                    const available = stockMap[compUpper] || 0;
+                    
+                    const available = stockMap[compUpper] !== undefined ? stockMap[compUpper] :
+                                      (nomMap[compUpper] && stockMap[nomMap[compUpper]] !== undefined ? stockMap[nomMap[compUpper]] : 0);
 
                     if (available < needed) {
                         const def = needed - available;
@@ -334,28 +348,32 @@ function renderValidatorResults() {
                 </div>
             </div>
 
-            <!-- Progress Bar -->
-            <div style="margin-top: 15px; background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden; display: flex;">
-                <div style="width: ${okPct}%; background: #10b981; transition: width 0.3s;"></div>
-                <div style="width: ${total > 0 ? (warnsCount/total)*100 : 0}%; background: #f59e0b;"></div>
-                <div style="width: ${total > 0 ? (errorsCount/total)*100 : 0}%; background: #ef4444;"></div>
+            <!-- Health Progress Bar -->
+            <div style="margin-top: 15px; background: #e2e8f0; height: 10px; border-radius: 5px; overflow: hidden; display: flex;">
+                <div style="background: #10b981; width: ${total > 0 ? (okCount/total)*100 : 0}%; transition: width 0.3s;"></div>
+                <div style="background: #f59e0b; width: ${total > 0 ? (warnsCount/total)*100 : 0}%; transition: width 0.3s;"></div>
+                <div style="background: #ef4444; width: ${total > 0 ? (errorsCount/total)*100 : 0}%; transition: width 0.3s;"></div>
             </div>
         </div>
 
-        <!-- Filter Pills Bar -->
-        <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; flex-wrap: wrap;">
-            <button type="button" onclick="filterValidatorList('all')" style="padding: 6px 14px; border-radius: 20px; border: 1px solid ${currentValidatorFilter === 'all' ? '#0284c7' : '#cbd5e1'}; background: ${currentValidatorFilter === 'all' ? '#0284c7' : '#ffffff'}; color: ${currentValidatorFilter === 'all' ? '#ffffff' : '#475569'}; font-weight: 700; cursor: pointer; font-size: 0.85em;">Всички позиции (${total})</button>
-            <button type="button" onclick="filterValidatorList('error')" style="padding: 6px 14px; border-radius: 20px; border: 1px solid ${currentValidatorFilter === 'error' ? '#dc2626' : '#fecaca'}; background: ${currentValidatorFilter === 'error' ? '#dc2626' : '#fff5f5'}; color: ${currentValidatorFilter === 'error' ? '#ffffff' : '#b91c1c'}; font-weight: 700; cursor: pointer; font-size: 0.85em;">🔴 С проблеми (${errorsCount})</button>
-            <button type="button" onclick="filterValidatorList('warn')" style="padding: 6px 14px; border-radius: 20px; border: 1px solid ${currentValidatorFilter === 'warn' ? '#d97706' : '#fef3c7'}; background: ${currentValidatorFilter === 'warn' ? '#d97706' : '#fffdf5'}; color: ${currentValidatorFilter === 'warn' ? '#ffffff' : '#b45309'}; font-weight: 700; cursor: pointer; font-size: 0.85em;">🟡 С предупреждения (${warnsCount})</button>
-            <button type="button" onclick="filterValidatorList('ok')" style="padding: 6px 14px; border-radius: 20px; border: 1px solid ${currentValidatorFilter === 'ok' ? '#16a34a' : '#bbf7d0'}; background: ${currentValidatorFilter === 'ok' ? '#16a34a' : '#f0fdf4'}; color: ${currentValidatorFilter === 'ok' ? '#ffffff' : '#15803d'}; font-weight: 700; cursor: pointer; font-size: 0.85em;">🟢 Напълно готови (${okCount})</button>
+        <!-- Filter Buttons -->
+        <div style="display: flex; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+            <button type="button" onclick="filterValidatorList('all')" style="padding: 6px 14px; border-radius: 6px; font-weight: 700; font-size: 0.85em; cursor: pointer; border: 1px solid ${currentValidatorFilter === 'all' ? '#2563eb' : '#cbd5e1'}; background: ${currentValidatorFilter === 'all' ? '#eff6ff' : 'white'}; color: ${currentValidatorFilter === 'all' ? '#1d4ed8' : '#64748b'};">Всички (${total})</button>
+            <button type="button" onclick="filterValidatorList('error')" style="padding: 6px 14px; border-radius: 6px; font-weight: 700; font-size: 0.85em; cursor: pointer; border: 1px solid ${currentValidatorFilter === 'error' ? '#ef4444' : '#cbd5e1'}; background: ${currentValidatorFilter === 'error' ? '#fef2f2' : 'white'}; color: ${currentValidatorFilter === 'error' ? '#b91c1c' : '#64748b'};">Блокиращи (${errorsCount})</button>
+            <button type="button" onclick="filterValidatorList('warn')" style="padding: 6px 14px; border-radius: 6px; font-weight: 700; font-size: 0.85em; cursor: pointer; border: 1px solid ${currentValidatorFilter === 'warn' ? '#f59e0b' : '#cbd5e1'}; background: ${currentValidatorFilter === 'warn' ? '#fffbeb' : 'white'}; color: ${currentValidatorFilter === 'warn' ? '#b45309' : '#64748b'};">Предупреждения (${warnsCount})</button>
+            <button type="button" onclick="filterValidatorList('ok')" style="padding: 6px 14px; border-radius: 6px; font-weight: 700; font-size: 0.85em; cursor: pointer; border: 1px solid ${currentValidatorFilter === 'ok' ? '#10b981' : '#cbd5e1'}; background: ${currentValidatorFilter === 'ok' ? '#f0fdf4' : 'white'}; color: ${currentValidatorFilter === 'ok' ? '#15803d' : '#64748b'};">Напълно готови (${okCount})</button>
         </div>
 
-        <!-- Detail Cards -->
+        <!-- Detail Cards List -->
         <div style="display: flex; flex-direction: column; gap: 12px;">
     `;
 
     if (items.length === 0) {
-        html += `<div style="text-align: center; color: #94a3b8; padding: 40px; font-weight: 600;">Няма детайли в тази категория.</div>`;
+        html += `
+            <div style="text-align: center; padding: 35px 20px; color: #64748b;">
+                Няма детайли в избраната категория.
+            </div>
+        `;
     } else {
         items.forEach(item => {
             const isError = item.rating === 'error';
@@ -443,7 +461,7 @@ window.quickAddBomFromValidator = function(detailName) {
     setTimeout(() => {
         openAddModal();
         setTimeout(() => {
-            const el = document.getElementById('inp_ID Детайл') || document.getElementById('inp_Детайл');
+            const el = document.getElementById('inp_ID Родител') || document.getElementById('inp_ID Детайл') || document.getElementById('inp_Детайл');
             if (el) el.value = detailName;
         }, 150);
     }, 100);
