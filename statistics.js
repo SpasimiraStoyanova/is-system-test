@@ -16,6 +16,8 @@ function init() {
     fetchAndRenderData();
 }
 
+let lastComputedStats = [];
+
 async function fetchAndRenderData() {
     let dateFrom = document.getElementById('date-from').value;
     let dateTo = document.getElementById('date-to').value;
@@ -32,15 +34,27 @@ async function fetchAndRenderData() {
     let endIso = new Date(dateTo + 'T23:59:59').toISOString();
     
     try {
-        const { data, error } = await client.from('otcheti')
-                                      .select('*')
-                                      .eq('Статус', 'Отчетено')
-                                      .gte('Дата', startIso)
-                                      .lte('Дата', endIso)
-                                      .order('Дата', {ascending: true});
-        if(error) throw error;
+        const [otchetiRes, routesRes] = await Promise.all([
+            client.from('otcheti')
+                  .select('*')
+                  .eq('Статус', 'Отчетено')
+                  .gte('Дата', startIso)
+                  .lte('Дата', endIso)
+                  .order('Дата', {ascending: true}),
+            client.from('marshruti')
+                  .select('Код на детайла, Име на операция, "Норма (мин/бр)"')
+        ]);
+        if (otchetiRes.error) throw otchetiRes.error;
+
+        const normsMap = {};
+        if (routesRes.data) {
+            routesRes.data.forEach(r => {
+                const k = `${String(r['Код на детайла'] || '').trim()}|${String(r['Име на операция'] || '').trim()}`;
+                if (r['Норма (мин/бр)']) normsMap[k] = parseFloat(r['Норма (мин/бр)']);
+            });
+        }
         
-        processAndRender(data);
+        processAndRender(otchetiRes.data, normsMap);
     } catch(err) {
         alert("Грешка при зареждане на данните: " + err.message);
     } finally {
@@ -48,7 +62,7 @@ async function fetchAndRenderData() {
     }
 }
 
-function processAndRender(data) {
+function processAndRender(data, normsMap = {}) {
     let totalQty = 0;
     let totalDurationMs = 0;
     let detailStats = {};
@@ -119,6 +133,7 @@ function processAndRender(data) {
     // Render Summary Table
     let tbody = document.getElementById('summary-tbody');
     tbody.innerHTML = '';
+    lastComputedStats = [];
     
     for(let key in detailStats) {
         let stat = detailStats[key];
@@ -130,6 +145,31 @@ function processAndRender(data) {
         if (tMin > 0) {
             timeStr = th > 0 ? `${th}ч. ${tm}м.` : `${tm} мин.`;
         }
+
+        let avgMinStr = '-';
+        let avgNumber = null;
+        let normVal = normsMap[key] || null;
+
+        if (stat.qty > 0 && stat.durationMs > 0) {
+            avgNumber = (stat.durationMs / 60000) / stat.qty;
+            avgMinStr = `${avgNumber.toFixed(1)} мин/бр`;
+            if (normVal) {
+                if (avgNumber <= normVal) {
+                    avgMinStr += ` <span style="background:#14532d; color:#86efac; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; margin-left:4px;" title="Под нормата (${normVal} мин/бр)">✓ ${normVal}</span>`;
+                } else {
+                    avgMinStr += ` <span style="background:#7f1d1d; color:#fca5a5; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; margin-left:4px;" title="Над нормата (${normVal} мин/бр)">▲ ${normVal}</span>`;
+                }
+            }
+        }
+
+        lastComputedStats.push({
+            'Детайл': stat.detail,
+            'Операция': stat.operation,
+            'Количество (бр.)': stat.qty,
+            'Общо време': timeStr,
+            'Средно време (мин/бр)': avgNumber ? parseFloat(avgNumber.toFixed(2)) : '',
+            'Норма (мин/бр)': normVal || ''
+        });
         
         let tr = document.createElement('tr');
         tr.innerHTML = `
@@ -137,12 +177,30 @@ function processAndRender(data) {
             <td>${stat.operation}</td>
             <td style="color:#10b981; font-weight:900;">${stat.qty} бр.</td>
             <td style="color:#f59e0b; font-weight:600;">${timeStr}</td>
+            <td style="font-weight:700;">${avgMinStr}</td>
         `;
         tbody.appendChild(tr);
     }
     
     // Render Timeline
     renderTimeline(timelineData);
+}
+
+function exportStatsToExcel() {
+    if (!lastComputedStats || lastComputedStats.length === 0) {
+        alert("Няма данни за експорт!");
+        return;
+    }
+    if (typeof XLSX === 'undefined') {
+        alert("XLSX библиотеката не е заредена.");
+        return;
+    }
+    let dateFrom = document.getElementById('date-from').value;
+    let dateTo = document.getElementById('date-to').value;
+    const ws = XLSX.utils.json_to_sheet(lastComputedStats);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Справка Нормовремена");
+    XLSX.writeFile(wb, `IS_SYSTEM_Normovremena_${dateFrom}_${dateTo}.xlsx`);
 }
 
 function renderTimeline(timelineData) {

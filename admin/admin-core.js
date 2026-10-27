@@ -15,7 +15,121 @@ function initializeApp() {
     client.from('plan').select('id, Вътрешно име').in('Статус', ['Активен']).then(res => {
         if (res.data) globalActivePlansForDropdown = res.data;
     });
-    buildNavbar(); loadCurrentTableData(); runInvisibleAutoCheckout(); 
+    buildNavbar(); loadCurrentTableData(); runInvisibleAutoCheckout(); loadFormDatalists();
+}
+
+function toggleAdminDropdown(dropdownId) {
+    const target = document.getElementById(dropdownId);
+    if (!target) return;
+    const isOpen = target.classList.contains('open');
+    document.querySelectorAll('.admin-dropdown.open').forEach(el => el.classList.remove('open'));
+    if (!isOpen) {
+        target.classList.add('open');
+    }
+}
+
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.admin-dropdown')) {
+        document.querySelectorAll('.admin-dropdown.open').forEach(el => el.classList.remove('open'));
+    }
+});
+
+function loadFormDatalists() {
+    client.from('Номенклатура').select('ID Детайл, Вътрешно име').limit(10000).then(res => {
+        if (res.data) {
+            const dl = document.getElementById('dl_nomenklatura');
+            if (dl) {
+                dl.innerHTML = '';
+                const seen = new Set();
+                res.data.forEach(item => {
+                    const code = String(item['ID Детайл'] || '').trim();
+                    const name = String(item['Вътрешно име'] || '').trim();
+                    if (code && !seen.has(code)) {
+                        seen.add(code);
+                        const opt = document.createElement('option');
+                        opt.value = code;
+                        if (name && name !== code) opt.label = `${name} (${code})`;
+                        dl.appendChild(opt);
+                    }
+                });
+            }
+        }
+    });
+
+    client.from('marshruti').select('Машина').limit(10000).then(res => {
+        if (res.data) {
+            const dl = document.getElementById('dl_machines');
+            if (dl) {
+                dl.innerHTML = '';
+                const machines = new Set();
+                res.data.forEach(item => {
+                    const m = String(item['Машина'] || '').trim();
+                    if (m) machines.add(m);
+                });
+                ['HAAS ST 10', 'EMCO', 'EMCO (стар)', 'Монтаж 1', 'Монтаж 2', 'Бобини'].forEach(m => machines.add(m));
+                Array.from(machines).sort().forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    dl.appendChild(opt);
+                });
+            }
+        }
+    });
+}
+
+function exportCurrentTableToExcel() {
+    const config = tableConfigs[currentTab];
+    if (!config) return;
+    
+    const rowsToExport = (currentRenderedRows && currentRenderedRows.length > 0) ? currentRenderedRows : globalRows;
+    if (!rowsToExport || rowsToExport.length === 0) {
+        Swal.fire({ icon: 'info', title: 'Няма данни за експорт', text: 'Текущата таблица е празна.' });
+        return;
+    }
+    
+    const exportData = rowsToExport.map(row => {
+        const item = {};
+        config.fields.forEach(f => {
+            if (f.hideOnAdd && f.name === 'id') return;
+            let header = f.label || f.name;
+            let val = row[f.name];
+            if ((f.name === 'Време' || f.name === 'Дата' || f.name === 'Време Старт') && val) {
+                try {
+                    let pVal = val;
+                    if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z';
+                    val = new Date(pVal).toLocaleString('bg-BG');
+                } catch(e) {}
+            }
+            item[header] = (val !== undefined && val !== null) ? val : '';
+        });
+        return item;
+    });
+    
+    if (typeof XLSX === 'undefined') {
+        Swal.fire('Грешка', 'Библиотеката SheetJS (XLSX) не е заредена.', 'error');
+        return;
+    }
+    
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    const sheetName = config.label.replace(/[^а-яА-Яa-zA-Z0-9 ]/g, '').trim().substring(0, 31) || 'Data';
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    
+    const today = new Date().toISOString().split('T')[0];
+    const fileName = `IS_SYSTEM_${currentTab}_${today}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+    const toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 2500,
+        timerProgressBar: true
+    });
+    toast.fire({
+        icon: 'success',
+        title: `Изтеглени ${exportData.length} записа в Excel`
+    });
 }
 
 function buildNavbar() {
@@ -423,6 +537,17 @@ function buildForm(data = null) {
     if (f.type === 'select') { input = document.createElement('select'); f.options.forEach(opt => { const option = document.createElement('option'); option.value = opt; option.innerText = opt; input.appendChild(option); }); if (data && data[f.name]) input.value = data[f.name]; else if (f.def) input.value = f.def; } 
     else { input = document.createElement('input'); input.type = f.type === 'number' ? 'number' : 'text'; if (f.type === 'number') input.step = 'any'; if (data && data[f.name] !== undefined && data[f.name] !== null) input.value = data[f.name]; else if (f.def !== undefined) input.value = typeof f.def === 'function' ? f.def() : f.def; }
     input.id = 'inp_' + f.name; if (f.required) input.required = true;
+    if (f.name === 'ID Детайл' || f.name === 'ID Родител' || f.name === 'ID Компонент' || f.name === 'Код на детайла') {
+        input.setAttribute('list', 'dl_nomenklatura');
+        input.setAttribute('autocomplete', 'off');
+        input.placeholder = '🔍 Въведете или изберете код...';
+    } else if (f.name === 'Машина') {
+        input.setAttribute('list', 'dl_machines');
+        input.setAttribute('autocomplete', 'off');
+        input.placeholder = '🏭 Въведете или изберете машина...';
+    } else if (f.name === 'Норма (мин/бр)') {
+        input.placeholder = 'напр. 3.5 мин/бр';
+    }
     if (f.readonly || (isEditMode && f.readonlyOnEdit)) { input.readOnly = true; input.style.backgroundColor = '#f1f5f9'; input.style.color = '#64748b'; input.style.cursor = 'not-allowed'; if (f.type === 'select') input.disabled = true; }
     group.appendChild(input); area.appendChild(group);
   });

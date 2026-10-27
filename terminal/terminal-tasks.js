@@ -755,6 +755,7 @@ function renderTasks(tasks) {
 
     let partCode = t.name; let internalNameHtml = t.internalName ? `<div class="detail-code">${t.internalName}</div>` : '';
     let linkHtml = t.drawing_link && t.drawing_link.startsWith('http') ? `<a href="${t.drawing_link}" target="_blank">${partCode} 🔗</a>` : partCode;
+    var drawingBtnHtml = (t.drawing_link && t.drawing_link.startsWith('http')) ? `<a href="${t.drawing_link}" target="_blank" style="display:inline-block; margin-bottom:12px; margin-right:6px; background:#0284c7; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-weight:bold; font-size:12px; box-shadow:0 1px 2px rgba(0,0,0,0.1);">📐 Отвори Чертеж</a>` : '';
     var sopHtml = (t.sop_link && t.sop_link.startsWith('http')) ? `<a href="${t.sop_link}" target="_blank" style="display:inline-block; margin-bottom:12px; background:#f59e0b; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-weight:bold; font-size:12px;">📑 Отвори СОП</a>` : '';
     var descHtml = t.desc ? `<div style="background-color: #fef9c3; border-left: 4px solid #eab308; padding: 10px; margin-bottom: 12px; font-size: 13px; color: #854d0e; font-weight: 700; border-radius: 4px;">💡 ${t.desc}</div>` : '';
     var dropoffHtml = t.dropoff ? `<div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 10px; margin-bottom: 12px; font-size: 13px; color: #166534; font-weight: 700; border-radius: 4px;">📍 Остави на: ${t.dropoff}</div>` : '';
@@ -782,7 +783,14 @@ function renderTasks(tasks) {
     if (t.isBlocked) {
         let reasonsText = t.blockingReasons.length > 0 ? t.blockingReasons.join(', ') : "Предходни детайли";
         bomBadgeHtml = `<div style="background-color: #fef2f2; border: 1px solid #fecaca; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; color: #991b1b; font-weight: 700; text-align: center;">🚫 Липсва: ${reasonsText}</div>`;
-        actionButtonHtml = `<button disabled style="background-color: #94a3b8; color: white; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 800; border: none; border-radius: 10px;">🛑 БЛОКИРАНА ЗАДАЧА</button>`;
+        actionButtonHtml = `
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <button disabled style="background-color: #94a3b8; color: white; width: 100%; padding: 14px; font-size: 1.1em; font-weight: 800; border: none; border-radius: 10px;">🛑 БЛОКИРАНА ЗАДАЧА</button>
+                <button type="button" id="btnReq_${t.id}" onclick="requestStockMaterialPrompt('${t.id}', '${encodeURIComponent(t.name)}', '${encodeURIComponent(t.op)}', '${encodeURIComponent(reasonsText)}')" style="background-color: #ea580c; color: white; width: 100%; padding: 12px; font-size: 0.95em; font-weight: 800; border: none; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 4px rgba(234, 88, 12, 0.3);">
+                    <span>🔔 Заяви заготовка от склад</span>
+                </button>
+            </div>
+        `;
     } else if (t.hasLimit) {
         bomBadgeHtml = `<div style="background-color: #dcfce7; border: 1px solid #bbf7d0; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; color: #166534; font-weight: 800; text-align: center;">📦 Възможни: ${t.maxAllowed} бр.</div>`;
         actionButtonHtml = `<button onclick="claimCurrentTaskDOM('${t.id}')" style="background-color: ${actionButtonBg}; color: white; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 800; border: none; border-radius: 10px; cursor:pointer; box-shadow: 0 4px 6px -1px ${actionButtonShadow};">🚀 ПОЕМИ ЗАДАЧА</button>`;
@@ -804,6 +812,7 @@ function renderTasks(tasks) {
         <div id="free_state_${t.id}" style="${freeStateStyle}">${actionButtonHtml}</div>
         <div id="focus_state_${t.id}" style="${focusStateStyle}">
           ${!t.isBlocked ? bomBadgeHtml : ''}
+          ${drawingBtnHtml}
           ${sopHtml}
           ${fetchHtml}
           ${descHtml}
@@ -823,6 +832,58 @@ function renderTasks(tasks) {
   });
   container.innerHTML = html;
 }
+
+window.requestStockMaterialPrompt = async function(taskId, encName, encOp, encReasons) {
+    const partName = decodeURIComponent(encName || '');
+    const opName = decodeURIComponent(encOp || '');
+    const reasons = decodeURIComponent(encReasons || '');
+    const machine = (typeof currentMachine !== 'undefined' && currentMachine) ? currentMachine : 'Обща';
+    const operator = (typeof currentOperator !== 'undefined' && currentOperator) ? currentOperator : 'Оператор';
+    const email = (typeof currentOperatorEmail !== 'undefined' && currentOperatorEmail) ? currentOperatorEmail : operator;
+
+    const res = await Swal.fire({
+        title: '🔔 Заявка за заготовка',
+        html: `Желаете ли да изпратите заявка към склада за заготовка/материал за:<br><br><b style="color:#0369a1; font-size:1.15em;">${partName}</b><br><span>Операция: <b>${opName}</b></span><br><br><div style="background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:8px; color:#991b1b; font-size:0.9em;">Липсва: ${reasons}</div>`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '🚀 Да, заяви от склад',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#ea580c'
+    });
+
+    if (res.isConfirmed) {
+        try {
+            const timestamp = new Date().toISOString();
+            const noteText = `🔔 ЗАЯВКА ЗАГОТОВКА: ${partName} (${opName}) за машина [${machine}] от [${operator}]. Липсва: ${reasons}`;
+            
+            await client.from('chekiraniya').insert([{
+                'Време': timestamp,
+                'Имейл': email,
+                'Действие': 'Заявка склад',
+                'Локация': machine,
+                'Бележка': noteText
+            }]);
+
+            const btn = document.getElementById('btnReq_' + taskId);
+            if (btn) {
+                const nowTime = new Date().toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' });
+                btn.style.backgroundColor = '#16a34a';
+                btn.innerHTML = `<span>✅ Заявено в ${nowTime} ч.</span>`;
+                btn.disabled = true;
+            }
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Заявката е изпратена!',
+                text: `Складът е уведомен за заготовка за ${partName}.`,
+                timer: 2500,
+                showConfirmButton: false
+            });
+        } catch(err) {
+            Swal.fire('Грешка при изпращане', err.message, 'error');
+        }
+    }
+};
 
 
 
