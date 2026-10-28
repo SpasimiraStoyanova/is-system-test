@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IS-SYSTEMS Глобален Административен Панел</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="admin/admin.css?v=12">
+    <link rel="stylesheet" href="admin/admin.css?v=13">
     <link rel="stylesheet" href="admin/admin-calendar.css?v=5">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -14,7 +14,7 @@
     <script src="admin/admin-config.js?v=9" defer></script>
     <script src="admin/admin-pdf.js?v=2" defer></script>
     <script src="admin/admin-notif.js?v=2" defer></script>
-    <script src="admin/admin-personnel.js?v=5" defer></script>
+    <script src="admin/admin-personnel.js?v=7" defer></script>
     <script src="admin/admin-archives.js?v=1" defer></script>
     <script src="admin/admin-core.js?v=13" defer></script>
     <script src="admin/admin-resolver.js?v=5" defer></script>
@@ -148,7 +148,7 @@
         </div>
 
         <div class="modal-backdrop" id="folderModalBackdrop">
-          <div class="modal" style="max-width: 750px;">
+          <div class="modal" style="max-width: 820px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column;">
             <div class="modal-header">
                 <div>📁 Досие: <span id="currentWorkerName" style="color: #4338ca;"></span></div>
                 <button onclick="closeFolderModal()" style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
@@ -160,7 +160,51 @@
             </div>
             <div id="f-att" class="folder-content active"><table class="modal-table"><thead><tr><th>Дата и час</th><th>Действие</th><th>Локация</th><th>Бележка</th></tr></thead><tbody id="workerAttList"></tbody></table></div>
             <div id="f-work" class="folder-content"><table class="modal-table"><thead><tr><th>Дата</th><th>Детайл</th><th>Операция</th><th>К-во</th><th>Статус</th></tr></thead><tbody id="workerWorkList"></tbody></table></div>
-            <div id="f-docs" class="folder-content"><div class="upload-area"><input type="file" id="docUploadInput" style="margin-bottom: 10px;"><button class="btn-primary" onclick="uploadWorkerDoc()" style="margin: 0 auto; padding: 8px 16px;">⬆️ Качи Файл</button></div><div id="workerDocsList" style="margin-top: 15px;">Зареждане на документи...</div></div>
+            <div id="f-docs" class="folder-content" style="padding: 10px 4px;">
+              <!-- Upload Box -->
+              <div class="doc-upload-box">
+                <div class="doc-upload-header">
+                  <span style="font-weight: 800; color: #1e293b; font-size: 0.95em;">📤 Качване на документ в досието</span>
+                  <span style="font-size: 0.8em; color: #64748b;">(Фишове за заплати, договори, болнични, молби)</span>
+                </div>
+                <div class="doc-upload-grid">
+                  <div class="doc-upload-field">
+                    <label for="docCategorySelect" style="font-size: 0.8em; font-weight: 700; color: #475569; margin-bottom: 4px; display: block;">Категория:</label>
+                    <select id="docCategorySelect" class="doc-select">
+                      <option value="salary">💶 Фиш за заплата</option>
+                      <option value="contract">📑 Трудов договор / Анекс</option>
+                      <option value="medical">🩺 Медицинско / Инструктаж</option>
+                      <option value="request">📝 Заявление / Молба</option>
+                      <option value="doc" selected>📄 Друг фирмен документ</option>
+                    </select>
+                  </div>
+                  <div class="doc-upload-field">
+                    <label for="docUploadInput" style="font-size: 0.8em; font-weight: 700; color: #475569; margin-bottom: 4px; display: block;">Файл от компютъра:</label>
+                    <input type="file" id="docUploadInput" class="doc-file-input">
+                  </div>
+                  <div class="doc-upload-action">
+                    <button type="button" class="btn-primary doc-upload-btn" onclick="uploadWorkerDoc()">⬆️ Качи документ</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Documents Filter & Header -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin: 16px 0 10px 0; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 800; color: #334155; font-size: 0.95em; display: flex; align-items: center; gap: 6px;">
+                  <span>Качени документи:</span>
+                  <span id="workerDocsCount" style="background: #e0e7ff; color: #4338ca; font-size: 0.8em; padding: 2px 8px; border-radius: 12px; font-weight: 800;">0</span>
+                </div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="docCategoryFilters">
+                  <button type="button" class="doc-filter-btn active" onclick="filterWorkerDocs('ALL', this)">Всички</button>
+                  <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('salary', this)">💶 Фишове</button>
+                  <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('contract', this)">📑 Договори</button>
+                  <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('medical', this)">🩺 Медицински</button>
+                  <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('doc', this)">📄 Други</button>
+                </div>
+              </div>
+
+              <div id="workerDocsList" style="min-height: 120px;">Зареждане на документи...</div>
+            </div>
           </div>
         </div>
 
