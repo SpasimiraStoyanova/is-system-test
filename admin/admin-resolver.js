@@ -137,7 +137,8 @@ function buildResolverMaps() {
         bomMap[parent].push({
             child: String(b['ID Компонент'] || '').trim(),
             qty: parseFloat(b['Количество']) || 1,
-            opNum: b['Влага се на Оп. №'] || null
+            opNum: b['Влага се на Оп. №'] || null,
+            source: 'bom'
         });
     });
 
@@ -153,24 +154,47 @@ function buildResolverMaps() {
     });
 
     const skladMap = {};
+    function indexSklad(k, entry) {
+        if (!k) return;
+        const upper = k.trim().toUpperCase();
+        skladMap[upper] = entry;
+        const norm = upper.replace(/\s+/g, ' ');
+        skladMap[norm] = entry;
+        skladMap[norm.replace(/\.\s*/g, '.')] = entry;
+        skladMap[norm.replace(/\./g, '. ')] = entry;
+    }
+
     (cachedSklad || []).forEach(s => {
-        const code = String(s['ID Детайл'] || '').trim().toUpperCase();
+        const code = String(s['ID Детайл'] || '').trim();
         if (!code) return;
-        skladMap[code] = {
+        const entry = {
             codeOriginal: s['ID Детайл'],
             stock: parseFloat(s['Остатък']) || 0,
             unit: s['Мерна единица'] || 'бр.',
             minStock: parseFloat(s['Минимално количество']) || 0,
             notes: s['Бележки'] || ''
         };
+        indexSklad(code, entry);
     });
 
     const invMap = {};
-    (cachedInventory || []).forEach(inv => {
-        const code = String(inv['ID Детайл'] || '').trim().toUpperCase();
+    function indexInv(code, entry) {
         if (!code) return;
-        if (!invMap[code]) {
-            invMap[code] = {
+        const upper = code.trim().toUpperCase();
+        invMap[upper] = entry;
+        const norm = upper.replace(/\s+/g, ' ');
+        invMap[norm] = entry;
+        invMap[norm.replace(/\.\s*/g, '.')] = entry;
+        invMap[norm.replace(/\./g, '. ')] = entry;
+    }
+
+    // 1. From cachedInventory table
+    (cachedInventory || []).forEach(inv => {
+        const code = String(inv['ID Детайл'] || '').trim();
+        if (!code) return;
+        const norm = code.toUpperCase().replace(/\s+/g, ' ');
+        if (!invMap[norm]) {
+            invMap[norm] = {
                 codeOriginal: inv['ID Детайл'],
                 name: inv['Име'] || '',
                 totalFree: 0,
@@ -179,21 +203,156 @@ function buildResolverMaps() {
                 items: []
             };
         }
-        invMap[code].totalFree += (parseFloat(inv['Свободни']) || 0);
-        invMap[code].totalStock += (parseFloat(inv['Общо']) || 0);
-        invMap[code].items.push(inv);
+        const itemEntry = invMap[norm];
+        const rawQty = parseFloat(inv['Количество']) != null && !isNaN(parseFloat(inv['Количество']))
+            ? parseFloat(inv['Количество'])
+            : (parseFloat(inv['Общо']) || 0);
+        const freeQty = (inv['Свободни'] != null && !isNaN(parseFloat(inv['Свободни'])))
+            ? parseFloat(inv['Свободни'])
+            : rawQty;
+
+        itemEntry.totalFree += freeQty;
+        itemEntry.totalStock += rawQty;
+        itemEntry.items.push(inv);
+
+        indexInv(code, itemEntry);
     });
+
+    // 2. Enrich from adminTabCache['sklad_inventory'] if available
+    if (typeof adminTabCache !== 'undefined' && adminTabCache && adminTabCache['sklad_inventory'] && adminTabCache['sklad_inventory'].length > 0) {
+        adminTabCache['sklad_inventory'].forEach(item => {
+            const code = String(item['ID Детайл'] || '').trim();
+            if (!code) return;
+            const norm = code.toUpperCase().replace(/\s+/g, ' ');
+            const free = parseFloat(item['Свободни']) || 0;
+            const total = parseFloat(item['Общо']) || 0;
+            const buf = parseFloat(item['Минимално количество/Буфер']) || 0;
+            if (invMap[norm]) {
+                if (invMap[norm].totalStock === 0 && total > 0) {
+                    invMap[norm].totalStock = total;
+                    invMap[norm].totalFree = free;
+                }
+                if (buf > invMap[norm].buffer) invMap[norm].buffer = buf;
+            } else {
+                const newEntry = {
+                    codeOriginal: item['ID Детайл'],
+                    name: item['Име'] || '',
+                    totalFree: free,
+                    totalStock: total,
+                    buffer: buf,
+                    items: [item]
+                };
+                indexInv(code, newEntry);
+            }
+        });
+    }
 
     const nomMap = {};
     (cachedNomenklatura || []).forEach(n => {
         const code = String(n['ID Детайл'] || '').trim().toUpperCase();
-        if (!code) return;
-        nomMap[code] = n;
+        if (code) {
+            nomMap[code] = n;
+            nomMap[code.replace(/\s+/g, ' ')] = n;
+        }
         const intName = String(n['Вътрешно име'] || '').trim().toUpperCase();
-        if (intName && !nomMap[intName]) nomMap[intName] = n;
+        if (intName) {
+            if (!nomMap[intName]) nomMap[intName] = n;
+            nomMap[intName.replace(/\s+/g, ' ')] = n;
+        }
     });
 
     return { bomMap, routesMap, skladMap, invMap, nomMap };
+}
+
+function resolveStockForPart(partCode, requiredQty = 1, skladMap = {}, invMap = {}, nomMap = {}) {
+    if (!partCode) return null;
+    const raw = String(partCode).trim();
+    const upper = raw.toUpperCase();
+    const norm = upper.replace(/\s+/g, ' ');
+    const noDot = norm.replace(/\.\s*/g, '.');
+    const withDot = norm.replace(/\./g, '. ');
+
+    // 1. Check invMap
+    let inv = invMap[upper] || invMap[norm] || invMap[noDot] || invMap[withDot] || null;
+
+    // 2. Check skladMap
+    let sklad = skladMap[upper] || skladMap[norm] || skladMap[noDot] || skladMap[withDot] || null;
+
+    // 3. Check nomMap for aliases
+    const nom = nomMap[upper] || nomMap[norm] || null;
+    if (nom) {
+        const altCode = String(nom['ID Детайл'] || '').trim().toUpperCase();
+        const intName = String(nom['Вътрешно име'] || '').trim().toUpperCase();
+        if (!inv) {
+            if (altCode) inv = invMap[altCode] || invMap[altCode.replace(/\s+/g, ' ')];
+            if (!inv && intName) inv = invMap[intName] || invMap[intName.replace(/\s+/g, ' ')];
+        }
+        if (!sklad) {
+            if (altCode) sklad = skladMap[altCode] || skladMap[altCode.replace(/\s+/g, ' ')];
+            if (!sklad && intName) sklad = skladMap[intName] || skladMap[intName.replace(/\s+/g, ' ')];
+        }
+    }
+
+    const hasInv = !!(inv && (inv.totalStock > 0 || inv.totalFree > 0 || inv.items.length > 0));
+    const hasSklad = !!(sklad && (sklad.stock > 0 || sklad.stock === 0));
+
+    let badgeHtml = '';
+    let isOk = false;
+
+    if (hasInv && hasSklad) {
+        const free = inv.totalFree;
+        const total = inv.totalStock;
+        const sStock = sklad.stock;
+        const sUnit = sklad.unit || 'бр.';
+        badgeHtml = `
+            <div style="display:inline-flex; flex-direction:column; gap:3px;">
+                <span class="${free >= requiredQty ? 'resolver-stock-ok' : (free > 0 ? 'resolver-stock-deficit' : 'resolver-stock-none')}">
+                    🏭 Детайли: <b>${free.toLocaleString('bg-BG')}</b> св. (общо ${total.toLocaleString('bg-BG')})
+                </span>
+                <span class="${sStock >= requiredQty ? 'resolver-stock-ok' : (sStock > 0 ? 'resolver-stock-deficit' : 'resolver-stock-none')}">
+                    📦 Материали: <b>${sStock.toLocaleString('bg-BG')}</b> ${sUnit}
+                </span>
+            </div>
+        `;
+        isOk = (free >= requiredQty) || (sStock >= requiredQty);
+    } else if (hasInv) {
+        const free = inv.totalFree;
+        const total = inv.totalStock;
+        if (free >= requiredQty) {
+            badgeHtml = `<span class="resolver-stock-ok">🟢 Свободни: <b>${free.toLocaleString('bg-BG')} бр.</b> (Общо: ${total.toLocaleString('bg-BG')})</span>`;
+            isOk = true;
+        } else if (free > 0) {
+            badgeHtml = `<span class="resolver-stock-deficit">🟡 Свободни: <b>${free.toLocaleString('bg-BG')} бр.</b> (Общо: ${total.toLocaleString('bg-BG')})</span>`;
+        } else if (total > 0) {
+            badgeHtml = `<span class="resolver-stock-deficit">🟡 Всички ${total.toLocaleString('bg-BG')} бр. са запазени (0 свободни)</span>`;
+        } else {
+            badgeHtml = `<span class="resolver-stock-none">⚪ 0 бр. свободни (в Склад Детайли)</span>`;
+        }
+    } else if (hasSklad) {
+        const stock = sklad.stock;
+        const unit = sklad.unit || 'бр.';
+        if (stock >= requiredQty) {
+            badgeHtml = `<span class="resolver-stock-ok">🟢 В наличност: <b>${stock.toLocaleString('bg-BG')} ${unit}</b></span>`;
+            isOk = true;
+        } else if (stock > 0) {
+            badgeHtml = `<span class="resolver-stock-deficit">🔴 Недостиг: <b>${stock.toLocaleString('bg-BG')} ${unit}</b> (нужни: ${requiredQty.toLocaleString('bg-BG')})</span>`;
+        } else {
+            badgeHtml = `<span class="resolver-stock-none">⚪ 0 ${unit} (в Склад Материали)</span>`;
+        }
+    } else {
+        badgeHtml = `<span class="resolver-stock-none">⚪ 0 бр. (Няма наличност)</span>`;
+    }
+
+    return {
+        rawCode: partCode,
+        hasData: hasInv || hasSklad,
+        hasInv,
+        inv,
+        hasSklad,
+        sklad,
+        badgeHtml,
+        isOk
+    };
 }
 
 function renderResolverView() {
@@ -203,7 +362,25 @@ function renderResolverView() {
     const { bomMap, routesMap, skladMap, invMap, nomMap } = buildResolverMaps();
     const currentUpper = currentPartCode.toUpperCase();
 
-    const rawChildren = bomMap[currentUpper] || [];
+    // 1. Initial children from BOM
+    const rawChildren = [...(bomMap[currentUpper] || [])];
+
+    // 2. Also include any children where ID Родител in Nomenklatura matches currentPartCode
+    (cachedNomenklatura || []).forEach(n => {
+        const p = String(n['ID Родител'] || '').trim().toUpperCase();
+        if (p && (p === currentUpper || p === currentPartCode.toUpperCase())) {
+            const childCode = String(n['ID Детайл'] || '').trim();
+            if (childCode && !rawChildren.some(c => String(c.child).trim().toUpperCase() === childCode.toUpperCase())) {
+                rawChildren.push({
+                    child: childCode,
+                    qty: parseFloat(n['Разходна норма']) || 1,
+                    opNum: null,
+                    source: 'nomenklatura'
+                });
+            }
+        }
+    });
+
     const rootRoutes = routesMap[currentUpper] || [];
     const nomInfo = nomMap[currentUpper] || {};
 
@@ -281,7 +458,7 @@ function renderResolverView() {
             sklad: skladMap[childUpper] || null,
             inv: invMap[childUpper] || null,
             nom: itemNom,
-            isFromNomenclature: false
+            isFromNomenclature: c.source === 'nomenklatura'
         };
 
         if (isPart) {
@@ -337,6 +514,60 @@ function renderResolverView() {
     const drawingLink = nomInfo['Линк към чертеж'] || '';
     const desc = nomInfo['Описание'] || nomInfo['Вътрешно име'] || '';
 
+    // 🌟 Current Part Stock Resolution for Hero Card
+    const currentStock = resolveStockForPart(currentPartCode, currentResolverMultiplier, skladMap, invMap, nomMap);
+    let heroStockCardHtml = '';
+    if (currentStock) {
+        let stockDetailsHtml = '';
+        if (currentStock.hasInv && currentStock.hasSklad) {
+            stockDetailsHtml = `
+                <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                    <span class="${currentStock.inv.totalFree > 0 ? 'resolver-stock-ok' : 'resolver-stock-none'}" style="font-size:0.92em; padding:6px 12px;">
+                        🏭 Склад Детайли: <b>${currentStock.inv.totalFree.toLocaleString('bg-BG')} бр. свободни</b> (общо: ${currentStock.inv.totalStock.toLocaleString('bg-BG')} бр.)
+                    </span>
+                    <span class="${currentStock.sklad.stock > 0 ? 'resolver-stock-ok' : 'resolver-stock-none'}" style="font-size:0.92em; padding:6px 12px;">
+                        📦 Склад Материали: <b>${currentStock.sklad.stock.toLocaleString('bg-BG')} ${currentStock.sklad.unit}</b>
+                    </span>
+                </div>
+            `;
+        } else if (currentStock.hasInv) {
+            stockDetailsHtml = `
+                <span class="${currentStock.inv.totalFree > 0 ? 'resolver-stock-ok' : 'resolver-stock-none'}" style="font-size:0.95em; padding:6px 14px;">
+                    🏭 Склад Детайли: <b>${currentStock.inv.totalFree.toLocaleString('bg-BG')} бр. свободни</b> (общо: ${currentStock.inv.totalStock.toLocaleString('bg-BG')} бр.)
+                </span>
+            `;
+        } else if (currentStock.hasSklad) {
+            stockDetailsHtml = `
+                <span class="${currentStock.sklad.stock > 0 ? 'resolver-stock-ok' : 'resolver-stock-none'}" style="font-size:0.95em; padding:6px 14px;">
+                    📦 Склад Материали: <b>${currentStock.sklad.stock.toLocaleString('bg-BG')} ${currentStock.sklad.unit}</b> в наличност
+                </span>
+            `;
+        } else {
+            stockDetailsHtml = `
+                <span class="resolver-stock-none" style="font-size:0.92em; padding:6px 14px; background:#f8fafc; border:1px solid #e2e8f0; color:#64748b;">
+                    ⚪ <b>0 бр. на склад</b> (няма налични готови бройки в Склад Детайли или Склад Материали)
+                </span>
+            `;
+        }
+
+        const isGood = (currentStock.hasInv && currentStock.inv.totalFree > 0) || (currentStock.hasSklad && currentStock.sklad.stock > 0);
+
+        heroStockCardHtml = `
+            <div class="resolver-hero-stock-box ${isGood ? 'in-stock' : 'out-of-stock'}">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <span style="font-size:1.35em;">${isGood ? '🏢' : '📦'}</span>
+                    <div>
+                        <div class="resolver-stock-title ${isGood ? 'in-stock' : ''}">Текуща наличност на склад за този детайл:</div>
+                        <div style="margin-top:4px;">
+                            ${stockDetailsHtml}
+                        </div>
+                    </div>
+                </div>
+                ${nomInfo['Местоположение'] ? `<div style="font-size:0.85em; color:#475569; background:#ffffff; padding:4px 10px; border-radius:6px; border:1px solid #cbd5e1;">📍 Локация: <b>${nomInfo['Местоположение']}</b></div>` : ''}
+            </div>
+        `;
+    }
+
     let originBoxHtml = '';
     if (originMaterialInfo) {
         let stockBadge = '<span class="resolver-stock-none">⚪ Без складов запис</span>';
@@ -387,6 +618,7 @@ function renderResolverView() {
                         ${rootRoutes.length > 0 ? `<span class="resolver-pill resolver-pill-stat" style="background:#fef3c7; color:#92400e; border-color:#fde68a;">🔄 <b>${rootRoutes.length}</b> операции</span>` : ''}
                     </div>
                 </div>
+                ${heroStockCardHtml}
                 ${originBoxHtml}
             </div>
         </div>
@@ -426,23 +658,15 @@ function renderResolverView() {
                                 <th>Детайл / Подвъзел</th>
                                 <th style="text-align:center; width: 85px;">Норма</th>
                                 <th style="text-align:center; width: 95px;">За ${currentResolverMultiplier} бр.</th>
-                                <th style="width: 180px;">Склад Детайли</th>
+                                <th style="width: 220px;">Наличност на склад</th>
                                 <th>Маршрут</th>
                                 <th style="text-align:right; width: 120px;">Действие</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${partsList.map(p => {
-                                let stockBadge = '<span class="resolver-stock-none">⚪ Няма данни</span>';
-                                if (p.inv) {
-                                    if (p.inv.totalFree >= p.totalQty) {
-                                        stockBadge = `<span class="resolver-stock-ok">🟢 Свободни: ${p.inv.totalFree.toLocaleString('bg-BG')} бр.</span>`;
-                                    } else {
-                                        stockBadge = `<span class="resolver-stock-deficit">🟡 Свободни: ${p.inv.totalFree.toLocaleString('bg-BG')} бр. (Общо: ${p.inv.totalStock})</span>`;
-                                    }
-                                } else if (p.sklad) {
-                                    stockBadge = `<span class="resolver-stock-ok">🟢 Склад: ${p.sklad.stock.toLocaleString('bg-BG')} ${p.sklad.unit}</span>`;
-                                }
+                                const stockInfo = resolveStockForPart(p.code, p.totalQty, skladMap, invMap, nomMap);
+                                const stockBadge = stockInfo ? stockInfo.badgeHtml : '<span class="resolver-stock-none">⚪ 0 бр. (Няма данни)</span>';
 
                                 let routesText = '—';
                                 if (p.routes.length > 0) {
@@ -505,11 +729,21 @@ function renderResolverView() {
                         </thead>
                         <tbody>
                             ${materialsList.map(m => {
+                                const stockInfo = resolveStockForPart(m.code, m.totalQty, skladMap, invMap, nomMap);
                                 let stockBadge = '<span class="resolver-stock-none">⚪ Без складов запис</span>';
-                                const unit = m.unitName || (m.sklad ? m.sklad.unit : 'бр.');
+                                const unit = m.unitName || (stockInfo && stockInfo.hasSklad ? stockInfo.sklad.unit : (m.sklad ? m.sklad.unit : 'бр.'));
                                 let bufferText = '—';
 
-                                if (m.sklad) {
+                                if (stockInfo && stockInfo.hasSklad) {
+                                    const s = stockInfo.sklad;
+                                    bufferText = s.minStock ? `Мин: ${s.minStock.toLocaleString('bg-BG')}` : '—';
+                                    if (s.stock >= m.totalQty) {
+                                        stockBadge = `<span class="resolver-stock-ok">🟢 В наличност: ${s.stock.toLocaleString('bg-BG')} ${unit}</span>`;
+                                    } else {
+                                        const deficit = m.totalQty - s.stock;
+                                        stockBadge = `<span class="resolver-stock-deficit">🔴 Недостиг: ${s.stock.toLocaleString('bg-BG')} ${unit} (дефицит: ${deficit.toLocaleString('bg-BG')})</span>`;
+                                    }
+                                } else if (m.sklad) {
                                     bufferText = m.sklad.minStock ? `Мин: ${m.sklad.minStock.toLocaleString('bg-BG')}` : '—';
                                     if (m.sklad.stock >= m.totalQty) {
                                         stockBadge = `<span class="resolver-stock-ok">🟢 В наличност: ${m.sklad.stock.toLocaleString('bg-BG')} ${unit}</span>`;
@@ -559,17 +793,17 @@ function renderResolverView() {
             <div class="resolver-section">
                 <div class="resolver-section-header">
                     <div class="resolver-section-title">
-                        <span>🔄 Технологични операции на детайла (${rootRoutes.length})</span>
+                        <span>🔄 Маршрут и технологични операции</span>
+                        <span style="font-size:0.85em; font-weight:normal; color:#64748b;">– общо ${rootRoutes.length} стъпки за изработка</span>
                     </div>
                 </div>
-                <div style="padding: 15px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="padding: 16px 20px; display:flex; flex-direction:column; gap:10px;">
                     ${rootRoutes.map(r => `
                         <div class="resolver-route-step">
-                            <span style="background:#ca8a04; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:800; font-size:0.85em;">Оп. ${r['№ Операция']}</span>
-                            <span style="font-weight:800; color:#1e293b; font-size:1em;">${r['Име на операция']}</span>
-                            <span style="color:#64748b;">(Машина: <b style="color:#334155;">${r['Машина'] || 'Н/А'}</b>)</span>
-                            ${r['Норма (мин/бр)'] ? `<span style="background:#e2e8f0; color:#334155; padding:2px 6px; border-radius:4px; font-size:0.8em;">⏱️ ${r['Норма (мин/бр)']} мин/бр.</span>` : ''}
-                            ${r['Линк към чертеж'] ? `<a href="${r['Линк към чертеж']}" target="_blank" style="margin-left:auto; color:#2563eb; font-weight:bold; text-decoration:none; font-size:0.85em;">📐 Чертеж</a>` : ''}
+                            <span style="background:#eab308; color:#ffffff; padding:2px 8px; border-radius:12px; font-weight:800; font-size:0.85em;">Оп. ${r['№ Операция']}</span>
+                            <span style="font-weight:700; color:#1e293b; font-size:1.02em;">${r['Име на операция']}</span>
+                            ${r['Машина'] ? `<span style="background:#ffffff; border:1px solid #fde047; padding:2px 8px; border-radius:4px; font-size:0.85em; color:#854d0e;">⚙️ Машина: <b>${r['Машина']}</b></span>` : ''}
+                            ${r['Инструкция за оставяне'] ? `<span style="font-size:0.85em; color:#64748b;">📍 Оставяне: ${r['Инструкция за оставяне']}</span>` : ''}
                         </div>
                     `).join('')}
                 </div>
@@ -589,17 +823,8 @@ function renderResolverView() {
 }
 
 function renderTreeNode(codeUpper, bomMap, routesMap, skladMap, invMap, nomMap, requiredQty) {
-    let stockBadge = '';
-    if (skladMap[codeUpper]) {
-        const s = skladMap[codeUpper];
-        if (s.stock >= requiredQty) {
-            stockBadge = `<span class="resolver-stock-ok" style="font-size:0.75em; padding:2px 6px;">🟢 ${s.stock} ${s.unit}</span>`;
-        } else {
-            stockBadge = `<span class="resolver-stock-deficit" style="font-size:0.75em; padding:2px 6px;">🔴 Недостиг (${s.stock}/${requiredQty})</span>`;
-        }
-    } else if (invMap[codeUpper]) {
-        stockBadge = `<span class="resolver-stock-ok" style="font-size:0.75em; padding:2px 6px;">🟢 Свободни: ${invMap[codeUpper].totalFree}</span>`;
-    }
+    const stockInfo = resolveStockForPart(codeUpper, requiredQty, skladMap, invMap, nomMap);
+    let stockBadge = stockInfo ? stockInfo.badgeHtml : '';
 
     let html = `<li>
         <div class="tree-node">
@@ -631,11 +856,8 @@ function renderTreeNode(codeUpper, bomMap, routesMap, skladMap, invMap, nomMap, 
             const pUpper = pCode.toUpperCase();
             const pNorm = parseFloat(nomMap[codeUpper]['Разходна норма']) || 1;
             const pUnit = nomMap[codeUpper]['Единици'] || (skladMap[pUpper] ? skladMap[pUpper].unit : 'бр.');
-            let pStockBadge = '';
-            if (skladMap[pUpper]) {
-                const s = skladMap[pUpper];
-                pStockBadge = `<span class="resolver-stock-ok" style="font-size:0.75em; padding:2px 6px;">🟢 ${s.stock} ${s.unit}</span>`;
-            }
+            const pStockInfo = resolveStockForPart(pUpper, requiredQty * pNorm, skladMap, invMap, nomMap);
+            const pStockBadge = pStockInfo ? pStockInfo.badgeHtml : '';
             html += `<ul><li>
                 <div class="tree-node">
                     <span style="font-size:0.9em;">✂️</span>
