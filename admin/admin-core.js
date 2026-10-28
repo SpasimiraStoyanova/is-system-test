@@ -416,6 +416,15 @@ function renderDynamicTable(itemsToRender = null) {
           row.appendChild(td); return;
       }
 
+      if (currentTab === 'plan' && f.name === 'Статус') {
+          let sStyle = 'background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;';
+          if (val === 'Завършен') sStyle = 'background:#dcfce7; color:#15803d; border:1px solid #bbf7d0;';
+          else if (val && val.includes('Опакован')) sStyle = 'background:#fef3c7; color:#b45309; border:1px solid #fde68a;';
+          else if (val && val.includes('Изпратен')) sStyle = 'background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;';
+          td.innerHTML = `<span style="${sStyle} padding:4px 10px; border-radius:20px; font-weight:800; font-size:0.85em; display:inline-flex; align-items:center; gap:4px;">${val}</span>`;
+          row.appendChild(td); return;
+      }
+
       if ((f.name === 'Време' || f.name === 'Дата') && val) { try { let pVal = val; if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z'; td.innerHTML = `<b>${new Date(pVal).toLocaleString('bg-BG')}</b>`; } catch(e) { td.innerText = val; } row.appendChild(td); return; }
       if (currentTab === 'chekiraniya' && f.name === 'Действие') {
           if (val === 'Влизане') td.innerHTML = `<span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🟢 ${val}</span>`;
