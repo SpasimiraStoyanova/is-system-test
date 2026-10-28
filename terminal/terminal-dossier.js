@@ -96,8 +96,8 @@ function getTermFileExtIcon(fileName) {
     return '📄';
 }
 
-async function openTerminalDossier() {
-    const email = currentEmail || localStorage.getItem('mes_email');
+async function openTerminalDossier(overrideEmail) {
+    const email = (overrideEmail && overrideEmail.trim()) || currentEmail || localStorage.getItem('mes_email');
     if (!email) {
         Swal.fire({
             icon: 'warning',
@@ -114,7 +114,7 @@ async function openTerminalDossier() {
 
     if (!isAuthed) {
         const { value: enteredPassword } = await Swal.fire({
-            title: '🔒 Защитен достъп до фишове',
+            title: '🔒 Защитен достъп до лично досие',
             html: `<div style="font-size:0.9em; color:#64748b; margin-bottom:12px;">Оператор: <b>${currentOperator || email}</b></div>Въведете вашата индивидуална парола / ПИН:`,
             input: 'password',
             inputAttributes: {

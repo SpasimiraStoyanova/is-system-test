@@ -109,6 +109,17 @@ function triggerPushPrompt() {
     OneSignalDeferred.push(async function(OneSignal) { try { Swal.close(); await OneSignal.Notifications.requestPermission(); } catch(e) { console.error("Грешка:", e); } });
 }
 
+function openWorkerDossierFromProfile() {
+    const emailInput = document.getElementById('swal-email');
+    const enteredEmail = (emailInput && emailInput.value.trim()) || currentEmail || localStorage.getItem('mes_email');
+    Swal.close();
+    if (typeof openTerminalDossier === 'function') {
+        openTerminalDossier(enteredEmail);
+    } else {
+        console.error("openTerminalDossier is not available");
+    }
+}
+
 async function setupProfile() {
     const { value: formValues } = await Swal.fire({
         title: 'Профил Работник',
@@ -118,7 +129,7 @@ async function setupProfile() {
             '<label style="display:block; text-align:left; font-size:14px; font-weight:bold; margin-top:15px; margin-bottom:5px; color:#475569;">Личен Имейл</label><input id="swal-email" class="swal2-input" type="email" style="margin-top:0;" value="' + (currentEmail || '') + '">' +
             '<div style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 15px; display: flex; justify-content: center; gap: 10px;">' +
             '<button type="button" onclick="window.location.href=\'admin.html\'" style="background: transparent; border: 1px solid #cbd5e1; color: #475569; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">🔒 Админ</button>' +
-            '<button type="button" disabled style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #94a3b8; padding: 6px 12px; border-radius: 6px; cursor: not-allowed; font-size: 12px; font-weight: bold; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);">🔒 Досие (Скоро)</button></div>',
+            '<button type="button" onclick="openWorkerDossierFromProfile()" style="background: #eef2ff; border: 1px solid #c7d2fe; color: #4338ca; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: inline-flex; align-items: center; gap: 5px;">📁 Досие</button></div>',
         focusConfirm: false, allowOutsideClick: !!currentOperator, confirmButtonText: 'Запази профила', confirmButtonColor: '#2563eb',
         preConfirm: () => { return [ document.getElementById('swal-email').value.trim() ] }
     });
@@ -241,5 +252,3 @@ async function fetchMessages() {
 }
 
 window.onload = initTerminal;
-
-
