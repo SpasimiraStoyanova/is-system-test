@@ -397,8 +397,9 @@ async function loadTasks(isSilent = false) {
                               }
                               let childAvail = wipAvail + skladAvail;
                               let sets = Math.floor(childAvail / multiplier);
-                              if (sets < minSets) { minSets = sets; blockingReasons.push(`${cCode} (${childAvail} налични)`); }
+                              if (sets < minSets) minSets = sets;
                               if (sets < rawMinSets) rawMinSets = sets;
+                              if (sets < totalShortage) { blockingReasons.push(`${cCode} (${childAvail} налични)`); }
                               
                               // Build itemsToFetch
                               let nomItem = globalNomData.find(n => normalizeStr(n['ID Детайл']) === cCode);
@@ -419,7 +420,7 @@ async function loadTasks(isSilent = false) {
                                   if (locTexts.length === 0) locTexts.push(`0бр. налични`);
                                   let loc = locTexts.join(' / ');
                                   
-                                  itemsToFetch.push({ code: String(child['ID Компонент']).trim(), qty: multiplier, loc: loc, type: type });
+                                  itemsToFetch.push({ code: String(child['ID Компонент']).trim(), qty: multiplier, loc: loc, type: type, avail: childAvail, sets: sets });
                               }
                           });
                           
@@ -881,7 +882,7 @@ function findUpstreamTargetForBlockedTask(taskObj, fallbackPartName, fallbackOpN
         }
     }
 
-    // 1. Ако блокирането е заради ПРЕДХОДНА ОПЕРАЦИЯ на същия детайл (напр. Оп. 20 чака за Оп. 10):
+    // 1. Ако блокирането е заради ПРЕДХОДНА ОПЕРАЦИЯ на същия детайл:
     if (isPrevOpMissing && curIndex > 0) {
         const prevOp = myRoutes[curIndex - 1];
         return {
@@ -893,40 +894,78 @@ function findUpstreamTargetForBlockedTask(taskObj, fallbackPartName, fallbackOpN
         };
     }
 
-    // 2. Проверка за липсващ детайл / компонент от BOM (напр. Зареждане на резолвер чака за Статор X-J):
+    // 2. Проверка за липсващ детайл / компонент от BOM:
     if (taskObj.itemsToFetch && taskObj.itemsToFetch.length > 0) {
+        let missingItems = [];
         for (const item of taskObj.itemsToFetch) {
             const childCode = String(item.code || '').trim();
             const childCodeNorm = normalizeStr(childCode);
             const childRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[childCodeNorm]) ? globalRoutesByDetail[childCodeNorm] : [];
             
-            const isMissing = (item.loc && item.loc.includes('0бр.')) || 
-                              reasonsLower.includes(childCodeNorm);
+            // Проверка дали НАИСТИНА липсва (наличност 0 или loc съдържа 0бр.):
+            const locHasZero = item.loc && (item.loc.includes('0бр.') || item.loc.includes('(0 налични)'));
+            const availIsZero = (typeof item.avail !== 'undefined' && item.avail < (item.qty || 1));
+            const textMentionsZero = reasonsLower.includes(childCodeNorm) && (
+                reasonsLower.includes('0 налични') || 
+                reasonsLower.includes('0бр') || 
+                reasonsLower.includes(childCodeNorm + ' (0') ||
+                locHasZero
+            );
+
+            // Ако имаме изрично налични бройки (напр. 99401), НЕ го считаме за липсващ!
+            const hasPlentyStock = (typeof item.avail !== 'undefined' && item.avail >= (item.qty || 1)) ||
+                                   (item.loc && !item.loc.includes('0бр.') && item.loc.includes('бр.'));
             
-            if (isMissing || (taskObj.itemsToFetch.length === 1 && !isPrevOpMissing)) {
-                if (childRoutes.length > 0) {
-                    const firstOp = childRoutes[0];
-                    return {
-                        target_part: childCode,
-                        target_op_num: firstOp['№ Операция'],
-                        target_op_name: firstOp['Име на операция'],
-                        target_machine: firstOp['Машина'] || 'Обща',
-                        is_child: true
-                    };
-                } else {
-                    return {
-                        target_part: childCode,
-                        target_op_num: null,
-                        target_op_name: 'Склад Материали',
-                        target_machine: 'Склад',
-                        is_child: true
-                    };
-                }
+            if ((locHasZero || availIsZero || textMentionsZero) && !hasPlentyStock) {
+                missingItems.push({
+                    code: childCode,
+                    norm: childCodeNorm,
+                    routes: childRoutes
+                });
+            }
+        }
+
+        // Ако горната проверка не е хванала детайл, но има детайли в itemsToFetch:
+        if (missingItems.length === 0 && !isPrevOpMissing) {
+            for (const item of taskObj.itemsToFetch) {
+                const childCode = String(item.code || '').trim();
+                const childCodeNorm = normalizeStr(childCode);
+                const childRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[childCodeNorm]) ? globalRoutesByDetail[childCodeNorm] : [];
+                missingItems.push({
+                    code: childCode,
+                    norm: childCodeNorm,
+                    routes: childRoutes
+                });
+            }
+        }
+
+        if (missingItems.length > 0) {
+            // КРИТИЧНО ВАЖНО: ПРИОРИТЕТ за известие към машина има детайл, който има технологичен маршрут в цеха (routes.length > 0)!
+            // Например: ако липсват проводник (склад) и тефлонова макара (машина EMCOTURN E25),
+            // сигналът към терминала ЗАДЪЛЖИТЕЛНО отива към EMCOTURN E25!
+            const prodItem = missingItems.find(m => m.routes && m.routes.length > 0) || missingItems[0];
+            if (prodItem.routes && prodItem.routes.length > 0) {
+                const firstOp = prodItem.routes[0];
+                return {
+                    target_part: prodItem.code,
+                    target_op_num: firstOp['№ Операция'],
+                    target_op_name: firstOp['Име на операция'],
+                    target_machine: firstOp['Машина'] || 'Обща',
+                    is_child: true
+                };
+            } else {
+                return {
+                    target_part: prodItem.code,
+                    target_op_num: null,
+                    target_op_name: 'Склад Материали',
+                    target_machine: 'Склад',
+                    is_child: true
+                };
             }
         }
     }
 
-    // 3. Ако няма BOM компонент, но има предходна операция на същия детайл:
+    // 3. Предходна операция на същия детайл:
     if (curIndex > 0) {
         const prevOp = myRoutes[curIndex - 1];
         return {
