@@ -871,28 +871,45 @@ window.requestStockMaterialPrompt = async function(taskId, encName, encOp, encRe
     if (res.isConfirmed) {
         try {
             const timestamp = new Date().toISOString();
-            const noteText = `🔔 ЗАЯВКА ЗАГОТОВКА: ${partName} (${opName}) за машина [${machine}] от [${operator}]. Липсва: ${reasons}`;
             
-            await client.from('chekiraniya').insert([{
-                'Време': timestamp,
-                'Имейл': email,
-                'Действие': 'Заявка склад',
-                'Локация': machine,
-                'Бележка': noteText
-            }]);
+            const reqData = {
+                task_id: taskId,
+                part_name: partName,
+                op_name: opName,
+                machine: machine,
+                operator: operator,
+                operator_email: email,
+                reasons: reasons,
+                status: 'Чакаща',
+                created_at: timestamp
+            };
+            
+            const { error: insErr } = await client.from('material_requests').insert([reqData]);
+            if (insErr) {
+                console.error('material_requests insert error:', insErr);
+                if (insErr.code === '42P01' || (insErr.message && insErr.message.includes('relation'))) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Таблицата още не е създадена в базата',
+                        html: 'За да се записват заявките в таб Планиране, моля изпълнете скрипта <code>setup_material_requests.sql</code> в Supabase SQL Editor на тестовата база.'
+                    });
+                    return;
+                }
+                throw insErr;
+            }
 
             const btn = document.getElementById('btnReq_' + taskId);
             if (btn) {
                 const nowTime = new Date().toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' });
                 btn.style.backgroundColor = '#16a34a';
-                btn.innerHTML = `<span>✅ Заявено в ${nowTime} ч.</span>`;
+                btn.innerHTML = `<span>⏳ Заявено към Планиране (${nowTime} ч.)</span>`;
                 btn.disabled = true;
             }
 
             Swal.fire({
                 icon: 'success',
-                title: 'Заявката е изпратена!',
-                text: `Складът е уведомен за заготовка за ${partName}.`,
+                title: 'Заявката е изпратена към Планиране!',
+                text: `Планьорът получи известие за липсваща заготовка за ${partName}.`,
                 timer: 2500,
                 showConfirmButton: false
             });
