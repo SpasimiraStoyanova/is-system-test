@@ -1,4 +1,4 @@
-﻿// terminal-dossier.js - Достъп до лично досие и фишове през терминала с индивидуален ПИН/парола
+// terminal-dossier.js - Достъп до лично досие и фишове през терминала с индивидуален ПИН/парола
 
 const DOSIETA_STORAGE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
 const DOSIETA_STORAGE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkeXRoemNnY2p4d2J4dWZ1bnVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MTcxNTMsImV4cCI6MjA5NjE5MzE1M30.XGZX5DHhJCGz9X5s__3iuSghukjanyJmGKv8MLig_jE';
@@ -108,73 +108,66 @@ async function openTerminalDossier(overrideEmail) {
         return;
     }
 
-    // Check if already authenticated in this session
-    const authKey = 'term_dossier_auth_' + email;
-    const isAuthed = sessionStorage.getItem(authKey) === 'true';
+    // Always require PIN prompt every time Dossier is clicked on terminal
+    const { value: enteredPassword } = await Swal.fire({
+        title: '🔒 Защитен достъп до лично досие',
+        html: `<div style="font-size:0.9em; color:#64748b; margin-bottom:12px;">Оператор: <b>${currentOperator || email}</b></div>Въведете вашата индивидуална парола / ПИН:`,
+        input: 'password',
+        inputAttributes: {
+            autocapitalize: 'off',
+            autocorrect: 'off',
+            placeholder: 'Въведете парола'
+        },
+        showCancelButton: true,
+        confirmButtonText: 'ВХОД',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#4338ca',
+        cancelButtonColor: '#64748b'
+    });
 
-    if (!isAuthed) {
-        const { value: enteredPassword } = await Swal.fire({
-            title: '🔒 Защитен достъп до лично досие',
-            html: `<div style="font-size:0.9em; color:#64748b; margin-bottom:12px;">Оператор: <b>${currentOperator || email}</b></div>Въведете вашата индивидуална парола / ПИН:`,
-            input: 'password',
-            inputAttributes: {
-                autocapitalize: 'off',
-                autocorrect: 'off',
-                placeholder: 'Въведете парола'
-            },
-            showCancelButton: true,
-            confirmButtonText: 'ВХОД',
-            cancelButtonText: 'Отказ',
-            confirmButtonColor: '#4338ca',
-            cancelButtonColor: '#64748b'
-        });
+    if (!enteredPassword) return;
 
-        if (!enteredPassword) return;
+    Swal.fire({ title: 'Проверка...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-        Swal.fire({ title: 'Проверка...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    try {
+        const { data, error } = await termDosietaClient
+            .from('personal')
+            .select('password, Име')
+            .eq('Имейл', email)
+            .limit(1);
 
-        try {
-            const { data, error } = await termDosietaClient
-                .from('personal')
-                .select('password, Име')
-                .eq('Имейл', email)
-                .limit(1);
+        if (error) throw error;
 
-            if (error) throw error;
-
-            if (!data || data.length === 0) {
-                Swal.fire('Грешка', 'Не е намерен запис за вашия имейл.', 'error');
-                return;
-            }
-
-            const expectedPassword = data[0].password;
-            if (!expectedPassword) {
-                Swal.fire({
-                    icon: 'info',
-                    title: 'Няма зададена парола',
-                    text: 'За вашия профил все още не е въведена индивидуална парола. Моля, свържете се с администратор/мениджър.',
-                    confirmButtonColor: '#4338ca'
-                });
-                return;
-            }
-
-            if (enteredPassword.trim() !== expectedPassword.trim()) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Грешна парола!',
-                    text: 'Въведената парола не съвпада. Опитайте отново.',
-                    confirmButtonColor: '#dc2626'
-                });
-                return;
-            }
-
-            // Authenticated successfully!
-            sessionStorage.setItem(authKey, 'true');
-            Swal.close();
-        } catch (err) {
-            Swal.fire('Грешка при проверка', err.message || 'Опитайте отново по-късно.', 'error');
+        if (!data || data.length === 0) {
+            Swal.fire('Грешка', 'Не е намерен запис за вашия имейл.', 'error');
             return;
         }
+
+        const expectedPassword = data[0].password;
+        if (!expectedPassword) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Няма зададена парола',
+                text: 'За вашия профил все още не е въведена индивидуална парола в базата. Моля, свържете се с администратор/мениджър.',
+                confirmButtonColor: '#4338ca'
+            });
+            return;
+        }
+
+        if (enteredPassword.trim() !== expectedPassword.trim()) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Грешна парола!',
+                text: 'Въведената парола не съвпада. Опитайте отново.',
+                confirmButtonColor: '#dc2626'
+            });
+            return;
+        }
+
+        Swal.close();
+    } catch (err) {
+        Swal.fire('Грешка при проверка', err.message || 'Опитайте отново по-късно.', 'error');
+        return;
     }
 
     // Open modal and load documents
