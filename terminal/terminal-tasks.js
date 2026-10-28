@@ -863,7 +863,37 @@ function findUpstreamTargetForBlockedTask(taskObj, fallbackPartName, fallbackOpN
         };
     }
 
-    // 1. Check if there are missing child items in itemsToFetch:
+    const reasonsLower = (reasonsStr || '').toLowerCase();
+    const blockingReasonsArr = (taskObj.blockingReasons || []).map(r => String(r).toLowerCase());
+    const isPrevOpMissing = reasonsLower.includes('предходна') || 
+                            blockingReasonsArr.some(r => r.includes('предходна'));
+
+    const myCodeNorm = normalizeStr(taskObj.name);
+    const myRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[myCodeNorm]) ? globalRoutesByDetail[myCodeNorm] : [];
+    const curOpNum = parseInt(taskObj.opNum || taskObj.opNumber || 0);
+    let curIndex = -1;
+    if (myRoutes.length > 0) {
+        if (curOpNum > 0) {
+            curIndex = myRoutes.findIndex(r => parseInt(r['№ Операция']) === curOpNum);
+        }
+        if (curIndex === -1 && taskObj.op) {
+            curIndex = myRoutes.findIndex(r => normalizeStr(r['Име на операция']) === normalizeStr(taskObj.op));
+        }
+    }
+
+    // 1. Ако блокирането е заради ПРЕДХОДНА ОПЕРАЦИЯ на същия детайл (напр. Оп. 20 чака за Оп. 10):
+    if (isPrevOpMissing && curIndex > 0) {
+        const prevOp = myRoutes[curIndex - 1];
+        return {
+            target_part: taskObj.name,
+            target_op_num: prevOp['№ Операция'],
+            target_op_name: prevOp['Име на операция'],
+            target_machine: prevOp['Машина'] || 'Обща',
+            is_child: false
+        };
+    }
+
+    // 2. Проверка за липсващ детайл / компонент от BOM (напр. Зареждане на резолвер чака за Статор X-J):
     if (taskObj.itemsToFetch && taskObj.itemsToFetch.length > 0) {
         for (const item of taskObj.itemsToFetch) {
             const childCode = String(item.code || '').trim();
@@ -871,9 +901,9 @@ function findUpstreamTargetForBlockedTask(taskObj, fallbackPartName, fallbackOpN
             const childRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[childCodeNorm]) ? globalRoutesByDetail[childCodeNorm] : [];
             
             const isMissing = (item.loc && item.loc.includes('0бр.')) || 
-                              (reasonsStr && reasonsStr.toLowerCase().includes(childCodeNorm));
+                              reasonsLower.includes(childCodeNorm);
             
-            if (isMissing || taskObj.itemsToFetch.length === 1) {
+            if (isMissing || (taskObj.itemsToFetch.length === 1 && !isPrevOpMissing)) {
                 if (childRoutes.length > 0) {
                     const firstOp = childRoutes[0];
                     return {
@@ -896,25 +926,19 @@ function findUpstreamTargetForBlockedTask(taskObj, fallbackPartName, fallbackOpN
         }
     }
 
-    // 2. Previous operation of the same part
-    const myCodeNorm = normalizeStr(taskObj.name);
-    const myRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[myCodeNorm]) ? globalRoutesByDetail[myCodeNorm] : [];
-    if (myRoutes.length > 1) {
-        const curOpNum = parseInt(taskObj.opNum || taskObj.opNumber || 0);
-        const curIndex = myRoutes.findIndex(r => parseInt(r['№ Операция']) === curOpNum);
-        if (curIndex > 0) {
-            const prevOp = myRoutes[curIndex - 1];
-            return {
-                target_part: taskObj.name,
-                target_op_num: prevOp['№ Операция'],
-                target_op_name: prevOp['Име на операция'],
-                target_machine: prevOp['Машина'] || 'Обща',
-                is_child: false
-            };
-        }
+    // 3. Ако няма BOM компонент, но има предходна операция на същия детайл:
+    if (curIndex > 0) {
+        const prevOp = myRoutes[curIndex - 1];
+        return {
+            target_part: taskObj.name,
+            target_op_num: prevOp['№ Операция'],
+            target_op_name: prevOp['Име на операция'],
+            target_machine: prevOp['Машина'] || 'Обща',
+            is_child: false
+        };
     }
 
-    // 3. Fallback
+    // 4. Fallback към Склад
     return {
         target_part: fallbackPartName,
         target_op_num: null,
