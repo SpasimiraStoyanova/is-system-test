@@ -1,4 +1,4 @@
-/* ==========================================================
+﻿/* ==========================================================
    MES TERMINAL - PREMIUM MODERN INDUSTRIAL DESIGN SYSTEM
    ========================================================== */
 
@@ -535,4 +535,84 @@ input[type="number"]:focus {
   color: #ffffff;
   border-color: #4338ca;
   box-shadow: 0 2px 4px rgba(67, 56, 202, 0.25);
+}
+
+
+/* ============================================================
+   Terminal Andon / Pull Request Alerts
+   ============================================================ */
+.terminal-andon-alert {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+  border: 1.5px solid #fed7aa;
+  border-left: 6px solid #ea580c;
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-bottom: 15px;
+  box-shadow: 0 4px 14px rgba(234, 88, 12, 0.15);
+  animation: andonGlow 2.5s infinite alternate;
+}
+
+@keyframes andonGlow {
+  0% { box-shadow: 0 4px 14px rgba(234, 88, 12, 0.15); }
+  100% { box-shadow: 0 6px 22px rgba(234, 88, 12, 0.35); }
+}
+
+.andon-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.andon-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.05em;
+  font-weight: 900;
+  color: #9a3412;
+}
+
+.andon-badge {
+  background: #ea580c;
+  color: #ffffff;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.78em;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.andon-body {
+  font-size: 0.95em;
+  color: #431407;
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+
+.andon-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.andon-ack-btn {
+  background: linear-gradient(135deg, #ea580c, #c2410c);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-weight: 800;
+  font-size: 0.88em;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(234, 88, 12, 0.3);
+  transition: transform 0.1s;
+}
+
+.andon-ack-btn:active {
+  transform: scale(0.97);
 }

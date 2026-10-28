@@ -13,11 +13,22 @@ CREATE TABLE IF NOT EXISTS public.material_requests (
     operator text,
     operator_email text,
     reasons text,
+    target_part text,
+    target_op_num text,
+    target_op_name text,
+    target_machine text,
     status text DEFAULT 'Чакаща' NOT NULL, -- 'Чакаща', 'Осигурена', 'Отхвърлена'
     resolved_at timestamp with time zone,
     resolved_by text,
     notes text
 );
+
+-- Добавяне на новите колони, ако таблицата вече съществува:
+ALTER TABLE public.material_requests 
+ADD COLUMN IF NOT EXISTS target_part text,
+ADD COLUMN IF NOT EXISTS target_op_num text,
+ADD COLUMN IF NOT EXISTS target_op_name text,
+ADD COLUMN IF NOT EXISTS target_machine text;
 
 -- RLS Политики за достъп
 ALTER TABLE public.material_requests ENABLE ROW LEVEL SECURITY;

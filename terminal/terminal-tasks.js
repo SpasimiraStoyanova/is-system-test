@@ -1,4 +1,4 @@
-function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
+﻿function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
 
 function normalizeStr(str) {
     if (!str) return '';
@@ -850,6 +850,80 @@ function renderTasks(tasks) {
   container.innerHTML = html;
 }
 
+let currentRenderedTasksMap = {};
+
+function findUpstreamTargetForBlockedTask(taskObj, fallbackPartName, fallbackOpName, reasonsStr) {
+    if (!taskObj) {
+        return {
+            target_part: fallbackPartName,
+            target_op_num: null,
+            target_op_name: 'Склад',
+            target_machine: 'Склад',
+            is_child: false
+        };
+    }
+
+    // 1. Check if there are missing child items in itemsToFetch:
+    if (taskObj.itemsToFetch && taskObj.itemsToFetch.length > 0) {
+        for (const item of taskObj.itemsToFetch) {
+            const childCode = String(item.code || '').trim();
+            const childCodeNorm = normalizeStr(childCode);
+            const childRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[childCodeNorm]) ? globalRoutesByDetail[childCodeNorm] : [];
+            
+            const isMissing = (item.loc && item.loc.includes('0бр.')) || 
+                              (reasonsStr && reasonsStr.toLowerCase().includes(childCodeNorm));
+            
+            if (isMissing || taskObj.itemsToFetch.length === 1) {
+                if (childRoutes.length > 0) {
+                    const firstOp = childRoutes[0];
+                    return {
+                        target_part: childCode,
+                        target_op_num: firstOp['№ Операция'],
+                        target_op_name: firstOp['Име на операция'],
+                        target_machine: firstOp['Машина'] || 'Обща',
+                        is_child: true
+                    };
+                } else {
+                    return {
+                        target_part: childCode,
+                        target_op_num: null,
+                        target_op_name: 'Склад Материали',
+                        target_machine: 'Склад',
+                        is_child: true
+                    };
+                }
+            }
+        }
+    }
+
+    // 2. Previous operation of the same part
+    const myCodeNorm = normalizeStr(taskObj.name);
+    const myRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[myCodeNorm]) ? globalRoutesByDetail[myCodeNorm] : [];
+    if (myRoutes.length > 1) {
+        const curOpNum = parseInt(taskObj.opNum || taskObj.opNumber || 0);
+        const curIndex = myRoutes.findIndex(r => parseInt(r['№ Операция']) === curOpNum);
+        if (curIndex > 0) {
+            const prevOp = myRoutes[curIndex - 1];
+            return {
+                target_part: taskObj.name,
+                target_op_num: prevOp['№ Операция'],
+                target_op_name: prevOp['Име на операция'],
+                target_machine: prevOp['Машина'] || 'Обща',
+                is_child: false
+            };
+        }
+    }
+
+    // 3. Fallback
+    return {
+        target_part: fallbackPartName,
+        target_op_num: null,
+        target_op_name: 'Склад',
+        target_machine: 'Склад',
+        is_child: false
+    };
+}
+
 window.requestStockMaterialPrompt = async function(taskId, encName, encOp, encReasons) {
     const partName = decodeURIComponent(encName || '');
     const opName = decodeURIComponent(encOp || '');
@@ -858,12 +932,41 @@ window.requestStockMaterialPrompt = async function(taskId, encName, encOp, encRe
     const operator = (typeof currentOperator !== 'undefined' && currentOperator) ? currentOperator : 'Оператор';
     const email = (typeof currentOperatorEmail !== 'undefined' && currentOperatorEmail) ? currentOperatorEmail : operator;
 
+    const taskObj = (typeof currentRenderedTasksMap !== 'undefined' && currentRenderedTasksMap[taskId]) 
+        || (typeof globalTasks !== 'undefined' ? globalTasks.find(t => String(t.id) === String(taskId)) : null);
+
+    const upstream = findUpstreamTargetForBlockedTask(taskObj, partName, opName, reasons);
+
+    const targetPart = upstream ? upstream.target_part : partName;
+    const targetOpNum = upstream ? upstream.target_op_num : null;
+    const targetOpName = upstream ? upstream.target_op_name : '';
+    const targetMachine = upstream ? upstream.target_machine : 'Склад';
+
+    let routeInfoHtml = '';
+    if (targetMachine && targetMachine !== 'Склад') {
+        routeInfoHtml = `
+            <div style="background:#eff6ff; border:1.5px solid #bfdbfe; border-radius:8px; padding:10px; margin-top:12px; font-size:0.92em; color:#1e40af; text-align:left;">
+                👉 <b>Сигналът ще бъде насочен към:</b><br>
+                Работно място: <b style="color:#1e3a8a; font-size:1.05em;">${targetMachine}</b>
+                ${targetOpNum ? `<br>Операция: <b>Оп. ${targetOpNum} (${targetOpName})</b>` : ''}
+                <br>Липсващ детайл: <b>${targetPart}</b>
+                <div style="font-size:0.82em; color:#64748b; margin-top:4px;">(И ще се отрази веднага в Админ панела на Планиране)</div>
+            </div>
+        `;
+    } else {
+        routeInfoHtml = `
+            <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:8px; margin-top:10px; font-size:0.88em; color:#1e40af;">
+                📦 Сигналът ще бъде изпратен към Склад Материали и Планиране.
+            </div>
+        `;
+    }
+
     const res = await Swal.fire({
-        title: '🔔 Заявка за заготовка',
-        html: `Желаете ли да изпратите заявка към склада за заготовка/материал за:<br><br><b style="color:#0369a1; font-size:1.15em;">${partName}</b><br><span>Операция: <b>${opName}</b></span><br><br><div style="background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:8px; color:#991b1b; font-size:0.9em;">Липсва: ${reasons}</div>`,
+        title: '🔔 Заявка за бройки / заготовка',
+        html: `Желаете ли да изпратите сигнал за липсващ детайл/заготовка за:<br><br><b style="color:#0369a1; font-size:1.15em;">${partName}</b><br><span>Текуща операция: <b>${opName}</b></span><br><div style="background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:8px; color:#991b1b; font-size:0.9em; margin-top:8px;">Липсва: ${reasons}</div>${routeInfoHtml}`,
         icon: 'question',
         showCancelButton: true,
-        confirmButtonText: '🚀 Да, заяви от склад',
+        confirmButtonText: '🚀 Да, изпрати сигнала',
         cancelButtonText: 'Отказ',
         confirmButtonColor: '#ea580c'
     });
@@ -881,10 +984,40 @@ window.requestStockMaterialPrompt = async function(taskId, encName, encOp, encRe
                 operator_email: email,
                 reasons: reasons,
                 status: 'Чакаща',
-                created_at: timestamp
+                created_at: timestamp,
+                target_part: targetPart,
+                target_op_num: targetOpNum ? String(targetOpNum) : null,
+                target_op_name: targetOpName,
+                target_machine: targetMachine,
+                notes: JSON.stringify({
+                    target_part: targetPart,
+                    target_op_num: targetOpNum,
+                    target_op_name: targetOpName,
+                    target_machine: targetMachine,
+                    requested_by_machine: machine,
+                    requested_by_operator: operator
+                })
             };
             
-            const { error: insErr } = await client.from('material_requests').insert([reqData]);
+            let insErr = null;
+            const res1 = await client.from('material_requests').insert([reqData]);
+            if (res1.error) {
+                const fallbackData = {
+                    task_id: taskId,
+                    part_name: partName,
+                    op_name: opName,
+                    machine: machine,
+                    operator: operator,
+                    operator_email: email,
+                    reasons: reasons,
+                    status: 'Чакаща',
+                    created_at: timestamp,
+                    notes: reqData.notes
+                };
+                const res2 = await client.from('material_requests').insert([fallbackData]);
+                if (res2.error) insErr = res2.error;
+            }
+            
             if (insErr) {
                 console.error('material_requests insert error:', insErr);
                 if (insErr.code === '42P01' || (insErr.message && insErr.message.includes('relation'))) {
@@ -902,15 +1035,19 @@ window.requestStockMaterialPrompt = async function(taskId, encName, encOp, encRe
             if (btn) {
                 const nowTime = new Date().toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' });
                 btn.style.backgroundColor = '#16a34a';
-                btn.innerHTML = `<span>⏳ Заявено към Планиране (${nowTime} ч.)</span>`;
+                btn.innerHTML = `<span>⏳ Изпратен сигнал (${nowTime} ч.)</span>`;
                 btn.disabled = true;
             }
 
+            const alertTargetText = (targetMachine && targetMachine !== 'Склад')
+                ? `Сигналът е изпратен към колегата на работно място "${targetMachine}" и към Планиране!`
+                : `Сигналът е изпратен към Склад и Планиране!`;
+
             Swal.fire({
                 icon: 'success',
-                title: 'Заявката е изпратена към Планиране!',
-                text: `Планьорът получи известие за липсваща заготовка за ${partName}.`,
-                timer: 2500,
+                title: 'Сигналът е изпратен успешно!',
+                text: alertTargetText,
+                timer: 3000,
                 showConfirmButton: false
             });
         } catch(err) {
@@ -919,8 +1056,178 @@ window.requestStockMaterialPrompt = async function(taskId, encName, encOp, encRe
     }
 };
 
+// ========================================================
+// Terminal Andon / Incoming Signal Poller
+// ========================================================
+let lastAndonCount = 0;
 
+function playAndonChime() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') ctx.resume();
+        const now = ctx.currentTime;
+        
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(659.25, now); // E5
+        osc1.frequency.setValueAtTime(880.00, now + 0.14); // A5
+        gain1.gain.setValueAtTime(0.25, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.55);
+    } catch(e) {
+        console.warn('Andon audio skipped:', e);
+    }
+}
 
+function machineMatchesTarget(currentM, targetM) {
+    if (!currentM || !targetM) return false;
+    const curList = currentM.split(',').map(m => normalizeStr(m)).filter(Boolean);
+    const targetNorm = normalizeStr(targetM);
+    if (targetNorm === 'склад') return curList.includes('склад');
+    return curList.some(m => m === targetNorm || targetNorm.includes(m) || m.includes(targetNorm));
+}
 
+window.acknowledgeTerminalAndon = function(reqId) {
+    let ackList = [];
+    try {
+        ackList = JSON.parse(sessionStorage.getItem('mes_ack_reqs') || '[]');
+    } catch(e) {}
+    ackList.push(Number(reqId));
+    sessionStorage.setItem('mes_ack_reqs', JSON.stringify(ackList));
+    const banner = document.getElementById('terminalAndonAlertArea');
+    if (banner) banner.style.display = 'none';
+};
 
+window.autoResolveAndonForTask = async function(taskData, val) {
+    if (!taskData || !taskData.name) return;
+    try {
+        const taskPartNorm = normalizeStr(taskData.name);
+        const { data: pending } = await client
+            .from('material_requests')
+            .select('*')
+            .eq('status', 'Чакаща')
+            .limit(20);
 
+        if (pending && pending.length > 0) {
+            for (const req of pending) {
+                let tPart = req.target_part;
+                try {
+                    const tObj = JSON.parse(req.notes || '{}');
+                    if (tObj.target_part) tPart = tObj.target_part;
+                } catch(e) {}
+
+                if (tPart && normalizeStr(tPart) === taskPartNorm) {
+                    await client
+                        .from('material_requests')
+                        .update({
+                            status: 'Осигурена',
+                            resolved_at: new Date().toISOString(),
+                            resolved_by: `${currentOperator || 'Оператор'} (отчетени ${val} бр.)`
+                        })
+                        .eq('id', req.id);
+                }
+            }
+        }
+    } catch(err) {
+        console.warn('autoResolveAndonForTask error:', err);
+    }
+};
+
+async function checkTerminalAndonAlerts() {
+    try {
+        if (typeof client === 'undefined' || !client) return;
+        const banner = document.getElementById('terminalAndonAlertArea');
+        if (!banner) return;
+
+        if (!currentMachine || currentMachine.trim() === '') {
+            banner.style.display = 'none';
+            return;
+        }
+
+        const { data, error } = await client
+            .from('material_requests')
+            .select('*')
+            .eq('status', 'Чакаща')
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        if (error || !data) return;
+
+        let ackList = [];
+        try {
+            ackList = JSON.parse(sessionStorage.getItem('mes_ack_reqs') || '[]');
+        } catch(e) {}
+
+        const myAlerts = data.filter(req => {
+            if (ackList.includes(Number(req.id))) return false;
+            
+            let tMachine = req.target_machine || '';
+            try {
+                const tObj = JSON.parse(req.notes || '{}');
+                if (tObj.target_machine) tMachine = tObj.target_machine;
+            } catch(e) {}
+
+            return machineMatchesTarget(currentMachine, tMachine);
+        });
+
+        if (myAlerts.length === 0) {
+            banner.innerHTML = '';
+            banner.style.display = 'none';
+            lastAndonCount = 0;
+            return;
+        }
+
+        if (myAlerts.length > lastAndonCount) {
+            playAndonChime();
+        }
+        lastAndonCount = myAlerts.length;
+
+        const alertItem = myAlerts[0];
+        let tObj = {};
+        try { tObj = JSON.parse(alertItem.notes || '{}'); } catch(e) {}
+        
+        const targetPart = tObj.target_part || alertItem.target_part || alertItem.part_name;
+        const targetOpNum = tObj.target_op_num || alertItem.target_op_num || '';
+        const targetOpName = tObj.target_op_name || alertItem.target_op_name || '';
+        const reqOperator = alertItem.operator || 'Колега от цеха';
+        const reqMachine = alertItem.machine || 'работно място';
+        const reqOp = alertItem.op_name || '';
+
+        banner.innerHTML = `
+            <div class="terminal-andon-alert">
+                <div class="andon-header">
+                    <div class="andon-title">
+                        <span>🔔</span>
+                        <span>СПЕШЕН СИГНАЛ ЗА БРОЙКИ ОТ ЦЕХА!</span>
+                    </div>
+                    <span class="andon-badge">Чакаща операция</span>
+                </div>
+                <div class="andon-body">
+                    Колегата <b>${reqOperator}</b> (машина <b>${reqMachine}</b>${reqOp ? ', оп. ' + reqOp : ''}) 
+                    е блокиран и спешно чака за детайл <b style="color:#0369a1; font-size:1.08em;">${targetPart}</b>!
+                    <br><br>
+                    👉 <b>Към вас:</b> Моля, ако имате изработени бройки на <b>Оп. ${targetOpNum} (${targetOpName})</b>, отчетете ги на терминала, за да отпушите веригата!
+                </div>
+                <div class="andon-actions">
+                    <button type="button" class="andon-ack-btn" onclick="acknowledgeTerminalAndon(${alertItem.id})">
+                        👌 Разбрах / Работя по него
+                    </button>
+                    ${myAlerts.length > 1 ? `<span style="font-size:0.82em; color:#9a3412; font-weight:700;">+ още ${myAlerts.length - 1} сигнала</span>` : ''}
+                </div>
+            </div>
+        `;
+        banner.style.display = 'block';
+    } catch(err) {
+        console.error('checkTerminalAndonAlerts error:', err);
+    }
+}
+
+if (!window.andonPollInterval) {
+    window.andonPollInterval = setInterval(checkTerminalAndonAlerts, 15000);
+}

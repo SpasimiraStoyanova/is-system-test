@@ -1,4 +1,4 @@
-function updateHistoryUI() {
+﻿function updateHistoryUI() {
   var list = document.getElementById('historyList');
   if (localHistoryData.length === 0) { list.innerHTML = '<li class="history-item" style="color:#94a3b8; text-align:center;">Няма скорошни действия</li>'; return; }
   var html = '';
@@ -167,6 +167,7 @@ async function finishTask(taskId, btn) {
           const { error } = await client.from('otcheti').insert(inserts);
           if(error) throw error;
           
+          if (typeof autoResolveAndonForTask === 'function') { autoResolveAndonForTask(taskData, val); }
           addLogToHistory('ГОТОВО', val, taskId); activeTaskId = null; 
           Swal.fire({ icon: 'success', title: 'Браво!', text: 'Отчетени: ' + val + ' бр.', timer: 1500, showConfirmButton: false }).then(() => { loadTasks(); });
       } catch(err) { 
