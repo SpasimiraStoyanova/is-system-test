@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IS-SYSTEMS Глобален Административен Панел</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="admin/admin.css?v=13">
+    <link rel="stylesheet" href="admin/admin.css?v=14">
     <link rel="stylesheet" href="admin/admin-calendar.css?v=5">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -14,7 +14,7 @@
     <script src="admin/admin-config.js?v=9" defer></script>
     <script src="admin/admin-pdf.js?v=2" defer></script>
     <script src="admin/admin-notif.js?v=2" defer></script>
-    <script src="admin/admin-personnel.js?v=7" defer></script>
+    <script src="admin/admin-personnel.js?v=8" defer></script>
     <script src="admin/admin-archives.js?v=1" defer></script>
     <script src="admin/admin-core.js?v=13" defer></script>
     <script src="admin/admin-resolver.js?v=5" defer></script>
@@ -152,6 +152,16 @@
             <div class="modal-header">
                 <div>📁 Досие: <span id="currentWorkerName" style="color: #4338ca;"></span></div>
                 <button onclick="closeFolderModal()" style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
+            </div>
+            <div class="dossier-pin-bar">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.1em;">🔑</span>
+                    <span style="font-weight: 700; color: #334155; font-size: 0.88em;">Парола / ПИН за достъп на служителя (Терминал / Портал):</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="text" id="workerPasswordInput" class="dossier-pin-input" placeholder="напр. 1234" autocomplete="off">
+                    <button type="button" class="btn-primary" onclick="saveWorkerPassword()" style="padding: 6px 14px; font-size: 0.85em; border-radius: 6px;">💾 Запази</button>
+                </div>
             </div>
             <div class="folder-tabs">
                 <button class="f-tab active" id="tabAttBtn" onclick="switchFolderTab('att')">⏱️ Присъствие</button>

@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ИС-СИСТЕМС | Портал за служители — Фишове & Документи</title>
+  <link rel="manifest" href="manifest.json">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #4338ca;
+      --primary-hover: #3730a3;
+      --primary-light: #e0e7ff;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .portal-nav {
+      background: #ffffff;
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .portal-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 900;
+      font-size: 1.15em;
+      color: #1e293b;
+    }
+    .portal-brand span {
+      color: var(--primary);
+    }
+    .btn-logout {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid var(--border);
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.85em;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-logout:hover {
+      background: #fee2e2;
+      color: #dc2626;
+      border-color: #fecaca;
+    }
+    .main-wrap {
+      flex: 1;
+      padding: 24px 16px;
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    /* Login Card */
+    .login-container {
+      max-width: 440px;
+      margin: 40px auto;
+      background: var(--card-bg);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      padding: 36px 28px;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.05), 0 8px 10px -6px rgba(0,0,0,0.02);
+      text-align: center;
+    }
+    .login-icon {
+      width: 64px;
+      height: 64px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2em;
+      margin: 0 auto 18px auto;
+      box-shadow: 0 4px 6px -1px rgba(67, 56, 202, 0.15);
+    }
+    .form-field {
+      text-align: left;
+      margin-bottom: 18px;
+    }
+    .form-label {
+      display: block;
+      font-size: 0.82em;
+      font-weight: 700;
+      color: #475569;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .form-input, .form-select {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.98em;
+      background: #ffffff;
+      outline: none;
+      font-family: inherit;
+      transition: all 0.15s ease;
+    }
+    .form-input:focus, .form-select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.15);
+    }
+    .btn-submit {
+      width: 100%;
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 1.05em;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(67, 56, 202, 0.35);
+      transition: all 0.15s ease;
+      margin-top: 10px;
+    }
+    .btn-submit:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+    .btn-submit:active {
+      transform: translateY(0);
+    }
+    /* Dashboard Area */
+    .user-banner {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #4338ca 100%);
+      color: #ffffff;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 22px;
+      box-shadow: 0 10px 20px -5px rgba(49, 46, 129, 0.3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .user-meta h2 {
+      margin: 0 0 6px 0;
+      font-size: 1.4em;
+      font-weight: 800;
+    }
+    .user-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.15);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.82em;
+      font-weight: 600;
+      backdrop-filter: blur(5px);
+    }
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    .kpi-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .kpi-card-num {
+      font-size: 1.8em;
+      font-weight: 900;
+      color: var(--primary);
+      line-height: 1.1;
+    }
+    .kpi-card-label {
+      font-size: 0.8em;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    /* Filter Bar */
+    .filter-bar {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+      scrollbar-width: none;
+    }
+    .filter-bar::-webkit-scrollbar { display: none; }
+    .filter-pill {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      color: #64748b;
+      padding: 8px 16px;
+      border-radius: 25px;
+      font-size: 0.85em;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    .filter-pill:hover {
+      color: var(--text-main);
+      border-color: #cbd5e1;
+    }
+    .filter-pill.active {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+      box-shadow: 0 4px 8px rgba(67, 56, 202, 0.25);
+    }
+    /* Document Cards */
+    .docs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .doc-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+      transition: all 0.15s ease;
+    }
+    .doc-card:hover {
+      border-color: #cbd5e1;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+      transform: translateY(-1px);
+    }
+    .doc-card-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+      flex: 1;
+    }
+    .doc-icon {
+      font-size: 2em;
+      line-height: 1;
+    }
+    .doc-card-info {
+      min-width: 0;
+    }
+    .doc-card-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .doc-category-badge {
+      font-size: 0.72em;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .doc-title {
+      font-size: 0.96em;
+      font-weight: 800;
+      color: #1e293b;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 340px;
+    }
+    .doc-sub {
+      font-size: 0.8em;
+      color: var(--text-muted);
+      margin-top: 4px;
+      display: flex;
+      gap: 14px;
+    }
+    .doc-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+      margin-left: 12px;
+    }
+    .btn-doc {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 0.85em;
+      font-weight: 800;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-doc-view {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+    .btn-doc-view:hover {
+      background: #c7d2fe;
+    }
+    .btn-doc-down {
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .btn-doc-down:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .portal-footer {
+      text-align: center;
+      padding: 20px;
+      color: #94a3b8;
+      font-size: 0.82em;
+      border-top: 1px solid var(--border);
+      margin-top: auto;
+    }
+    @media (max-width: 600px) {
+      .doc-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .doc-actions {
+        width: 100%;
+        justify-content: flex-end;
+        margin-left: 0;
+      }
+      .btn-doc {
+        flex: 1;
+        justify-content: center;
+      }
+      .user-banner {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navbar -->
+  <nav class="portal-nav">
+    <div class="portal-brand">
+      <img src="icon.png" style="height: 30px; border-radius: 6px;" onerror="this.style.display='none'">
+      ИС-СИСТЕМС <span>| Досие</span>
+    </div>
+    <div id="navUserArea" style="display: none; align-items: center; gap: 10px;">
+      <span id="navUserName" style="font-size: 0.9em; font-weight: 700; color: #334155;"></span>
+      <button class="btn-logout" onclick="logout()">🚪 Изход</button>
+    </div>
+  </nav>
+
+  <!-- Main Content Wrap -->
+  <main class="main-wrap">
+    
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen" class="login-container">
+      <div class="login-icon">🔐</div>
+      <h2 style="margin: 0 0 6px 0; font-size: 1.4em; font-weight: 900; color: #1e293b;">Личен Портал</h2>
+      <p style="margin: 0 0 24px 0; color: #64748b; font-size: 0.9em;">Преглед и сваляне на вашите фишове за заплати и фирмени документи</p>
+      
+      <form onsubmit="handleLogin(event)">
+        <div class="form-field">
+          <label class="form-label" for="portalEmailSelect">Вашият Имейл:</label>
+          <select id="portalEmailSelect" class="form-select" required>
+            <option value="" disabled selected>Изберете служител...</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label" for="portalPasswordInput">Индивидуална Парола / ПИН:</label>
+          <div style="position: relative;">
+            <input type="password" id="portalPasswordInput" class="form-input" placeholder="Въведете вашия ПИН код" required autocomplete="current-password">
+            <span onclick="togglePasswordVisibility()" style="position: absolute; right: 12px; top: 11px; cursor: pointer; color: #94a3b8; font-size: 1.2em;" title="Покажи/Скрий паролата">👁️</span>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit" id="btnLogin">ВХОД В ДОСИЕТО ➔</button>
+      </form>
+    </div>
+
+    <!-- DASHBOARD SCREEN -->
+    <div id="dashboardScreen" style="display: none;">
+      <!-- Welcome Banner -->
+      <div class="user-banner">
+        <div class="user-meta">
+          <h2 id="userFullName">Здравейте!</h2>
+          <div class="user-badge" id="userEmailBadge">📧</div>
+        </div>
+        <div style="text-align: right;">
+          <span style="font-size: 0.85em; opacity: 0.85; display: block;">Статус:</span>
+          <span style="font-weight: 800; color: #4ade80;">🟢 Активен профил</span>
+        </div>
+      </div>
+
+      <!-- KPI Summary -->
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-card-num" id="kpiPayslips">0</div>
+          <div class="kpi-card-label">💶 Фишове за заплата</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-card-num" id="kpiContracts">0</div>
+          <div class="kpi-card-label">📑 Трудови договори</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-card-num" id="kpiTotalDocs">0</div>
+          <div class="kpi-card-label">📂 Всички документи</div>
+        </div>
+      </div>
+
+      <!-- Category Filter Pills -->
+      <div class="filter-bar" id="categoryFilterBar">
+        <button class="filter-pill active" onclick="setPortalFilter('ALL', this)">Всички</button>
+        <button class="filter-pill" onclick="setPortalFilter('salary', this)">💶 Фишове за заплата</button>
+        <button class="filter-pill" onclick="setPortalFilter('contract', this)">📑 Договори</button>
+        <button class="filter-pill" onclick="setPortalFilter('medical', this)">🩺 Медицински</button>
+        <button class="filter-pill" onclick="setPortalFilter('doc', this)">📄 Други</button>
+      </div>
+
+      <!-- Document Cards Container -->
+      <div id="portalDocsList" class="docs-list">
+        <div style="text-align: center; padding: 40px; color: #64748b;">
+          Зареждане на документи...
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="portal-footer">
+    ИС-СИСТЕМС &copy; 2026 | Всички данни са защитени и поверителни.
+  </footer>
+
+  <script>
+    const DOSIETA_STORAGE_URL = 'https://aoekbmhgbohsgpwqsizv.supabase.co';
+    const DOSIETA_STORAGE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFvZWtibWhnYm9oc2dwd3FzaXp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NDU1OTEsImV4cCI6MjEwMjUyMTU5MX0.ikCySPlyg0kPHt0sx34pndAWJAJ9tVCyWonBuG-lLQU';
+
+    const portalClient = window.supabase.createClient(DOSIETA_STORAGE_URL, DOSIETA_STORAGE_KEY);
+
+    const PORTAL_CATEGORIES = {
+      'salary': { label: 'Фиш за заплата', icon: '💶', bg: '#dcfce7', color: '#15803d', border: '#bbf7d0' },
+      'contract': { label: 'Трудов договор / Анекс', icon: '📑', bg: '#dbeafe', color: '#1d4ed8', border: '#bfdbfe' },
+      'medical': { label: 'Медицинско / Инструктаж', icon: '🩺', bg: '#fef3c7', color: '#b45309', border: '#fde68a' },
+      'request': { label: 'Заявление / Молба', icon: '📝', bg: '#f3e8ff', color: '#7e22ce', border: '#e9d5ff' },
+      'doc': { label: 'Фирмен документ', icon: '📄', bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' }
+    };
+
+    let currentUser = null;
+    let allUserDocs = [];
+    let currentFilter = 'ALL';
+
+    window.onload = async () => {
+      await loadEmployeeDropdown();
+      checkSavedSession();
+    };
+
+    async function loadEmployeeDropdown() {
+      const select = document.getElementById('portalEmailSelect');
+      try {
+        const { data, error } = await portalClient
+          .from('personal')
+          .select('Имейл, Име')
+          .eq('Статус', 'Активен');
+
+        if (error) throw error;
+        if (data && data.length > 0) {
+          // Sort alphabetically by name or email
+          data.sort((a, b) => (a['Име'] || a['Имейл']).localeCompare(b['Име'] || b['Имейл']));
+          select.innerHTML = '<option value="" disabled selected>Изберете вашето име / имейл...</option>';
+          data.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p['Имейл'].toLowerCase().trim();
+            opt.textContent = `${p['Име'] ? p['Име'] + ' — ' : ''}${p['Имейл']}`;
+            select.appendChild(opt);
+          });
+        }
+      } catch (err) {
+        console.error('Error loading employees:', err);
+      }
+    }
+
+    function togglePasswordVisibility() {
+      const input = document.getElementById('portalPasswordInput');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const select = document.getElementById('portalEmailSelect');
+      const pwInput = document.getElementById('portalPasswordInput');
+      const email = (select.value || '').toLowerCase().trim();
+      const password = (pwInput.value || '').trim();
+
+      if (!email) {
+        Swal.fire('Внимание', 'Моля, изберете вашия имейл.', 'warning');
+        return;
+      }
+      if (!password) {
+        Swal.fire('Внимание', 'Моля, въведете парола/ПИН.', 'warning');
+        return;
+      }
+
+      Swal.fire({
+        title: 'Вход в досието...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      try {
+        const { data, error } = await portalClient
+          .from('personal')
+          .select('id, Имейл, Име, password')
+          .eq('Имейл', email)
+          .limit(1);
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          Swal.fire('Грешка', 'Не е намерен профил с този имейл.', 'error');
+          return;
+        }
+
+        const userRow = data[0];
+        if (!userRow.password) {
+          Swal.fire({
+            icon: 'info',
+            title: 'Няма зададена парола',
+            text: 'За вашия профил все още не е въведена парола от администратор. Моля, обърнете се към ръководството.',
+            confirmButtonColor: '#4338ca'
+          });
+          return;
+        }
+
+        if (userRow.password.trim() !== password) {
+          Swal.fire({
+            icon: 'error',
+            title: 'Грешна парола!',
+            text: 'Въведената парола / ПИН код е грешен. Моля, опитайте отново.',
+            confirmButtonColor: '#dc2626'
+          });
+          return;
+        }
+
+        // Login successful
+        currentUser = {
+          id: userRow.id,
+          email: userRow['Имейл'],
+          name: userRow['Име'] || userRow['Имейл']
+        };
+
+        sessionStorage.setItem('portal_user', JSON.stringify(currentUser));
+        Swal.close();
+        showDashboard();
+      } catch (err) {
+        console.error('Login error:', err);
+        Swal.fire('Грешка', err.message || 'Възникна системна грешка.', 'error');
+      }
+    }
+
+    function checkSavedSession() {
+      const saved = sessionStorage.getItem('portal_user');
+      if (saved) {
+        try {
+          currentUser = JSON.parse(saved);
+          showDashboard();
+        } catch (e) {
+          sessionStorage.removeItem('portal_user');
+        }
+      }
+    }
+
+    function showDashboard() {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('dashboardScreen').style.display = 'block';
+      document.getElementById('navUserArea').style.display = 'flex';
+      document.getElementById('navUserName').innerText = currentUser.name;
+      document.getElementById('userFullName').innerText = `Здравейте, ${currentUser.name}!`;
+      document.getElementById('userEmailBadge').innerText = `📧 ${currentUser.email}`;
+      loadUserDocuments();
+    }
+
+    function logout() {
+      sessionStorage.removeItem('portal_user');
+      currentUser = null;
+      document.getElementById('dashboardScreen').style.display = 'none';
+      document.getElementById('navUserArea').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'block';
+      document.getElementById('portalPasswordInput').value = '';
+    }
+
+    function parseDocName(rawName) {
+      let categoryKey = 'doc';
+      let cleanName = rawName;
+
+      if (rawName.includes('__')) {
+        const parts = rawName.split('__');
+        if (parts.length >= 3 && PORTAL_CATEGORIES[parts[0]]) {
+          categoryKey = parts[0];
+          cleanName = parts.slice(2).join('__');
+        } else if (parts.length >= 2 && PORTAL_CATEGORIES[parts[0]]) {
+          categoryKey = parts[0];
+          cleanName = parts.slice(1).join('__');
+        }
+      } else {
+        for (const key of Object.keys(PORTAL_CATEGORIES)) {
+          if (rawName.toLowerCase().includes(key)) {
+            categoryKey = key;
+            break;
+          }
+        }
+      }
+
+      cleanName = cleanName.replace(/^\d{10,13}[_-]/, '');
+      const catInfo = PORTAL_CATEGORIES[categoryKey] || PORTAL_CATEGORIES['doc'];
+      return { rawName, categoryKey, catInfo, cleanName };
+    }
+
+    function formatFileSize(bytes) {
+      if (!bytes || isNaN(bytes)) return '';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function getExtIcon(fileName) {
+      const ext = (fileName || '').split('.').pop().toLowerCase();
+      if (ext === 'pdf') return '📕';
+      if (['doc', 'docx'].includes(ext)) return '📘';
+      if (['xls', 'xlsx', 'csv'].includes(ext)) return '📗';
+      if (['png', 'jpg', 'jpeg', 'webp'].includes(ext)) return '🖼️';
+      return '📄';
+    }
+
+    async function loadUserDocuments() {
+      const listDiv = document.getElementById('portalDocsList');
+      listDiv.innerHTML = '<div style="text-align: center; padding: 40px; color: #64748b;"><span style="font-size: 1.6em;">⏳</span> Зареждане на вашите документи...</div>';
+
+      try {
+        const { data, error } = await portalClient.storage.from('dosieta').list(currentUser.email);
+        if (error) throw error;
+
+        allUserDocs = (data || []).filter(f => f.name && f.name !== '.emptyFolderPlaceholder');
+        // Sort newest first
+        allUserDocs.sort((a, b) => new Date(b.created_at || b.updated_at || 0) - new Date(a.created_at || a.updated_at || 0));
+
+        // Update KPIs
+        let payslipsCount = 0;
+        let contractsCount = 0;
+        allUserDocs.forEach(f => {
+          const parsed = parseDocName(f.name);
+          if (parsed.categoryKey === 'salary') payslipsCount++;
+          if (parsed.categoryKey === 'contract') contractsCount++;
+        });
+
+        document.getElementById('kpiPayslips').innerText = payslipsCount;
+        document.getElementById('kpiContracts').innerText = contractsCount;
+        document.getElementById('kpiTotalDocs').innerText = allUserDocs.length;
+
+        renderDocuments();
+      } catch (err) {
+        console.error('Error loading documents:', err);
+        listDiv.innerHTML = `<div style="text-align: center; color: #b91c1c; padding: 25px; background: #fef2f2; border-radius: 12px;">⚠️ Грешка при зареждане на документите: ${err.message || err}</div>`;
+      }
+    }
+
+    function setPortalFilter(catKey, btn) {
+      currentFilter = catKey;
+      document.querySelectorAll('#categoryFilterBar .filter-pill').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderDocuments();
+    }
+
+    function renderDocuments() {
+      const listDiv = document.getElementById('portalDocsList');
+      if (!listDiv) return;
+
+      let filtered = allUserDocs;
+      if (currentFilter !== 'ALL') {
+        filtered = allUserDocs.filter(f => {
+          const parsed = parseDocName(f.name);
+          return parsed.categoryKey === currentFilter;
+        });
+      }
+
+      if (!filtered || filtered.length === 0) {
+        listDiv.innerHTML = `
+          <div style="text-align: center; padding: 40px 20px; color: #94a3b8; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 16px;">
+            <div style="font-size: 2.4em; margin-bottom: 8px;">📂</div>
+            <div style="font-weight: 800; color: #475569; font-size: 1.05em;">Няма налични документи в тази категория</div>
+            <div style="font-size: 0.85em; color: #94a3b8; margin-top: 4px;">Когато администратор качи нов фиш или документ за вас, той ще се визуализира тук.</div>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+      filtered.forEach(file => {
+        const parsed = parseDocName(file.name);
+        const icon = getExtIcon(parsed.cleanName);
+        const cat = parsed.catInfo;
+        const sizeStr = file.metadata && file.metadata.size ? formatFileSize(file.metadata.size) : '';
+        const dateStr = file.created_at ? new Date(file.created_at).toLocaleString('bg-BG', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        const publicUrl = `${DOSIETA_STORAGE_URL}/storage/v1/object/public/dosieta/${encodeURIComponent(currentUser.email)}/${encodeURIComponent(file.name)}`;
+
+        html += `
+          <div class="doc-card">
+            <div class="doc-card-left">
+              <span class="doc-icon">${icon}</span>
+              <div class="doc-card-info">
+                <div class="doc-card-top">
+                  <span class="doc-category-badge" style="background:${cat.bg}; color:${cat.color}; border:1px solid ${cat.border};">
+                    ${cat.icon} ${cat.label}
+                  </span>
+                  <div class="doc-title" title="${parsed.cleanName}">${parsed.cleanName}</div>
+                </div>
+                <div class="doc-sub">
+                  ${dateStr ? `<span>🕒 ${dateStr}</span>` : ''}
+                  ${sizeStr ? `<span>💾 ${sizeStr}</span>` : ''}
+                </div>
+              </div>
+            </div>
+            <div class="doc-actions">
+              <a href="${publicUrl}" target="_blank" class="btn-doc btn-doc-view">
+                👁️ Преглед
+              </a>
+              <a href="${publicUrl}" download="${parsed.cleanName}" class="btn-doc btn-doc-down">
+                ⬇️ Изтегли
+              </a>
+            </div>
+          </div>
+        `;
+      });
+
+      listDiv.innerHTML = html;
+    }
+  </script>
+</body>
+</html>

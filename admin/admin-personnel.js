@@ -125,11 +125,51 @@ async function loadPersonnelSidebar() {
     } catch (err) { loading.innerText = 'Грешка: ' + err.message; }
 }
 
-function openWorkerFolder(email) { 
+async function openWorkerFolder(email) { 
     currentFolderEmail = email; 
     document.getElementById('currentWorkerName').innerText = email; 
+    const pwInput = document.getElementById('workerPasswordInput');
+    if (pwInput) pwInput.value = '';
     document.getElementById('folderModalBackdrop').style.display = 'flex'; 
     switchFolderTab('att'); 
+    loadWorkerPassword(email);
+}
+
+async function loadWorkerPassword(email) {
+    const pwInput = document.getElementById('workerPasswordInput');
+    if (!pwInput) return;
+    try {
+        const { data } = await dosietaClient.from('personal').select('password').eq('Имейл', email).limit(1);
+        if (data && data.length > 0 && data[0].password) {
+            pwInput.value = data[0].password;
+        } else {
+            pwInput.value = '';
+        }
+    } catch (e) {
+        console.warn('Could not load worker password:', e);
+    }
+}
+
+async function saveWorkerPassword() {
+    const pwInput = document.getElementById('workerPasswordInput');
+    const newPassword = pwInput ? pwInput.value.trim() : '';
+    if (!currentFolderEmail) return;
+
+    Swal.fire({ title: 'Запазване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    try {
+        const { error } = await dosietaClient.from('personal').update({ password: newPassword || null }).eq('Имейл', currentFolderEmail);
+        if (error) throw error;
+        Swal.fire({
+            icon: 'success',
+            title: 'Успешно запазено!',
+            text: newPassword ? `Индивидуалната парола за ${currentFolderEmail} е обновена.` : `Паролата за ${currentFolderEmail} е премахната.`,
+            timer: 1600,
+            showConfirmButton: false
+        });
+    } catch (err) {
+        console.error('saveWorkerPassword error:', err);
+        Swal.fire('Грешка', err.message || 'Неуспешно обновяване на паролата.', 'error');
+    }
 }
 
 function closeFolderModal() { 
