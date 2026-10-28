@@ -799,6 +799,22 @@ function renderTasks(tasks) {
         actionButtonHtml = `<button onclick="claimCurrentTaskDOM('${t.id}')" style="background-color: ${actionButtonBg}; color: white; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 800; border: none; border-radius: 10px; cursor:pointer; box-shadow: 0 4px 6px -1px ${actionButtonShadow};">🚀 ПОЕМИ ЗАДАЧА</button>`;
     }
 
+    let targetTotal = (parseFloat(t.totalDone) || 0) + (parseFloat(t.pureQty) || 0);
+    let pct = targetTotal > 0 ? Math.min(100, Math.round(((parseFloat(t.totalDone) || 0) / targetTotal) * 100)) : 0;
+    let progressFillClass = pct >= 100 ? 'task-progress-fill completed' : 'task-progress-fill';
+    
+    let progressBarHtml = `
+      <div class="task-progress-box">
+        <div class="task-progress-header">
+          <span>Напредък: <b>${pct}%</b></span>
+          <span>Изработени: <b>${t.totalDone || 0}</b> от ${targetTotal} бр.</span>
+        </div>
+        <div class="task-progress-track">
+          <div class="${progressFillClass}" style="width: ${pct}%;"></div>
+        </div>
+      </div>
+    `;
+
     let isFocused = t.isTaken || (typeof activeTaskId !== 'undefined' && t.id === activeTaskId);
     let freeStateStyle = isFocused ? 'display: none;' : 'display: block;';
     let focusStateStyle = isFocused ? 'display: block;' : 'display: none;';
@@ -808,6 +824,7 @@ function renderTasks(tasks) {
         <div class="task-header">${labelHtml}<div style="display:flex; gap: 6px;">${displayNeedHtml}</div></div>
         <div class="detail-info"><div class="internal-name">${linkHtml}</div>${internalNameHtml}</div>
         <div class="route-flow"><span class="op-active">▶ ${t.op}</span><span class="route-arrow">➔</span><span class="op-pending">${t.next_op}</span></div>
+        ${progressBarHtml}
         ${t.isBlocked ? bomBadgeHtml : ''}
         <div id="free_state_${t.id}" style="${freeStateStyle}">${actionButtonHtml}</div>
         <div id="focus_state_${t.id}" style="${focusStateStyle}">
