@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="bg">
   <head>
     <meta charset="UTF-8">
@@ -87,40 +87,81 @@
         </div>
     </div>
 
-    <!-- Модал за Лично Досие и Документи на Оператора в Терминала -->
+        <!-- Модал за Лично Досие на Оператора в Терминала -->
     <div id="termDossierModalBackdrop" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); z-index: 9999; justify-content: center; align-items: center; padding: 12px; box-sizing: border-box; backdrop-filter: blur(4px);">
-      <div style="background: white; border-radius: 16px; width: 100%; max-width: 620px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25);">
+      <div style="background: white; border-radius: 16px; width: 100%; max-width: 680px; max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25);">
+        
+        <!-- Header -->
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 1.4em;">📁</span>
             <div>
-              <div style="font-weight: 800; color: #1e293b; font-size: 1em;">Лично Досие & Документи</div>
-              <div id="termDossierWorkerName" style="font-size: 0.8em; color: #4338ca; font-weight: 700;"></div>
+              <div style="font-weight: 800; color: #1e293b; font-size: 1.05em;">Лично Досие</div>
+              <div id="termDossierWorkerName" style="font-size: 0.82em; color: #4338ca; font-weight: 700;"></div>
             </div>
           </div>
           <button onclick="closeTerminalDossier()" style="border: none; background: #e2e8f0; border-radius: 50%; width: 30px; height: 30px; font-size: 14px; cursor: pointer; color: #64748b; font-weight: bold;">✖</button>
         </div>
 
-        <!-- Filter pills -->
-        <div style="display: flex; gap: 6px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #edf2f7; overflow-x: auto;" id="termDocFilters">
-          <button class="doc-filter-btn active" onclick="filterTermDocs('ALL', this)">Всички</button>
-          <button class="doc-filter-btn" onclick="filterTermDocs('salary', this)">💶 Фишове</button>
-          <button class="doc-filter-btn" onclick="filterTermDocs('contract', this)">📑 Договори</button>
-          <button class="doc-filter-btn" onclick="filterTermDocs('medical', this)">🩺 Медицински</button>
-          <button class="doc-filter-btn" onclick="filterTermDocs('doc', this)">📄 Други</button>
+        <!-- Главни табове -->
+        <div style="display: flex; border-bottom: 1px solid #e2e8f0; background: #f8fafc;" id="termDossierMainTabs">
+          <button class="term-dossier-tab-btn active" id="tabBtn_docs" onclick="switchTermDossierTab('docs')">
+            📁 Документи & Фишове
+          </button>
+          <button class="term-dossier-tab-btn" id="tabBtn_work" onclick="switchTermDossierTab('work')">
+            🛠️ Свършена работа
+          </button>
+          <button class="term-dossier-tab-btn" id="tabBtn_attendance" onclick="switchTermDossierTab('attendance')">
+            🕒 Чекирания
+          </button>
         </div>
 
-        <!-- Documents list container -->
-        <div id="termDocsList" style="padding: 14px; overflow-y: auto; flex: 1; background: #f8fafc; min-height: 180px;">
-          <div style="text-align: center; color: #94a3b8; padding: 30px 10px;">Зареждане на документи...</div>
+        <!-- ТАБ 1: ДОКУМЕНТИ -->
+        <div id="termDossierTab_docs" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+          <!-- Filter pills -->
+          <div style="display: flex; gap: 6px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #edf2f7; overflow-x: auto;" id="termDocFilters">
+            <button class="doc-filter-btn active" onclick="filterTermDocs('ALL', this)">Всички</button>
+            <button class="doc-filter-btn" onclick="filterTermDocs('salary', this)">💶 Фишове</button>
+            <button class="doc-filter-btn" onclick="filterTermDocs('contract', this)">📑 Договори</button>
+            <button class="doc-filter-btn" onclick="filterTermDocs('medical', this)">🩺 Медицински</button>
+            <button class="doc-filter-btn" onclick="filterTermDocs('doc', this)">📄 Други</button>
+          </div>
+          <!-- Documents list container -->
+          <div id="termDocsList" style="padding: 14px; overflow-y: auto; flex: 1; background: #f8fafc; min-height: 220px;">
+            <div style="text-align: center; color: #94a3b8; padding: 30px 10px;">Зареждане на документи...</div>
+          </div>
         </div>
 
+        <!-- ТАБ 2: СВЪРШЕНА РАБОТА -->
+        <div id="termDossierTab_work" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+          <div id="termWorkSummaryBar" style="padding: 10px 16px; background: #eff6ff; border-bottom: 1px solid #bfdbfe; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: #1e40af;">
+            <span>📊 <b>Отчетена лична продукция</b></span>
+            <span id="termWorkTotalBadge" style="font-weight: 800; background: #ffffff; padding: 3px 10px; border-radius: 12px; border: 1px solid #93c5fd; color: #1e3a8a;">0 бр. общо</span>
+          </div>
+          <div id="termWorkList" style="padding: 14px; overflow-y: auto; flex: 1; background: #f8fafc; min-height: 220px;">
+            <div style="text-align: center; color: #94a3b8; padding: 30px 10px;">Зареждане на отчетена работа...</div>
+          </div>
+        </div>
+
+        <!-- ТАБ 3: ЧЕКИРАНИЯ -->
+        <div id="termDossierTab_attendance" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+          <div style="padding: 10px 16px; background: #f0fdf4; border-bottom: 1px solid #bbf7d0; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: #166534;">
+            <span>🕒 <b>Вашите чекирания (вход / изход от смяна)</b></span>
+            <span style="font-size: 0.8em; color: #15803d; font-weight: 700;">Показва последните записи</span>
+          </div>
+          <div id="termAttendanceList" style="padding: 14px; overflow-y: auto; flex: 1; background: #f8fafc; min-height: 220px;">
+            <div style="text-align: center; color: #94a3b8; padding: 30px 10px;">Зареждане на чекирания...</div>
+          </div>
+        </div>
+
+        <!-- Footer -->
         <div style="padding: 10px 16px; border-top: 1px solid #e2e8f0; background: #fff; display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size: 0.78em; color: #94a3b8;">🔒 Защитено с лична парола</span>
           <button onclick="closeTerminalDossier()" style="padding: 7px 18px; background: #64748b; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.85em; cursor: pointer;">Затвори</button>
         </div>
       </div>
     </div>
+
 
     <script src="terminal/terminal-core.js?v=8"></script>
     <script src="terminal/terminal-tasks.js?v=4.27"></script>
