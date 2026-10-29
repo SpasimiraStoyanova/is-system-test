@@ -19,9 +19,9 @@
     <script src="admin/admin-notif.js?v=2" defer></script>
     <script src="admin/admin-personnel.js?v=9" defer></script>
     <script src="admin/admin-archives.js?v=1" defer></script>
-    <script src="admin/admin-core.js?v=14" defer></script>
+    <script src="admin/admin-core.js?v=15" defer></script>
     <script src="admin/admin-resolver.js?v=6" defer></script>
-    <script src="admin/admin-transform.js?v=1" defer></script>
+    <script src="admin/admin-transform.js?v=2" defer></script>
     <script src="admin/admin-calendar.js?v=8" defer></script>
     <script src="admin/admin-report.js?v=1" defer></script>
     <script src="admin/admin-validator.js?v=1" defer></script>
@@ -76,7 +76,6 @@
                         <button type="button" class="admin-dropdown-item" onclick="window.open('planner-bobini.html', '_blank')">📝 Планьор Бобиньорки</button>
                         <div class="admin-dropdown-divider"></div>
                         <button type="button" class="admin-dropdown-item" id="logisticsBtn" onclick="openLogisticsModal()">📦 Логистика на План</button>
-                        <button type="button" class="admin-dropdown-item" id="transformResolverBtn" onclick="openTransformModal()">🔄 Трансформация на Резолвери</button>
                         <button type="button" class="admin-dropdown-item" id="traceabilityBtn" onclick="window.open('traceability.html', '_blank')">📊 Проследимост на серии</button>
                     </div>
                 </div>
@@ -114,6 +113,9 @@
 
                 <!-- Контекстен бутон Анализ на доставките -->
                 <button type="button" class="btn-primary" id="mrpBtn" onclick="openMrpModal()" style="display: none; background-color: #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);">🚨 Анализ на доставките</button>
+
+                <!-- Контекстен бутон Трансформация на Резолвери (само в таб Склад) -->
+                <button type="button" class="btn-primary" id="transformResolverBtn" onclick="openTransformModal()" style="display: none; background-color: #6366f1; box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3); font-weight: 800;">🔄 Трансформация на Резолвери</button>
 
                 <!-- Универсални постоянни действия: Експорт и Добавяне -->
                 <button type="button" class="btn-primary btn-excel" id="exportExcelBtn" onclick="exportCurrentTableToExcel()" title="Изтегли текущите данни в Excel файл">📥 Свали в Excel</button>
