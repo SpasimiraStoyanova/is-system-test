@@ -865,8 +865,8 @@ function calculateOperationStates(node, children, allNodesMap) {
                     if (!n) return false;
                     let name = (n.displayName || '').toLowerCase();
                     let type = (n.partType || '').toLowerCase();
+                    let code = (n.code || '').toLowerCase();
                     return name.includes('\u043f\u0430\u043a') || name.includes('pak') || name.includes('\u043d\u0430\u043f\u0443\u0434\u0440') || type.includes('\u043f\u0430\u043a\u0435\u0442') || type.includes('packet') || code.includes('\u043f\u0430\u043a') || code.includes('pak') || code.includes('\u043d\u0430\u043f\u0443\u0434\u0440');
-                    return name.includes('\u043f\u0430\u043a') || type.includes('\u043f\u0430\u043a\u0435\u0442') || code.includes('\u043f\u0430\u043a');
                 }
 
                 let standaloneNodes = [];
