@@ -1,4 +1,4 @@
-﻿function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
+function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
 
 function normalizeStr(str) {
     if (!str) return '';
@@ -631,12 +631,122 @@ async function loadTasks(isSilent = false) {
       }
       */
 
+      // ==========================================
+      // 🧪 ЗАРЕЖДАНЕ НА АКТИВНИ ПРОБИ (R&D СЕРИИ)
+      // ==========================================
+      try {
+          const { data: activeProbi } = await client.from('probi').select('*').eq('status', 'В производство');
+          if (activeProbi && activeProbi.length > 0) {
+              const probaIds = activeProbi.map(p => p.id);
+              const { data: probaComps } = await client.from('probi_components').select('*').in('proba_id', probaIds);
+
+              if (probaComps && probaComps.length > 0) {
+                  activeProbi.forEach(proba => {
+                      const myComps = probaComps.filter(c => c.proba_id === proba.id);
+                      myComps.forEach(comp => {
+                          let partCode = String(comp.part_code).trim();
+                          let partName = comp.part_name || namesMap[normalizeStr(partCode)] || partCode;
+                          let mult = parseFloat(comp.qty_per_unit) || 1;
+                          let totalTarget = (parseFloat(proba.target_qty) || 1) * mult;
+
+                          let compRoutes = [];
+                          if (comp.is_new && Array.isArray(comp.custom_routes) && comp.custom_routes.length > 0) {
+                              compRoutes = comp.custom_routes;
+                          } else {
+                              compRoutes = globalRoutesByDetail[normalizeStr(partCode)] || [];
+                          }
+
+                          compRoutes.forEach((route, rIdx) => {
+                              let opNum = parseInt(route['№ Операция'] || route.op_num) || ((rIdx + 1) * 10);
+                              let opName = String(route['Име на операция'] || route.op_name).trim();
+                              let machName = String(route['Машина'] || route.machine || '').trim();
+
+                              // Check otcheti for this proba
+                              let pKey = 'PROBA_' + proba.id;
+                              let doneQty = 0;
+                              let isTaken = false;
+                              reportsRes.data.forEach(rep => {
+                                  if (String(rep['ID План'] || '').trim() === pKey &&
+                                      normalizeStr(rep['ID Детайл']) === normalizeStr(partCode) &&
+                                      normalizeStr(rep['Операция']) === normalizeStr(opName)) {
+                                      let st = String(rep['Статус'] || '').trim();
+                                      if (st === 'Отчетено' || st === 'Изпратено') {
+                                          doneQty += (parseFloat(rep['Количество']) || 0);
+                                      } else if (st === 'Започната' && String(rep['Оператор']).trim() === currentOperator.trim()) {
+                                          isTaken = true;
+                                      }
+                                  }
+                              });
+
+                              let shortage = totalTarget - doneQty;
+                              if (shortage > 0) {
+                                  let matchMachine = false;
+                                  if (!currentMachine || currentMachine.trim() === "" || isTaken) {
+                                      matchMachine = true;
+                                  } else {
+                                      let selectedMachines = currentMachine.split(',').map(m => normalizeStr(m)).filter(Boolean);
+                                      let currentTaskMachines = machName.split(',').map(m => normalizeStr(m)).filter(Boolean);
+                                      matchMachine = selectedMachines.some(sm => currentTaskMachines.includes(sm));
+                                  }
+
+                                  if (matchMachine) {
+                                      let nextOpStr = (rIdx < compRoutes.length - 1) ? String(compRoutes[rIdx + 1]['Име на операция'] || compRoutes[rIdx + 1].op_name).trim() : 'Готово';
+                                      let taskKey = normalizeStr(machName) + '_' + normalizeStr(partCode) + '_' + opNum;
+                                      let manualPriority = taskPrioritiesMap[taskKey] !== undefined ? taskPrioritiesMap[taskKey] : null;
+
+                                      globalTasks.push({
+                                          isProba: true,
+                                          probaId: proba.id,
+                                          probaName: proba.name,
+                                          manualPriority: manualPriority,
+                                          id: `proba_${proba.id}_comp_${comp.id}_op_${opNum}`,
+                                          plan_id: `PROBA_${proba.id}`,
+                                          plan_name: `🧪 ПРОБА: ${proba.name}`,
+                                          name: partCode,
+                                          internalName: partName,
+                                          op: opName,
+                                          opNum: opNum,
+                                          next_op: nextOpStr,
+                                          machine: machName,
+                                          drawing_link: route['Линк към чертеж'] || route.drawing_link || '',
+                                          sop_link: route['Линк към СОП'] || route.sop_link || '',
+                                          desc: route['Описание'] || route.desc || `Пробен детайл за: ${proba.name}`,
+                                          type: "ПРОБА",
+                                          dropoff: route['Инструкция за оставяне'] || route.dropoff || 'Зона Проби',
+                                          defaultQty: shortage,
+                                          maxAllowed: shortage,
+                                          realMaxAllowed: shortage,
+                                          hasLimit: false,
+                                          isBlocked: false,
+                                          blockingReasons: [],
+                                          totalNeed: totalTarget,
+                                          pureQty: shortage,
+                                          scrapAllowance: 0,
+                                          totalDone: doneQty,
+                                          totalScrapped: 0,
+                                          isTaken: isTaken,
+                                          isGreenCard: false,
+                                          globalGrossAtLoad: 0,
+                                          globalScrapAtLoad: 0,
+                                          itemsToFetch: []
+                                      });
+                                  }
+                              }
+                          });
+                      });
+                  });
+              }
+          }
+      } catch (errProbaLoad) {
+          console.warn("Грешка при зареждане на проби:", errProbaLoad);
+      }
       globalTasks.sort((a, b) => {
           let aPrio = (a.manualPriority !== null && a.manualPriority !== undefined) ? a.manualPriority : 9999;
           let bPrio = (b.manualPriority !== null && b.manualPriority !== undefined) ? b.manualPriority : 9999;
           if (aPrio !== bPrio) return aPrio - bPrio;
 
           let getWeight = (t) => {
+              if (t.isProba) return -100;
               if (t.plan_name === "БУФЕРИ") return Infinity;
               if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") return 9999999;
               let baseWeight = groupEarliestId[t.plan_id] || 0;
@@ -728,6 +838,12 @@ function renderTasks(tasks) {
     let labelHtml = '';
     if (t.isGreenCard) {
         labelHtml = priorityBadgeHtml + transferBadgeHtml + `<span class="plan-label" style="color: #16a34a;">ЗЕЛЕНА КАРТА: ${t.plan_name}</span>`;
+    } else if (t.isProba) {
+        borderStyle = 'border-left: 6px solid #8b5cf6; background: linear-gradient(180deg, #fcfaff 0%, #f5f3ff 100%);';
+        labelHtml = priorityBadgeHtml + transferBadgeHtml + `<span class="plan-label" style="background:#8b5cf6; color:white; font-weight:900; box-shadow:0 2px 4px rgba(139,92,246,0.3);">🧪 ПРОБА: ${t.probaName || t.plan_name}</span>`;
+        badgeStyle = 'background-color:#8b5cf6; color:white;';
+        actionButtonBg = '#8b5cf6';
+        actionButtonShadow = 'rgba(139, 92, 246, 0.3)';
     } else if (t.plan_name === 'КОМПОНЕНТ') {
         labelHtml = priorityBadgeHtml + transferBadgeHtml + `<span class="plan-label">КОМПОНЕНТ</span>`;
     } else {

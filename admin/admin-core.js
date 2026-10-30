@@ -176,6 +176,15 @@ function switchTab(tabKey, force = false) {
 
   // Тук прехвърлихме показването на папките само когато сме в менюто Персонал
   if (tabKey === 'personal') { sidebar.style.display = 'block'; loadPersonnelSidebar(); } else { sidebar.style.display = 'none'; }
+  const probiContainer = document.getElementById('probiContainer');
+  if (probiContainer) { probiContainer.style.display = (tabKey === 'probi') ? 'block' : 'none'; }
+  if (tabKey === 'probi') {
+      addBtn.style.display = 'flex';
+      addBtn.innerText = '➕ Нова Проба';
+      addBtn.onclick = () => { if (typeof openCreateProbaModal === 'function') openCreateProbaModal(); };
+  } else {
+      addBtn.onclick = () => openAddModal();
+  }
   loadCurrentTableData(force || isSameTab);
 }
 
@@ -218,6 +227,17 @@ async function loadCurrentTableData(forceRefresh = false) {
   selectedIndices.clear(); updateMassActionBar();
   const requestedTab = currentTab;
   try {
+      if (currentTab === 'probi') {
+          document.getElementById('mainTable').style.display = 'none';
+          document.getElementById('tableHead').innerHTML = '';
+          document.getElementById('loadingLayout').style.display = 'none';
+          const probiContainer = document.getElementById('probiContainer');
+          if (probiContainer) probiContainer.style.display = 'block';
+          if (typeof renderProbiTab === 'function') renderProbiTab(forceRefresh);
+          return;
+      }
+      const probiContainer = document.getElementById('probiContainer');
+      if (probiContainer) probiContainer.style.display = 'none';
       if (currentTab === 'archives') {
           document.getElementById('mainTable').style.display = 'table';
           document.getElementById('tableHead').innerHTML = '<tr><th style="text-align:left; padding:12px;">Месец и Година</th><th style="text-align:left; padding:12px;">Създаден на</th><th style="text-align:right; padding:12px;">Изтегляне</th></tr>';
@@ -471,6 +491,11 @@ function renderDynamicTable(itemsToRender = null) {
 }
 
 function filterTable() { 
+    if (currentTab === 'probi') {
+        const q = String(document.getElementById('searchInput')?.value || '').trim();
+        if (typeof onProbiSearchFromGlobal === 'function') onProbiSearchFromGlobal(q);
+        return;
+    }
     const normalizeStr = (str) => String(str || '').replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
     const q = normalizeStr(document.getElementById('searchInput').value); 
     let f = globalRows;
