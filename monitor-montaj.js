@@ -866,7 +866,27 @@ function calculateOperationStates(node, children, allNodesMap) {
                     let name = (n.displayName || '').toLowerCase();
                     let type = (n.partType || '').toLowerCase();
                     let code = (n.code || '').toLowerCase();
-                    return name.includes('\u043f\u0430\u043a') || name.includes('pak') || name.includes('\u043d\u0430\u043f\u0443\u0434\u0440') || type.includes('\u043f\u0430\u043a\u0435\u0442') || type.includes('packet') || code.includes('\u043f\u0430\u043a') || code.includes('pak') || code.includes('\u043d\u0430\u043f\u0443\u0434\u0440');
+
+                    // Explicitly exclude covers/caps and packaging:
+                    // "РєР°РїР°Рє", "РєР°РїР°С†Рё", "РєР°РїР°С‡Рµ", "kapak", "РѕРїР°РєРѕРІРєР°" contain substring "РїР°Рє" but are NOT packets
+                    if (name.includes('\u043a\u0430\u043f\u0430\u043a') || name.includes('\u043a\u0430\u043f\u0430\u0446') || name.includes('\u043a\u0430\u043f\u0430\u0447') || name.includes('kapak') ||
+                        type.includes('\u043a\u0430\u043f\u0430\u043a') || type.includes('\u043a\u0430\u043f\u0430\u0446') || type.includes('\u043a\u0430\u043f\u0430\u0447') ||
+                        code.includes('\u043a\u0430\u043f\u0430\u043a') || code.includes('\u043a\u0430\u043f\u0430\u0446') || code.includes('\u043a\u0430\u043f\u0430\u0447') ||
+                        name.includes('\u043e\u043f\u0430\u043a\u043e\u0432') || type.includes('\u043e\u043f\u0430\u043a\u043e\u0432') || code.includes('\u043e\u043f\u0430\u043a\u043e\u0432')) {
+                        return false;
+                    }
+
+                    // Match actual rotor and stator packets:
+                    if (type.includes('\u043f\u0430\u043a\u0435\u0442') || type.includes('packet')) return true;
+                    if (name.includes('\u043f\u0430\u043a\u0435\u0442') || name.includes('packet')) return true;
+                    if (code.includes('\u043f\u0430\u043a\u0435\u0442') || code.includes('packet')) return true;
+                    if (name.includes('\u043d\u0430\u043f\u0443\u0434\u0440') || code.includes('\u043d\u0430\u043f\u0443\u0434\u0440')) return true;
+
+                    // Match "РїР°Рє." or "(РїР°Рє" or "РїР°Рє " with boundary/punctuation
+                    const packetRegex = /(?:^|[\s\(\[\_\-])(?:\u043f\u0430\u043a|pak)(?:\.|\b|[\s\)\]\_\-])/i;
+                    if (packetRegex.test(name) || packetRegex.test(code)) return true;
+
+                    return false;
                 }
 
                 let standaloneNodes = [];
