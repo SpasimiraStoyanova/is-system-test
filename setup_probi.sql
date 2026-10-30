@@ -62,6 +62,7 @@ GRANT ALL ON public.probi_components TO anon, authenticated;
 -- 3. ТРИГЕРИ ЗА СКЛАД И ИНВЕНТАР
 -- Заготовките и материалите за ВСИЧКИ детайли (включително ПРОБИ)
 -- РЕАЛНО се изписват от "Склад Материали" (таблица sklad)!
+-- Всички типове данни (вкл. "Изразходено" като text) са кастнати безопасно.
 -- ==============================================================
 
 CREATE OR REPLACE FUNCTION public.process_inventory_on_otchet()
@@ -130,7 +131,7 @@ BEGIN
                 
                 -- 2) Ако детайлът е нов пробен и го няма в Номенклатура, търсим материала му в probi_components
                 IF nom_mat IS NULL THEN
-                    SELECT LOWER(TRIM(material_code)), COALESCE(material_norm, 1)::numeric INTO nom_mat, nom_qty
+                    SELECT LOWER(TRIM(material_code)), COALESCE(NULLIF(material_norm::text, ''), '1')::numeric INTO nom_mat, nom_qty
                     FROM public.probi_components
                     WHERE LOWER(TRIM(part_code)) = new_detail
                     LIMIT 1;
@@ -139,10 +140,11 @@ BEGIN
                 IF nom_mat IS NOT NULL AND nom_mat != '' THEN
                     SELECT LOWER(TRIM("Тип")) INTO nom_type FROM public."Номенклатура" WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
                     
-                    -- Ако е материал/заготовка от склад: Увеличаваме "Изразходено" в Склад Материали!
+                    -- Ако е материал/заготовка от склад: Увеличаваме "Изразходено" и намаляваме "Остатък" в Склад Материали!
                     IF nom_type IS NOT NULL AND nom_type ILIKE '%материал%' THEN
                         UPDATE public.sklad 
-                        SET "Изразходено" = COALESCE("Изразходено", 0) + (new_qty * nom_qty) 
+                        SET "Изразходено" = (COALESCE(NULLIF("Изразходено"::text, ''), '0')::numeric + (new_qty * nom_qty))::text,
+                            "Остатък" = GREATEST(0, COALESCE("Остатък", 0) - (new_qty * nom_qty))
                         WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
                     ELSE
                         -- Ако е полуфабрикат от междинен инвентар:
@@ -246,7 +248,7 @@ BEGIN
                 WHERE LOWER(TRIM("ID Детайл")) = old_detail;
                 
                 IF nom_mat IS NULL THEN
-                    SELECT LOWER(TRIM(material_code)), COALESCE(material_norm, 1)::numeric INTO nom_mat, nom_qty
+                    SELECT LOWER(TRIM(material_code)), COALESCE(NULLIF(material_norm::text, ''), '1')::numeric INTO nom_mat, nom_qty
                     FROM public.probi_components
                     WHERE LOWER(TRIM(part_code)) = old_detail
                     LIMIT 1;
@@ -257,7 +259,8 @@ BEGIN
                     
                     IF nom_type IS NOT NULL AND nom_type ILIKE '%материал%' THEN
                         UPDATE public.sklad 
-                        SET "Изразходено" = GREATEST(0, COALESCE("Изразходено", 0) - (old_qty * nom_qty)) 
+                        SET "Изразходено" = GREATEST(0, (COALESCE(NULLIF("Изразходено"::text, ''), '0')::numeric - (old_qty * nom_qty)))::text,
+                            "Остатък" = COALESCE("Остатък", 0) + (old_qty * nom_qty)
                         WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
                     ELSE
                         UPDATE public.inventory 
