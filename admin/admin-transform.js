@@ -1,4 +1,4 @@
-let transformSourceData = [];
+﻿let transformSourceData = [];
 let bomDataForTransform = [];
 let nomenclatureDataForTransform = [];
 let transformAvailableQty = 0;
@@ -287,9 +287,13 @@ async function executeTransformation() {
         Swal.fire('Успех!', 'Трансформацията е завършена.', 'success');
         document.getElementById('transformModalBackdrop').style.display = 'none';
         
-        // Refresh table if needed
+        // Refresh table and invalidate cache immediately
+        if (typeof window.invalidateAdminCache === 'function') {
+            window.invalidateAdminCache('sklad_inventory');
+            window.invalidateAdminCache('otcheti');
+        }
         if (typeof loadCurrentTableData === 'function') {
-            loadCurrentTableData();
+            loadCurrentTableData(true);
         }
         
     } catch(err) {

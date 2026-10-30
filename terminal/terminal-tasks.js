@@ -991,12 +991,15 @@ window.requestStockMaterialPrompt = async function(taskId, encName, encOp, encRe
     const partName = decodeURIComponent(encName || '');
     const opName = decodeURIComponent(encOp || '');
     const reasons = decodeURIComponent(encReasons || '');
-    const machine = (typeof currentMachine !== 'undefined' && currentMachine) ? currentMachine : 'Обща';
-    const operator = (typeof currentOperator !== 'undefined' && currentOperator) ? currentOperator : 'Оператор';
-    const email = (typeof currentOperatorEmail !== 'undefined' && currentOperatorEmail) ? currentOperatorEmail : operator;
-
     const taskObj = (typeof currentRenderedTasksMap !== 'undefined' && currentRenderedTasksMap[taskId]) 
         || (typeof globalTasks !== 'undefined' ? globalTasks.find(t => String(t.id) === String(taskId)) : null);
+
+    let machine = (typeof currentMachine !== 'undefined' && currentMachine) ? currentMachine : 'Обща';
+    if (taskObj && taskObj.machine && (machine === 'Обща' || machine.includes(','))) {
+        machine = taskObj.machine;
+    }
+    const operator = (typeof currentOperator !== 'undefined' && currentOperator) ? currentOperator : 'Оператор';
+    const email = (typeof currentOperatorEmail !== 'undefined' && currentOperatorEmail) ? currentOperatorEmail : operator;
 
     const upstream = findUpstreamTargetForBlockedTask(taskObj, partName, opName, reasons);
 
@@ -1151,9 +1154,9 @@ function playAndonChime() {
 function machineMatchesTarget(currentM, targetM) {
     if (!currentM || !targetM) return false;
     const curList = currentM.split(',').map(m => normalizeStr(m)).filter(Boolean);
-    const targetNorm = normalizeStr(targetM);
-    if (targetNorm === 'склад') return curList.includes('склад');
-    return curList.some(m => m === targetNorm || targetNorm.includes(m) || m.includes(targetNorm));
+    const targetList = targetM.split(',').map(m => normalizeStr(m)).filter(Boolean);
+    if (targetList.includes('склад')) return curList.includes('склад');
+    return curList.some(m => targetList.includes(m));
 }
 
 window.acknowledgeTerminalAndon = function(reqId) {

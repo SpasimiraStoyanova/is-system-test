@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION public.process_inventory_on_delete_otchet()
+﻿CREATE OR REPLACE FUNCTION public.process_inventory_on_delete_otchet()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -121,3 +121,12 @@ BEGIN
     RETURN OLD;
 END;
 $$;
+
+-- Прикрепяне на тригера към таблица otcheti при изтриване
+DROP TRIGGER IF EXISTS trg_inventory_on_delete_otchet ON public.otcheti;
+CREATE TRIGGER trg_inventory_on_delete_otchet
+AFTER DELETE ON public.otcheti
+FOR EACH ROW
+EXECUTE FUNCTION public.process_inventory_on_delete_otchet();
+
+NOTIFY pgrst, 'reload schema';

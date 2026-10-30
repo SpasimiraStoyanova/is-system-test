@@ -1,4 +1,4 @@
-const SUPABASE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
+﻿const SUPABASE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkeXRoemNnY2p4d2J4dWZ1bnVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MTcxNTMsImV4cCI6MjA5NjE5MzE1M30.XGZX5DHhJCGz9X5s__3iuSghukjanyJmGKv8MLig_jE';
 const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -515,7 +515,8 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                     }
                 });
                 
-                n.operations.push({ name: opName, completed: doneQty, state: opState, scrapped: opScrap, latestStatus: latestStatus });
+                let routeMachine = String(route['\u041c\u0430\u0448\u0438\u043d\u0430'] || route['РњР°С€РёРЅР°'] || '').trim();
+                n.operations.push({ name: opName, completed: doneQty, state: opState, scrapped: opScrap, latestStatus: latestStatus, machine: routeMachine });
                 
                 if (idx === 0) finalDoneQtyForChildren = doneQty;
             });
@@ -808,20 +809,93 @@ function calculateOperationStates(node, children, allNodesMap) {
                 if (!container) return;
 
                 let assemblyNodes = data.nodes.assembly || [];
-                // Намираме крайните резолвери
+                // Find root items in active plan
                 let rootNodes = assemblyNodes.filter(n => !parentMap[n.id]);
-                
-                if (variant) {
+
+                // Helper functions to check machine and package types
+                function isMontaj1Machine(machStr) {
+                    if (!machStr) return false;
+                    let m = String(machStr).trim().toLowerCase();
+                    // Exclude if it mentions 'РјРїСЂ' or 'РјР°РєР°СЂ'
+                    if (m.includes('\u043c\u043f\u0440') || m.includes('\u043c\u0430\u043a\u0430\u0440')) {
+                        return false;
+                    }
+                    // Must strictly contain 'РјРѕРЅС‚Р°Р¶ 1'
+                    return m.includes('\u043c\u043e\u043d\u0442\u0430\u0436 1');
+                }
+
+                function isMontaj2Machine(machStr) {
+                    if (!machStr) return false;
+                    let m = String(machStr).trim().toLowerCase();
+                    return m.includes('\u043c\u043e\u043d\u0442\u0430\u0436 2');
+                }
+
+                function hasTargetMachineOperation(node, targetVariant) {
+                    if (!node) return false;
+                    const checkMach = (mach) => {
+                        if (targetVariant === '11') return isMontaj1Machine(mach);
+                        if (targetVariant === '25') return isMontaj2Machine(mach);
+                        return false;
+                    };
+
+                    if (node.operations && node.operations.some(o => checkMach(o.machine))) {
+                        return true;
+                    }
+
+                    let codesToCheck = [
+                        (node.code || '').trim().toLowerCase(),
+                        (node.displayName || '').trim().toLowerCase()
+                    ];
+                    if (node.displayName && node.displayName.includes(' - ')) {
+                        codesToCheck.push(node.displayName.split(' - ')[0].trim().toLowerCase());
+                        codesToCheck.push(node.displayName.split(' - ')[1].trim().toLowerCase());
+                    }
+
+                    for (let c of codesToCheck) {
+                        if (!c) continue;
+                        let routes = staticCache.routesByDetail[c] || [];
+                        if (routes.some(r => checkMach(r['\u041c\u0430\u0448\u0438\u043d\u0430'] || r['РњР°С€РёРЅР°']))) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+
+                function isPacketNode(n) {
+                    if (!n) return false;
+                    let name = (n.displayName || '').toLowerCase();
+                    let type = (n.partType || '').toLowerCase();
+                    return name.includes('\u043f\u0430\u043a') || name.includes('pak') || name.includes('\u043d\u0430\u043f\u0443\u0434\u0440') || type.includes('\u043f\u0430\u043a\u0435\u0442') || type.includes('packet') || code.includes('\u043f\u0430\u043a') || code.includes('pak') || code.includes('\u043d\u0430\u043f\u0443\u0434\u0440');
+                    return name.includes('\u043f\u0430\u043a') || type.includes('\u043f\u0430\u043a\u0435\u0442') || code.includes('\u043f\u0430\u043a');
+                }
+
+                let standaloneNodes = [];
+
+                if (variant === '11' || variant === '25') {
+                    // Filter according to route workstation (Montaj 1 strictly or Montaj 2)
+                    rootNodes = rootNodes.filter(root => {
+                        let isTarget = hasTargetMachineOperation(root, variant);
+                        if (!isTarget) return false;
+
+                        // If plan item has no BOM children (e.g. DC425-(x)), move to bottom section
+                        let children = childMap[root.id] || [];
+                        if (children.length === 0) {
+                            standaloneNodes.push(root);
+                            return false;
+                        }
+                        return true;
+                    });
+                } else if (variant) {
                     rootNodes = rootNodes.filter(root => {
                         let hasVariant = false;
-                        if (root.displayName && (root.displayName.includes('Вар. ' + variant) || root.displayName.includes('Вар.' + variant) || root.code.includes(variant))) return true;
+                        if (root.displayName && (root.displayName.includes('\u0412\u0430\u0440. ' + variant) || root.displayName.includes('\u0412\u0430\u0440.' + variant) || root.code.includes(variant))) return true;
                         
                         function checkDescendants(nodeId) {
                             if (hasVariant) return;
                             let children = childMap[nodeId] || [];
                             for (let cId of children) {
                                 let child = allNodesMap[cId];
-                                if (child && child.displayName && (child.displayName.includes('Вар. ' + variant) || child.displayName.includes('Вар.' + variant))) {
+                                if (child && child.displayName && (child.displayName.includes('\u0412\u0430\u0440. ' + variant) || child.displayName.includes('\u0412\u0430\u0440.' + variant))) {
                                     hasVariant = true;
                                     return;
                                 }
@@ -838,18 +912,25 @@ function calculateOperationStates(node, children, allNodesMap) {
                     let pid = root.planMonth || root.planId;
                     if (!groups[pid]) groups[pid] = { root: [], level1: [], level2: [] };
                     
-                    // Филтрираме операциите за Ниво 0 (Краен)
+                    // Filter operations for Level 0 (Root resolver)
                     if (root.operations) {
                         root.operations = root.operations.filter(o => {
                             let name = o.name.toLowerCase();
-                            return name.includes("сглобяване") || name.includes("измерване");
+                            let m = String(o.machine || '').toLowerCase();
+                            if (variant === '11') {
+                                return isMontaj1Machine(m) || name.includes('\u0441\u0433\u043b\u043e\u0431\u044f\u0432\u0430\u043d\u0435') || name.includes('\u0438\u0437\u043c\u0435\u0440\u0432\u0430\u043d\u0435');
+                            }
+                            if (variant === '25') {
+                                return isMontaj2Machine(m) || name.includes('\u0441\u0433\u043b\u043e\u0431\u044f\u0432\u0430\u043d\u0435') || name.includes('\u0438\u0437\u043c\u0435\u0440\u0432\u0430\u043d\u0435');
+                            }
+                            return name.includes('\u0441\u0433\u043b\u043e\u0431\u044f\u0432\u0430\u043d\u0435') || name.includes('\u0438\u0437\u043c\u0435\u0440\u0432\u0430\u043d\u0435');
                         });
                     }
                     groups[pid].root.push(root);
 
                     let children = childMap[root.id] || [];
                     
-                    // Намираме възела с # (напр. 575-01902#), за да го направим родител на Вал-а
+                    // Find node with # to link shaft to it
                     let hashChildId = children.find(cId => {
                         let c = allNodesMap[cId];
                         return c && c.displayName && c.displayName.endsWith('#');
@@ -858,11 +939,14 @@ function calculateOperationStates(node, children, allNodesMap) {
                     children.forEach(cId => {
                         let child = allNodesMap[cId];
                         if (child) {
-                            // 1. Игнорираме напълно "Вал Вар. ... #"
-                            if (child.displayName && child.displayName.includes('Вал Вар') && child.displayName.includes('#')) return;
+                            // Packets do NOT go into Level 1 or Level 2 in variant 25 and 11
+                            if ((variant === '25' || variant === '11') && isPacketNode(child)) return;
 
-                            // 2. Ако е Вал Вар. ... (без #), го местим в Ниво 2 (Внуци) и го връзваме за 575-01902#
-                            if (child.displayName && child.displayName.includes('Вал Вар')) {
+                            // 1. Ignore Shaft Var ... #
+                            if (child.displayName && child.displayName.includes('\u0412\u0430\u043b \u0412\u0430\u0440') && child.displayName.includes('#')) return;
+
+                            // 2. If Shaft Var ... (without #), move to Level 2 and link to hash node
+                            if (child.displayName && child.displayName.includes('\u0412\u0430\u043b \u0412\u0430\u0440')) {
                                 if (!groups[pid].level2.find(x => x.id === child.id)) {
                                     groups[pid].level2.push(child);
                                 }
@@ -872,11 +956,15 @@ function calculateOperationStates(node, children, allNodesMap) {
                                     if (conn) conn.to = hashChildId;
                                 }
                             } else {
-                                // Нормално дете
+                                // Normal child in Level 1
                                 if (child.operations) {
                                     child.operations = child.operations.filter(o => {
                                         let name = o.name.toLowerCase();
-                                        return name.includes("зареждане") || name.includes("хонинговане");
+                                        let m = String(o.machine || '').toLowerCase();
+                                        let isTargetM = false;
+                                        if (variant === '11') isTargetM = isMontaj1Machine(m);
+                                        if (variant === '25') isTargetM = isMontaj2Machine(m);
+                                        return name.includes('\u0437\u0430\u0440\u0435\u0436\u0434\u0430\u043d\u0435') || name.includes('\u0445\u043e\u043d\u0438\u043d\u0433\u043e\u0432\u0430\u043d\u0435') || isTargetM;
                                     });
                                 }
                                 if (!groups[pid].level1.find(x => x.id === child.id)) {
@@ -888,8 +976,11 @@ function calculateOperationStates(node, children, allNodesMap) {
                             grandchildren.forEach(gcId => {
                                 let gchild = allNodesMap[gcId];
                                 if (gchild) {
-                                    // Игнорираме напълно "Вал Вар. ... #"
-                                    if (gchild.displayName && gchild.displayName.includes('Вал Вар') && gchild.displayName.includes('#')) return;
+                                    // Packets do NOT go into Level 2
+                                    if ((variant === '25' || variant === '11') && isPacketNode(gchild)) return;
+
+                                    // Ignore Shaft Var ... #
+                                    if (gchild.displayName && gchild.displayName.includes('\u0412\u0430\u043b \u0412\u0430\u0440') && gchild.displayName.includes('#')) return;
 
                                     if (!groups[pid].level2.find(x => x.id === gchild.id)) {
                                         groups[pid].level2.push(gchild);
@@ -902,24 +993,26 @@ function calculateOperationStates(node, children, allNodesMap) {
 
                 let finalHTML = '';
                 for (const [planId, lvlData] of Object.entries(groups)) {
-                    let planHTML = `<div class="plan-group" style="width: 100%;"><div class="plan-label">ПЛАН: ${planId}</div>`;
+                    lvlData.level2 = lvlData.level2.filter(n => !isPacketNode(n));
+                    lvlData.level1 = lvlData.level1.filter(n => !isPacketNode(n));
+                    let planHTML = `<div class="plan-group" style="width: 100%;"><div class="plan-label">\u041f\u041b\u0410\u041d: ${planId}</div>`;
                     planHTML += `<div class="family-row" style="flex-wrap: wrap; display: flex; flex-direction: row; gap: 40px; margin-bottom: 20px;">`;
                     
-                    // Ниво 2 (Внуци) - Най-ляво
+                    // Level 2 (Grandchildren) - Left
                     planHTML += `<div class="bom-column col-level2">`;
                     lvlData.level2.forEach(n => {
-                        planHTML += generateNodeHTML(n, parentMap, childMap, allNodesMap);
+                        planHTML += generateNodeHTML(n, parentMap, childMap, allNodesMap, true);
                     });
                     planHTML += `</div>`;
 
-                    // Ниво 1 (Деца) - По средата
+                    // Level 1 (Children) - Middle
                     planHTML += `<div class="bom-column col-level1">`;
                     lvlData.level1.forEach(n => {
                         planHTML += generateNodeHTML(n, parentMap, childMap, allNodesMap);
                     });
                     planHTML += `</div>`;
 
-                    // Ниво 0 (Краен Резолвер) - Най-дясно
+                    // Level 0 (Root Resolver) - Right
                     planHTML += `<div class="bom-column col-root">`;
                     lvlData.root.forEach(n => {
                         planHTML += generateNodeHTML(n, parentMap, childMap, allNodesMap);
@@ -932,42 +1025,81 @@ function calculateOperationStates(node, children, allNodesMap) {
 
                 container.innerHTML = finalHTML;
 
-                // --- ПАКЕТИ (РОТОРНИ / СТАТОРНИ) ---
+                // --- PACKETS AND STANDALONE ITEMS (BOTTOM LANE) ---
                 const packetsLane = document.getElementById('lane-packets');
                 const packetsContainer = document.getElementById('w-packets');
                 
                 if (packetsLane && packetsContainer) {
-                    if (variant === '11') {
+                    let allPackets = [];
+                    let addedIds = new Set();
+
+                    if (variant === '25') {
+                        // For Montaj 2: All rotor and stator packets (Var. 11 and Var. 25) for Montaj 2 + ThermoPress
+                        Object.values(allNodesMap).forEach(n => {
+                            if (isPacketNode(n) && !addedIds.has(n.id)) {
+                                let hasPressOrM2 = false;
+                                let code = (n.code || '').trim().toLowerCase();
+                                let routes = staticCache.routesByDetail[code] || [];
+                                if (routes.length > 0) {
+                                    hasPressOrM2 = routes.some(r => {
+                                        let m = String(r['\u041c\u0430\u0448\u0438\u043d\u0430'] || r['РњР°С€РёРЅР°'] || '').toLowerCase();
+                                        let op = String(r['\u0418\u043c\u0435 \u043d\u0430 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u044f'] || r['РРјРµ РЅР° РѕРїРµСЂР°С†РёСЏ'] || '').toLowerCase();
+                                        return m.includes('\u0442\u0435\u0440\u043c\u043e\u043f\u0440\u0435\u0441\u0430') || m.includes('\u043c\u043e\u043d\u0442\u0430\u0436 2') || op.includes('\u0440\u0435\u0434\u0435\u043d\u0435');
+                                    });
+                                } else {
+                                    hasPressOrM2 = true;
+                                }
+
+                                if (hasPressOrM2) {
+                                    addedIds.add(n.id);
+                                    allPackets.push(n);
+                                }
+                            }
+                        });
+
+                        // Standalone plan items for Montaj 2 without subassemblies (e.g. DC425-(x))
+                        standaloneNodes.forEach(n => {
+                            if (!addedIds.has(n.id)) {
+                                addedIds.add(n.id);
+                                if (n.operations) {
+                                    n.operations = n.operations.filter(o => {
+                                        let m = String(o.machine || '').toLowerCase();
+                                        return isMontaj2Machine(m) || o.name.toLowerCase().includes('\u043f\u043e\u0447\u0438\u0441\u0442\u0432\u0430\u043d\u0435');
+                                    });
+                                }
+                                allPackets.push(n);
+                            }
+                        });
+                    } else if (variant === '11') {
+                        // For Montaj 1: standalone plan items without subassemblies
+                        standaloneNodes.forEach(n => {
+                            if (!addedIds.has(n.id)) {
+                                addedIds.add(n.id);
+                                if (n.operations) {
+                                    n.operations = n.operations.filter(o => {
+                                        let m = String(o.machine || '').toLowerCase();
+                                        return isMontaj1Machine(m);
+                                    });
+                                }
+                                allPackets.push(n);
+                            }
+                        });
+                    }
+
+                    if (allPackets.length === 0) {
                         packetsLane.style.display = 'none';
                     } else {
                         packetsLane.style.display = 'flex';
-                        let allPackets = [
-                            ...(data.nodes.small_rotors || []),
-                            ...(data.nodes.small_rotors_var11 || []),
-                            ...(data.nodes.small_rotors_var25 || []),
-                            ...(data.nodes.statori || [])
-                        ];
-
-                        // Филтрираме строго само роторни и статорни пакети
-                        allPackets = allPackets.filter(n => {
-                            let name = (n.displayName || "").toLowerCase();
-                            let type = (n.partType || "").toLowerCase();
-                            return name.includes("статорен пак") || type.includes("статорен пакет") || 
-                                   name.includes("роторен пак") || type.includes("роторен пакет");
-                        });
-
                         let packetGroups = {};
                         allPackets.forEach(p => {
                             let pid = p.planMonth || p.planId;
                             if (!packetGroups[pid]) packetGroups[pid] = [];
-                            
-                            // За пакетите оставяме операциите им както са, за да се вижда Редене + Печене
                             packetGroups[pid].push(p);
                         });
 
                         let packetsHTML = '';
                         for (const [planId, nodes] of Object.entries(packetGroups)) {
-                            let planHTML = `<div class="plan-group" style="width: 100%;"><div class="plan-label">ПЛАН: ${planId}</div>`;
+                            let planHTML = `<div class="plan-group" style="width: 100%;"><div class="plan-label">\u041f\u041b\u0410\u041d: ${planId}</div>`;
                             planHTML += `<div class="family-row" style="flex-wrap: wrap; display: flex; flex-direction: row; gap: 20px;">`;
                             
                             nodes.forEach(n => {
@@ -987,7 +1119,7 @@ function calculateOperationStates(node, children, allNodesMap) {
                 }, 50);
             }
 
-function generateNodeHTML(node, parentMap, childMap, allNodesMap) {
+function generateNodeHTML(node, parentMap, childMap, allNodesMap, isLevel2 = false) {
     let dId = getDomId(node.id);
 
     const isRoot = !parentMap[node.id]; 
@@ -1092,7 +1224,8 @@ function generateNodeHTML(node, parentMap, childMap, allNodesMap) {
         }
     }
     
-    if (children.length > 0 && allChildrenDone && isRoot && titleClass !== 'title-green') {
+    if (isLevel2) { opsHTML = ''; }
+        if (children.length > 0 && allChildrenDone && isRoot && titleClass !== 'title-green') {
         titleClass = 'title-yellow'; 
     }
 
@@ -1202,5 +1335,3 @@ function drawArrows() {
 }
 
 window.addEventListener('resize', () => requestAnimationFrame(drawArrows));
-
-
