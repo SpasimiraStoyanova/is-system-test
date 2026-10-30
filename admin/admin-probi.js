@@ -551,6 +551,15 @@ async function openNewPartDialog(probaId) {
 
     let machinesOptionsHtml = machines.map(m => `<option value="${m}">${m}</option>`).join('');
 
+    // Fetch materials from Sklad
+    let skladOptionsHtml = '';
+    try {
+        const { data: mats } = await client.from('sklad').select('ID Детайл, Мерна единица').order('ID Детайл');
+        if (mats) {
+            skladOptionsHtml = mats.map(m => `<option value="${m['ID Детайл']}">${m['ID Детайл']} (${m['Мерна единица'] || 'бр.'})</option>`).join('');
+        }
+    } catch(e) {}
+
     const { value: result } = await Swal.fire({
         title: '✨ Създай НОВ пробен детайл',
         html: `
@@ -560,6 +569,21 @@ async function openNewPartDialog(probaId) {
 
                 <label style="display:block; font-weight:700; margin-bottom:4px; color:#1e293b;">Бройка за 1 резолвер *</label>
                 <input id="swalNewPartQty" type="number" min="0.1" step="0.1" value="1" class="swal2-input" style="width:100%; box-sizing:border-box; margin:0 0 16px 0;">
+
+                <div style="border-top:1px solid #e2e8f0; padding-top:12px; margin-top:12px; margin-bottom:12px;">
+                    <div style="font-weight:800; color:#1e293b; margin-bottom:6px;">📦 Заготовка / Материал от Склад Материали:</div>
+                    <div style="display:flex; gap:8px;">
+                        <div style="flex:2;">
+                            <label style="display:block; font-size:0.75rem; font-weight:700; color:#64748b; margin-bottom:2px;">Материал / Заготовка</label>
+                            <input id="swalNewPartMat" list="dlSkladMaterials" placeholder="напр. Прът 316L ф20 (по избор)" style="width:100%; box-sizing:border-box; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.88rem;">
+                            <datalist id="dlSkladMaterials">${skladOptionsHtml}</datalist>
+                        </div>
+                        <div style="flex:1;">
+                            <label style="display:block; font-size:0.75rem; font-weight:700; color:#64748b; margin-bottom:2px;">Разходна норма</label>
+                            <input id="swalNewPartMatNorm" type="number" step="0.001" value="1" placeholder="1" style="width:100%; box-sizing:border-box; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.88rem;" title="Количество суровина за 1 брой детайл">
+                        </div>
+                    </div>
+                </div>
 
                 <div style="border-top:1px solid #e2e8f0; padding-top:12px; margin-top:12px;">
                     <div style="font-weight:800; color:#1e293b; margin-bottom:8px;">Маршрут (Операции):</div>
@@ -605,6 +629,8 @@ async function openNewPartDialog(probaId) {
             const name = document.getElementById('swalNewPartName').value.trim();
             const qty = parseFloat(document.getElementById('swalNewPartQty').value);
             const routeType = document.querySelector('input[name="swalRouteType"]:checked').value;
+            let materialCode = document.getElementById('swalNewPartMat')?.value.trim() || null;
+            let materialNorm = parseFloat(document.getElementById('swalNewPartMatNorm')?.value) || 1;
 
             if (!name) {
                 Swal.showValidationMessage('Въведете наименование на детайла!');
@@ -628,6 +654,17 @@ async function openNewPartDialog(probaId) {
                     op_name: String(r['Име на операция']).trim(),
                     machine: String(r['Машина'] || '').trim()
                 }));
+
+                // Inherit material from copied part in Номенклатура if not manually specified
+                if (!materialCode) {
+                    try {
+                        const { data: nomRow } = await client.from('Номенклатура').select('*').ilike('ID Детайл', copyCode).limit(1);
+                        if (nomRow && nomRow.length > 0 && nomRow[0]['ID Родител']) {
+                            materialCode = nomRow[0]['ID Родител'];
+                            materialNorm = parseFloat(nomRow[0]['Разходна норма']) || 1;
+                        }
+                    } catch(e) {}
+                }
             } else {
                 const rows = document.querySelectorAll('.manual-op-row');
                 rows.forEach(r => {
@@ -644,7 +681,7 @@ async function openNewPartDialog(probaId) {
                 }
             }
 
-            return { name, qty_per_unit: qty || 1, customRoutes };
+            return { name, qty_per_unit: qty || 1, customRoutes, material_code: materialCode, material_norm: materialNorm };
         }
     });
 
@@ -657,6 +694,8 @@ async function openNewPartDialog(probaId) {
                 part_name: result.name,
                 qty_per_unit: result.qty_per_unit,
                 is_new: true,
+                material_code: result.material_code,
+                material_norm: result.material_norm,
                 custom_routes: result.customRoutes
             }]);
             if (error) throw error;

@@ -1,4 +1,4 @@
--- ==============================================================
+﻿-- ==============================================================
 -- МОДУЛ "ПРОБИ" (R&D / ПРОТОТИПИ И ОПИТНИ СЕРИИ)
 -- Изпълнете този скрипт в Supabase SQL Editor на тестовата база (zdythzcgcjxwbxufunuh)
 -- ==============================================================
@@ -24,9 +24,22 @@ CREATE TABLE IF NOT EXISTS public.probi_components (
     part_code text NOT NULL,                            -- Код / Наименование на детайла
     part_name text,                                     -- Описание / име
     qty_per_unit numeric DEFAULT 1 NOT NULL,            -- Бройка за 1 резолвер
-    is_new boolean DEFAULT false NOT NULL,              -- Дали е нов детайл (извън номенклатурата)
-    custom_routes jsonb DEFAULT '[]'::jsonb             -- Операции за новия детайл: [{ op_num: 10, op_name: "Струговане", machine: "HAAS ST 10" }, ...]
+    is_new boolean DEFAULT false NOT NULL,              -- Дали е нов детайл (несъществуващ в номенклатурата)
+    material_code text,                                 -- Заготовка / суровина от Склад Материали
+    material_norm numeric DEFAULT 1,                    -- Разходна норма на заготовката за 1 брой детайл
+    custom_routes jsonb DEFAULT '[]'::jsonb             -- Маршрутни карти на детайла: [{ op_num: 10, op_name: "Струговане", machine: "HAAS ST 10" }, ...]
 );
+
+-- Добавяне на колоните material_code и material_norm ако таблицата вече е създадена
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='probi_components' AND column_name='material_code') THEN
+        ALTER TABLE public.probi_components ADD COLUMN material_code text;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='probi_components' AND column_name='material_norm') THEN
+        ALTER TABLE public.probi_components ADD COLUMN material_norm numeric DEFAULT 1;
+    END IF;
+END $$;
 
 -- Индекси за бързо търсене
 CREATE INDEX IF NOT EXISTS idx_probi_status ON public.probi(status);
@@ -45,7 +58,12 @@ CREATE POLICY "Allow all on probi_components" ON public.probi_components FOR ALL
 GRANT ALL ON public.probi TO anon, authenticated;
 GRANT ALL ON public.probi_components TO anon, authenticated;
 
--- 3. Актуализиране на тригера за отчети, за да ИЗОЛИРА напълно пробите от редовния Склад/Inventory:
+-- ==============================================================
+-- 3. ТРИГЕРИ ЗА СКЛАД И ИНВЕНТАР
+-- Заготовките и материалите за ВСИЧКИ детайли (включително ПРОБИ)
+-- РЕАЛНО се изписват от "Склад Материали" (таблица sklad)!
+-- ==============================================================
+
 CREATE OR REPLACE FUNCTION public.process_inventory_on_otchet()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -62,11 +80,6 @@ DECLARE
     is_last_op boolean := false;
 BEGIN
     IF new_qty = 0 THEN RETURN NEW; END IF;
-
-    -- ИЗОЛАЦИЯ НА ПРОБИТЕ: Отчетите за проби НЕ пипат регулярния склад и инвентар!
-    IF NEW."ID План" ILIKE 'PROBA_%' OR NEW."ID План" ILIKE 'ПРОБА%' THEN
-        RETURN NEW;
-    END IF;
 
     IF new_operator ILIKE '%СИСТЕМА (Корекция%' THEN RETURN NEW; END IF;
 
@@ -99,27 +112,43 @@ BEGIN
           )
     ) INTO is_last_op;
 
-    -- Стъпка 1: Вадим от предходна операция
+    -- Стъпка 1: Вадим от предходна операция (или от Склад Материали за 1-ва операция)
     IF new_operator NOT ILIKE '%СИСТЕМА%' THEN
         IF prev_op IS NOT NULL THEN
             UPDATE public.inventory SET "Количество" = GREATEST(0, COALESCE("Количество"::text, '0')::numeric - new_qty) WHERE LOWER(TRIM("ID Детайл")) = new_detail AND LOWER(TRIM("Операция")) = prev_op;
         ELSE
+            -- 🟢 ПЪРВА ОПЕРАЦИЯ: Взима заготовка/суровина от Склад Материали!
             DECLARE
                 nom_mat text;
                 nom_qty numeric;
                 nom_type text;
             BEGIN
+                -- 1) Търсим в Номенклатура
                 SELECT LOWER(TRIM("ID Родител")), COALESCE(NULLIF("Разходна норма"::text, ''), '1')::numeric INTO nom_mat, nom_qty
                 FROM public."Номенклатура"
                 WHERE LOWER(TRIM("ID Детайл")) = new_detail;
                 
+                -- 2) Ако детайлът е нов пробен и го няма в Номенклатура, търсим материала му в probi_components
+                IF nom_mat IS NULL THEN
+                    SELECT LOWER(TRIM(material_code)), COALESCE(material_norm, 1)::numeric INTO nom_mat, nom_qty
+                    FROM public.probi_components
+                    WHERE LOWER(TRIM(part_code)) = new_detail
+                    LIMIT 1;
+                END IF;
+
                 IF nom_mat IS NOT NULL AND nom_mat != '' THEN
                     SELECT LOWER(TRIM("Тип")) INTO nom_type FROM public."Номенклатура" WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
                     
+                    -- Ако е материал/заготовка от склад: Увеличаваме "Изразходено" в Склад Материали!
                     IF nom_type IS NOT NULL AND nom_type ILIKE '%материал%' THEN
-                        UPDATE public.sklad SET "Изразходено" = COALESCE("Изразходено", 0) + (new_qty * nom_qty) WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
+                        UPDATE public.sklad 
+                        SET "Изразходено" = COALESCE("Изразходено", 0) + (new_qty * nom_qty) 
+                        WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
                     ELSE
-                        UPDATE public.inventory SET "Количество" = GREATEST(0, COALESCE("Количество"::text, '0')::numeric - (new_qty * nom_qty)) WHERE LOWER(TRIM("ID Детайл")) = nom_mat AND LOWER(TRIM("Операция")) = 'готов продукт';
+                        -- Ако е полуфабрикат от междинен инвентар:
+                        UPDATE public.inventory 
+                        SET "Количество" = GREATEST(0, COALESCE("Количество"::text, '0')::numeric - (new_qty * nom_qty)) 
+                        WHERE LOWER(TRIM("ID Детайл")) = nom_mat AND LOWER(TRIM("Операция")) = 'готов продукт';
                     END IF;
                 END IF;
             END;
@@ -145,7 +174,7 @@ BEGIN
 END;
 $$;
 
--- Същото и при изтриване на отчет:
+-- Същото при изтриване на отчет (връщане на изразходвания материал в склада):
 CREATE OR REPLACE FUNCTION public.process_inventory_on_delete_otchet()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -162,11 +191,6 @@ DECLARE
     is_last_op boolean := false;
 BEGIN
     IF old_qty = 0 THEN RETURN OLD; END IF;
-
-    -- ИЗОЛАЦИЯ НА ПРОБИТЕ:
-    IF OLD."ID План" ILIKE 'PROBA_%' OR OLD."ID План" ILIKE 'ПРОБА%' THEN
-        RETURN OLD;
-    END IF;
 
     IF old_operator ILIKE '%СИСТЕМА%' THEN RETURN OLD; END IF;
     IF old_op ILIKE 'Опаковане%' THEN RETURN OLD; END IF;
@@ -211,6 +235,7 @@ BEGIN
                 INSERT INTO public.inventory ("ID Детайл", "Операция", "Количество") VALUES (OLD."ID Детайл", prev_op, old_qty);
             END IF;
         ELSE
+            -- 🟢 ВРЪЩАНЕ НА МАТЕРИАЛА В СКЛАД МАТЕРИАЛИ:
             DECLARE
                 nom_mat text;
                 nom_qty numeric;
@@ -220,13 +245,24 @@ BEGIN
                 FROM public."Номенклатура"
                 WHERE LOWER(TRIM("ID Детайл")) = old_detail;
                 
+                IF nom_mat IS NULL THEN
+                    SELECT LOWER(TRIM(material_code)), COALESCE(material_norm, 1)::numeric INTO nom_mat, nom_qty
+                    FROM public.probi_components
+                    WHERE LOWER(TRIM(part_code)) = old_detail
+                    LIMIT 1;
+                END IF;
+
                 IF nom_mat IS NOT NULL AND nom_mat != '' THEN
                     SELECT LOWER(TRIM("Тип")) INTO nom_type FROM public."Номенклатура" WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
                     
                     IF nom_type IS NOT NULL AND nom_type ILIKE '%материал%' THEN
-                        UPDATE public.sklad SET "Изразходено" = GREATEST(0, COALESCE("Изразходено", 0) - (old_qty * nom_qty)) WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
+                        UPDATE public.sklad 
+                        SET "Изразходено" = GREATEST(0, COALESCE("Изразходено", 0) - (old_qty * nom_qty)) 
+                        WHERE LOWER(TRIM("ID Детайл")) = nom_mat;
                     ELSE
-                        UPDATE public.inventory SET "Количество" = COALESCE("Количество"::text, '0')::numeric + (old_qty * nom_qty) WHERE LOWER(TRIM("ID Детайл")) = nom_mat AND LOWER(TRIM("Операция")) = 'готов продукт';
+                        UPDATE public.inventory 
+                        SET "Количество" = COALESCE("Количество"::text, '0')::numeric + (old_qty * nom_qty) 
+                        WHERE LOWER(TRIM("ID Детайл")) = nom_mat AND LOWER(TRIM("Операция")) = 'готов продукт';
                         IF NOT FOUND THEN
                             INSERT INTO public.inventory ("ID Детайл", "Операция", "Количество") VALUES (nom_mat, 'готов продукт', (old_qty * nom_qty));
                         END IF;
