@@ -1034,28 +1034,33 @@ function calculateOperationStates(node, children, allNodesMap) {
                     let addedIds = new Set();
 
                     if (variant === '25') {
-                        // For Montaj 2: All rotor and stator packets (Var. 11 and Var. 25) for Montaj 2 + ThermoPress
                         Object.values(allNodesMap).forEach(n => {
                             if (isPacketNode(n) && !addedIds.has(n.id)) {
-                                let hasPressOrM2 = false;
-                                let code = (n.code || '').trim().toLowerCase();
-                                let routes = staticCache.routesByDetail[code] || [];
-                                if (routes.length > 0) {
-                                    hasPressOrM2 = routes.some(r => {
-                                        let m = String(r['\u041c\u0430\u0448\u0438\u043d\u0430'] || r['РњР°С€РёРЅР°'] || '').toLowerCase();
-                                        let op = String(r['\u0418\u043c\u0435 \u043d\u0430 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u044f'] || r['РРјРµ РЅР° РѕРїРµСЂР°С†РёСЏ'] || '').toLowerCase();
-                                        return m.includes('\u0442\u0435\u0440\u043c\u043e\u043f\u0440\u0435\u0441\u0430') || m.includes('\u043c\u043e\u043d\u0442\u0430\u0436 2') || op.includes('\u0440\u0435\u0434\u0435\u043d\u0435');
-                                    });
-                                } else {
-                                    hasPressOrM2 = true;
-                                }
-
-                                if (hasPressOrM2) {
-                                    addedIds.add(n.id);
-                                    allPackets.push(n);
-                                }
+                                addedIds.add(n.id);
+                                allPackets.push(n);
                             }
                         });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
                         // Standalone plan items for Montaj 2 without subassemblies (e.g. DC425-(x))
                         standaloneNodes.forEach(n => {

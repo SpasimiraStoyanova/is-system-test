@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="bg">
 <head>
   <meta charset="utf-8">
@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=5">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="monitor-montaj.js?v=5" defer></script>
+  <script src="monitor-montaj.js?v=6" defer></script>
   <style>
     .layout-wrapper {
       display: flex;
@@ -73,14 +73,14 @@
   <div class="layout-wrapper">
     <h1 id="monitorTitle">Монитор Монтаж</h1>
     
-    <div class="lane" id="lane-resolvers" style="flex: 1; display: flex; flex-direction: column;">
+    <div class="lane" id="lane-resolvers" style="flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;">
       <div class="window-header" style="border-top: 3px solid #3b82f6; background: linear-gradient(180deg, rgba(59,130,246,0.15) 0%, transparent 100%);">
         РЕЗОЛВЕРИ
       </div>
       <div class="window-body" id="w-resolvers" style="flex: 1; padding-bottom: 20px;"></div>
     </div>
 
-    <div class="lane" id="lane-packets" style="margin-top: 20px; flex: 0 0 auto; display: flex; flex-direction: column;">
+    <div class="lane" id="lane-packets" style="margin-top: 15px; flex: 0 0 auto; max-height: 260px; display: flex; flex-direction: column;">
       <div class="window-header" style="border-top: 3px solid #f59e0b; background: linear-gradient(180deg, rgba(245,158,11,0.15) 0%, transparent 100%);">
         ПАКЕТИ (РОТОРНИ / СТАТОРНИ)
       </div>
