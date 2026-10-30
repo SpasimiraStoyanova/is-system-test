@@ -779,7 +779,7 @@ async function loadTasks(isSilent = false) {
           let op = normalizeStr(r['Операция']);
           let foundInGlobal = globalTasks.find(t => normalizeStr(t.name) === code && normalizeStr(t.op) === op);
           
-          if (!foundInGlobal || activeTaskId === null) {
+          if (!foundInGlobal) {
               insertsAutoClose.push({
                   "ID План": r['ID План'],
                   "ID Детайл": r['ID Детайл'],
