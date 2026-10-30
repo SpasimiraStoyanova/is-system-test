@@ -649,80 +649,73 @@ async function loadTasks(isSilent = false) {
                       // 1. Дървовидна разбивка (BOM Explosion) на детайлите за тази проба
                       let probaPartsMap = {};
 
-                      // Първо добавяме преките компоненти от конструктора на пробата
-                      myComps.forEach(comp => {
-                          let mult = parseFloat(comp.qty_per_unit) || 1;
-                          let target = probaTarget * mult;
-                          let pCode = String(comp.part_code).trim();
-                          let pNorm = normalizeStr(pCode);
-                          let pName = comp.part_name || namesMap[pNorm] || pCode;
-                          let isNew = comp.is_new === true;
-                          let customRoutes = (isNew && Array.isArray(comp.custom_routes)) ? comp.custom_routes : [];
-
-                          if (!probaPartsMap[pNorm]) {
-                              probaPartsMap[pNorm] = {
-                                  code: pCode,
-                                  name: pName,
+                      function addOrUpdateProbaPart(code, name, isNew, customRoutes, target, depth, matCode, matNorm) {
+                          let norm = normalizeStr(code);
+                          if (!probaPartsMap[norm]) {
+                              probaPartsMap[norm] = {
+                                  code: code,
+                                  name: name || namesMap[norm] || code,
                                   is_new: isNew,
-                                  custom_routes: customRoutes,
+                                  custom_routes: customRoutes || [],
                                   targetQty: 0,
-                                  depth: 0,
-                                  material_code: comp.material_code,
-                                  material_norm: comp.material_norm
+                                  depth: depth,
+                                  material_code: matCode,
+                                  material_norm: matNorm
                               };
+                          } else {
+                              if (depth > probaPartsMap[norm].depth) probaPartsMap[norm].depth = depth;
                           }
-                          probaPartsMap[pNorm].targetQty += target;
-                      });
+                          probaPartsMap[norm].targetQty += target;
+                      }
 
-                      // Рекурсивно разгъване на децата от BOM таблицата за всички стандартни компоненти
-                      function expandProbaComponent(parentCode, parentTarget, curDepth, visited = new Set()) {
+                      // Рекурсивно разгъване на цялото дърво на пробата
+                      function expandProbaNode(parentCode, parentTarget, curDepth, visited = new Set()) {
                           let normP = normalizeStr(parentCode);
                           if (visited.has(normP)) return;
                           visited.add(normP);
 
-                          let children = globalBomData.filter(b => normalizeStr(b['ID Родител']) === normP);
-                          children.forEach(ch => {
+                          // А) Потребителски под-детайли от конструктора (probi_components) за този родител
+                          let customChildren = myComps.filter(c => c.parent_part_code && normalizeStr(c.parent_part_code) === normP);
+                          customChildren.forEach(c => {
+                              let mult = parseFloat(c.qty_per_unit) || 1;
+                              let cTarget = parentTarget * mult;
+                              let cCode = String(c.part_code).trim();
+                              let isNew = c.is_new === true;
+                              let customRoutes = (isNew && Array.isArray(c.custom_routes)) ? c.custom_routes : [];
+                              addOrUpdateProbaPart(cCode, c.part_name, isNew, customRoutes, cTarget, curDepth + 1, c.material_code, c.material_norm);
+                              expandProbaNode(cCode, cTarget, curDepth + 1, new Set(visited));
+                          });
+
+                          // Б) Стандартни BOM деца от базата за този родител
+                          let bomChildren = globalBomData.filter(b => normalizeStr(b['ID Родител']) === normP);
+                          bomChildren.forEach(ch => {
                               let childCode = String(ch['ID Компонент']).trim();
                               let childNorm = normalizeStr(childCode);
+                              if (customChildren.some(c => normalizeStr(c.part_code) === childNorm)) return;
+
                               let childMult = parseFloat(ch['Количество']) || 1;
                               let childTarget = parentTarget * childMult;
-
                               let nomItem = globalNomData.find(n => normalizeStr(n['ID Детайл']) === childNorm);
                               let childRoutes = globalRoutesByDetail[childNorm] || [];
 
-                              // Ако детайлът има маршрутни карти или е междинна сглобка
                               if (childRoutes.length > 0) {
-                                  if (!probaPartsMap[childNorm]) {
-                                      let childName = (nomItem && nomItem['Вътрешно име']) ? nomItem['Вътрешно име'] : (namesMap[childNorm] || childCode);
-                                      probaPartsMap[childNorm] = {
-                                          code: childCode,
-                                          name: childName,
-                                          is_new: false,
-                                          custom_routes: [],
-                                          targetQty: 0,
-                                          depth: curDepth + 1,
-                                          material_code: null,
-                                          material_norm: null
-                                      };
-                                  } else {
-                                      if (curDepth + 1 > probaPartsMap[childNorm].depth) {
-                                          probaPartsMap[childNorm].depth = curDepth + 1;
-                                      }
-                                  }
-                                  probaPartsMap[childNorm].targetQty += childTarget;
+                                  let childName = (nomItem && nomItem['Вътрешно име']) ? nomItem['Вътрешно име'] : (namesMap[childNorm] || childCode);
+                                  addOrUpdateProbaPart(childCode, childName, false, [], childTarget, curDepth + 1, null, null);
                               }
-
-                              // Продължаваме надолу по дървото за под-компоненти
-                              expandProbaComponent(childCode, childTarget, curDepth + 1, new Set(visited));
+                              expandProbaNode(childCode, childTarget, curDepth + 1, new Set(visited));
                           });
                       }
 
-                      // Извикваме рекурсивното разгъване за преките компоненти
-                      myComps.forEach(comp => {
-                          if (!comp.is_new) {
-                              let mult = parseFloat(comp.qty_per_unit) || 1;
-                              expandProbaComponent(comp.part_code, probaTarget * mult, 0);
-                          }
+                      // Главни детайли на пробата (които нямат parent_part_code или сочат към името на самата проба)
+                      let rootComps = myComps.filter(c => !c.parent_part_code || c.parent_part_code.trim() === '' || normalizeStr(c.parent_part_code) === normalizeStr(proba.name));
+                      rootComps.forEach(comp => {
+                          let mult = parseFloat(comp.qty_per_unit) || 1;
+                          let target = probaTarget * mult;
+                          let pCode = String(comp.part_code).trim();
+                          let isNew = comp.is_new === true;
+                          let customRoutes = (isNew && Array.isArray(comp.custom_routes)) ? comp.custom_routes : [];
+                          addOrUpdateProbaPart(pCode, comp.part_name, isNew, customRoutes, target, 0, comp.material_code, comp.material_norm);
+                          expandProbaNode(pCode, target, 0);
                       });
 
                       // Подреждаме детайлите по дълбочина: най-дълбоките първични заготовки първо
@@ -737,9 +730,9 @@ async function loadTasks(isSilent = false) {
 
                           let compRoutes = [];
                           if (partObj.is_new && Array.isArray(partObj.custom_routes) && partObj.custom_routes.length > 0) {
-                              compRoutes = partObj.custom_routes;
+                              compRoutes = partObj.custom_routes.slice().sort((a, b) => (parseInt(a.op_num || a['№ Операция']) || 0) - (parseInt(b.op_num || b['№ Операция']) || 0));
                           } else {
-                              compRoutes = globalRoutesByDetail[normalizeStr(partCode)] || [];
+                              compRoutes = (globalRoutesByDetail[normalizeStr(partCode)] || []).slice().sort((a, b) => (parseInt(a['№ Операция'] || a.op_num) || 0) - (parseInt(b['№ Операция'] || b.op_num) || 0));
                           }
 
                           if (compRoutes.length === 0) return;
@@ -813,10 +806,31 @@ async function loadTasks(isSilent = false) {
                                       }
 
                                       // 2. Проверка за ВЛАГАНИ КОМПОНЕНТИ (BOM) на тази операция
-                                      let myChildren = globalBomData.filter(b => normalizeStr(b['ID Родител']) === normalizeStr(partCode));
+                                      let myChildren = [];
+                                      // А) Стандартни деца от BOM таблицата
+                                      globalBomData.filter(b => normalizeStr(b['ID Родител']) === normalizeStr(partCode)).forEach(b => {
+                                          myChildren.push({
+                                              code: String(b['ID Компонент']).trim(),
+                                              qty: parseFloat(b['Количество']) || 1,
+                                              opNum: b['Влага се на Оп. №'] ? parseFloat(b['Влага се на Оп. №']) : 0,
+                                              isCustom: false
+                                          });
+                                      });
+                                      // Б) Деца от конструктора на пробата (probi_components)
+                                      myComps.filter(c => c.parent_part_code && normalizeStr(c.parent_part_code) === normalizeStr(partCode)).forEach(c => {
+                                          let cNorm = normalizeStr(c.part_code);
+                                          if (!myChildren.some(existing => normalizeStr(existing.code) === cNorm)) {
+                                              myChildren.push({
+                                                  code: String(c.part_code).trim(),
+                                                  qty: parseFloat(c.qty_per_unit) || 1,
+                                                  opNum: 0,
+                                                  isCustom: true
+                                              });
+                                          }
+                                      });
+
                                       let relevantChildren = myChildren.filter(c => {
-                                          let opNumChild = c['Влага се на Оп. №'] ? parseFloat(c['Влага се на Оп. №']) : 0;
-                                          if (opNumChild > 0) return opNumChild === opNum;
+                                          if (c.opNum > 0) return c.opNum === opNum;
                                           return (rIdx === 0);
                                       });
 
@@ -824,15 +838,22 @@ async function loadTasks(isSilent = false) {
                                           hasLimit = true;
                                           let minSets = Infinity;
                                           relevantChildren.forEach(child => {
-                                              let cCode = String(child['ID Компонент']).trim();
+                                              let cCode = child.code;
                                               let cNorm = normalizeStr(cCode);
-                                              let cMult = parseFloat(child['Количество']) || 1;
+                                              let cMult = child.qty;
 
                                               // Търсим дали този компонент се произвежда за тази проба
                                               let probaChildDone = 0;
-                                              let cRoutes = globalRoutesByDetail[cNorm] || [];
+                                              let childPartObj = probaPartsMap[cNorm];
+                                              let cRoutes = [];
+                                              if (childPartObj && childPartObj.is_new && Array.isArray(childPartObj.custom_routes) && childPartObj.custom_routes.length > 0) {
+                                                  cRoutes = childPartObj.custom_routes.slice().sort((a, b) => (parseInt(a.op_num || a['№ Операция']) || 0) - (parseInt(b.op_num || b['№ Операция']) || 0));
+                                              } else {
+                                                  cRoutes = (globalRoutesByDetail[cNorm] || []).slice().sort((a, b) => (parseInt(a['№ Операция'] || a.op_num) || 0) - (parseInt(b['№ Операция'] || b.op_num) || 0));
+                                              }
+
                                               if (cRoutes.length > 0) {
-                                                  let lastCOp = normalizeStr(cRoutes[cRoutes.length - 1]['Име на операция']);
+                                                  let lastCOp = normalizeStr(cRoutes[cRoutes.length - 1]['Име на операция'] || cRoutes[cRoutes.length - 1].op_name);
                                                   reportsRes.data.forEach(rep => {
                                                       if (String(rep['ID План'] || '').trim() === pKey &&
                                                           normalizeStr(rep['ID Детайл']) === cNorm &&
@@ -846,7 +867,7 @@ async function loadTasks(isSilent = false) {
                                               let skladAvail = getSkladQty(cCode);
                                               let wipAvail = 0;
                                               if (cRoutes.length > 0) {
-                                                  let lastCOp = normalizeStr(cRoutes[cRoutes.length - 1]['Име на операция']);
+                                                  let lastCOp = normalizeStr(cRoutes[cRoutes.length - 1]['Име на операция'] || cRoutes[cRoutes.length - 1].op_name);
                                                   wipAvail = physicalStock[cNorm + '_' + lastCOp] || 0;
                                               }
 
@@ -1000,29 +1021,13 @@ async function loadTasks(isSilent = false) {
           }
       }
 
+      // Защита: НЕ авто-приключваме поетите от оператора задачи при презареждане или филтриране по машина
       activeDangling.forEach(r => {
           let code = normalizeStr(r['ID Детайл']);
           let op = normalizeStr(r['Операция']);
           let foundInGlobal = globalTasks.find(t => normalizeStr(t.name) === code && normalizeStr(t.op) === op);
-          
-          if (!foundInGlobal) {
-              insertsAutoClose.push({
-                  "ID План": r['ID План'],
-                  "ID Детайл": r['ID Детайл'],
-                  "Оператор": currentOperator,
-                  "Количество": 0,
-                  "Операция": r['Операция'],
-                  "Статус": "Авто-приключена",
-                  "Дата": new Date().toISOString(),
-                  "Време Старт": r['Време Старт'] || new Date().toISOString()
-              });
-              takenOps[code + '_' + op] = false;
-          }
+          // Поетите задачи остават активни в таб 'Поети задачи' докато операторът изрично не ги отчете или прекрати
       });
-
-      if (insertsAutoClose.length > 0) {
-          client.from('otcheti').insert(insertsAutoClose).then(res => { if(res.error) console.error("Auto-close error", res.error); });
-      }
       
       if (shouldAlert) {
           Swal.fire('Задачата е изпълнена', 'Някой друг току-що завърши тази задача!', 'info');

@@ -147,7 +147,7 @@ async function fetchDynamicData() {
     ]);
 
     let activePlans = (plansRes.data || []).filter(p => ['Активен', 'Завършен', 'Опакован'].includes(p['Статус']));
-    let realReports = (reportsRes.data || []).filter(r => r['Оператор'] !== '💉 СИСТЕМА (Виртуална компенсация)');
+    let realReports = (reportsRes.data || []).filter(r => r['Оператор'] !== '💉 СИСТЕМА (Виртуална компенсация)' && !String(r['ID План'] || '').startsWith('PROBA_'));
     
     let invData = invRes.data || [];
     let invGpData = invData.filter(r => String(r['Операция']).trim().toLowerCase() === 'готов продукт');
