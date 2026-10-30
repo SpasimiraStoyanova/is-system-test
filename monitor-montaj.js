@@ -867,26 +867,30 @@ function calculateOperationStates(node, children, allNodesMap) {
                     let type = (n.partType || '').toLowerCase();
                     let code = (n.code || '').toLowerCase();
 
-                    // Explicitly exclude covers/caps and packaging:
-                    // "РєР°РїР°Рє", "РєР°РїР°С†Рё", "РєР°РїР°С‡Рµ", "kapak", "РѕРїР°РєРѕРІРєР°" contain substring "РїР°Рє" but are NOT packets
+                    // Explicitly exclude covers/caps, packaging, assembled rotors, and shafts
                     if (name.includes('\u043a\u0430\u043f\u0430\u043a') || name.includes('\u043a\u0430\u043f\u0430\u0446') || name.includes('\u043a\u0430\u043f\u0430\u0447') || name.includes('kapak') ||
-                        type.includes('\u043a\u0430\u043f\u0430\u043a') || type.includes('\u043a\u0430\u043f\u0430\u0446') || type.includes('\u043a\u0430\u043f\u0430\u0447') ||
-                        code.includes('\u043a\u0430\u043f\u0430\u043a') || code.includes('\u043a\u0430\u043f\u0430\u0446') || code.includes('\u043a\u0430\u043f\u0430\u0447') ||
-                        name.includes('\u043e\u043f\u0430\u043a\u043e\u0432') || type.includes('\u043e\u043f\u0430\u043a\u043e\u0432') || code.includes('\u043e\u043f\u0430\u043a\u043e\u0432')) {
+                        type.includes('\u043a\u0430\u043f\u0430\u043a') || type.includes('\u043a\u0430\u043f\u0430\u0446') ||
+                        code.includes('\u043a\u0430\u043f\u0430\u043a') || code.includes('\u043a\u0430\u043f\u0430\u0446') ||
+                        name.includes('\u043e\u043f\u0430\u043a\u043e\u0432') || type.includes('\u043e\u043f\u0430\u043a\u043e\u0432') || code.includes('\u043e\u043f\u0430\u043a\u043e\u0432') ||
+                        name.includes('(\u043f\u0430\u043a. r3)') || code.includes('(\u043f\u0430\u043a. r3)') ||
+                        name.includes('(r \u043f\u0430\u043a\u0435\u0442') || code.includes('(r \u043f\u0430\u043a\u0435\u0442') ||
+                        name.includes('316') || name.includes('303') ||
+                        type.includes('\u0440\u043e\u0442\u043e\u0440 \u0432\u0430\u0440') ||
+                        name.includes('\u0432\u0430\u043b')) {
                         return false;
                     }
 
-                    // Match actual rotor and stator packets:
-                    if (type.includes('\u043f\u0430\u043a\u0435\u0442') || type.includes('packet')) return true;
-                    if (name.includes('\u043f\u0430\u043a\u0435\u0442') || name.includes('packet')) return true;
-                    if (code.includes('\u043f\u0430\u043a\u0435\u0442') || code.includes('packet')) return true;
-                    if (name.includes('\u043d\u0430\u043f\u0443\u0434\u0440') || code.includes('\u043d\u0430\u043f\u0443\u0434\u0440')) return true;
+                    // Pure rotor and stator packets only
+                    let isRotorPacket = type.includes('\u0440\u043e\u0442\u043e\u0440\u0435\u043d \u043f\u0430\u043a') ||
+                                        name.includes('\u0440\u043e\u0442\u043e\u0440\u0435\u043d \u043f\u0430\u043a') ||
+                                        code.includes('\u0440\u043e\u0442\u043e\u0440\u0435\u043d \u043f\u0430\u043a') ||
+                                        name.includes('\u043d\u0430\u043f\u0443\u0434\u0440') || code.includes('\u043d\u0430\u043f\u0443\u0434\u0440');
 
-                    // Match "РїР°Рє." or "(РїР°Рє" or "РїР°Рє " with boundary/punctuation
-                    const packetRegex = /(?:^|[\s\(\[\_\-])(?:\u043f\u0430\u043a|pak)(?:\.|\b|[\s\)\]\_\-])/i;
-                    if (packetRegex.test(name) || packetRegex.test(code)) return true;
+                    let isStatorPacket = type.includes('\u0441\u0442\u0430\u0442\u043e\u0440\u0435\u043d \u043f\u0430\u043a') ||
+                                         name.includes('\u0441\u0442\u0430\u0442\u043e\u0440\u0435\u043d \u043f\u0430\u043a') ||
+                                         code.includes('\u0441\u0442\u0430\u0442\u043e\u0440\u0435\u043d \u043f\u0430\u043a');
 
-                    return false;
+                    return isRotorPacket || isStatorPacket;
                 }
 
                 let standaloneNodes = [];
@@ -894,16 +898,7 @@ function calculateOperationStates(node, children, allNodesMap) {
                 if (variant === '11' || variant === '25') {
                     // Filter according to route workstation (Montaj 1 strictly or Montaj 2)
                     rootNodes = rootNodes.filter(root => {
-                        let isTarget = hasTargetMachineOperation(root, variant);
-                        if (!isTarget) return false;
-
-                        // If plan item has no BOM children (e.g. DC425-(x)), move to bottom section
-                        let children = childMap[root.id] || [];
-                        if (children.length === 0) {
-                            standaloneNodes.push(root);
-                            return false;
-                        }
-                        return true;
+                        return hasTargetMachineOperation(root, variant);
                     });
                 } else if (variant) {
                     rootNodes = rootNodes.filter(root => {
@@ -1082,19 +1077,7 @@ function calculateOperationStates(node, children, allNodesMap) {
 
 
 
-                        // Standalone plan items for Montaj 2 without subassemblies (e.g. DC425-(x))
-                        standaloneNodes.forEach(n => {
-                            if (!addedIds.has(n.id)) {
-                                addedIds.add(n.id);
-                                if (n.operations) {
-                                    n.operations = n.operations.filter(o => {
-                                        let m = String(o.machine || '').toLowerCase();
-                                        return isMontaj2Machine(m) || o.name.toLowerCase().includes('\u043f\u043e\u0447\u0438\u0441\u0442\u0432\u0430\u043d\u0435');
-                                    });
-                                }
-                                allPackets.push(n);
-                            }
-                        });
+// Standalone items stay in resolvers lane
                     } else if (variant === '11') {
                         // For Montaj 1: standalone plan items without subassemblies
                         standaloneNodes.forEach(n => {
