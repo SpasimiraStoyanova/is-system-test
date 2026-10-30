@@ -833,6 +833,9 @@ function renderTasks(tasks) {
   var html = '';
   filteredTasks.forEach(function(t) {
     let borderStyle = t.isGreenCard ? 'border-left: 6px solid #16a34a;' : 'border-left: 6px solid #3b82f6;';
+    let badgeStyle = t.isGreenCard ? 'background-color:#16a34a;' : '';
+    let actionButtonBg = '#2563eb';
+    let actionButtonShadow = 'rgba(37, 99, 235, 0.2)';
     let transferBadgeHtml = (t.isTransferred && t.origMachineDisplay) ? `<span class="plan-label" style="background:#f3e8ff; color:#7e22ce; border:1px solid #d8b4fe; font-weight:900; margin-right:6px;">🔄 ПРЕХВЪРЛЕНА ОТ ${t.origMachineDisplay}</span>` : '';
     let priorityBadgeHtml = (t.manualPriority !== null && t.manualPriority !== undefined) ? `<span class="plan-label" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-weight:900; margin-right:6px;">⭐ ПРИОРИТЕТ #${t.manualPriority}</span>` : '';
     let labelHtml = '';
@@ -849,12 +852,9 @@ function renderTasks(tasks) {
     } else {
         labelHtml = priorityBadgeHtml + transferBadgeHtml + `<span class="plan-label">ПЛАН: ${t.plan_name}</span>`;
     }
-    let badgeStyle = t.isGreenCard ? 'background-color:#16a34a;' : '';
 
     let isScrapOnly = (t.pureQty <= 0 && t.scrapAllowance > 0);
     
-    let actionButtonBg = '#2563eb';
-    let actionButtonShadow = 'rgba(37, 99, 235, 0.2)';
 
     if (isScrapOnly && !t.isGreenCard) {
         borderStyle = 'border-left: 6px solid #38bdf8;'; // Sky 400 (lighter)
