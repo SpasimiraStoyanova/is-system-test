@@ -643,42 +643,139 @@ async function loadTasks(isSilent = false) {
               if (probaComps && probaComps.length > 0) {
                   activeProbi.forEach(proba => {
                       const myComps = probaComps.filter(c => c.proba_id === proba.id);
+                      let pKey = 'PROBA_' + proba.id;
+                      let probaTarget = parseFloat(proba.target_qty) || 1;
+
+                      // 1. Дървовидна разбивка (BOM Explosion) на детайлите за тази проба
+                      let probaPartsMap = {};
+
+                      // Първо добавяме преките компоненти от конструктора на пробата
                       myComps.forEach(comp => {
-                          let partCode = String(comp.part_code).trim();
-                          let partName = comp.part_name || namesMap[normalizeStr(partCode)] || partCode;
                           let mult = parseFloat(comp.qty_per_unit) || 1;
-                          let totalTarget = (parseFloat(proba.target_qty) || 1) * mult;
+                          let target = probaTarget * mult;
+                          let pCode = String(comp.part_code).trim();
+                          let pNorm = normalizeStr(pCode);
+                          let pName = comp.part_name || namesMap[pNorm] || pCode;
+                          let isNew = comp.is_new === true;
+                          let customRoutes = (isNew && Array.isArray(comp.custom_routes)) ? comp.custom_routes : [];
+
+                          if (!probaPartsMap[pNorm]) {
+                              probaPartsMap[pNorm] = {
+                                  code: pCode,
+                                  name: pName,
+                                  is_new: isNew,
+                                  custom_routes: customRoutes,
+                                  targetQty: 0,
+                                  depth: 0,
+                                  material_code: comp.material_code,
+                                  material_norm: comp.material_norm
+                              };
+                          }
+                          probaPartsMap[pNorm].targetQty += target;
+                      });
+
+                      // Рекурсивно разгъване на децата от BOM таблицата за всички стандартни компоненти
+                      function expandProbaComponent(parentCode, parentTarget, curDepth, visited = new Set()) {
+                          let normP = normalizeStr(parentCode);
+                          if (visited.has(normP)) return;
+                          visited.add(normP);
+
+                          let children = globalBomData.filter(b => normalizeStr(b['ID Родител']) === normP);
+                          children.forEach(ch => {
+                              let childCode = String(ch['ID Компонент']).trim();
+                              let childNorm = normalizeStr(childCode);
+                              let childMult = parseFloat(ch['Количество']) || 1;
+                              let childTarget = parentTarget * childMult;
+
+                              let nomItem = globalNomData.find(n => normalizeStr(n['ID Детайл']) === childNorm);
+                              let childRoutes = globalRoutesByDetail[childNorm] || [];
+
+                              // Ако детайлът има маршрутни карти или е междинна сглобка
+                              if (childRoutes.length > 0) {
+                                  if (!probaPartsMap[childNorm]) {
+                                      let childName = (nomItem && nomItem['Вътрешно име']) ? nomItem['Вътрешно име'] : (namesMap[childNorm] || childCode);
+                                      probaPartsMap[childNorm] = {
+                                          code: childCode,
+                                          name: childName,
+                                          is_new: false,
+                                          custom_routes: [],
+                                          targetQty: 0,
+                                          depth: curDepth + 1,
+                                          material_code: null,
+                                          material_norm: null
+                                      };
+                                  } else {
+                                      if (curDepth + 1 > probaPartsMap[childNorm].depth) {
+                                          probaPartsMap[childNorm].depth = curDepth + 1;
+                                      }
+                                  }
+                                  probaPartsMap[childNorm].targetQty += childTarget;
+                              }
+
+                              // Продължаваме надолу по дървото за под-компоненти
+                              expandProbaComponent(childCode, childTarget, curDepth + 1, new Set(visited));
+                          });
+                      }
+
+                      // Извикваме рекурсивното разгъване за преките компоненти
+                      myComps.forEach(comp => {
+                          if (!comp.is_new) {
+                              let mult = parseFloat(comp.qty_per_unit) || 1;
+                              expandProbaComponent(comp.part_code, probaTarget * mult, 0);
+                          }
+                      });
+
+                      // Подреждаме детайлите по дълбочина: най-дълбоките първични заготовки първо
+                      let partCodesSorted = Object.keys(probaPartsMap).sort((a, b) => (probaPartsMap[b].depth || 0) - (probaPartsMap[a].depth || 0));
+
+                      // 2. Генериране на задачите за всяка операция с прецизна проверка на предходна операция и BOM
+                      partCodesSorted.forEach(partNormKey => {
+                          let partObj = probaPartsMap[partNormKey];
+                          let partCode = partObj.code;
+                          let partName = partObj.name;
+                          let totalTarget = partObj.targetQty;
 
                           let compRoutes = [];
-                          if (comp.is_new && Array.isArray(comp.custom_routes) && comp.custom_routes.length > 0) {
-                              compRoutes = comp.custom_routes;
+                          if (partObj.is_new && Array.isArray(partObj.custom_routes) && partObj.custom_routes.length > 0) {
+                              compRoutes = partObj.custom_routes;
                           } else {
                               compRoutes = globalRoutesByDetail[normalizeStr(partCode)] || [];
                           }
 
+                          if (compRoutes.length === 0) return;
+
+                          // Събираме отчетите за този детайл в тази проба
+                          let opDoneMap = {};
+                          let opTakenByMe = {};
+                          let opInProgressAny = {};
+
+                          reportsRes.data.forEach(rep => {
+                              if (String(rep['ID План'] || '').trim() === pKey &&
+                                  normalizeStr(rep['ID Детайл']) === normalizeStr(partCode)) {
+                                  let opNorm = normalizeStr(rep['Операция']);
+                                  let st = String(rep['Статус'] || '').trim();
+                                  let qty = parseFloat(rep['Количество']) || 0;
+                                  if (st === 'Отчетено' || st === 'Изпратено') {
+                                      opDoneMap[opNorm] = (opDoneMap[opNorm] || 0) + qty;
+                                  } else if (st === 'Започната') {
+                                      opInProgressAny[opNorm] = (opInProgressAny[opNorm] || 0) + qty;
+                                      if (String(rep['Оператор']).trim() === currentOperator.trim()) {
+                                          opTakenByMe[opNorm] = true;
+                                      }
+                                  }
+                              }
+                          });
+
                           compRoutes.forEach((route, rIdx) => {
                               let opNum = parseInt(route['№ Операция'] || route.op_num) || ((rIdx + 1) * 10);
                               let opName = String(route['Име на операция'] || route.op_name).trim();
+                              let opNameNorm = normalizeStr(opName);
                               let machName = String(route['Машина'] || route.machine || '').trim();
 
-                              // Check otcheti for this proba
-                              let pKey = 'PROBA_' + proba.id;
-                              let doneQty = 0;
-                              let isTaken = false;
-                              reportsRes.data.forEach(rep => {
-                                  if (String(rep['ID План'] || '').trim() === pKey &&
-                                      normalizeStr(rep['ID Детайл']) === normalizeStr(partCode) &&
-                                      normalizeStr(rep['Операция']) === normalizeStr(opName)) {
-                                      let st = String(rep['Статус'] || '').trim();
-                                      if (st === 'Отчетено' || st === 'Изпратено') {
-                                          doneQty += (parseFloat(rep['Количество']) || 0);
-                                      } else if (st === 'Започната' && String(rep['Оператор']).trim() === currentOperator.trim()) {
-                                          isTaken = true;
-                                      }
-                                  }
-                              });
-
+                              let doneQty = opDoneMap[opNameNorm] || 0;
+                              let isTaken = opTakenByMe[opNameNorm] === true;
                               let shortage = totalTarget - doneQty;
+
                               if (shortage > 0) {
                                   let matchMachine = false;
                                   if (!currentMachine || currentMachine.trim() === "" || isTaken) {
@@ -694,13 +791,128 @@ async function loadTasks(isSilent = false) {
                                       let taskKey = normalizeStr(machName) + '_' + normalizeStr(partCode) + '_' + opNum;
                                       let manualPriority = taskPrioritiesMap[taskKey] !== undefined ? taskPrioritiesMap[taskKey] : null;
 
+                                      let hasLimit = false;
+                                      let maxAllowed = shortage;
+                                      let blockingReasons = [];
+                                      let itemsToFetch = [];
+
+                                      // 1. Проверка на ПРЕДХОДНА ОПЕРАЦИЯ в рамките на същия детайл
+                                      if (rIdx > 0) {
+                                          hasLimit = true;
+                                          let prevRoute = compRoutes[rIdx - 1];
+                                          let prevOpName = String(prevRoute['Име на операция'] || prevRoute.op_name).trim();
+                                          let prevOpNorm = normalizeStr(prevOpName);
+                                          let donePrev = opDoneMap[prevOpNorm] || 0;
+                                          let alreadyClaimedOrDoneThis = doneQty + (opInProgressAny[opNameNorm] || 0);
+                                          let availFromPrev = Math.max(0, donePrev - alreadyClaimedOrDoneThis);
+
+                                          if (availFromPrev < maxAllowed) maxAllowed = availFromPrev;
+                                          if (availFromPrev <= 0) {
+                                              blockingReasons.push(`Липсва наличност на предходна операция (${prevOpName})`);
+                                          }
+                                      }
+
+                                      // 2. Проверка за ВЛАГАНИ КОМПОНЕНТИ (BOM) на тази операция
+                                      let myChildren = globalBomData.filter(b => normalizeStr(b['ID Родител']) === normalizeStr(partCode));
+                                      let relevantChildren = myChildren.filter(c => {
+                                          let opNumChild = c['Влага се на Оп. №'] ? parseFloat(c['Влага се на Оп. №']) : 0;
+                                          if (opNumChild > 0) return opNumChild === opNum;
+                                          return (rIdx === 0);
+                                      });
+
+                                      if (relevantChildren.length > 0) {
+                                          hasLimit = true;
+                                          let minSets = Infinity;
+                                          relevantChildren.forEach(child => {
+                                              let cCode = String(child['ID Компонент']).trim();
+                                              let cNorm = normalizeStr(cCode);
+                                              let cMult = parseFloat(child['Количество']) || 1;
+
+                                              // Търсим дали този компонент се произвежда за тази проба
+                                              let probaChildDone = 0;
+                                              let cRoutes = globalRoutesByDetail[cNorm] || [];
+                                              if (cRoutes.length > 0) {
+                                                  let lastCOp = normalizeStr(cRoutes[cRoutes.length - 1]['Име на операция']);
+                                                  reportsRes.data.forEach(rep => {
+                                                      if (String(rep['ID План'] || '').trim() === pKey &&
+                                                          normalizeStr(rep['ID Детайл']) === cNorm &&
+                                                          normalizeStr(rep['Операция']) === lastCOp &&
+                                                          (rep['Статус'] === 'Отчетено' || rep['Статус'] === 'Изпратено')) {
+                                                          probaChildDone += (parseFloat(rep['Количество']) || 0);
+                                                      }
+                                                  });
+                                              }
+
+                                              let skladAvail = getSkladQty(cCode);
+                                              let wipAvail = 0;
+                                              if (cRoutes.length > 0) {
+                                                  let lastCOp = normalizeStr(cRoutes[cRoutes.length - 1]['Име на операция']);
+                                                  wipAvail = physicalStock[cNorm + '_' + lastCOp] || 0;
+                                              }
+
+                                              let totalChildAvail = probaChildDone + skladAvail + wipAvail;
+                                              let sets = Math.floor(totalChildAvail / cMult);
+                                              if (sets < minSets) minSets = sets;
+                                              if (sets < shortage) {
+                                                  blockingReasons.push(`${cCode} (${totalChildAvail} налични)`);
+                                              }
+
+                                              let nomItem = globalNomData.find(n => normalizeStr(n['ID Детайл']) === cNorm);
+                                              let type = nomItem ? normalizeStr(nomItem['Тип']) : '';
+                                              let locParts = [];
+                                              if (probaChildDone > 0) locParts.push(`${probaChildDone}бр. от Проба`);
+                                              if (wipAvail > 0) locParts.push(`${wipAvail}бр. в Буфер`);
+                                              if (skladAvail > 0) locParts.push(`${skladAvail}бр. в Склад`);
+                                              if (locParts.length === 0) locParts.push(`0бр. налични`);
+
+                                              itemsToFetch.push({
+                                                  code: cCode,
+                                                  qty: cMult,
+                                                  loc: locParts.join(' / '),
+                                                  type: type,
+                                                  avail: totalChildAvail,
+                                                  sets: sets
+                                              });
+                                          });
+
+                                          if (minSets < maxAllowed) maxAllowed = minSets;
+                                      }
+
+                                      // 3. Ако е първа операция, описваме заготовката/суровината за взимане
+                                      if (rIdx === 0) {
+                                          let rootNom = globalNomData.find(n => normalizeStr(n['ID Детайл']) === normalizeStr(partCode));
+                                          let parentMat = (rootNom && rootNom['ID Родител']) ? String(rootNom['ID Родител']).trim() : (partObj.material_code || '');
+                                          let parentNorm = (rootNom && rootNom['Разходна норма']) ? (parseFloat(rootNom['Разходна норма']) || 1) : (parseFloat(partObj.material_norm) || 1);
+
+                                          if (parentMat) {
+                                              let pNom = globalNomData.find(n => normalizeStr(n['ID Детайл']) === normalizeStr(parentMat));
+                                              let pSklad = getSkladQty(parentMat);
+                                              let loc = pNom ? String(pNom['Местоположение'] || '').trim() : '';
+                                              if (pSklad > 0) {
+                                                  loc = (loc ? loc + ' | ' : '') + `${pSklad} налични в Склад`;
+                                              }
+                                              itemsToFetch.push({
+                                                  code: parentMat,
+                                                  qty: parentNorm,
+                                                  loc: loc || 'Склад Материали',
+                                                  type: 'материал',
+                                                  avail: pSklad
+                                              });
+                                          }
+                                      }
+
+                                      if (maxAllowed < 0) maxAllowed = 0;
+                                      let isBlocked = hasLimit && maxAllowed <= 0;
+                                      let safeCode = normalizeStr(partCode).replace(/[^a-z0-9]/gi, '_');
+
                                       globalTasks.push({
                                           isProba: true,
                                           probaId: proba.id,
                                           probaName: proba.name,
+                                          partDepth: partObj.depth || 0,
                                           manualPriority: manualPriority,
-                                          id: `proba_${proba.id}_comp_${comp.id}_op_${opNum}`,
-                                          plan_id: `PROBA_${proba.id}`,
+                                          id: `proba_${proba.id}_${safeCode}_${opNum}`,
+                                          plan_id: pKey,
                                           plan_name: `🧪 ПРОБА: ${proba.name}`,
                                           name: partCode,
                                           internalName: partName,
@@ -713,12 +925,12 @@ async function loadTasks(isSilent = false) {
                                           desc: route['Описание'] || route.desc || `Пробен детайл за: ${proba.name}`,
                                           type: "ПРОБА",
                                           dropoff: route['Инструкция за оставяне'] || route.dropoff || 'Зона Проби',
-                                          defaultQty: shortage,
-                                          maxAllowed: shortage,
-                                          realMaxAllowed: shortage,
-                                          hasLimit: false,
-                                          isBlocked: false,
-                                          blockingReasons: [],
+                                          defaultQty: (hasLimit && maxAllowed > 0) ? Math.min(shortage, maxAllowed) : shortage,
+                                          maxAllowed: maxAllowed,
+                                          realMaxAllowed: maxAllowed,
+                                          hasLimit: hasLimit,
+                                          isBlocked: isBlocked,
+                                          blockingReasons: blockingReasons,
                                           totalNeed: totalTarget,
                                           pureQty: shortage,
                                           scrapAllowance: 0,
@@ -728,7 +940,7 @@ async function loadTasks(isSilent = false) {
                                           isGreenCard: false,
                                           globalGrossAtLoad: 0,
                                           globalScrapAtLoad: 0,
-                                          itemsToFetch: []
+                                          itemsToFetch: itemsToFetch
                                       });
                                   }
                               }
@@ -745,12 +957,17 @@ async function loadTasks(isSilent = false) {
           let bPrio = (b.manualPriority !== null && b.manualPriority !== undefined) ? b.manualPriority : 9999;
           if (aPrio !== bPrio) return aPrio - bPrio;
 
+          if (a.isTaken !== b.isTaken) return a.isTaken ? -1 : 1;
+          
+          let aBlocked = (a.hasLimit && Number(a.maxAllowed) <= 0);
+          let bBlocked = (b.hasLimit && Number(b.maxAllowed) <= 0);
+          if (aBlocked !== bBlocked) return aBlocked ? 1 : -1;
+
           let getWeight = (t) => {
               if (t.isProba) return -100;
               if (t.plan_name === "БУФЕРИ") return Infinity;
               if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") return 9999999;
               let baseWeight = groupEarliestId[t.plan_id] || 0;
-              // Scrap-only cards (no pure quantity left) go after all normal cards
               if (t.pureQty <= 0 && t.scrapAllowance > 0) {
                   baseWeight += 5000000;
               }
@@ -759,6 +976,15 @@ async function loadTasks(isSilent = false) {
           let aPlanWeight = getWeight(a);
           let bPlanWeight = getWeight(b);
           if (aPlanWeight !== bPlanWeight) return aPlanWeight - bPlanWeight;
+
+          if (a.isProba && b.isProba) {
+              if (a.probaId !== b.probaId) return a.probaId - b.probaId;
+              let depthA = a.partDepth || 0;
+              let depthB = b.partDepth || 0;
+              if (depthA !== depthB) return depthB - depthA; // deeper parts first
+              if (a.name !== b.name) return a.name.localeCompare(b.name);
+              return (a.opNum || 0) - (b.opNum || 0);
+          }
           return a.opNum - b.opNum;
       });
 
