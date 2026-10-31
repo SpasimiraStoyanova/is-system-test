@@ -251,10 +251,6 @@ async function finishTask(taskId, btn) {
               btn.disabled = false; btn.innerHTML = "✅ ОТЧЕТИ"; 
           }
       }
-  } catch(e) {
-      console.error(e);
-      btn.disabled = false; btn.innerHTML = "✅ ОТЧЕТИ";
-  }
 }
 
 async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
