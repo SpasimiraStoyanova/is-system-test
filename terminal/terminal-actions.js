@@ -137,43 +137,56 @@ async function finishTask(taskId, btn) {
 
   let isDiscrepancyAccepted = false;
   let prevStock = (taskData.prevOpStock !== undefined) ? taskData.prevOpStock : (taskData.maxAllowed || 0);
-  let missingQty = Math.max(0, val - prevStock);
+  let missingQty = Math.max(0, val - (taskData.maxAllowed || 0));
 
   if (taskData.hasLimit && val > taskData.maxAllowed) {
-      if (taskData.hasPrevOp || taskData.prevOpName) {
-          const prevOpNumStr = taskData.prevOpNum ? `Оп. ${taskData.prevOpNum}` : 'предходната операция';
-          const prevOpNameStr = taskData.prevOpName ? ` (${taskData.prevOpName})` : '';
+      const isPrevOpDiscrepancy = Boolean(taskData.hasPrevOp || taskData.prevOpName);
+      const prevOpNumStr = taskData.prevOpNum ? `Оп. ${taskData.prevOpNum}` : 'предходната операция';
+      const prevOpNameStr = taskData.prevOpName ? ` (${taskData.prevOpName})` : '';
 
-          const warnResult = await Swal.fire({
-              title: '⚠️ Внимание',
-              html: `
-                  <div style="font-size:1.02em; line-height:1.5; color:#1e293b; text-align:left; background:#fff7ed; border:1.5px solid #fed7aa; border-radius:10px; padding:14px; margin-bottom:12px;">
-                      На предходната операция <b>(${prevOpNumStr}${prevOpNameStr})</b> са отчетени само <b>${prevStock} бр.</b>
-                      <br><br>
-                      Вие отчитате <b style="color:#16a34a; font-size:1.15em;">${val} бр.</b> (липсват <b>${missingQty} бр.</b> от предходната операция).
-                  </div>
-                  <div style="font-size:1.05em; font-weight:700; color:#0f172a; margin-top:8px;">
-                      Имате ли физически всички ${val} бр. пред машината?
-                  </div>
-                  <div style="font-size:0.85em; color:#64748b; margin-top:6px;">
-                      При потвърждение отчетът се приема веднага, а системата ще изпрати известие до колегата на ${prevOpNumStr} и до администратора да си доотчете бройките.
-                  </div>
-              `,
-              icon: 'warning',
-              showCancelButton: true,
-              confirmButtonText: '👍 Да, детайлите са при мен',
-              cancelButtonText: 'Отказ',
-              confirmButtonColor: '#ea580c',
-              cancelButtonColor: '#94a3b8',
-              focusConfirm: true
-          });
-
-          if (!warnResult.isConfirmed) return;
-          isDiscrepancyAccepted = true;
+      let descHtml = '';
+      if (isPrevOpDiscrepancy) {
+          descHtml = `
+              На предходната операция <b>(${prevOpNumStr}${prevOpNameStr})</b> са отчетени само <b>${prevStock} бр.</b>
+              <br><br>
+              Вие отчитате <b style="color:#16a34a; font-size:1.15em;">${val} бр.</b> (липсват <b>${missingQty} бр.</b> от предходната операция).
+          `;
       } else {
-          Swal.fire('Невъзможно', `Разполагаш с материали само за ${taskData.maxAllowed} бр.!`, 'error');
-          return;
+          descHtml = `
+              В системата / склада има налични материали само за <b>${taskData.maxAllowed} бр.</b>
+              <br><br>
+              Вие отчитате <b style="color:#16a34a; font-size:1.15em;">${val} бр.</b> (надвишаване с <b>${missingQty} бр.</b>).
+          `;
       }
+
+      const notifyTargetStr = isPrevOpDiscrepancy 
+          ? `до колегата на ${prevOpNumStr} и до администратора да си доотчете бройките` 
+          : `до склада и администратора за незаприходени материали`;
+
+      const warnResult = await Swal.fire({
+          title: '⚠️ Внимание',
+          html: `
+              <div style="font-size:1.02em; line-height:1.5; color:#1e293b; text-align:left; background:#fff7ed; border:1.5px solid #fed7aa; border-radius:10px; padding:14px; margin-bottom:12px;">
+                  ${descHtml}
+              </div>
+              <div style="font-size:1.05em; font-weight:700; color:#0f172a; margin-top:8px;">
+                  Имате ли физически всички ${val} бр. пред машината?
+              </div>
+              <div style="font-size:0.85em; color:#64748b; margin-top:6px;">
+                  При потвърждение отчетът се приема веднага, а системата ще изпрати известие ${notifyTargetStr}.
+              </div>
+          `,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: '👍 Да, детайлите са при мен',
+          cancelButtonText: 'Отказ',
+          confirmButtonColor: '#ea580c',
+          cancelButtonColor: '#94a3b8',
+          focusConfirm: true
+      });
+
+      if (!warnResult.isConfirmed) return;
+      isDiscrepancyAccepted = true;
   }
 
   let shouldProceed = isDiscrepancyAccepted;
@@ -255,12 +268,17 @@ async function finishTask(taskId, btn) {
 
 async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
     try {
+        const isPrevOp = Boolean(taskData.hasPrevOp || taskData.prevOpName);
         const curOpNum = taskData.opNum ? `Оп. ${taskData.opNum}` : taskData.op;
-        const targetOpNum = taskData.prevOpNum ? String(taskData.prevOpNum) : '';
-        const targetOpName = taskData.prevOpName || '';
-        const targetMachine = taskData.prevMachine || 'Обща';
-        const targetOperator = taskData.prevOperator || ('Колега от ' + (targetOpNum ? 'Оп. ' + targetOpNum : 'предходна операция'));
+        const targetOpNum = isPrevOp ? (taskData.prevOpNum ? String(taskData.prevOpNum) : '') : 'Склад';
+        const targetOpName = isPrevOp ? (taskData.prevOpName || '') : 'Склад Материали';
+        const targetMachine = isPrevOp ? (taskData.prevMachine || 'Обща') : 'Склад';
+        const targetOperator = isPrevOp ? (taskData.prevOperator || ('Колега от ' + (targetOpNum ? 'Оп. ' + targetOpNum : 'предходна операция'))) : 'Склад / Администратор';
         const myMachine = (currentMachine && currentMachine !== 'ВСИЧКИ') ? currentMachine : (taskData.machine || 'Обща');
+
+        const reasonsText = isPrevOp
+            ? `Разминаване: отчетени ${val} бр., липсват ${missingQty} бр. от предходна операция (${targetOpNum ? 'Оп. ' + targetOpNum + ' ' : ''}${targetOpName})`
+            : `Разминаване в материали: отчетени ${val} бр., в склада са заприходени само ${taskData.maxAllowed || 0} бр. (липсват ${missingQty} бр.)`;
 
         // 1. Запис в material_requests за цеховия Andon банер и известие в Админ панела
         const reqData = {
@@ -270,7 +288,7 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
             machine: myMachine,
             operator: currentOperator,
             operator_email: (typeof currentEmail !== 'undefined' && currentEmail) ? currentEmail : (currentOperatorEmail || currentOperator),
-            reasons: `Разминаване: отчетени ${val} бр., липсват ${missingQty} бр. от предходна операция (${targetOpNum ? 'Оп. ' + targetOpNum + ' ' : ''}${targetOpName})`,
+            reasons: reasonsText,
             target_part: taskData.name,
             target_op_num: targetOpNum,
             target_op_name: targetOpName,
@@ -279,6 +297,7 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
             created_at: new Date().toISOString(),
             notes: JSON.stringify({
                 type: 'discrepancy',
+                is_prev_op: isPrevOp,
                 reported_qty: val,
                 prev_qty: prevStock,
                 missing_qty: missingQty,
@@ -297,10 +316,10 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
             console.warn('material_requests discrepancy insert error:', res1.error);
         }
 
-        // 2. Лично известие в chekiraniya за предходния оператор
+        // 2. Лично известие в chekiraniya
         let targetEmail = 'ALL';
         try {
-            if (taskData.prevOperator) {
+            if (isPrevOp && taskData.prevOperator) {
                 const { data: pData } = await client.from('personal').select('Имейл').ilike('Име', `%${taskData.prevOperator.trim()}%`).limit(1);
                 if (pData && pData.length > 0 && pData[0]['Имейл']) {
                     targetEmail = pData[0]['Имейл'].trim().toLowerCase();
@@ -308,8 +327,13 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
             }
         } catch(e) {}
 
-        const msgTitle = `🔔 Липсващи отчетени бройки (${taskData.name})`;
-        const msgBody = `Колегата ${currentOperator} на ${curOpNum} (${taskData.op}) отчете ${val} бр., но от вас на ${targetOpNum ? 'Оп. ' + targetOpNum : 'предходна оп.'} са записани само ${prevStock} бр. (липсват ${missingQty} бр.). Моля, доотчетете си бройките!`;
+        const msgTitle = isPrevOp
+            ? `🔔 Липсващи отчетени бройки (${taskData.name})`
+            : `🔔 Липсващи заприходени материали (${taskData.name})`;
+
+        const msgBody = isPrevOp
+            ? `Колегата ${currentOperator} на ${curOpNum} (${taskData.op}) отчете ${val} бр., но от вас на ${targetOpNum ? 'Оп. ' + targetOpNum : 'предходна оп.'} са записани само ${prevStock} бр. (липсват ${missingQty} бр.). Моля, доотчетете си бройките!`
+            : `Операторът ${currentOperator} на ${curOpNum} (${taskData.op}) отчете ${val} бр., но в склада има заприходени материали само за ${taskData.maxAllowed || 0} бр. (липсват ${missingQty} бр.). Моля, проверете и заприходете материалите!`;
 
         await client.from('chekiraniya').insert([{
             "Име": "СИСТЕМА",

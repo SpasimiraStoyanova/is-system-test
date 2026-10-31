@@ -1148,7 +1148,7 @@ function renderTasks(tasks) {
         fetchHtml += `</ul></div>`;
     }
     
-    var bomBadgeHtml = ''; var actionButtonHtml = ''; var inputMaxHtml = (t.hasLimit && !t.hasPrevOp) ? `max="${t.maxAllowed}"` : '';
+    var bomBadgeHtml = ''; var actionButtonHtml = ''; var inputMaxHtml = '';
     
     let remainingQty = Math.max(0, t.pureQty);
     let displayNeedHtml = `<span class="qty-badge" style="${badgeStyle}">${remainingQty} бр.</span>`;
