@@ -64,12 +64,13 @@ async function loadAndRenderExecutiveReport(startDate, endDate) {
         const next7DaysIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
         // Fetch data in parallel
-        const [otchetiRes, skladRes, invRes, eventsRes, persRes] = await Promise.all([
+        const [otchetiRes, skladRes, invRes, eventsRes, persRes, reqsRes] = await Promise.all([
             client.from('otcheti').select('*').gte('Дата', startIso).lte('Дата', endIso).order('Дата', { ascending: false }).limit(20000),
             client.from('sklad').select('*').limit(20000),
             client.from('inventory').select('*').limit(20000),
             client.from('factory_events').select('*').limit(20000),
-            client.from('personal').select('Имейл, Име, Длъжност').limit(500)
+            client.from('personal').select('Имейл, Име, Длъжност').limit(500),
+            client.from('material_requests').select('*').limit(200).catch(() => ({ data: [] }))
         ]);
 
         const otcheti = otchetiRes.data || [];
@@ -77,6 +78,9 @@ async function loadAndRenderExecutiveReport(startDate, endDate) {
         const inventory = invRes.data || [];
         const events = eventsRes.data || [];
         const personal = persRes.data || [];
+        const pendingDiscrepancies = (reqsRes && reqsRes.data ? reqsRes.data : []).filter(r => 
+            r.status === 'Чакаща' && r.notes && r.notes.includes('"type":"discrepancy"')
+        );
 
         // Personal mapping
         const nameMap = {};
@@ -191,7 +195,8 @@ async function loadAndRenderExecutiveReport(startDate, endDate) {
             criticalMaterials,
             criticalParts,
             totalCriticalAlerts,
-            upcomingEvents
+            upcomingEvents,
+            pendingDiscrepancies
         };
 
         renderReportUI(reportCachedData);
@@ -259,6 +264,20 @@ function renderReportUI(data) {
                     </div>
                 </div>
             </div>
+
+            ${data.pendingDiscrepancies && data.pendingDiscrepancies.length > 0 ? `
+                <div style="background:#fff7ed; border:1.5px solid #fed7aa; border-left:5px solid #ea580c; border-radius:10px; padding:12px 16px; margin-top:12px;">
+                    <div style="font-weight:800; color:#ea580c; font-size:0.95em; display:flex; align-items:center; gap:6px;">
+                        <span>⚠️</span> РАЗМИНАВАНИЯ В ОТЧЕТИТЕ ЗА ДООТЧИТАНЕ (${data.pendingDiscrepancies.length})
+                    </div>
+                    <ul style="margin:6px 0 0 18px; padding:0; font-size:0.88em; color:#9a3412;">
+                        ${data.pendingDiscrepancies.map(d => {
+                            let o = {}; try { o = JSON.parse(d.notes || '{}'); } catch(e) {}
+                            return `<li><b>${d.part_name}</b>: на ${d.op_name} са отчетени <b>${o.reported_qty || ''} бр.</b>, а от предходна Оп. ${o.target_op_num || ''} (${o.target_machine || ''}) има само <b>${o.prev_qty || 0} бр.</b> (липсват <b>${o.missing_qty || ''} бр.</b>)</li>`;
+                        }).join('')}
+                    </ul>
+                </div>
+            ` : ''}
 
             <!-- KPI Cards Grid -->
             <div class="report-kpi-grid">

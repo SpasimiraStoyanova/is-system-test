@@ -446,6 +446,21 @@ function renderDynamicTable(itemsToRender = null) {
           row.appendChild(td); return;
       }
 
+      if (currentTab === 'otcheti' && f.name === 'Статус') {
+          let hasPendingDisc = (typeof globalMaterialRequests !== 'undefined') && globalMaterialRequests.some(r => 
+              r.status === 'Чакаща' && 
+              r.part_name === item['ID Детайл'] && 
+              r.notes && r.notes.includes('"type":"discrepancy"')
+          );
+          if (hasPendingDisc) {
+              td.innerHTML = `<span style="background:#fff7ed; color:#c2410c; border:1.5px solid #fed7aa; padding:3px 8px; border-radius:12px; font-weight:800; font-size:0.82em;" title="Има чакащо доотчитане от предходна операция">⚠️ Отчетено (Чака доотчитане)</span>`;
+              row.style.borderLeft = '5px solid #ea580c';
+              row.style.backgroundColor = '#fffbeb';
+              row.appendChild(td);
+              return;
+          }
+      }
+
       if ((f.name === 'Време' || f.name === 'Дата') && val) { try { let pVal = val; if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z'; td.innerHTML = `<b>${new Date(pVal).toLocaleString('bg-BG')}</b>`; } catch(e) { td.innerText = val; } row.appendChild(td); return; }
       if (currentTab === 'chekiraniya' && f.name === 'Действие') {
           if (val === 'Влизане') td.innerHTML = `<span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🟢 ${val}</span>`;

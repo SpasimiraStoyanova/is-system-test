@@ -77,18 +77,39 @@ function showAdminRequestToast(req) {
     toast.style.cssText = 'background:#ffffff; border:1px solid #fed7aa; border-left:6px solid #ea580c; border-radius:12px; padding:12px 16px; box-shadow:0 8px 24px rgba(0,0,0,0.15); pointer-events:auto; display:flex; flex-direction:column; gap:4px; cursor:pointer; transition:transform 0.15s;';
     toast.onmouseover = () => toast.style.transform = 'scale(1.02)';
     toast.onmouseout = () => toast.style.transform = 'scale(1)';
-    toast.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-weight:900; color:#ea580c; font-size:0.92em; display:flex; align-items:center; gap:6px;">
-                <span>🔔</span> СИГНАЛ ЗА БРОЙКИ / ЗАГОТОВКА
+
+    let parsedObj = null;
+    try { if (req.notes && req.notes.startsWith('{')) parsedObj = JSON.parse(req.notes); } catch(e) {}
+
+    if (parsedObj && parsedObj.type === 'discrepancy') {
+        toast.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-weight:900; color:#ea580c; font-size:0.92em; display:flex; align-items:center; gap:6px;">
+                    <span>⚠️</span> РАЗМИНАВАНЕ В ОТЧЕТИТЕ
+                </div>
+                <span style="font-size:0.75em; color:#94a3b8;">току-що</span>
             </div>
-            <span style="font-size:0.75em; color:#94a3b8;">току-що</span>
-        </div>
-        <div style="font-size:0.88em; color:#1e293b; font-weight:700;">
-            ${req.operator || 'Оператор'} (машина <b>${req.machine || 'Обща'}</b>) чака за <span style="color:#0284c7;">${req.part_name}</span>!
-        </div>
-        ${targetInfo ? `<div style="font-size:0.82em; color:#854d0e; background:#fefce8; padding:4px 8px; border-radius:6px; border:1px solid #fef08a;">${targetInfo}</div>` : ''}
-    `;
+            <div style="font-size:0.88em; color:#1e293b; font-weight:700;">
+                <b>${req.operator || 'Оператор'}</b> отчете <b>${parsedObj.reported_qty} бр.</b> за <span style="color:#0284c7;">${req.part_name}</span> (Оп. ${parsedObj.reported_by_op_num || ''})!
+            </div>
+            <div style="font-size:0.82em; color:#854d0e; background:#fefce8; padding:4px 8px; border-radius:6px; border:1px solid #fef08a;">
+                👉 Липсват <b>${parsedObj.missing_qty} бр.</b> от Оп. ${parsedObj.target_op_num || ''} (${parsedObj.target_machine || ''}). Чака се доотчитане.
+            </div>
+        `;
+    } else {
+        toast.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-weight:900; color:#ea580c; font-size:0.92em; display:flex; align-items:center; gap:6px;">
+                    <span>🔔</span> СИГНАЛ ЗА БРОЙКИ / ЗАГОТОВКА
+                </div>
+                <span style="font-size:0.75em; color:#94a3b8;">току-що</span>
+            </div>
+            <div style="font-size:0.88em; color:#1e293b; font-weight:700;">
+                ${req.operator || 'Оператор'} (машина <b>${req.machine || 'Обща'}</b>) чака за <span style="color:#0284c7;">${req.part_name}</span>!
+            </div>
+            ${targetInfo ? `<div style="font-size:0.82em; color:#854d0e; background:#fefce8; padding:4px 8px; border-radius:6px; border:1px solid #fef08a;">${targetInfo}</div>` : ''}
+        `;
+    }
     toast.onclick = () => {
         openMaterialRequestsModal();
         toast.remove();
@@ -182,9 +203,14 @@ function updatePlanningBadgesAndBanner() {
                 targetMachineTxt = ` ➔ насочена към <b>${first.target_machine}</b>`;
             }
 
-            const summaryText = count === 1 
-                ? `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> (машина ${first.machine || 'Обща'}) чака за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span>${targetMachineTxt}`
-                : `<b>${count} чакащи заявки от цеха</b> (последна за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> от ${first.operator || 'Оператор'})`;
+            let summaryText = '';
+            if (tObj && tObj.type === 'discrepancy') {
+                summaryText = `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> отчете <b>${tObj.reported_qty} бр.</b> за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> ➔ <b style="color:#c2410c;">разминаване: липсват ${tObj.missing_qty} бр.</b> от Оп. ${tObj.target_op_num} (${tObj.target_machine})`;
+            } else {
+                summaryText = count === 1 
+                    ? `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> (машина ${first.machine || 'Обща'}) чака за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span>${targetMachineTxt}`
+                    : `<b>${count} чакащи заявки от цеха</b> (последна за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> от ${first.operator || 'Оператор'})`;
+            }
 
             banner.innerHTML = `
                 <div style="background: #fff7ed; border: 1px solid #fed7aa; border-left: 5px solid #ea580c; padding: 10px 16px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(234, 88, 12, 0.08); flex-wrap: wrap; gap: 10px;">
@@ -294,23 +320,33 @@ function renderMaterialRequestsList() {
             } catch(e) { dateStr = req.created_at; }
         }
 
-        const statusPill = isPending 
-            ? `<span style="background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">🟡 Чакаща заготовка</span>`
-            : `<span style="background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">🟢 Осигурена</span>`;
+        let isDiscrepancy = (targetObj && targetObj.type === 'discrepancy');
 
-        // Extract targeted machine & op info
-        let targetObj = null;
-        try {
-            if (req.notes && req.notes.startsWith('{')) targetObj = JSON.parse(req.notes);
-        } catch(e) {}
-        
+        let statusPill = '';
+        if (isDiscrepancy) {
+            statusPill = isPending 
+                ? `<span style="background: #fff7ed; color: #ea580c; border: 1.5px solid #fed7aa; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">⚠️ Чака доотчитане</span>`
+                : `<span style="background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">🟢 Доотчетено</span>`;
+        } else {
+            statusPill = isPending 
+                ? `<span style="background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">🟡 Чакаща заготовка</span>`
+                : `<span style="background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">🟢 Осигурена</span>`;
+        }
+
         const tMachine = targetObj ? targetObj.target_machine : (req.target_machine || null);
         const tOpName = targetObj ? targetObj.target_op_name : (req.target_op_name || null);
         const tOpNum = targetObj ? targetObj.target_op_num : (req.target_op_num || null);
         const tPart = targetObj ? targetObj.target_part : (req.target_part || null);
 
         let targetDetailHtml = '';
-        if (tMachine && tMachine !== 'Склад') {
+        if (isDiscrepancy) {
+            targetDetailHtml = `
+                <div style="background: #fff7ed; border: 1.5px solid #fed7aa; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; color: #9a3412; line-height: 1.5;">
+                    👉 <b>Разминаване между операции:</b> На Оп. ${targetObj.reported_by_op_num || ''} (${req.op_name}) са отчетени <b>${targetObj.reported_qty} бр.</b>, но на предходната Оп. ${tOpNum} (${tOpName}) в системата има само <b>${targetObj.prev_qty} бр.</b> (липсват <b>${targetObj.missing_qty} бр.</b>)!<br>
+                    Работно място на предходна операция: <b>${tMachine}</b> &bull; Работил: <b>${targetObj.target_operator || 'колега'}</b>
+                </div>
+            `;
+        } else if (tMachine && tMachine !== 'Склад') {
             targetDetailHtml = `
                 <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 8px; padding: 8px 12px; font-size: 0.88em; color: #1e40af; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
                     <div>

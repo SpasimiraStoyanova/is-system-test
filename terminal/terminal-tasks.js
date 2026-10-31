@@ -358,15 +358,35 @@ async function loadTasks(isSilent = false) {
                       let displayMaxAllowed = Infinity;
                       let hasLimit = false;
                       let blockingReasons = [];
+                      let hasPrevOp = false;
+                      let prevOpNum = null;
+                      let prevOpName = null;
+                      let prevOpStock = 0;
+                      let prevMachine = '';
+                      let prevOperator = null;
                       
                       // 1. Check previous operation availability
                       if (i > 0) {
                           hasLimit = true;
+                          hasPrevOp = true;
                           let prevRoute = routes[i - 1]; 
-                          let prevOpName = normalizeStr(prevRoute['Име на операция']);
-                          maxAllowed = physicalStock[code + '_' + prevOpName] || 0;
+                          prevOpNum = parseInt(prevRoute['№ Операция']) || i;
+                          prevOpName = String(prevRoute['Име на операция']).trim();
+                          prevMachine = prevRoute['Машина'] || '';
+                          let prevOpNorm = normalizeStr(prevOpName);
+                          prevOpStock = physicalStock[code + '_' + prevOpNorm] || 0;
+                          maxAllowed = prevOpStock;
                           displayMaxAllowed = maxAllowed;
-                          if (maxAllowed < totalShortage) blockingReasons.push(`Липсва наличност на предходна операция (${String(prevRoute['Име на операция']).trim()})`);
+                          if (maxAllowed < totalShortage) blockingReasons.push(`Липсва наличност на предходна операция (${prevOpName})`);
+
+                          if (reportsRes && reportsRes.data) {
+                              let lastPrevRep = reportsRes.data.find(r => 
+                                  normalizeStr(r['ID Детайл']) === code && 
+                                  normalizeStr(r['Операция']) === prevOpNorm &&
+                                  (r['Статус'] === 'Отчетено' || r['Статус'] === 'Изпратено')
+                              );
+                              if (lastPrevRep) prevOperator = String(lastPrevRep['Оператор'] || '').trim();
+                          }
                       }
 
                       // 2. Check BOM availability for THIS specific operation
@@ -551,7 +571,13 @@ async function loadTasks(isSilent = false) {
                                   totalNeed: shortage, pureQty: isScrapOnlyCard ? 0 : shortage, scrapAllowance: isScrapOnlyCard ? shortage : 0,
                                   totalDone: totalDone, totalScrapped: 0, isTaken: isTaken, isGreenCard: (pNameOverride === 'БУФЕРИ'),
                                   globalGrossAtLoad: 0, globalScrapAtLoad: 0,
-                                  itemsToFetch: itemsToFetch
+                                  itemsToFetch: itemsToFetch,
+                                  hasPrevOp: hasPrevOp,
+                                  prevOpNum: prevOpNum,
+                                  prevOpName: prevOpName,
+                                  prevOpStock: prevOpStock,
+                                  prevMachine: prevMachine,
+                                  prevOperator: prevOperator
                               });
                               
                               if (hasLimit) {
@@ -1122,7 +1148,7 @@ function renderTasks(tasks) {
         fetchHtml += `</ul></div>`;
     }
     
-    var bomBadgeHtml = ''; var actionButtonHtml = ''; var inputMaxHtml = t.hasLimit ? `max="${t.maxAllowed}"` : '';
+    var bomBadgeHtml = ''; var actionButtonHtml = ''; var inputMaxHtml = (t.hasLimit && !t.hasPrevOp) ? `max="${t.maxAllowed}"` : '';
     
     let remainingQty = Math.max(0, t.pureQty);
     let displayNeedHtml = `<span class="qty-badge" style="${badgeStyle}">${remainingQty} бр.</span>`;
@@ -1521,6 +1547,7 @@ window.autoResolveAndonForTask = async function(taskData, val) {
     if (!taskData || !taskData.name) return;
     try {
         const taskPartNorm = normalizeStr(taskData.name);
+        const taskOpNum = parseInt(taskData.opNum) || 0;
         const { data: pending } = await client
             .from('material_requests')
             .select('*')
@@ -1530,12 +1557,25 @@ window.autoResolveAndonForTask = async function(taskData, val) {
         if (pending && pending.length > 0) {
             for (const req of pending) {
                 let tPart = req.target_part;
+                let tObj = {};
                 try {
-                    const tObj = JSON.parse(req.notes || '{}');
+                    tObj = JSON.parse(req.notes || '{}');
                     if (tObj.target_part) tPart = tObj.target_part;
                 } catch(e) {}
 
-                if (tPart && normalizeStr(tPart) === taskPartNorm) {
+                if (tObj && tObj.type === 'discrepancy') {
+                    const reqTargetOpNum = parseInt(tObj.target_op_num || req.target_op_num) || 0;
+                    if (tPart && normalizeStr(tPart) === taskPartNorm && (reqTargetOpNum === 0 || reqTargetOpNum === taskOpNum)) {
+                        await client
+                            .from('material_requests')
+                            .update({
+                                status: 'Осигурена',
+                                resolved_at: new Date().toISOString(),
+                                resolved_by: `${currentOperator || 'Оператор'} (доотчетени ${val} бр.)`
+                            })
+                            .eq('id', req.id);
+                    }
+                } else if (tPart && normalizeStr(tPart) === taskPartNorm) {
                     await client
                         .from('material_requests')
                         .update({
@@ -1612,29 +1652,56 @@ async function checkTerminalAndonAlerts() {
         const reqMachine = alertItem.machine || 'работно място';
         const reqOp = alertItem.op_name || '';
 
-        banner.innerHTML = `
-            <div class="terminal-andon-alert">
-                <div class="andon-header">
-                    <div class="andon-title">
-                        <span>🔔</span>
-                        <span>СПЕШЕН СИГНАЛ ЗА БРОЙКИ ОТ ЦЕХА!</span>
+        if (tObj && tObj.type === 'discrepancy') {
+            banner.innerHTML = `
+                <div class="terminal-andon-alert" style="border-left: 6px solid #ea580c; background: #fff7ed;">
+                    <div class="andon-header">
+                        <div class="andon-title" style="color: #c2410c;">
+                            <span>🔔</span>
+                            <span>РАЗМИНАВАНЕ В ОТЧЕТИТЕ: НУЖНО ДООТЧИТАНЕ!</span>
+                        </div>
+                        <span class="andon-badge" style="background: #ea580c; color: white;">Доотчитане</span>
                     </div>
-                    <span class="andon-badge">Чакаща операция</span>
+                    <div class="andon-body" style="color: #1e293b;">
+                        Колегата <b>${reqOperator}</b> (машина <b>${reqMachine}</b>${reqOp ? ', оп. ' + reqOp : ''}) 
+                        отчете <b style="color: #16a34a; font-size: 1.1em;">${tObj.reported_qty || ''} бр.</b> от детайл <b style="color:#0369a1;">${targetPart}</b>, 
+                        но от вашата операция (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>) в системата са отчетени само <b>${tObj.prev_qty || 0} бр.</b> (липсват <b>${tObj.missing_qty || ''} бр.</b>)!
+                        <br><br>
+                        👉 <b>Към вас:</b> Моля, ако имате изработени детайли, доотчетете си бройките на <b>${targetOpNum ? 'Оп. ' + targetOpNum : ''} (${targetOpName})</b> на терминала!
+                    </div>
+                    <div class="andon-actions">
+                        <button type="button" class="andon-ack-btn" onclick="acknowledgeTerminalAndon(${alertItem.id})" style="background: #ea580c;">
+                            👌 Разбрах / Ще доотчета
+                        </button>
+                        ${myAlerts.length > 1 ? `<span style="font-size:0.82em; color:#9a3412; font-weight:700;">+ още ${myAlerts.length - 1} сигнала</span>` : ''}
+                    </div>
                 </div>
-                <div class="andon-body">
-                    Колегата <b>${reqOperator}</b> (машина <b>${reqMachine}</b>${reqOp ? ', оп. ' + reqOp : ''}) 
-                    е блокиран и спешно чака за детайл <b style="color:#0369a1; font-size:1.08em;">${targetPart}</b>!
-                    <br><br>
-                    👉 <b>Към вас:</b> Моля, ако имате изработени бройки на <b>Оп. ${targetOpNum} (${targetOpName})</b>, отчетете ги на терминала, за да отпушите веригата!
+            `;
+        } else {
+            banner.innerHTML = `
+                <div class="terminal-andon-alert">
+                    <div class="andon-header">
+                        <div class="andon-title">
+                            <span>🔔</span>
+                            <span>СПЕШЕН СИГНАЛ ЗА БРОЙКИ ОТ ЦЕХА!</span>
+                        </div>
+                        <span class="andon-badge">Чакаща операция</span>
+                    </div>
+                    <div class="andon-body">
+                        Колегата <b>${reqOperator}</b> (машина <b>${reqMachine}</b>${reqOp ? ', оп. ' + reqOp : ''}) 
+                        е блокиран и спешно чака за детайл <b style="color:#0369a1; font-size:1.08em;">${targetPart}</b>!
+                        <br><br>
+                        👉 <b>Към вас:</b> Моля, ако имате изработени бройки на <b>Оп. ${targetOpNum} (${targetOpName})</b>, отчетете ги на терминала, за да отпушите веригата!
+                    </div>
+                    <div class="andon-actions">
+                        <button type="button" class="andon-ack-btn" onclick="acknowledgeTerminalAndon(${alertItem.id})">
+                            👌 Разбрах / Работя по него
+                        </button>
+                        ${myAlerts.length > 1 ? `<span style="font-size:0.82em; color:#9a3412; font-weight:700;">+ още ${myAlerts.length - 1} сигнала</span>` : ''}
+                    </div>
                 </div>
-                <div class="andon-actions">
-                    <button type="button" class="andon-ack-btn" onclick="acknowledgeTerminalAndon(${alertItem.id})">
-                        👌 Разбрах / Работя по него
-                    </button>
-                    ${myAlerts.length > 1 ? `<span style="font-size:0.82em; color:#9a3412; font-weight:700;">+ още ${myAlerts.length - 1} сигнала</span>` : ''}
-                </div>
-            </div>
-        `;
+            `;
+        }
         banner.style.display = 'block';
     } catch(err) {
         console.error('checkTerminalAndonAlerts error:', err);

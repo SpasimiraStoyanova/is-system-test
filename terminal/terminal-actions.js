@@ -1,4 +1,4 @@
-﻿function updateHistoryUI() {
+function updateHistoryUI() {
   var list = document.getElementById('historyList');
   if (localHistoryData.length === 0) { list.innerHTML = '<li class="history-item" style="color:#94a3b8; text-align:center;">Няма скорошни действия</li>'; return; }
   var html = '';
@@ -133,43 +133,103 @@ async function finishTask(taskId, btn) {
   var inputElem = document.getElementById('qty_' + taskId); if (!inputElem) return; var val = parseFloat(inputElem.value);
   if(isNaN(val) || val <= 0) { Swal.fire('Грешка', 'Въведи валидна бройка!', 'error'); return; }
   let taskData = globalTasks.find(t => t.id === taskId);
-  if (taskData.hasLimit && val > taskData.maxAllowed) { Swal.fire('Невъзможно', `Разполагаш с материали само за ${taskData.maxAllowed} бр.!`, 'error'); return; }
+  if (!taskData) return;
 
-  Swal.fire({ title: 'Сигурен ли си?', html: `Ще отчетеш <b style="color:#16a34a; font-size:1.2em;">${val} здрави бройки</b>.`, icon: 'question', showCancelButton: true, confirmButtonColor: '#16a34a', confirmButtonText: '🟢 ДА, ПРЕДАЙ', cancelButtonText: 'Отказ'
-  }).then(async (result) => {
-    if (result.isConfirmed) {
-      btn.disabled = true; btn.innerHTML = "ЗАПИС..."; Swal.fire({ title: 'Проверка и Отчитане...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
-      try {
-          if (taskData.hasLimit) {
-              let validation = await validateRealTimeStock(taskData, val);
-              if (!validation.ok) {
-                  if (validation.maxAllowed <= 0) {
-                      await forceCancelTask(taskId, taskData, "Някой друг вече е отчел всички бройки. Задачата се приключва автоматично.");
-                      return;
-                  } else {
-                      throw new Error(`Невъзможно! Докато вие работехте, друг е отчел бройки. Оставащ наличен материал за тази операция: ${validation.maxAllowed} бр.`);
-                  }
+  let isDiscrepancyAccepted = false;
+  let prevStock = (taskData.prevOpStock !== undefined) ? taskData.prevOpStock : (taskData.maxAllowed || 0);
+  let missingQty = Math.max(0, val - prevStock);
+
+  if (taskData.hasLimit && val > taskData.maxAllowed) {
+      if (taskData.hasPrevOp || taskData.prevOpName) {
+          const prevOpNumStr = taskData.prevOpNum ? `Оп. ${taskData.prevOpNum}` : 'предходната операция';
+          const prevOpNameStr = taskData.prevOpName ? ` (${taskData.prevOpName})` : '';
+
+          const warnResult = await Swal.fire({
+              title: '⚠️ Внимание',
+              html: `
+                  <div style="font-size:1.02em; line-height:1.5; color:#1e293b; text-align:left; background:#fff7ed; border:1.5px solid #fed7aa; border-radius:10px; padding:14px; margin-bottom:12px;">
+                      На предходната операция <b>(${prevOpNumStr}${prevOpNameStr})</b> са отчетени само <b>${prevStock} бр.</b>
+                      <br><br>
+                      Вие отчитате <b style="color:#16a34a; font-size:1.15em;">${val} бр.</b> (липсват <b>${missingQty} бр.</b> от предходната операция).
+                  </div>
+                  <div style="font-size:1.05em; font-weight:700; color:#0f172a; margin-top:8px;">
+                      Имате ли физически всички ${val} бр. пред машината?
+                  </div>
+                  <div style="font-size:0.85em; color:#64748b; margin-top:6px;">
+                      При потвърждение отчетът се приема веднага, а системата ще изпрати известие до колегата на ${prevOpNumStr} и до администратора да си доотчете бройките.
+                  </div>
+              `,
+              icon: 'warning',
+              showCancelButton: true,
+              confirmButtonText: '👍 Да, детайлите са при мен',
+              cancelButtonText: 'Отказ',
+              confirmButtonColor: '#ea580c',
+              cancelButtonColor: '#94a3b8',
+              focusConfirm: true
+          });
+
+          if (!warnResult.isConfirmed) return;
+          isDiscrepancyAccepted = true;
+      } else {
+          Swal.fire('Невъзможно', `Разполагаш с материали само за ${taskData.maxAllowed} бр.!`, 'error');
+          return;
+      }
+  }
+
+  let shouldProceed = isDiscrepancyAccepted;
+  if (!shouldProceed) {
+      const confirmResult = await Swal.fire({
+          title: 'Сигурен ли си?',
+          html: `Ще отчетеш <b style="color:#16a34a; font-size:1.2em;">${val} здрави бройки</b>.`,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonColor: '#16a34a',
+          confirmButtonText: '🟢 ДА, ПРЕДАЙ',
+          cancelButtonText: 'Отказ'
+      });
+      shouldProceed = confirmResult.isConfirmed;
+  }
+
+  if (!shouldProceed) return;
+
+  btn.disabled = true; 
+  btn.innerHTML = "ЗАПИС..."; 
+  Swal.fire({ title: 'Проверка и Отчитане...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+  try {
+      if (taskData.hasLimit && !isDiscrepancyAccepted) {
+          let validation = await validateRealTimeStock(taskData, val);
+          if (!validation.ok) {
+              if (validation.maxAllowed <= 0) {
+                  await forceCancelTask(taskId, taskData, "Някой друг вече е отчел всички бройки. Задачата се приключва автоматично.");
+                  return;
+              } else {
+                  throw new Error(`Невъзможно! Докато вие работехте, друг е отчел бройки. Оставащ наличен материал за тази операция: ${validation.maxAllowed} бр.`);
               }
           }
+      }
 
-          let startedAt = window['startTime_' + taskId] || new Date().toISOString();
-          let inserts = [];
-          if (taskData.scrapAllowance && taskData.scrapAllowance > 0 && val > taskData.pureQty) {
-              let excess = val - taskData.pureQty;
-              let normalQty = taskData.pureQty;
-              if (normalQty > 0) {
-                  inserts.push({ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": normalQty, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
-              }
-              inserts.push({ "ID План": "СВРЪХПРОИЗВОДСТВО", "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": excess, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
-          } else {
-              inserts.push({ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+      let startedAt = window['startTime_' + taskId] || new Date().toISOString();
+      let inserts = [];
+      if (taskData.scrapAllowance && taskData.scrapAllowance > 0 && val > taskData.pureQty) {
+          let excess = val - taskData.pureQty;
+          let normalQty = taskData.pureQty;
+          if (normalQty > 0) {
+              inserts.push({ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": normalQty, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
           }
-          const { error } = await client.from('otcheti').insert(inserts);
-          if(error) throw error;
-          
-          if (typeof autoResolveAndonForTask === 'function') { autoResolveAndonForTask(taskData, val); }
-          addLogToHistory('ГОТОВО', val, taskId); activeTaskId = null; 
-          Swal.fire({ icon: 'success', title: 'Браво!', text: 'Отчетени: ' + val + ' бр.', timer: 1500, showConfirmButton: false }).then(() => { loadTasks(); });
+          inserts.push({ "ID План": "СВРЪХПРОИЗВОДСТВО", "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": excess, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+      } else {
+          inserts.push({ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
+      }
+      const { error } = await client.from('otcheti').insert(inserts);
+      if(error) throw error;
+      
+      if (isDiscrepancyAccepted) {
+          await sendDiscrepancyAlerts(taskData, val, prevStock, missingQty);
+      }
+
+      if (typeof autoResolveAndonForTask === 'function') { autoResolveAndonForTask(taskData, val); }
+      addLogToHistory('ГОТОВО', val, taskId); activeTaskId = null; 
+      Swal.fire({ icon: 'success', title: 'Браво!', text: 'Отчетени: ' + val + ' бр.', timer: 1500, showConfirmButton: false }).then(() => { loadTasks(); });
       } catch(err) { 
           if (!navigator.onLine || err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('fetch')) {
               let startedAt = window['startTime_' + taskId] || new Date().toISOString();
@@ -191,8 +251,82 @@ async function finishTask(taskId, btn) {
               btn.disabled = false; btn.innerHTML = "✅ ОТЧЕТИ"; 
           }
       }
+  } catch(e) {
+      console.error(e);
+      btn.disabled = false; btn.innerHTML = "✅ ОТЧЕТИ";
+  }
+}
+
+async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
+    try {
+        const curOpNum = taskData.opNum ? `Оп. ${taskData.opNum}` : taskData.op;
+        const targetOpNum = taskData.prevOpNum ? String(taskData.prevOpNum) : '';
+        const targetOpName = taskData.prevOpName || '';
+        const targetMachine = taskData.prevMachine || 'Обща';
+        const targetOperator = taskData.prevOperator || ('Колега от ' + (targetOpNum ? 'Оп. ' + targetOpNum : 'предходна операция'));
+        const myMachine = (currentMachine && currentMachine !== 'ВСИЧКИ') ? currentMachine : (taskData.machine || 'Обща');
+
+        // 1. Запис в material_requests за цеховия Andon банер и известие в Админ панела
+        const reqData = {
+            task_id: taskData.id,
+            part_name: taskData.name,
+            op_name: taskData.op,
+            machine: myMachine,
+            operator: currentOperator,
+            operator_email: (typeof currentEmail !== 'undefined' && currentEmail) ? currentEmail : (currentOperatorEmail || currentOperator),
+            reasons: `Разминаване: отчетени ${val} бр., липсват ${missingQty} бр. от предходна операция (${targetOpNum ? 'Оп. ' + targetOpNum + ' ' : ''}${targetOpName})`,
+            target_part: taskData.name,
+            target_op_num: targetOpNum,
+            target_op_name: targetOpName,
+            target_machine: targetMachine,
+            status: 'Чакаща',
+            created_at: new Date().toISOString(),
+            notes: JSON.stringify({
+                type: 'discrepancy',
+                reported_qty: val,
+                prev_qty: prevStock,
+                missing_qty: missingQty,
+                reported_by_operator: currentOperator,
+                reported_by_op_num: taskData.opNum,
+                reported_by_op_name: taskData.op,
+                target_machine: targetMachine,
+                target_op_num: targetOpNum,
+                target_op_name: targetOpName,
+                target_operator: targetOperator
+            })
+        };
+
+        const res1 = await client.from('material_requests').insert([reqData]);
+        if (res1.error) {
+            console.warn('material_requests discrepancy insert error:', res1.error);
+        }
+
+        // 2. Лично известие в chekiraniya за предходния оператор
+        let targetEmail = 'ALL';
+        try {
+            if (taskData.prevOperator) {
+                const { data: pData } = await client.from('personal').select('Имейл').ilike('Име', `%${taskData.prevOperator.trim()}%`).limit(1);
+                if (pData && pData.length > 0 && pData[0]['Имейл']) {
+                    targetEmail = pData[0]['Имейл'].trim().toLowerCase();
+                }
+            }
+        } catch(e) {}
+
+        const msgTitle = `🔔 Липсващи отчетени бройки (${taskData.name})`;
+        const msgBody = `Колегата ${currentOperator} на ${curOpNum} (${taskData.op}) отчете ${val} бр., но от вас на ${targetOpNum ? 'Оп. ' + targetOpNum : 'предходна оп.'} са записани само ${prevStock} бр. (липсват ${missingQty} бр.). Моля, доотчетете си бройките!`;
+
+        await client.from('chekiraniya').insert([{
+            "Име": "СИСТЕМА",
+            "Имейл": "СИСТЕМА",
+            "Действие": "Съобщение",
+            "Време": new Date().toISOString(),
+            "Локация": targetEmail,
+            "Бележка": msgTitle + "|||" + msgBody
+        }]);
+
+    } catch(err) {
+        console.error('Грешка при изпращане на сигнали за разминаване:', err);
     }
-  });
 }
 
 async function reportScrap(taskId, btn) {
