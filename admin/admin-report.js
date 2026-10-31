@@ -157,15 +157,15 @@ async function loadAndRenderExecutiveReport(startDate, endDate) {
 
         const criticalParts = [];
         inventory.forEach(inv => {
-            const stock = parseFloat(inv['Общо']) || 0;
+            const stock = parseFloat(inv['Количество'] !== undefined ? inv['Количество'] : inv['Общо']) || 0;
             const minStock = parseFloat(inv['Минимално количество/Буфер']) || 0;
-            if (minStock > 0 && stock < minStock) {
+            if ((minStock > 0 && stock < minStock) || stock < 0) {
                 criticalParts.push({
-                    type: 'Детайл/Полуфабрикат',
-                    code: inv['ID Детайл'],
+                    type: stock < 0 ? 'Дефицит (Чака доотчитане)' : 'Детайл/Полуфабрикат',
+                    code: inv['ID Детайл'] + (inv['Операция'] ? ` (${inv['Операция']})` : ''),
                     stock: stock,
                     minStock: minStock,
-                    deficit: Math.max(0, minStock - stock),
+                    deficit: stock < 0 ? Math.abs(stock) : Math.max(0, minStock - stock),
                     unit: 'бр.'
                 });
             }

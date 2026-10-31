@@ -420,6 +420,12 @@ function renderDynamicTable(itemsToRender = null) {
     if (currentTab === 'personal') {
         if (item['Статус'] === 'Блокиран') { row.style.backgroundColor = '#fef2f2'; row.style.color = '#991b1b'; }
     }
+    if (currentTab === 'sklad_inventory') {
+        if (typeof item['Общо'] === 'number' && item['Общо'] < 0) {
+            row.style.backgroundColor = '#fff7ed';
+            row.style.borderLeft = '5px solid #ea580c';
+        }
+    }
 
     if (!config.readOnlyTab) {
         const tdCheck = document.createElement('td'); tdCheck.style.textAlign = 'center';
@@ -478,7 +484,11 @@ function renderDynamicTable(itemsToRender = null) {
           if (item['__packaged_info']) td.innerHTML += item['__packaged_info'];
           row.appendChild(td); return;
       }
-      if (currentTab === 'sklad_inventory' && (f.name === 'Общо' || f.name === 'Минимално количество/Буфер') && typeof val === 'number' && val < 0) {
+      if (currentTab === 'sklad_inventory' && (f.name === 'Общо' || f.name === 'Свободни') && typeof val === 'number' && val < 0) {
+          td.innerHTML = `<span style="background:#fef2f2; color:#dc2626; border:1.5px solid #fecaca; padding:2px 8px; border-radius:10px; font-weight:800; display:inline-block;" title="Дефицит: следващата операция е отчела повече бройки, чака се доотчитане тук">⚠️ ${val} бр. (Дефицит)</span>`;
+          row.appendChild(td); return;
+      }
+      if (currentTab === 'sklad_inventory' && f.name === 'Минимално количество/Буфер' && typeof val === 'number' && val < 0) {
           td.innerHTML = `<span style="color:#dc2626; font-weight:bold;">${val}</span>`;
           row.appendChild(td); return;
       }
@@ -764,7 +774,7 @@ async function computeSkladData() {
             }
         }
         
-        let freeQty = Math.max(0, qty - reservedQty);
+        let freeQty = isGpItem ? Math.max(0, qty - reservedQty) : qty;
         
         let loc = '';
         if (isGpItem) {
@@ -775,7 +785,7 @@ async function computeSkladData() {
 
         let shouldShowEmpty = (buf > 0 || (scrap > 0 && scrap !== 20)) && isBufferRow;
 
-        if (qty > 0 || shouldShowEmpty || reservedQty > 0) {
+        if (qty !== 0 || shouldShowEmpty || reservedQty > 0) {
             rows.push({
                 "RawPlanId": "",
                 "ID Детайл": item['ID Детайл'],

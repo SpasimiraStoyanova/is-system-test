@@ -141,10 +141,22 @@ BEGIN
         IF prev_op IS NOT NULL THEN
             IF is_proba THEN
                 UPDATE public.probi_inventory 
-                SET quantity = GREATEST(0, quantity - new_qty), updated_at = now()
+                SET quantity = quantity - new_qty, updated_at = now()
                 WHERE proba_id = p_id AND LOWER(TRIM(part_code)) = new_detail AND LOWER(TRIM(operation)) = prev_op;
+
+                IF NOT FOUND THEN
+                    INSERT INTO public.probi_inventory (proba_id, part_code, operation, quantity)
+                    VALUES (p_id, NEW."ID Детайл", prev_op, -new_qty);
+                END IF;
             ELSE
-                UPDATE public.inventory SET "Количество" = GREATEST(0, COALESCE("Количество"::text, '0')::numeric - new_qty) WHERE LOWER(TRIM("ID Детайл")) = new_detail AND LOWER(TRIM("Операция")) = prev_op;
+                UPDATE public.inventory 
+                SET "Количество" = COALESCE("Количество"::text, '0')::numeric - new_qty 
+                WHERE LOWER(TRIM("ID Детайл")) = new_detail AND LOWER(TRIM("Операция")) = prev_op;
+
+                IF NOT FOUND THEN
+                    INSERT INTO public.inventory ("ID Детайл", "Операция", "Количество") 
+                    VALUES (NEW."ID Детайл", prev_op, -new_qty);
+                END IF;
             END IF;
         ELSE
             -- 🟢 ПЪРВА ОПЕРАЦИЯ: Взима заготовка/суровина от Склад Материали (за ВСИЧКИ, вкл. ПРОБИ)!
