@@ -1,4 +1,4 @@
-// traceability.js - Inventory Detective Logic with Timeline
+// traceability.js - Inventory Detective Logic with Timeline & Nomenclature Resolution
 
 document.getElementById('searchInput').addEventListener('keypress', function(e) {
   if(e.key === 'Enter') startSearch();
@@ -13,6 +13,40 @@ document.getElementById('dateTo').value = today.toISOString().split('T')[0];
 document.getElementById('dateFrom').value = thirtyDaysAgo.toISOString().split('T')[0];
 
 window.fetchUserCheckInStatus = async function() { return true; };
+
+// 0. Зареждане на Номенклатура за автоматично допълване и намиране по код/име
+let nomList = [];
+let nomMap = {}; // normCode -> nom, normName -> nom
+
+async function loadNomenclature() {
+    try {
+        const { data, error } = await client.from('Номенклатура').select('*').limit(10000);
+        if (error) throw error;
+        if (data) {
+            nomList = data;
+            const dl = document.getElementById('dl_trace_parts');
+            let optHtml = '';
+            data.forEach(n => {
+                let code = String(n['ID Детайл'] || '').trim();
+                let name = String(n['Вътрешно име'] || '').trim();
+                let normC = code.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                let normN = name.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                if (normC) nomMap[normC] = n;
+                if (normN) nomMap[normN] = n;
+                if (code && name && code.toLowerCase() !== name.toLowerCase()) {
+                    optHtml += `<option value="${code}">${name}</option>`;
+                    optHtml += `<option value="${name}">${code}</option>`;
+                } else if (code) {
+                    optHtml += `<option value="${code}"></option>`;
+                }
+            });
+            if (dl) dl.innerHTML = optHtml;
+        }
+    } catch (e) {
+        console.warn('Номенклатура: не можа да се зареди автодовършването:', e);
+    }
+}
+loadNomenclature();
 
 async function fetchRobustRows(table, select, searchCol, searchStr) {
     let allData = [];
@@ -36,14 +70,14 @@ async function fetchRobustRows(table, select, searchCol, searchStr) {
 }
 
 let globalTimeline = {}; // { 'YYYY-MM-DD': { rawOtcheti: [], parentOtcheti: [] } }
-let globalAllData = { rawOtcheti: [], parentOtcheti: [], childrenBOM: [], parentsBOM: [], tRoutes: [], currentStock: 0, targetId: '' };
+let globalAllData = { rawOtcheti: [], parentOtcheti: [], childrenBOM: [], parentsBOM: [], tRoutes: [], currentStock: 0, targetId: '', targetName: '' };
 
 async function startSearch() {
   const input = document.getElementById('searchInput').value.trim();
   const dateFrom = document.getElementById('dateFrom').value;
   const dateTo = document.getElementById('dateTo').value;
   
-  if (!input) return Swal.fire('Грешка', 'Въведете детайл!', 'warning');
+  if (!input) return Swal.fire('Грешка', 'Въведете детайл или изберете от списъка!', 'warning');
   if (!dateFrom || !dateTo) return Swal.fire('Грешка', 'Изберете период!', 'warning');
 
   document.getElementById('workspace').innerHTML = '<div style="margin:auto; color:var(--text-muted); font-size:1.2rem; font-weight: 600;">Анализиране на потока... ⏳</div>';
@@ -59,32 +93,66 @@ async function startSearch() {
   }
 }
 
-async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
-    globalAllData.targetId = targetId;
-    let tNorm = targetId.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
+    let cleanInput = rawInput.trim();
+    let inputNorm = cleanInput.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+
+    // 0. Търсим съответствие в Номенклатура
+    let matchedNom = nomMap[inputNorm] || null;
+    if (!matchedNom && nomList.length > 0) {
+        matchedNom = nomList.find(n => {
+            let c = String(n['ID Детайл'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            let nm = String(n['Вътрешно име'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            return (c && (c === inputNorm || inputNorm.includes(c) || c.includes(inputNorm))) ||
+                   (nm && (nm === inputNorm || inputNorm.includes(nm) || nm.includes(inputNorm)));
+        });
+    }
+
+    let searchCode = matchedNom ? String(matchedNom['ID Детайл'] || '').trim() : cleanInput;
+    let searchName = matchedNom ? String(matchedNom['Вътрешно име'] || '').trim() : cleanInput;
+
+    let normCodes = new Set([
+        cleanInput.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase(),
+        searchCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase(),
+        searchName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()
+    ]);
+    normCodes.delete('');
+
+    globalAllData.targetId = searchCode || cleanInput;
+    globalAllData.targetName = searchName || searchCode || cleanInput;
+
     const fromTs = new Date(dateFrom).getTime();
     const toTs = new Date(dateTo).getTime() + 86400000;
     globalTimeline = {};
 
     // 1. Fetch Routes (Marshruti)
-    const { data: rData } = await fetchRobustRows('marshruti', '*', 'Код на детайла', targetId);
+    let { data: rData } = await fetchRobustRows('marshruti', '*', 'Код на детайла', searchCode);
+    if ((!rData || rData.length === 0) && searchName !== searchCode) {
+        let { data: rData2 } = await fetchRobustRows('marshruti', '*', 'Код на детайла', searchName);
+        if (rData2 && rData2.length > 0) rData = rData2;
+    }
     
     globalAllData.routesSetNorm = new Set();
     if (rData) rData.forEach(r => globalAllData.routesSetNorm.add(String(r['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
     
     globalAllData.tRoutes = rData ? rData.filter(r => {
         let dbId = String(r['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        return dbId === tNorm;
+        return normCodes.has(dbId);
     }) : [];
     globalAllData.tRoutes.sort((a,b) => parseInt(a['№ Операция']||0) - parseInt(b['№ Операция']||0));
 
-    // 2. Fetch Target Otcheti
-    const { data: rawOtcheti } = await fetchRobustRows('otcheti', '*', 'ID Детайл', targetId);
+    // 2. Fetch Target Otcheti (търсим по код и по име)
+    let { data: rawOtcheti } = await fetchRobustRows('otcheti', '*', 'ID Детайл', searchCode);
+    if ((!rawOtcheti || rawOtcheti.length === 0) && searchName !== searchCode) {
+        let { data: rawOtcheti2 } = await fetchRobustRows('otcheti', '*', 'ID Детайл', searchName);
+        if (rawOtcheti2 && rawOtcheti2.length > 0) rawOtcheti = rawOtcheti2;
+    }
+
     globalAllData.rawOtcheti = [];
     if (rawOtcheti) {
         rawOtcheti.forEach(r => {
             let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-            if (dbId !== tNorm) return;
+            if (!normCodes.has(dbId)) return;
             globalAllData.rawOtcheti.push(r);
             let dTs = new Date(r['Дата']).getTime();
             if (dTs >= fromTs && dTs < toTs) {
@@ -94,7 +162,6 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
             }
         });
         
-        // Sort chronologically and build a global fallback chain of operations
         globalAllData.rawOtcheti.sort((a,b) => new Date(a['Дата']).getTime() - new Date(b['Дата']).getTime());
         let fChainSet = new Set();
         globalAllData.rawOtcheti.forEach(r => {
@@ -105,10 +172,15 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     }
 
     // 3. Fetch BOM Children
-    const { data: childrenRaw } = await fetchRobustRows('bom', '*', 'ID Родител', targetId);
+    let { data: childrenRaw } = await fetchRobustRows('bom', '*', 'ID Родител', searchCode);
+    if ((!childrenRaw || childrenRaw.length === 0) && searchName !== searchCode) {
+        let { data: c2 } = await fetchRobustRows('bom', '*', 'ID Родител', searchName);
+        if (c2 && c2.length > 0) childrenRaw = c2;
+    }
+
     globalAllData.childrenBOM = childrenRaw ? childrenRaw.filter(b => {
         let dbId = String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        return dbId === tNorm;
+        return normCodes.has(dbId);
     }) : [];
 
     // 3.5 Check if children are raw materials
@@ -118,12 +190,12 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         let cChunks = [];
         for(let i=0; i<childCodes.length; i+=100) cChunks.push(childCodes.slice(i, i+100));
         for (let chunk of cChunks) {
-            let [{data:rData}, {data:bData}, {data:oData}] = await Promise.all([
+            let [{data:rDataSub}, {data:bData}, {data:oData}] = await Promise.all([
                 client.from('marshruti').select('"Код на детайла"').in('Код на детайла', chunk),
                 client.from('bom').select('"ID Родител"').in('ID Родител', chunk),
                 client.from('otcheti').select('"ID Детайл"').in('ID Детайл', chunk)
             ]);
-            if (rData) rData.forEach(x => rSet.add(String(x['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
+            if (rDataSub) rDataSub.forEach(x => rSet.add(String(x['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
             if (bData) bData.forEach(x => bSet.add(String(x['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
             if (oData) oData.forEach(x => oSet.add(String(x['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
         }
@@ -143,10 +215,15 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
     }
 
     // 4. Fetch BOM Parents & Parent Otcheti
-    const { data: parentsRaw } = await fetchRobustRows('bom', '*', 'ID Компонент', targetId);
+    let { data: parentsRaw } = await fetchRobustRows('bom', '*', 'ID Компонент', searchCode);
+    if ((!parentsRaw || parentsRaw.length === 0) && searchName !== searchCode) {
+        let { data: p2 } = await fetchRobustRows('bom', '*', 'ID Компонент', searchName);
+        if (p2 && p2.length > 0) parentsRaw = p2;
+    }
+
     globalAllData.parentsBOM = parentsRaw ? parentsRaw.filter(b => {
         let dbId = String(b['ID Компонент']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        return dbId === tNorm;
+        return normCodes.has(dbId);
     }) : [];
     
     globalAllData.parentOtcheti = [];
@@ -205,19 +282,22 @@ async function fetchDataForPeriod(targetId, dateFrom, dateTo) {
         }
     }
 
-    // 5. Fetch Inventory from the unified 'inventory' table
+    // 5. Fetch Inventory from the unified 'inventory' table (надежден прочит по код и име)
     globalAllData.currentStock = 0;
     
     let { data: invData } = await client
         .from('inventory')
         .select('*')
-        .ilike('ID Детайл', `%${tNorm.substring(0, 5)}%`); // Broad filter to catch variants
+        .limit(10000);
     
     let allStock = invData || [];
     allStock.forEach(i => {
-        let dbId = String(i['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        if (dbId === tNorm) {
-            let qty = i['Количество'] !== undefined ? i['Количество'] : (i['Общо'] !== undefined ? i['Общо'] : i['Свободни']);
+        let dbId = String(i['ID Детайл'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let dbName = String(i['Име'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        if (normCodes.has(dbId) || normCodes.has(dbName)) {
+            let qty = (i['Общо'] !== undefined && i['Общо'] !== null) 
+                ? i['Общо'] 
+                : ((i['Количество'] !== undefined && i['Количество'] !== null) ? i['Количество'] : i['Свободни']);
             globalAllData.currentStock += (parseFloat(String(qty || '0').replace(',', '.')) || 0);
         }
     });
@@ -228,7 +308,7 @@ function renderTimeline() {
     let dates = Object.keys(globalTimeline).sort();
     
     if (dates.length === 0) {
-        container.innerHTML = '<div style="color:var(--text-muted); margin:auto;">Няма събития за избрания период.</div>';
+        container.innerHTML = '<div style="color:var(--text-muted); margin:auto; font-weight:600;">Няма намерени отчети за избрания период.</div>';
         return;
     }
     
@@ -458,9 +538,16 @@ async function renderVSM(dateKey) {
              `;
         }
         
+        let displayName = (globalAllData.targetName || globalAllData.targetId).toUpperCase();
+        let displayCode = globalAllData.targetId && globalAllData.targetId !== globalAllData.targetName ? `(${globalAllData.targetId})` : '';
+
         let windowHtml = `
          <div class="vsm-target-node" style="${!isLastOp ? 'border-color:#475569;' : ''}">
-            <div class="target-title" style="font-size:1.4rem;">${globalAllData.targetId.toUpperCase()} <br><span style="font-size:1rem; color:var(--primary)">(${opName})</span></div>
+            <div class="target-title" style="font-size:1.3rem;">
+               ${displayName} 
+               ${displayCode ? `<br><span style="font-size:0.9rem; color:#94a3b8; font-weight:600;">${displayCode}</span>` : ''}
+               <br><span style="font-size:1rem; color:var(--primary)">(${opName})</span>
+            </div>
             <div class="target-stats">
                <div class="target-row">
                  <span style="color:#cbd5e1">Произведени:</span>
@@ -492,6 +579,17 @@ async function renderVSM(dateKey) {
         
         targetFlowHtml += windowHtml;
         if (i < opChain.length - 1) targetFlowHtml += `<div class="vsm-arrow">--▶</div>`;
+    }
+
+    if (!targetFlowHtml) {
+        document.getElementById('workspace').innerHTML = `
+          <div style="margin:auto; text-align:center; color:#94a3b8; padding:30px;">
+             <div style="font-size:2.5rem; margin-bottom:10px;">🔍</div>
+             <div style="font-size:1.3rem; font-weight:bold; color:#f8fafc; margin-bottom:8px;">Няма намерени записи</div>
+             <div>Не бяха открити отчети или технологичен маршрут за <b>${globalAllData.targetName || globalAllData.targetId}</b> в периода от ${document.getElementById('dateFrom').value} до ${document.getElementById('dateTo').value}.</div>
+          </div>
+        `;
+        return;
     }
 
     document.getElementById('workspace').innerHTML = `

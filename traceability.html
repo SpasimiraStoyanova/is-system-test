@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="bg">
 <head>
   <meta charset="UTF-8">
@@ -71,7 +71,8 @@
   <div class="navbar">
     <div style="font-size:1.3rem; font-weight:900; margin-right: 20px; color: var(--primary);">ИНВЕНТАРЕН ДЕТЕКТИВ</div>
     
-    <input type="text" id="searchInput" class="search-input" placeholder="Код на детайл..." style="width: 250px;">
+    <input type="text" id="searchInput" class="search-input" list="dl_trace_parts" placeholder="Код или име на детайл..." style="width: 280px;" autocomplete="off">
+    <datalist id="dl_trace_parts"></datalist>
     
     <span style="color:var(--text-muted); font-weight:600; font-size:1rem; margin-left: 10px;">ОТ:</span>
     <input type="date" id="dateFrom" class="date-input">
@@ -96,6 +97,6 @@
   <div id="filter_all" style="display:none"></div>
 
   <script src="admin/admin-config.js"></script>
-  <script src="traceability.js?v=10"></script>
+  <script src="traceability.js?v=11"></script>
 </body>
 </html>
