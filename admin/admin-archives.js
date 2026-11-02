@@ -1,4 +1,4 @@
-// admin/admin-archives.js - Месечни Архиви: Йерархия (BOM) на екрана и в Ексел
+﻿﻿// admin/admin-archives.js - Месечни Архиви: Йерархия (BOM) на екрана и в Ексел
 
 // 1. Автоматично или ръчно генериране на месечен архив
 async function checkAndGenerateArchive(targetMonth, targetYear, isManual = false) {
@@ -437,16 +437,25 @@ async function openArchiveTreeModal(archiveId) {
                 let icon = childType.toLowerCase().includes('материал') ? '📦' : (hasSubChildren ? '⚙️' : '🧩');
 
                 let stockBadgeHtml = '';
-                if (diffInfo.end > 0 || diff !== 0) {
-                    stockBadgeHtml = `
-                        <span style="font-size:0.85em; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; border-radius:6px; font-weight:700;" title="Начален склад: ${diffInfo.start} бр. | Краен склад: ${diffInfo.end} бр. | Разлика: ${diff >= 0 ? '+' : ''}${diff} бр.">
-                            Склад: <b>${diffInfo.end} бр.</b> (${diff >= 0 ? '+' : ''}${diff})
+                if (diffInfo.end > 0 || diff !== 0 || diffInfo.start > 0) {
+                    let oldPart = diffInfo.start > 0 
+                        ? `<span style="font-size:0.8em; background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:2px 7px; border-radius:5px; font-weight:700;" title="Заварено количество от предходен месец">Стар: ${diffInfo.start} бр.</span>` 
+                        : '';
+                    let movePart = `
+                        <span style="font-size:0.82em; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:2px 7px; border-radius:5px; font-weight:700;" title="Движение за месеца (новоизработени/разход)">
+                            ${diff >= 0 ? '+' : ''}${diff} бр.
                         </span>
                     `;
+                    let endPart = `
+                        <span style="font-size:0.85em; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; border-radius:6px; font-weight:800;" title="Крайна обща наличност в склада">
+                            Налични: <b>${diffInfo.end} бр.</b>
+                        </span>
+                    `;
+                    stockBadgeHtml = `${oldPart} ${movePart} ${endPart}`;
                 } else {
                     stockBadgeHtml = `
-                        <span style="font-size:0.82em; background:#f1f5f9; color:#64748b; padding:3px 8px; border-radius:5px; font-weight:600;" title="Начален склад: ${diffInfo.start} бр. | Краен склад: ${diffInfo.end} бр.">
-                            Склад: 0 бр.
+                        <span style="font-size:0.82em; background:#f1f5f9; color:#64748b; padding:3px 8px; border-radius:5px; font-weight:600;" title="Начален склад: 0 бр. | Краен склад: 0 бр.">
+                            Налични: 0 бр.
                         </span>
                     `;
                 }
@@ -506,16 +515,25 @@ async function openArchiveTreeModal(archiveId) {
             let subTreeHtml = buildNodeHtml(rootCode, 1, targetQty, 1, new Set());
 
             let rootStockBadgeHtml = '';
-            if (diffInfo.end > 0 || diff !== 0) {
-                rootStockBadgeHtml = `
-                    <span style="background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.85em;" title="Начален склад: ${diffInfo.start} бр. | Краен склад: ${diffInfo.end} бр. | Разлика: ${diff >= 0 ? '+' : ''}${diff} бр.">
-                        Склад: <b>${diffInfo.end} бр.</b> (${diff >= 0 ? '+' : ''}${diff})
+            if (diffInfo.end > 0 || diff !== 0 || diffInfo.start > 0) {
+                let oldPart = diffInfo.start > 0 
+                    ? `<span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:3px 8px; border-radius:5px; font-weight:700; font-size:0.82em;" title="Заварено количество от предходен месец">Стар: ${diffInfo.start} бр.</span>` 
+                    : '';
+                let movePart = `
+                    <span style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:3px 8px; border-radius:5px; font-weight:700; font-size:0.82em;" title="Движение за месеца (новоизработени/разход)">
+                        ${diff >= 0 ? '+' : ''}${diff} бр.
                     </span>
                 `;
+                let endPart = `
+                    <span style="background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; padding:4px 10px; border-radius:6px; font-weight:800; font-size:0.85em;" title="Крайна обща наличност в склада">
+                        Налични: <b>${diffInfo.end} бр.</b>
+                    </span>
+                `;
+                rootStockBadgeHtml = `${oldPart} ${movePart} ${endPart}`;
             } else {
                 rootStockBadgeHtml = `
-                    <span style="background:#e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.85em;" title="Начален склад: ${diffInfo.start} бр. | Краен склад: ${diffInfo.end} бр.">
-                        Склад: 0 бр.
+                    <span style="background:#e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.85em;" title="Начален склад: 0 бр. | Краен склад: 0 бр.">
+                        Налични: 0 бр.
                     </span>
                 `;
             }
@@ -786,8 +804,9 @@ async function downloadArchive(archiveId) {
                 "Норма на влагане (бр.)",
                 "План на крайното изделие (бр.)",
                 "Общо вложени бройки (бр.)",
-                "Краен склад (бр.)",
-                "Складово салдо (Разлика)",
+                "Заварени от предходен месец (Стар склад)",
+                "Движение за месеца (Новоизработени)",
+                "Крайна наличност в склад (бр.)",
                 "Брак за месеца (бр.)"
             ]
         ];
@@ -820,8 +839,9 @@ async function downloadArchive(archiveId) {
                     childMult,
                     rootTargetQty,
                     totalNeeded,
-                    diffInfo.end || 0,
+                    diffInfo.start || 0,
                     diff,
+                    diffInfo.end || 0,
                     diffInfo.brak || 0
                 ]);
 
@@ -848,8 +868,9 @@ async function downloadArchive(archiveId) {
                 1,
                 targetQty,
                 targetQty,
-                diffInfo.end || 0,
+                diffInfo.start || 0,
                 diff,
+                diffInfo.end || 0,
                 diffInfo.brak || 0
             ]);
 
@@ -858,7 +879,7 @@ async function downloadArchive(archiveId) {
 
         // Лист 2: Движение Склад (Баланс)
         let skladSheetData = [
-            ["ID Детайл", "Вътрешно име", "Начален Склад (При зареждане)", "Краен Склад (Сега)", "Разлика (Движение)", "Общо Брак (Бр)"]
+            ["ID Детайл", "Вътрешно име", "Заварени от предходен месец (Стар склад)", "Движение за месеца (Новоизработени/Разлика)", "Краен Склад (Сега)", "Общо Брак (Бр)"]
         ];
         
         Object.keys(normalizedDiffs).forEach(codeKey => {
@@ -873,8 +894,8 @@ async function downloadArchive(archiveId) {
                     rawCode,
                     name,
                     row.start,
-                    row.end,
                     diff,
+                    row.end,
                     row.brak || 0
                 ]);
             }
@@ -893,7 +914,8 @@ async function downloadArchive(archiveId) {
             { wch: 22 },
             { wch: 28 },
             { wch: 25 },
-            { wch: 18 },
+            { wch: 26 },
+            { wch: 26 },
             { wch: 22 },
             { wch: 20 }
         ];
