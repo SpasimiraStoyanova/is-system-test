@@ -74,23 +74,26 @@ async function checkAndGenerateArchive(targetMonth, targetYear, isManual = false
         startData.forEach(row => {
             let code = String(row['ID Детайл'] || '').trim();
             if (!code) return;
-            if (!itemDiffs[code]) itemDiffs[code] = { start: 0, end: 0, brak: 0 };
-            itemDiffs[code].start += (parseFloat(row['Общо']) || 0);
+            let normKey = code.toLowerCase();
+            if (!itemDiffs[normKey]) itemDiffs[normKey] = { start: 0, end: 0, brak: 0, rawCode: code };
+            itemDiffs[normKey].start += (parseFloat(row['Общо']) || 0);
         });
 
         endSkladRes.forEach(row => {
             let code = String(row['ID Детайл'] || '').trim();
             if (!code) return;
-            if (!itemDiffs[code]) itemDiffs[code] = { start: 0, end: 0, brak: 0 };
-            itemDiffs[code].end += (parseFloat(row['Общо']) || 0);
+            let normKey = code.toLowerCase();
+            if (!itemDiffs[normKey]) itemDiffs[normKey] = { start: 0, end: 0, brak: 0, rawCode: code };
+            itemDiffs[normKey].end += (parseFloat(row['Общо']) || 0);
         });
 
         otchetiData.forEach(rep => {
             let code = String(rep['ID Детайл'] || '').trim();
             if (!code) return;
-            if (!itemDiffs[code]) itemDiffs[code] = { start: 0, end: 0, brak: 0 };
+            let normKey = code.toLowerCase();
+            if (!itemDiffs[normKey]) itemDiffs[normKey] = { start: 0, end: 0, brak: 0, rawCode: code };
             if (rep['Статус'] === 'Брак') {
-                itemDiffs[code].brak += (parseFloat(rep['Количество']) || 0);
+                itemDiffs[normKey].brak += (parseFloat(rep['Количество']) || 0);
             }
         });
 
@@ -373,12 +376,34 @@ async function openArchiveTreeModal(archiveId) {
             if (nm && c) codeByName[nm.toLowerCase()] = c;
         });
 
+        // Case-insensitive lookup map за складовите движения
+        let normalizedDiffs = {};
+        Object.keys(itemDiffs).forEach(k => {
+            let normK = String(k).trim().toLowerCase();
+            normalizedDiffs[normK] = itemDiffs[k];
+        });
+
+        let getItemDiff = (code) => {
+            if (!code) return { start: 0, end: 0, brak: 0 };
+            let norm = String(code).trim().toLowerCase();
+            if (normalizedDiffs[norm]) return normalizedDiffs[norm];
+
+            let nom = nomMap[norm];
+            if (nom) {
+                let altCode = String(nom['ID Детайл'] || '').trim().toLowerCase();
+                let altName = String(nom['Вътрешно име'] || '').trim().toLowerCase();
+                if (normalizedDiffs[altCode]) return normalizedDiffs[altCode];
+                if (normalizedDiffs[altName]) return normalizedDiffs[altName];
+            }
+            return { start: 0, end: 0, brak: 0 };
+        };
+
         let totalUnits = 0;
         let uniquePartsSet = new Set();
         let totalBrak = 0;
 
-        Object.keys(itemDiffs).forEach(k => {
-            totalBrak += (itemDiffs[k].brak || 0);
+        Object.keys(normalizedDiffs).forEach(k => {
+            totalBrak += (normalizedDiffs[k].brak || 0);
         });
 
         let buildNodeHtml = (parentCode, multiplier, rootTargetQty, level = 1, visited = new Set()) => {
@@ -402,7 +427,7 @@ async function openArchiveTreeModal(archiveId) {
                 let childName = nom['Вътрешно име'] || childCode;
                 let childType = nom['Тип'] || 'детайл';
 
-                let diffInfo = itemDiffs[childCode] || { start: 0, end: 0, brak: 0 };
+                let diffInfo = getItemDiff(childCode);
                 let diff = diffInfo.end - diffInfo.start;
 
                 let hasSubChildren = bomData.some(b => String(b['ID Родител'] || '').trim().toLowerCase() === childCode.toLowerCase());
@@ -410,6 +435,21 @@ async function openArchiveTreeModal(archiveId) {
                 let subHtml = buildNodeHtml(childCode, effectiveMult, rootTargetQty, level + 1, new Set(visited));
 
                 let icon = childType.toLowerCase().includes('материал') ? '📦' : (hasSubChildren ? '⚙️' : '🧩');
+
+                let stockBadgeHtml = '';
+                if (diffInfo.end > 0 || diff !== 0) {
+                    stockBadgeHtml = `
+                        <span style="font-size:0.85em; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; padding:3px 9px; border-radius:6px; font-weight:700;" title="Начален склад: ${diffInfo.start} бр. | Краен склад: ${diffInfo.end} бр. | Разлика: ${diff >= 0 ? '+' : ''}${diff} бр.">
+                            Склад: <b>${diffInfo.end} бр.</b> (${diff >= 0 ? '+' : ''}${diff})
+                        </span>
+                    `;
+                } else {
+                    stockBadgeHtml = `
+                        <span style="font-size:0.82em; background:#f1f5f9; color:#64748b; padding:3px 8px; border-radius:5px; font-weight:600;" title="Начален склад: ${diffInfo.start} бр. | Краен склад: ${diffInfo.end} бр.">
+                            Склад: 0 бр.
+                        </span>
+                    `;
+                }
 
                 childrenHtml += `
                     <div class="tree-node-item" data-code="${childCode.toLowerCase()}" data-name="${childName.toLowerCase()}" style="margin-top:8px;">
@@ -434,9 +474,7 @@ async function openArchiveTreeModal(archiveId) {
                             </div>
 
                             <div style="display:flex; align-items:center; gap:8px;">
-                                <span style="font-size:0.82em; background:#f1f5f9; color:#334155; padding:3px 8px; border-radius:5px; font-weight:600;" title="Начало: ${diffInfo.start} | Край: ${diffInfo.end}">
-                                    Склад: ${diff >= 0 ? '+' : ''}${diff} бр.
-                                </span>
+                                ${stockBadgeHtml}
                                 ${diffInfo.brak > 0 ? `<span style="font-size:0.82em; background:#fee2e2; color:#b91c1c; padding:3px 8px; border-radius:5px; font-weight:700;">🗑️ ${diffInfo.brak} бр. брак</span>` : ''}
                             </div>
                         </div>
@@ -462,10 +500,25 @@ async function openArchiveTreeModal(archiveId) {
             let nom = nomMap[rootCode.toLowerCase()] || {};
             let displayTitle = nom['Вътрешно име'] || rootName;
 
-            let diffInfo = itemDiffs[rootCode] || { start: 0, end: 0, brak: 0 };
+            let diffInfo = getItemDiff(rootCode);
             let diff = diffInfo.end - diffInfo.start;
 
             let subTreeHtml = buildNodeHtml(rootCode, 1, targetQty, 1, new Set());
+
+            let rootStockBadgeHtml = '';
+            if (diffInfo.end > 0 || diff !== 0) {
+                rootStockBadgeHtml = `
+                    <span style="background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.85em;" title="Начален склад: ${diffInfo.start} бр. | Краен склад: ${diffInfo.end} бр. | Разлика: ${diff >= 0 ? '+' : ''}${diff} бр.">
+                        Склад: <b>${diffInfo.end} бр.</b> (${diff >= 0 ? '+' : ''}${diff})
+                    </span>
+                `;
+            } else {
+                rootStockBadgeHtml = `
+                    <span style="background:#e2e8f0; color:#475569; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.85em;" title="Начален склад: ${diffInfo.start} бр. | Краен склад: ${diffInfo.end} бр.">
+                        Склад: 0 бр.
+                    </span>
+                `;
+            }
 
             treeRootsHtml += `
                 <div class="tree-root-item" data-code="${rootCode.toLowerCase()}" data-name="${displayTitle.toLowerCase()}" style="margin-bottom:16px;">
@@ -487,9 +540,7 @@ async function openArchiveTreeModal(archiveId) {
                         </div>
 
                         <div style="display:flex; align-items:center; gap:10px;">
-                            <span style="background:#e2e8f0; color:#1e293b; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.85em;" title="Начало: ${diffInfo.start} | Край: ${diffInfo.end}">
-                                Склад: ${diff >= 0 ? '+' : ''}${diff} бр.
-                            </span>
+                            ${rootStockBadgeHtml}
                             ${diffInfo.brak > 0 ? `<span style="background:#fee2e2; color:#b91c1c; padding:4px 10px; border-radius:6px; font-weight:800; font-size:0.85em;">🗑️ ${diffInfo.brak} бр. брак</span>` : ''}
                         </div>
                     </div>
@@ -553,7 +604,7 @@ async function openArchiveTreeModal(archiveId) {
                     <!-- Search and Expand/Collapse Controls -->
                     <div style="display:flex; gap:8px; align-items:center;">
                         <div style="position:relative;">
-                            <input type="text" id="treeSearchInput" placeholder="🔍 Търси в дървото..." oninput="filterArchiveTree(this.value)" style="padding:7px 12px; font-size:0.85em; border:1px solid #cbd5e1; border-radius:6px; width:200px;">
+                            <input type="text" id="treeSearchInput" placeholder="🔍 Търси в дървото..." oninput="filterArchiveTree(this.value)" style="padding:7px 12px; font-size:0.85em; border:1px solid #cbd5e1; border-radius:6px; width:220px;">
                         </div>
                         <button onclick="expandAllArchiveTree(true)" style="background:#f8fafc; border:1px solid #cbd5e1; color:#334155; border-radius:6px; padding:6px 12px; font-size:0.85em; font-weight:700; cursor:pointer;" title="Разгъни всички нива">
                             🔽 Всички
@@ -629,16 +680,25 @@ function filterArchiveTree(query) {
         r.querySelectorAll('.tree-node-item').forEach(n => {
             let nCode = n.getAttribute('data-code') || '';
             let nName = n.getAttribute('data-name') || '';
-            if (nCode.includes(q) || nName.includes(q)) {
+            let nodeMatches = nCode.includes(q) || nName.includes(q);
+
+            if (nodeMatches) {
                 n.style.display = 'block';
                 hasMatchingChild = true;
+                // Разгъваме и държим видими всички поддетайли на съвпадащия детайл
+                n.querySelectorAll('.tree-node-item').forEach(sub => sub.style.display = 'block');
                 let p = n.parentElement;
                 while (p && p !== r) {
                     if (p.classList.contains('tree-children-container')) p.style.display = 'block';
                     p = p.parentElement;
                 }
             } else {
-                n.style.display = rootMatches ? 'block' : 'none';
+                let parentItem = n.parentElement.closest('.tree-node-item, .tree-root-item');
+                let parentMatches = parentItem && (
+                    (parentItem.getAttribute('data-code') || '').includes(q) ||
+                    (parentItem.getAttribute('data-name') || '').includes(q)
+                );
+                n.style.display = (rootMatches || parentMatches) ? 'block' : 'none';
             }
         });
 
@@ -694,6 +754,27 @@ async function downloadArchive(archiveId) {
             if (nm && c) codeByName[nm.toLowerCase()] = c;
         });
 
+        let normalizedDiffs = {};
+        Object.keys(itemDiffs).forEach(k => {
+            let normK = String(k).trim().toLowerCase();
+            normalizedDiffs[normK] = itemDiffs[k];
+        });
+
+        let getItemDiff = (code) => {
+            if (!code) return { start: 0, end: 0, brak: 0 };
+            let norm = String(code).trim().toLowerCase();
+            if (normalizedDiffs[norm]) return normalizedDiffs[norm];
+
+            let nom = nomMap[norm];
+            if (nom) {
+                let altCode = String(nom['ID Детайл'] || '').trim().toLowerCase();
+                let altName = String(nom['Вътрешно име'] || '').trim().toLowerCase();
+                if (normalizedDiffs[altCode]) return normalizedDiffs[altCode];
+                if (normalizedDiffs[altName]) return normalizedDiffs[altName];
+            }
+            return { start: 0, end: 0, brak: 0 };
+        };
+
         // Лист 1: Йерархия и Влагане (BOM)
         let bomSheetData = [
             [
@@ -705,6 +786,7 @@ async function downloadArchive(archiveId) {
                 "Норма на влагане (бр.)",
                 "План на крайното изделие (бр.)",
                 "Общо вложени бройки (бр.)",
+                "Краен склад (бр.)",
                 "Складово салдо (Разлика)",
                 "Брак за месеца (бр.)"
             ]
@@ -724,7 +806,7 @@ async function downloadArchive(archiveId) {
 
                 let nom = nomMap[childCode.toLowerCase()] || {};
                 let childName = nom['Вътрешно име'] || childCode;
-                let diffInfo = itemDiffs[childCode] || { start: 0, end: 0, brak: 0 };
+                let diffInfo = getItemDiff(childCode);
                 let diff = diffInfo.end - diffInfo.start;
 
                 let indent = "   ".repeat(level) + "↳ ";
@@ -738,6 +820,7 @@ async function downloadArchive(archiveId) {
                     childMult,
                     rootTargetQty,
                     totalNeeded,
+                    diffInfo.end || 0,
                     diff,
                     diffInfo.brak || 0
                 ]);
@@ -753,7 +836,7 @@ async function downloadArchive(archiveId) {
 
             let nom = nomMap[rootCode.toLowerCase()] || {};
             let displayTitle = nom['Вътрешно име'] || rootName;
-            let diffInfo = itemDiffs[rootCode] || { start: 0, end: 0, brak: 0 };
+            let diffInfo = getItemDiff(rootCode);
             let diff = diffInfo.end - diffInfo.start;
 
             bomSheetData.push([
@@ -765,6 +848,7 @@ async function downloadArchive(archiveId) {
                 1,
                 targetQty,
                 targetQty,
+                diffInfo.end || 0,
                 diff,
                 diffInfo.brak || 0
             ]);
@@ -777,15 +861,16 @@ async function downloadArchive(archiveId) {
             ["ID Детайл", "Вътрешно име", "Начален Склад (При зареждане)", "Краен Склад (Сега)", "Разлика (Движение)", "Общо Брак (Бр)"]
         ];
         
-        Object.keys(itemDiffs).forEach(code => {
-            let row = itemDiffs[code];
+        Object.keys(normalizedDiffs).forEach(codeKey => {
+            let row = normalizedDiffs[codeKey];
+            let rawCode = row.rawCode || codeKey;
             let diff = row.end - row.start;
-            let nom = nomMap[code.toLowerCase()] || {};
-            let name = nom['Вътрешно име'] || code;
+            let nom = nomMap[codeKey.toLowerCase()] || {};
+            let name = nom['Вътрешно име'] || rawCode;
             
             if (row.start > 0 || row.end > 0 || diff !== 0 || row.brak > 0) {
                 skladSheetData.push([
-                    code,
+                    rawCode,
                     name,
                     row.start,
                     row.end,
@@ -808,6 +893,7 @@ async function downloadArchive(archiveId) {
             { wch: 22 },
             { wch: 28 },
             { wch: 25 },
+            { wch: 18 },
             { wch: 22 },
             { wch: 20 }
         ];
@@ -816,7 +902,7 @@ async function downloadArchive(archiveId) {
         // Добавяме Лист 2 (Склад)
         const wsSklad = XLSX.utils.aoa_to_sheet(skladSheetData);
         wsSklad['!cols'] = [
-            { wch: 22 },
+            { wch: 25 },
             { wch: 28 },
             { wch: 25 },
             { wch: 20 },
