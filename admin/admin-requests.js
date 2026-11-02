@@ -195,9 +195,10 @@ function updatePlanningBadgesAndBanner() {
             const dateStr = first.created_at ? new Date(first.created_at).toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' }) : '';
             
             let targetMachineTxt = '';
+            let tObj = null;
             try {
-                const tObj = JSON.parse(first.notes || '{}');
-                if (tObj.target_machine) targetMachineTxt = ` ➔ насочена към <b>${tObj.target_machine}</b>`;
+                if (first.notes && first.notes.startsWith('{')) tObj = JSON.parse(first.notes);
+                if (tObj && tObj.target_machine) targetMachineTxt = ` ➔ насочена към <b>${tObj.target_machine}</b>`;
             } catch(e) {}
             if (!targetMachineTxt && first.target_machine) {
                 targetMachineTxt = ` ➔ насочена към <b>${first.target_machine}</b>`;
@@ -205,7 +206,8 @@ function updatePlanningBadgesAndBanner() {
 
             let summaryText = '';
             if (tObj && tObj.type === 'discrepancy') {
-                summaryText = `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> отчете <b>${tObj.reported_qty} бр.</b> за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> ➔ <b style="color:#c2410c;">разминаване: липсват ${tObj.missing_qty} бр.</b> от Оп. ${tObj.target_op_num} (${tObj.target_machine})`;
+                const missingTargetName = tObj.target_part ? `детайл <b style="color:#0369a1;">${tObj.target_part}</b> ` : (tObj.target_op_num ? `Оп. ${tObj.target_op_num} ` : '');
+                summaryText = `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> отчете <b>${tObj.reported_qty} бр.</b> за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> ➔ <b style="color:#c2410c;">разминаване: липсват ${tObj.missing_qty} бр.</b> от ${missingTargetName}(${tObj.target_machine})`;
             } else {
                 summaryText = count === 1 
                     ? `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> (машина ${first.machine || 'Обща'}) чака за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span>${targetMachineTxt}`
@@ -320,6 +322,11 @@ function renderMaterialRequestsList() {
             } catch(e) { dateStr = req.created_at; }
         }
 
+        let targetObj = null;
+        try {
+            if (req.notes && req.notes.startsWith('{')) targetObj = JSON.parse(req.notes);
+        } catch(e) {}
+
         let isDiscrepancy = (targetObj && targetObj.type === 'discrepancy');
 
         let statusPill = '';
@@ -340,10 +347,11 @@ function renderMaterialRequestsList() {
 
         let targetDetailHtml = '';
         if (isDiscrepancy) {
+            const missingTargetDesc = tPart ? `от детайл <b>${tPart}</b> (${tOpName || tMachine})` : `на предходната Оп. ${tOpNum} (${tOpName})`;
             targetDetailHtml = `
                 <div style="background: #fff7ed; border: 1.5px solid #fed7aa; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; color: #9a3412; line-height: 1.5;">
-                    👉 <b>Разминаване между операции:</b> На Оп. ${targetObj.reported_by_op_num || ''} (${req.op_name}) са отчетени <b>${targetObj.reported_qty} бр.</b>, но на предходната Оп. ${tOpNum} (${tOpName}) в системата има само <b>${targetObj.prev_qty} бр.</b> (липсват <b>${targetObj.missing_qty} бр.</b>)!<br>
-                    Работно място на предходна операция: <b>${tMachine}</b> &bull; Работил: <b>${targetObj.target_operator || 'колега'}</b>
+                    👉 <b>Разминаване в наличността:</b> За детайл <b>${req.part_name}</b> (Оп. ${targetObj.reported_by_op_num || ''} - ${req.op_name}) са отчетени <b>${targetObj.reported_qty} бр.</b>, но в системата ${missingTargetDesc} има само <b>${targetObj.prev_qty} бр.</b> (липсват <b>${targetObj.missing_qty} бр.</b>)!<br>
+                    Работно място / Направление: <b>${tMachine}</b> &bull; Засегнат: <b>${targetObj.target_operator || 'колега / склад'}</b>
                 </div>
             `;
         } else if (tMachine && tMachine !== 'Склад') {

@@ -1528,7 +1528,9 @@ function machineMatchesTarget(currentM, targetM) {
     if (!currentM || !targetM) return false;
     const curList = currentM.split(',').map(m => normalizeStr(m)).filter(Boolean);
     const targetList = targetM.split(',').map(m => normalizeStr(m)).filter(Boolean);
-    if (targetList.includes('склад')) return curList.includes('склад');
+    if (curList.includes('всички')) return true;
+    if (targetList.includes('обща') || targetList.includes('всички')) return true;
+    if (targetList.includes('склад')) return (curList.includes('склад') || curList.includes('всички'));
     return curList.some(m => targetList.includes(m));
 }
 
@@ -1556,6 +1558,9 @@ window.autoResolveAndonForTask = async function(taskData, val) {
 
         if (pending && pending.length > 0) {
             for (const req of pending) {
+                // Safeguard 1: Никога не затваряме заявка, създадена от същата тази задача
+                if (req.task_id === taskData.id) continue;
+
                 let tPart = req.target_part;
                 let tObj = {};
                 try {
@@ -1564,6 +1569,9 @@ window.autoResolveAndonForTask = async function(taskData, val) {
                 } catch(e) {}
 
                 if (tObj && tObj.type === 'discrepancy') {
+                    // Safeguard 2: Никога не затваряме заявка за разминаване от детайла, който я е генерирал (само от входящия/предходния детайл!)
+                    if (normalizeStr(req.part_name) === taskPartNorm && normalizeStr(tPart) !== taskPartNorm) continue;
+
                     const reqTargetOpNum = parseInt(tObj.target_op_num || req.target_op_num) || 0;
                     if (tPart && normalizeStr(tPart) === taskPartNorm && (reqTargetOpNum === 0 || reqTargetOpNum === taskOpNum)) {
                         await client

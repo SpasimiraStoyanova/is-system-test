@@ -270,15 +270,51 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
     try {
         const isPrevOp = Boolean(taskData.hasPrevOp || taskData.prevOpName);
         const curOpNum = taskData.opNum ? `Оп. ${taskData.opNum}` : taskData.op;
-        const targetOpNum = isPrevOp ? (taskData.prevOpNum ? String(taskData.prevOpNum) : '') : 'Склад';
-        const targetOpName = isPrevOp ? (taskData.prevOpName || '') : 'Склад Материали';
-        const targetMachine = isPrevOp ? (taskData.prevMachine || 'Обща') : 'Склад';
-        const targetOperator = isPrevOp ? (taskData.prevOperator || ('Колега от ' + (targetOpNum ? 'Оп. ' + targetOpNum : 'предходна операция'))) : 'Склад / Администратор';
-        const myMachine = (currentMachine && currentMachine !== 'ВСИЧКИ') ? currentMachine : (taskData.machine || 'Обща');
+        
+        let targetOpNum = '';
+        let targetOpName = '';
+        let targetMachine = 'Обща';
+        let targetOperator = '';
+        let targetPart = taskData.name;
+        let reasonsText = '';
 
-        const reasonsText = isPrevOp
-            ? `Разминаване: отчетени ${val} бр., липсват ${missingQty} бр. от предходна операция (${targetOpNum ? 'Оп. ' + targetOpNum + ' ' : ''}${targetOpName})`
-            : `Разминаване в материали: отчетени ${val} бр., в склада са заприходени само ${taskData.maxAllowed || 0} бр. (липсват ${missingQty} бр.)`;
+        if (isPrevOp) {
+            targetPart = taskData.name;
+            targetOpNum = taskData.prevOpNum ? String(taskData.prevOpNum) : '';
+            targetOpName = taskData.prevOpName || '';
+            targetMachine = taskData.prevMachine || 'Обща';
+            targetOperator = taskData.prevOperator || ('Колега от ' + (targetOpNum ? 'Оп. ' + targetOpNum : 'предходна операция'));
+            reasonsText = `Разминаване: отчетени ${val} бр., липсват ${missingQty} бр. от предходна операция (${targetOpNum ? 'Оп. ' + targetOpNum + ' ' : ''}${targetOpName})`;
+        } else if (taskData.itemsToFetch && taskData.itemsToFetch.length > 0) {
+            // Търсим кой точно компонент от BOM не достига
+            let deficientItem = taskData.itemsToFetch.find(it => (it.avail !== undefined && it.avail < (val * (it.qty || 1)))) || taskData.itemsToFetch[0];
+            targetPart = deficientItem.code;
+            
+            let cNorm = normalizeStr(deficientItem.code);
+            let childRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[cNorm]) ? globalRoutesByDetail[cNorm] : [];
+            if (childRoutes.length > 0) {
+                let lastChildOp = childRoutes[childRoutes.length - 1];
+                targetOpNum = String(lastChildOp['№ Операция'] || '10');
+                targetOpName = lastChildOp['Име на операция'] || 'Склад Готови Детайли';
+                targetMachine = lastChildOp['Машина'] || (deficientItem.loc || 'Обща');
+                targetOperator = `Колега на ${targetMachine}`;
+            } else {
+                targetOpNum = (deficientItem.type === 'материал') ? 'Склад' : 'Готов продукт';
+                targetOpName = (deficientItem.type === 'материал') ? 'Склад Материали' : (deficientItem.loc || 'Склад Готови Детайли');
+                targetMachine = (deficientItem.type === 'материал') ? 'Склад' : (deficientItem.loc || 'Склад');
+                targetOperator = 'Склад / Администратор';
+            }
+            reasonsText = `Разминаване в компоненти: отчетени ${val} бр. за ${taskData.name}, но заготовка/компонент ${targetPart} има само ${deficientItem.avail || 0} бр. (липсват ${missingQty} бр.)`;
+        } else {
+            targetPart = taskData.name;
+            targetOpNum = 'Склад';
+            targetOpName = 'Склад Материали';
+            targetMachine = 'Склад';
+            targetOperator = 'Склад / Администратор';
+            reasonsText = `Разминаване в материали: отчетени ${val} бр., в склада са заприходени само ${taskData.maxAllowed || 0} бр. (липсват ${missingQty} бр.)`;
+        }
+
+        const myMachine = (currentMachine && currentMachine !== 'ВСИЧКИ') ? currentMachine : (taskData.machine || 'Обща');
 
         // 1. Запис в material_requests за цеховия Andon банер и известие в Админ панела
         const reqData = {
@@ -289,7 +325,7 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
             operator: currentOperator,
             operator_email: (typeof currentEmail !== 'undefined' && currentEmail) ? currentEmail : (currentOperatorEmail || currentOperator),
             reasons: reasonsText,
-            target_part: taskData.name,
+            target_part: targetPart,
             target_op_num: targetOpNum,
             target_op_name: targetOpName,
             target_machine: targetMachine,
@@ -298,12 +334,14 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
             notes: JSON.stringify({
                 type: 'discrepancy',
                 is_prev_op: isPrevOp,
+                reported_by_part: taskData.name,
                 reported_qty: val,
                 prev_qty: prevStock,
                 missing_qty: missingQty,
                 reported_by_operator: currentOperator,
                 reported_by_op_num: taskData.opNum,
                 reported_by_op_name: taskData.op,
+                target_part: targetPart,
                 target_machine: targetMachine,
                 target_op_num: targetOpNum,
                 target_op_name: targetOpName,
@@ -329,11 +367,11 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
 
         const msgTitle = isPrevOp
             ? `🔔 Липсващи отчетени бройки (${taskData.name})`
-            : `🔔 Липсващи заприходени материали (${taskData.name})`;
+            : `🔔 Липсващи заприходени компоненти (${targetPart})`;
 
         const msgBody = isPrevOp
             ? `Колегата ${currentOperator} на ${curOpNum} (${taskData.op}) отчете ${val} бр., но от вас на ${targetOpNum ? 'Оп. ' + targetOpNum : 'предходна оп.'} са записани само ${prevStock} бр. (липсват ${missingQty} бр.). Моля, доотчетете си бройките!`
-            : `Операторът ${currentOperator} на ${curOpNum} (${taskData.op}) отчете ${val} бр., но в склада има заприходени материали само за ${taskData.maxAllowed || 0} бр. (липсват ${missingQty} бр.). Моля, проверете и заприходете материалите!`;
+            : `Операторът ${currentOperator} на ${curOpNum} (${taskData.op}) за ${taskData.name} отчете ${val} бр., но от детайл/компонент ${targetPart} има само ${prevStock} бр. (липсват ${missingQty} бр.). Моля, проверете и доотчетете/заприходете!`;
 
         await client.from('chekiraniya').insert([{
             "Име": "СИСТЕМА",
