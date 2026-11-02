@@ -1,8 +1,32 @@
-function updateHistoryUI() {
+﻿function updateHistoryUI() {
   var list = document.getElementById('historyList');
-  if (localHistoryData.length === 0) { list.innerHTML = '<li class="history-item" style="color:#94a3b8; text-align:center;">Няма скорошни действия</li>'; return; }
+  if (!list) return;
+  if (localHistoryData.length === 0) { 
+      list.innerHTML = '<li class="history-item" style="color:#94a3b8; text-align:center;">Няма скорошни действия</li>'; 
+      return; 
+  }
   var html = '';
-  localHistoryData.forEach(item => { var color = item.type === 'БРАК' ? '#e74c3c' : '#16a34a'; html += `<li class="history-item"><span class="history-time">${item.time}</span><span><span style="color:${color}; font-weight:bold;">${item.qty} бр.</span> ${item.name}</span></li>`; });
+  localHistoryData.forEach(item => { 
+      var isScrap = item.type === 'БРАК';
+      var color = isScrap ? '#dc2626' : '#16a34a'; 
+      var typeBadge = isScrap 
+          ? `<span style="background:#fee2e2; color:#b91c1c; font-size:0.75em; font-weight:800; padding:2px 6px; border-radius:4px; margin-right:4px;">БРАК</span>` 
+          : `<span style="background:#dcfce7; color:#15803d; font-size:0.75em; font-weight:800; padding:2px 6px; border-radius:4px; margin-right:4px;">ГОТОВО</span>`;
+      var opBadge = item.op 
+          ? `<span style="display:inline-block; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-size:0.8em; font-weight:700; padding:2px 7px; border-radius:6px; margin-left:6px;">⚙️ ${item.op}</span>` 
+          : '';
+      html += `
+        <li class="history-item" style="padding: 10px 0; border-bottom: 1px dashed var(--border-subtle, #e2e8f0); display: flex; flex-direction: column; gap: 4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="history-time" style="color:var(--text-muted, #64748b); font-weight:bold; font-size:11px;">${item.time}</span>
+            <span>${typeBadge}<span style="color:${color}; font-weight:900;">${item.qty} бр.</span></span>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px;">
+            <b style="color:#1e293b; font-size:0.95em;">${item.name}</b>
+            ${opBadge}
+          </div>
+        </li>`; 
+  });
   list.innerHTML = html;
 }
 
@@ -10,7 +34,7 @@ async function loadHistoryFromDB() {
     if (!currentOperator || currentOperator === "undefined" || !navigator.onLine) return;
     try {
         const { data, error } = await client.from('otcheti')
-            .select('"ID Детайл", Количество, Дата, Статус')
+            .select('"ID Детайл", "Операция", Количество, Дата, Статус')
             .eq('Оператор', currentOperator)
             .in('Статус', ['Отчетено', 'Брак'])
             .order('Дата', { ascending: false })
@@ -26,7 +50,8 @@ async function loadHistoryFromDB() {
                     time: timeStr,
                     type: isScrap ? 'БРАК' : 'ГОТОВО',
                     qty: r['Количество'],
-                    name: String(r['ID Детайл']).trim()
+                    name: String(r['ID Детайл']).trim(),
+                    op: r['Операция'] ? String(r['Операция']).trim() : ''
                 };
             });
             updateHistoryUI();
@@ -35,6 +60,7 @@ async function loadHistoryFromDB() {
         console.error("Грешка при зареждане на история от базата:", e);
     }
 }
+
 
 function toggleHistory() { 
     var panel = document.getElementById('historyPanel'); 
@@ -54,9 +80,14 @@ async function toggleMessages() {
 }
 
 function addLogToHistory(type, qty, taskId) {
-   var now = new Date(); var timeStr = now.getDate().toString().padStart(2, '0') + '.' + (now.getMonth() + 1).toString().padStart(2, '0') + ' ' + now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-   let taskData = globalTasks.find(t => t.id === taskId); var name = taskData ? (taskData.name) : 'Детайл';
-   localHistoryData.unshift({ time: timeStr, type: type, qty: qty, name: name }); if (localHistoryData.length > 10) localHistoryData.pop(); updateHistoryUI();
+   var now = new Date(); 
+   var timeStr = now.getDate().toString().padStart(2, '0') + '.' + (now.getMonth() + 1).toString().padStart(2, '0') + ' ' + now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+   let taskData = globalTasks.find(t => t.id === taskId); 
+   var name = taskData ? (taskData.name) : 'Детайл';
+   var op = taskData ? (taskData.op || '') : '';
+   localHistoryData.unshift({ time: timeStr, type: type, qty: qty, name: name, op: op }); 
+   if (localHistoryData.length > 10) localHistoryData.pop(); 
+   updateHistoryUI();
 }
 
 async function validateRealTimeStock(taskData, val) {
@@ -78,10 +109,9 @@ async function validateRealTimeStock(taskData, val) {
 }
 
 function claimCurrentTaskDOM(taskId) {
-  if (navigator.vibrate) navigator.vibrate(50); activeTaskId = taskId; 
-  document.querySelectorAll('.card').forEach(c => { if (c.id !== 'card_' + taskId) c.style.display = 'none'; });
-  document.getElementById('free_state_' + taskId).style.display = 'none'; document.getElementById('focus_state_' + taskId).style.display = 'block';
-  window['startTime_' + taskId] = new Date().toISOString(); window.scrollTo(0,0);
+  if (navigator.vibrate) navigator.vibrate(50); 
+  activeTaskId = taskId; 
+  window['startTime_' + taskId] = new Date().toISOString();
   
   let taskData = globalTasks.find(t => t.id === taskId);
   if (taskData) {
@@ -97,10 +127,26 @@ function claimCurrentTaskDOM(taskId) {
           "Време Старт": window['startTime_' + taskId] 
       }]).then(res => { if(res.error) console.error("Грешка при сигнал Започната", res.error); });
   }
+
+  // Преминаваме директно в таб "Поети задачи", за да виждаме веднага поетата задача в работен режим
+  setTaskFilter('taken');
+
+  // Плавно скролваме до поетата задача и фокусираме полето за бройка
+  requestAnimationFrame(() => {
+      let cardEl = document.getElementById('card_' + taskId);
+      if (cardEl) {
+          cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      let qtyInput = document.getElementById('qty_' + taskId);
+      if (qtyInput) {
+          qtyInput.focus();
+      }
+  });
 }
 
 function pauseTaskDOM(taskId) {
-  if (navigator.vibrate) navigator.vibrate(50); activeTaskId = null; 
+  if (navigator.vibrate) navigator.vibrate(50); 
+  activeTaskId = null; 
 
   let taskData = globalTasks.find(t => t.id === taskId);
   if (taskData) {
@@ -117,8 +163,15 @@ function pauseTaskDOM(taskId) {
       }]).then(res => { if(res.error) console.error("Грешка при сигнал Прекъсната", res.error); });
   }
 
-  renderTasks(globalTasks);
+  // Ако операторът прекъсне задачата и няма други поети, го връщаме към свободните задачи
+  let remainingTaken = globalTasks.filter(t => t.isTaken);
+  if (currentTaskFilter === 'taken' && remainingTaken.length === 0) {
+      setTaskFilter('ready');
+  } else {
+      renderTasks(globalTasks);
+  }
 }
+
 
 async function finishTask(taskId, btn) {
   let startTime = window['startTime_' + taskId];

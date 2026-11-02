@@ -1,4 +1,4 @@
-function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
+﻿function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
 
 function normalizeStr(str) {
     if (!str) return '';
@@ -1177,11 +1177,23 @@ function renderTasks(tasks) {
   else if (currentTaskFilter === 'taken') filteredTasks = visibleTasks.filter(t => t.isTaken);
 
   if(filteredTasks.length === 0) { 
-      let msg = currentTaskFilter === 'all' ? '🎉 Всички задачи са изпълнени!' : 'Няма задачи в тази категория.';
-      container.innerHTML = `<div style="text-align:center; padding: 40px; font-size:1.3em; color: #16a34a; font-weight: 900;">${msg}</div>`; 
+      if (currentTaskFilter === 'taken') {
+          container.innerHTML = `
+            <div style="text-align:center; padding: 40px 20px; background: white; border-radius: 16px; border: 2px dashed #cbd5e1; margin-top: 15px;">
+              <div style="font-size: 2.5em; margin-bottom: 10px;">⏳</div>
+              <div style="font-size: 1.15em; color: #475569; font-weight: 800; margin-bottom: 15px;">Нямате текущо поети задачи</div>
+              <button onclick="setTaskFilter('ready')" style="background: #16a34a; color: white; border: none; padding: 12px 24px; border-radius: 10px; font-weight: 800; font-size: 1em; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(22, 163, 74, 0.3);">
+                🟢 Към свободните задачи
+              </button>
+            </div>
+          `;
+      } else {
+          let msg = currentTaskFilter === 'all' ? '🎉 Всички задачи са изпълнени!' : 'Няма задачи в тази категория.';
+          container.innerHTML = `<div style="text-align:center; padding: 40px; font-size:1.3em; color: #16a34a; font-weight: 900;">${msg}</div>`; 
+      }
       return; 
   }
-  
+
   var html = '';
   filteredTasks.forEach(function(t) {
     let borderStyle = t.isGreenCard ? 'border-left: 6px solid #16a34a;' : 'border-left: 6px solid #3b82f6;';
