@@ -1,4 +1,4 @@
--- ==============================================================================
+﻿-- ==============================================================================
 -- ОБНОВЯВАНЕ НА ТРИГЕРА ЗА СКЛАД (INVENTORY): 
 -- 1. РАЗРЕШАВАНЕ НА ОТРИЦАТЕЛНИ САЛДА (ДЕФИЦИТ) МЕЖДУ ОПЕРАЦИИ И В БОМ
 -- 2. АВТОМАТИЧНО ПРИСПАДАНЕ НА КОМПОНЕНТИ ОТ BOM (И СУРОВИНИ ОТ НОМЕНКЛАТУРА)
@@ -351,6 +351,9 @@ END;
 $$;
 
 -- Свързване на тригерите
+DROP TRIGGER IF EXISTS trg_otcheti_insert ON public.otcheti;
+DROP TRIGGER IF EXISTS trg_otcheti_delete ON public.otcheti;
+DROP TRIGGER IF EXISTS trg_inventory_on_delete_otchet ON public.otcheti;
 DROP TRIGGER IF EXISTS trg_otcheti_inventory_insert ON public.otcheti;
 CREATE TRIGGER trg_otcheti_inventory_insert 
 AFTER INSERT ON public.otcheti 

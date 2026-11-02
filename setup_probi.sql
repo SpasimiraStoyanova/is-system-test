@@ -1,4 +1,4 @@
--- ==============================================================
+﻿-- ==============================================================
 -- МОДУЛ "ПРОБИ" (R&D / ПРОТОТИПИ И ОПИТНИ СЕРИИ)
 -- Изпълнете този скрипт в Supabase SQL Editor на тестовата база (zdythzcgcjxwbxufunuh)
 -- ==============================================================
@@ -433,6 +433,9 @@ END;
 $$;
 
 -- Свързване на тригерите
+DROP TRIGGER IF EXISTS trg_otcheti_insert ON public.otcheti;
+DROP TRIGGER IF EXISTS trg_otcheti_delete ON public.otcheti;
+DROP TRIGGER IF EXISTS trg_inventory_on_delete_otchet ON public.otcheti;
 DROP TRIGGER IF EXISTS trg_otcheti_inventory_insert ON public.otcheti;
 CREATE TRIGGER trg_otcheti_inventory_insert 
 AFTER INSERT ON public.otcheti 
