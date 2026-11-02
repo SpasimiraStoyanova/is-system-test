@@ -538,10 +538,15 @@ async function loadTasks(isSilent = false) {
                       let origMachineDisplay = origMachine;
 
                       if (prioRes && prioRes.data) {
-                          let overrideRec = prioRes.data.find(p => 
-                              normalizeStr(p.detail_id) === taskDetailCode && 
-                              parseInt(p.op_num) === taskOpNumber
-                          );
+                          let matchingPrios = prioRes.data
+                              .filter(p => normalizeStr(p.detail_id) === taskDetailCode && parseInt(p.op_num) === taskOpNumber)
+                              .sort((a, b) => {
+                                  let da = new Date(a.updated_at || a.created_at || 0).getTime();
+                                  let db = new Date(b.updated_at || b.created_at || 0).getTime();
+                                  return db - da || (b.id - a.id);
+                              });
+
+                          let overrideRec = matchingPrios[0];
 
                           if (overrideRec) {
                               let assignedM = String(overrideRec.machine || '').trim();

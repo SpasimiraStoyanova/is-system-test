@@ -1,4 +1,4 @@
-﻿// ==============================================================================
+// ==============================================================================
 // Multi-Machine Workplace Tasks & Priority Board (Табло Машини & Задачи)
 // IS-SYSTEMS MES Test Environment
 // ==============================================================================
@@ -220,7 +220,13 @@ function calculateAllMachineTasks() {
     let priorityMap = {};
     let transferMap = {}; // detailId||opNum -> { assignedMachine, originalMachine, order, notes }
 
-    rawPriorities.forEach(p => {
+    let sortedPriorities = [...rawPriorities].sort((a, b) => {
+        let da = new Date(a.updated_at || a.created_at || 0).getTime();
+        let db = new Date(b.updated_at || b.created_at || 0).getTime();
+        return da - db || (a.id - b.id);
+    });
+
+    sortedPriorities.forEach(p => {
         let pMachine = String(p.machine || '').trim();
         let pMonth = String(p.plan_month || '').trim();
         let pYear = parseInt(p.plan_year);
@@ -256,6 +262,8 @@ function calculateAllMachineTasks() {
                     order: parseInt(p.priority_order) || 100,
                     notes: cleanNotes
                 };
+            } else if (origM && normalize(origM) === normalize(pMachine)) {
+                delete transferMap[detailCode + '||' + opNum];
             }
         }
     });
@@ -622,10 +630,16 @@ function handleTaskTransferred(detailId, opNum, fromMachine, toMachine) {
     let task = fromList.splice(taskIdx, 1)[0];
     task.machine = toMachine;
     task.is_transferred = (normalize(task.machine) !== normalize(task.original_machine));
+    if (!task.is_transferred && task.notes) {
+        task.notes = task.notes.replace(/\[ORIG:.*?\]\s*/g, '').trim();
+    }
     toList.push(task);
 
     fromList.forEach((t, i) => t.priority_order = i + 1);
     toList.forEach((t, i) => t.priority_order = i + 1);
+
+    if (!window.tasksMovedLocations) window.tasksMovedLocations = [];
+    window.tasksMovedLocations.push({ fromMachine: fromMachine, detail_id: detailId, op_num: opNum });
 
     setSaveStatus(true);
     renderAllMachines();
@@ -779,7 +793,7 @@ async function saveAllPriorities() {
     const selectedMonth = document.getElementById('selectMonth').value;
 
     let allTasksToSave = [];
-    let transferredToClean = [];
+    let machinesToCleanForTask = [];
 
     Object.keys(machineTasksMap).forEach(m => {
         let tasks = machineTasksMap[m] || [];
@@ -787,11 +801,21 @@ async function saveAllPriorities() {
             let noteContent = t.notes || '';
             if (t.is_transferred && t.original_machine) {
                 noteContent = `[ORIG:${t.original_machine}] ` + noteContent.replace(/\[ORIG:.*?\]\s*/g, '').trim();
-                transferredToClean.push({
-                    original_machine: t.original_machine,
+                machinesToCleanForTask.push({
+                    machineToDelete: t.original_machine,
                     detail_id: t.detail_id,
                     op_num: t.op_num
                 });
+            } else {
+                noteContent = noteContent.replace(/\[ORIG:.*?\]\s*/g, '').trim();
+                if (t.original_machine) {
+                    machinesToCleanForTask.push({
+                        machineToDelete: 'OTHER',
+                        currentMachine: t.machine,
+                        detail_id: t.detail_id,
+                        op_num: t.op_num
+                    });
+                }
             }
 
             let rowObj = {
@@ -816,6 +840,16 @@ async function saveAllPriorities() {
         });
     });
 
+    if (window.tasksMovedLocations && window.tasksMovedLocations.length > 0) {
+        window.tasksMovedLocations.forEach(item => {
+            machinesToCleanForTask.push({
+                machineToDelete: item.fromMachine,
+                detail_id: item.detail_id,
+                op_num: item.op_num
+            });
+        });
+    }
+
     if (allTasksToSave.length === 0) {
         Swal.fire('Информация', 'Няма задачи за запазване в текущия период.', 'info');
         return;
@@ -829,18 +863,25 @@ async function saveAllPriorities() {
     });
 
     try {
-        // 1. Clean up old machine records for transferred tasks
-        if (transferredToClean.length > 0) {
-            for (let item of transferredToClean) {
-                await client.from('task_priorities')
-                    .delete()
-                    .eq('plan_year', selectedYear)
-                    .eq('plan_month', selectedMonth)
-                    .eq('machine', item.original_machine)
-                    .eq('detail_id', item.detail_id)
-                    .eq('op_num', item.op_num);
+        // 1. Clean up old machine records for transferred or reverted tasks
+        if (machinesToCleanForTask.length > 0) {
+            for (let item of machinesToCleanForTask) {
+                if (item.machineToDelete === 'OTHER') {
+                    await client.from('task_priorities')
+                        .delete()
+                        .eq('detail_id', item.detail_id)
+                        .eq('op_num', item.op_num)
+                        .neq('machine', item.currentMachine);
+                } else if (item.machineToDelete) {
+                    await client.from('task_priorities')
+                        .delete()
+                        .eq('machine', item.machineToDelete)
+                        .eq('detail_id', item.detail_id)
+                        .eq('op_num', item.op_num);
+                }
             }
         }
+        window.tasksMovedLocations = [];
 
         // 2. Upsert in batches of 500
         for (let i = 0; i < allTasksToSave.length; i += 500) {
@@ -851,6 +892,14 @@ async function saveAllPriorities() {
                     onConflict: 'plan_year,plan_month,machine,detail_id,op_num'
                 });
             if (error) throw error;
+        }
+
+        // Refresh local priorities cache
+        try {
+            const { data: updatedPriorities } = await client.from('task_priorities').select('*');
+            if (updatedPriorities) rawPriorities = updatedPriorities;
+        } catch (eRef) {
+            console.warn('Could not refresh rawPriorities:', eRef);
         }
 
         setSaveStatus(false);
