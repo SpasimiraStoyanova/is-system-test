@@ -238,9 +238,11 @@ async function loadCurrentTableData(forceRefresh = false) {
       }
       const probiContainer = document.getElementById('probiContainer');
       if (probiContainer) probiContainer.style.display = 'none';
+      const archiveToolbar = document.getElementById('archiveToolbar');
+      if (archiveToolbar) archiveToolbar.style.display = (currentTab === 'archives') ? 'flex' : 'none';
+
       if (currentTab === 'archives') {
           document.getElementById('mainTable').style.display = 'table';
-          document.getElementById('tableHead').innerHTML = '<tr><th style="text-align:left; padding:12px;">Месец и Година</th><th style="text-align:left; padding:12px;">Създаден на</th><th style="text-align:right; padding:12px;">Изтегляне</th></tr>';
           document.getElementById('loadingLayout').style.display = 'none';
           if (typeof renderArchivesTab === 'function') renderArchivesTab();
           return;
