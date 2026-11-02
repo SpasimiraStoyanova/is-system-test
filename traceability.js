@@ -1,4 +1,4 @@
-﻿// traceability.js - Inventory Detective Logic with Timeline, Audit Trail & Nomenclature Resolution
+﻿// traceability.js - Inventory Detective Logic with Timeline, Audit Trail, Nomenclature Resolution & Physical Spot-Check (Revision)
 
 document.getElementById('searchInput').addEventListener('keypress', function(e) {
   if(e.key === 'Enter') startSearch();
@@ -70,7 +70,7 @@ async function fetchRobustRows(table, select, searchCol, searchStr) {
 }
 
 let globalTimeline = {}; // { 'YYYY-MM-DD': { rawOtcheti: [], parentOtcheti: [] } }
-let globalAllData = { rawOtcheti: [], parentOtcheti: [], childrenBOM: [], parentsBOM: [], tRoutes: [], currentStock: 0, targetId: '', targetName: '', auditHistory: [] };
+let globalAllData = { rawOtcheti: [], parentOtcheti: [], childrenBOM: [], parentsBOM: [], tRoutes: [], currentStock: 0, targetId: '', targetName: '', auditHistory: [], recentChecks: [] };
 let currentSelectedDateKey = 'ALL';
 let filterFromTs = 0;
 let filterToTs = 0;
@@ -329,6 +329,28 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
         }
     } catch (e) {
         console.warn('Не можа да се зареди одит история за детайла:', e);
+    }
+
+    // 7. Fetch Recent Spot-Checks / Revisions from inventory_checks
+    globalAllData.recentChecks = [];
+    try {
+        let { data: chkData } = await client
+            .from('inventory_checks')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
+        
+        if (chkData) {
+            chkData.forEach(c => {
+                let pId = String(c.part_id || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                let pNm = String(c.part_name || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                if (normCodes.has(pId) || normCodes.has(pNm)) {
+                    globalAllData.recentChecks.push(c);
+                }
+            });
+        }
+    } catch(e) {
+        console.warn('Таблица inventory_checks все още не съществува:', e);
     }
 }
 
@@ -650,6 +672,38 @@ async function renderVSM(dateKey) {
 
         let wipLabel = dateKey === 'ALL' ? 'ОБЩО НАТРУПАНИ (WIP):' : 'НАТРУПАНИ ДО ТОЗИ ДЕН:';
 
+        // Check for recent spot-checks for this operation
+        let opChecks = (globalAllData.recentChecks || []).filter(c => {
+            let cOp = String(c.operation || '').trim().toUpperCase();
+            return cOp.includes(opName) || opName.includes(cOp);
+        });
+        let lastCheckHtml = '';
+        if (opChecks.length > 0) {
+            let lc = opChecks[0];
+            let chkDate = new Date(lc.created_at).toLocaleString('bg-BG');
+            let diffSign = (lc.difference > 0 ? '+' : '');
+            let diffColor = lc.difference === 0 ? '#94a3b8' : (lc.difference > 0 ? '#10b981' : '#ef4444');
+            lastCheckHtml = `
+               <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid #10b981; border-radius: 6px; padding: 8px 10px; margin-top: 10px; font-size: 0.82rem; text-align: left;">
+                  <div style="color: #10b981; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+                     <span>🛡️ Физическа проверка:</span>
+                     <b style="color:#ffffff; font-size:0.95rem;">${lc.actual_qty} бр.</b>
+                  </div>
+                  <div style="color: #94a3b8; font-size: 0.75rem; margin-top: 3px;">
+                     ${chkDate} | От <b>${lc.checked_by || 'Администратор'}</b> <span style="color:${diffColor}; font-weight:bold;">(${diffSign}${lc.difference} бр.)</span>
+                     ${lc.notes ? `<div style="color:#e2e8f0; font-style:italic; margin-top:2px;">"${lc.notes}"</div>` : ''}
+                  </div>
+               </div>
+            `;
+        }
+
+        let checkButtonHtml = `
+            ${lastCheckHtml}
+            <button type="button" onclick="openRevisionModal('${opName.replace(/'/g, "\\'")}', ${cBalance}, ${isLastOp ? globalAllData.currentStock : 'null'})" style="margin-top: 10px; width: 100%; background: #1e293b; border: 1px dashed #38bdf8; color: #38bdf8; padding: 7px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;" onmouseover="this.style.background='#0284c7'; this.style.color='#ffffff';" onmouseout="this.style.background='#1e293b'; this.style.color='#38bdf8';">
+               <span>📋</span> <span>Засечи наличност (Ревизия)</span>
+            </button>
+        `;
+
         let windowHtml = `
          <div class="vsm-target-node" style="${!isLastOp ? 'border-color:#475569;' : ''}">
             <div class="target-title" style="font-size:1.3rem;">
@@ -683,6 +737,7 @@ async function renderVSM(dateKey) {
                  <span class="vsm-stat" style="color:${cBalanceColor}; font-weight:900; font-size: 1.4rem;">${cBalanceSign}${cBalance} бр.</span>
                </div>
                ${physicalStockHtml}
+               ${checkButtonHtml}
             </div>
          </div>
         `;
@@ -712,3 +767,171 @@ async function renderVSM(dateKey) {
       </div>
     `;
 }
+
+window.openRevisionModal = async function(opName, cBalance, currentStock) {
+    let targetId = globalAllData.targetId;
+    let targetName = globalAllData.targetName;
+    let baseQty = (currentStock !== null && currentStock !== undefined) ? currentStock : (cBalance || 0);
+    let savedChecker = localStorage.getItem('last_checker_name') || 'Спасимира';
+    let todayStr = new Date().toLocaleDateString('bg-BG');
+
+    let html = `
+      <div style="text-align:left; font-size:0.95rem; color:#334155;">
+        <div style="margin-bottom:14px; padding:10px 14px; background:#f1f5f9; border-radius:6px; border-left:4px solid #3b82f6;">
+          <div style="font-size:1.05rem; font-weight:bold; color:#0f172a; margin-bottom:2px;">${targetName}</div>
+          <div style="font-size:0.85rem; color:#64748b; margin-bottom:4px;">Код: <b>${targetId}</b></div>
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px dashed #cbd5e1; padding-top:6px; margin-top:4px;">
+             <span>Операция: <b style="color:#2563eb;">${opName}</b></span>
+             <span>По система (WIP): <b>${cBalance} бр.</b></span>
+          </div>
+          ${currentStock !== null ? `<div style="font-size:0.85rem; color:#475569; text-align:right;">Склад (текущо): <b>${currentStock} бр.</b></div>` : ''}
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-weight:bold; margin-bottom:4px; color:#1e293b;">Физически преброено количество (бр.):</label>
+          <input type="number" id="swal_rev_qty" value="${baseQty}" step="any" min="0" style="width:100%; padding:10px; border:2px solid #3b82f6; border-radius:6px; font-size:1.2rem; font-weight:bold; color:#0f172a; box-sizing:border-box;">
+          <div id="swal_rev_diff" style="margin-top:5px; font-size:0.9rem; font-weight:bold; color:#64748b;">Разлика: 0 бр.</div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-weight:bold; margin-bottom:4px; color:#1e293b;">Проверил (Име):</label>
+          <input type="text" id="swal_rev_user" value="${savedChecker}" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.95rem; box-sizing:border-box;">
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-weight:bold; margin-bottom:4px; color:#1e293b;">Бележка / Забележка (по избор):</label>
+          <input type="text" id="swal_rev_notes" placeholder="напр. Ревизия на стелаж 2 / намерени допълнителни" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.95rem; box-sizing:border-box;">
+        </div>
+
+        <div style="margin-bottom:6px; display:flex; align-items:center; gap:8px; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
+          <input type="checkbox" id="swal_rev_update_inv" checked style="width:18px; height:18px; cursor:pointer;">
+          <label for="swal_rev_update_inv" style="font-size:0.88rem; color:#1e293b; cursor:pointer; font-weight:600;">
+            Актуализирай текущата складова наличност на преброените бройки
+          </label>
+        </div>
+      </div>
+    `;
+
+    Swal.fire({
+        title: '📋 Засичане на наличност (Ревизия)',
+        html: html,
+        showCancelButton: true,
+        confirmButtonText: '💾 Запази ревизията',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#059669',
+        cancelButtonColor: '#64748b',
+        focusConfirm: false,
+        didOpen: () => {
+            const qtyInput = document.getElementById('swal_rev_qty');
+            const diffDiv = document.getElementById('swal_rev_diff');
+            function calcDiff() {
+                let actual = parseFloat(qtyInput.value) || 0;
+                let diff = actual - baseQty;
+                if (diff === 0) {
+                    diffDiv.innerHTML = '<span style="color:#64748b;">⚖️ Няма разминаване (точно съвпадение)</span>';
+                } else if (diff > 0) {
+                    diffDiv.innerHTML = `<span style="color:#16a34a;">📈 +${diff} бр. излишък спрямо базата</span>`;
+                } else {
+                    diffDiv.innerHTML = `<span style="color:#dc2626;">📉 ${diff} бр. дефицит спрямо базата</span>`;
+                }
+            }
+            qtyInput.addEventListener('input', calcDiff);
+            calcDiff();
+        },
+        preConfirm: () => {
+            const actualQty = parseFloat(document.getElementById('swal_rev_qty').value);
+            const user = document.getElementById('swal_rev_user').value.trim();
+            const notes = document.getElementById('swal_rev_notes').value.trim();
+            const updateInv = document.getElementById('swal_rev_update_inv').checked;
+
+            if (isNaN(actualQty) || actualQty < 0) {
+                Swal.showValidationMessage('Моля, въведете валидно количество (0 или повече)!');
+                return false;
+            }
+            if (!user) {
+                Swal.showValidationMessage('Моля, въведете кой е извършил проверката!');
+                return false;
+            }
+            return { actualQty, user, notes, updateInv };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            let { actualQty, user, notes, updateInv } = result.value;
+            localStorage.setItem('last_checker_name', user);
+            
+            Swal.fire({ title: 'Записване на проверката... ⏳', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            try {
+                let diff = actualQty - baseQty;
+                let now = new Date().toISOString();
+
+                // 1. Запис в inventory_checks (ако таблицата съществува)
+                try {
+                    await client.from('inventory_checks').insert([{
+                        part_id: targetId,
+                        part_name: targetName,
+                        operation: opName,
+                        system_qty: baseQty,
+                        actual_qty: actualQty,
+                        difference: diff,
+                        checked_by: user,
+                        notes: notes,
+                        created_at: now
+                    }]);
+                } catch(e) {
+                    console.warn('inventory_checks не е налична:', e);
+                }
+
+                // 2. Актуализация на склада в inventory
+                if (updateInv) {
+                    let { data: existing } = await client.from('inventory')
+                        .select('id')
+                        .eq('ID Детайл', targetId)
+                        .ilike('Операция', `%${opName}%`)
+                        .limit(1);
+
+                    if (existing && existing.length > 0) {
+                        await client.from('inventory').update({
+                            'Количество': actualQty,
+                            'Общо': actualQty
+                        }).eq('id', existing[0].id);
+                    } else {
+                        // Проверяваме дали има детайл въобще
+                        let { data: anyInv } = await client.from('inventory')
+                            .select('id')
+                            .eq('ID Детайл', targetId)
+                            .limit(1);
+                        if (anyInv && anyInv.length > 0) {
+                            await client.from('inventory').update({
+                                'Количество': actualQty,
+                                'Общо': actualQty,
+                                'Операция': opName
+                            }).eq('id', anyInv[0].id);
+                        } else {
+                            await client.from('inventory').insert([{
+                                'ID Детайл': targetId,
+                                'Операция': opName,
+                                'Количество': actualQty,
+                                'Общо': actualQty
+                            }]);
+                        }
+                    }
+                }
+
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'Успешно документирано!',
+                    html: `Наличността за <b>${targetName}</b> на операция <b>${opName}</b> е засечена на <b>${actualQty} бр.</b><br><span style="font-size:0.85em; color:#64748b;">Дата: ${new Date().toLocaleString('bg-BG')}</span>`,
+                    timer: 2500,
+                    showConfirmButton: false
+                });
+
+                // Презареждаме Детектива
+                startSearch();
+
+            } catch(err) {
+                Swal.fire('Грешка при запис', err.message, 'error');
+            }
+        }
+    });
+};
