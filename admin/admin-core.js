@@ -1502,6 +1502,122 @@ function openAuditModal() {
     fetchAuditLogs();
 }
 
+function formatAuditLogDetails(log) {
+    let oldData = log.old_data || {};
+    let newData = log.new_data || {};
+    let tName = log.table_name || '';
+    let action = log.action_type || '';
+
+    // 1. Склад
+    if (['inventory', 'inventory_gp', 'inventory_wip'].includes(tName)) {
+        let det = newData['ID Детайл'] || oldData['ID Детайл'] || 'Детайл';
+        let op = newData['Операция'] || oldData['Операция'] || '';
+        let opBadge = op ? `<span style="background:#e0f2fe; color:#0369a1; padding:2px 7px; border-radius:4px; font-size:0.85em; font-weight:700; margin-left:6px;">${op}</span>` : '';
+        let oldQty = parseFloat(oldData['Количество'] !== undefined && oldData['Количество'] !== null ? oldData['Количество'] : (oldData['Общо'] || 0));
+        let newQty = parseFloat(newData['Количество'] !== undefined && newData['Количество'] !== null ? newData['Количество'] : (newData['Общо'] || 0));
+        if (action === 'INSERT') oldQty = 0;
+        let diff = newQty - oldQty;
+
+        if (action === 'INSERT') {
+            return `🏭 <b>Добавен в склад:</b> <b>${det}</b>${opBadge} ➔ Заприходени: <b style="color:#16a34a;">+${newQty} бр.</b>`;
+        }
+        if (action === 'DELETE') {
+            return `🗑️ <b>Премахнат от склад:</b> <b>${det}</b>${opBadge} (последно салдо: ${oldQty} бр.)`;
+        }
+        let diffColor = diff > 0 ? '#16a34a' : (diff < 0 ? '#dc2626' : '#64748b');
+        let diffSign = diff > 0 ? '+' : '';
+        return `🏭 <b>Корекция в склад:</b> <b>${det}</b>${opBadge} | <span style="text-decoration:line-through; color:#94a3b8;">${oldQty} бр.</span> ➔ <b style="font-size:1.05em; color:#0f172a;">${newQty} бр.</b> (<b style="color:${diffColor};">${diffSign}${diff} бр.</b>)`;
+    }
+
+    // 2. Маршрутни карти
+    if (tName === 'marshruti') {
+        let code = newData['Код на детайла'] || oldData['Код на детайла'] || 'Детайл';
+        let opNum = newData['№ Операция'] || oldData['№ Операция'] || '';
+        let opName = newData['Име на операция'] || oldData['Име на операция'] || '';
+        let header = `🔄 <b>Маршрут за:</b> <b>${code}</b> ${opNum ? `(Оп. ${opNum}: ${opName})` : ''}`;
+        if (action === 'INSERT') {
+            return `${header} ➔ Създадена нова операция на машина: <b>${newData['Машина'] || 'Без машина'}</b>`;
+        }
+        if (action === 'DELETE') {
+            return `🗑️ <b>Изтрита операция от маршрут:</b> <b>${code}</b> (Оп. ${opNum})`;
+        }
+        let changes = [];
+        for (let k in newData) {
+            let ov = String(oldData[k] === null || oldData[k] === undefined ? '' : oldData[k]).trim();
+            let nv = String(newData[k] === null || newData[k] === undefined ? '' : newData[k]).trim();
+            if (ov !== nv) {
+                changes.push(`<b>${k}:</b> <span style="text-decoration:line-through; color:#ef4444;">${ov || 'няма'}</span> ➔ <span style="color:#16a34a; font-weight:bold;">${nv || 'няма'}</span>`);
+            }
+        }
+        return `${header}<br><div style="margin-top:4px; font-size:0.9em; color:#334155;">${changes.length > 0 ? changes.join(' | ') : '<span style="color:#94a3b8;">Няма съществена промяна</span>'}</div>`;
+    }
+
+    // 3. План
+    if (tName === 'plan') {
+        let name = newData['Вътрешно име'] || oldData['Вътрешно име'] || newData['ID Детайл'] || oldData['ID Детайл'] || 'Детайл';
+        let month = newData['Месец'] || oldData['Месец'] || '';
+        let year = newData['Година'] || oldData['Година'] || '';
+        let header = `📅 <b>План (${month} ${year}):</b> <b>${name}</b>`;
+        if (action === 'INSERT') {
+            return `${header} ➔ Заложен за производство: <b style="color:#16a34a;">${newData['Целево количество'] || 0} бр.</b> (Статус: ${newData['Статус'] || 'Активен'})`;
+        }
+        if (action === 'DELETE') {
+            return `🗑️ <b>Премахнат от плана:</b> <b>${name}</b> (${month} ${year})`;
+        }
+        let changes = [];
+        for (let k in newData) {
+            let ov = String(oldData[k] === null || oldData[k] === undefined ? '' : oldData[k]).trim();
+            let nv = String(newData[k] === null || newData[k] === undefined ? '' : newData[k]).trim();
+            if (ov !== nv) {
+                changes.push(`<b>${k}:</b> <span style="text-decoration:line-through; color:#ef4444;">${ov}</span> ➔ <span style="color:#16a34a; font-weight:bold;">${nv}</span>`);
+            }
+        }
+        return `${header}<br><div style="margin-top:4px; font-size:0.9em; color:#334155;">${changes.join(' | ')}</div>`;
+    }
+
+    // 4. Склад Материали
+    if (tName === 'sklad') {
+        let mat = newData['ID Детайл'] || oldData['ID Детайл'] || 'Материал';
+        let header = `📦 <b>Материал:</b> <b>${mat}</b>`;
+        if (action === 'INSERT') return `${header} ➔ Добавен нов материал с наличност: <b>${newData['Начална наличност'] || 0}</b>`;
+        if (action === 'DELETE') return `🗑️ <b>Изтрит материал:</b> <b>${mat}</b>`;
+        let changes = [];
+        for (let k in newData) {
+            let ov = String(oldData[k] === null || oldData[k] === undefined ? '' : oldData[k]).trim();
+            let nv = String(newData[k] === null || newData[k] === undefined ? '' : newData[k]).trim();
+            if (ov !== nv) {
+                changes.push(`<b>${k}:</b> <span style="text-decoration:line-through; color:#ef4444;">${ov}</span> ➔ <span style="color:#16a34a; font-weight:bold;">${nv}</span>`);
+            }
+        }
+        return `${header}<br><div style="margin-top:4px; font-size:0.9em; color:#334155;">${changes.join(' | ')}</div>`;
+    }
+
+    // 5. Общ случай
+    let idStr = newData['ID Детайл'] || newData['Вътрешно име'] || newData['Име'] || newData['id'] || '';
+    let header = idStr ? `<div style="font-weight:bold; color:#1e293b; margin-bottom:3px;">🔑 Запис: <b>${idStr}</b></div>` : '';
+    if (action === 'INSERT') {
+        let fields = [];
+        for (let k in newData) {
+            if (k !== 'id' && k !== 'created_at' && newData[k] !== null && String(newData[k]).trim() !== '') {
+                fields.push(`<b>${k}:</b> ${newData[k]}`);
+            }
+        }
+        return `${header}<div style="color:#166534; font-size:0.9em;">${fields.join(', ')}</div>`;
+    }
+    if (action === 'DELETE') {
+        return `${header}<div style="color:#dc2626; font-size:0.9em;">Записът е изтрит.</div>`;
+    }
+    let changes = [];
+    for (let k in newData) {
+        let ov = String(oldData[k] === null || oldData[k] === undefined ? '' : oldData[k]).trim();
+        let nv = String(newData[k] === null || newData[k] === undefined ? '' : newData[k]).trim();
+        if (ov !== nv) {
+            changes.push(`<b>${k}:</b> <span style="text-decoration:line-through; color:#ef4444;">${ov || 'няма'}</span> ➔ <span style="color:#16a34a;">${nv || 'няма'}</span>`);
+        }
+    }
+    return `${header}<div style="font-size:0.9em; color:#334155;">${changes.length > 0 ? changes.join(' | ') : '<span style="color:#94a3b8;">Няма съществена промяна в полетата</span>'}</div>`;
+}
+
 async function fetchAuditLogs() {
     let container = document.getElementById('auditContent');
     container.innerHTML = '<div style="text-align:center; padding:20px; color:#64748b;">Зареждане на историята... ⏳</div>';
@@ -1608,28 +1724,12 @@ async function fetchAuditLogs() {
                         else if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ДОБАВЯНЕ</span>';
                         else actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">РЕДАКЦИЯ</span>';
                         
-                        let detailsHtml = '';
-                        if (log.action_type === 'DELETE') {
-                            detailsHtml = `<div style="color:#64748b; white-space:pre-wrap; font-size:0.85em;"><b>Изтрит запис:</b><br>${JSON.stringify(oldData, null, 2)}</div>`;
-                        } else if (log.action_type === 'INSERT') {
-                            detailsHtml = `<div style="color:#166534; white-space:pre-wrap; font-size:0.85em;"><b>Нов запис:</b><br>${JSON.stringify(newData, null, 2)}</div>`;
-                        } else {
-                            let changesHtml = [];
-                            let idStr = newData['ID Детайл'] || newData['Вътрешно име'] || newData['id'] || '';
-                            let identifierHtml = idStr ? `<div style="color:#1e293b; margin-bottom:4px; border-bottom:1px dotted #cbd5e1; padding-bottom:4px;">🔑 Запис: <b>${idStr}</b></div>` : '';
-                            
-                            for (let key in newData) {
-                                if (oldData[key] !== newData[key]) {
-                                    changesHtml.push(`<div><b>${key}:</b> <span style="text-decoration:line-through; color:#ef4444;">${oldData[key]}</span> ➡️ <span style="color:#16a34a;">${newData[key]}</span></div>`);
-                                }
-                            }
-                            detailsHtml = identifierHtml + (changesHtml.length > 0 ? changesHtml.join('') : '<span style="color:#94a3b8;">Няма промяна в полетата</span>');
-                        }
+                        let detailsHtml = formatAuditLogDetails(log);
                         
                         html += `<tr>
                             <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
                             <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${actionBadge}<br><span style="font-size:0.85em; color:#64748b;">${log.table_name}</span></td>
-                            <td style="padding:10px; border:1px solid #e2e8f0; font-family:monospace; word-break:break-word;">${detailsHtml}</td>
+                            <td style="padding:10px; border:1px solid #e2e8f0;">${detailsHtml}</td>
                         </tr>`;
                     }
                 }
@@ -1669,26 +1769,7 @@ async function fetchAuditLogs() {
             else if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ДОБАВЯНЕ</span>';
             else actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">РЕДАКЦИЯ</span>';
             
-            let detailsHtml = '';
-            let oldData = log.old_data || {};
-            let newData = log.new_data || {};
-            
-            if (log.action_type === 'DELETE') {
-                detailsHtml = `<div style="color:#64748b; white-space:pre-wrap; font-size:0.85em;"><b>Изтрит запис:</b><br>${JSON.stringify(oldData, null, 2)}</div>`;
-            } else if (log.action_type === 'INSERT') {
-                detailsHtml = `<div style="color:#166534; white-space:pre-wrap; font-size:0.85em;"><b>Нов запис:</b><br>${JSON.stringify(newData, null, 2)}</div>`;
-            } else {
-                let changesHtml = [];
-                let idStr = newData['ID Детайл'] || newData['Вътрешно име'] || newData['id'] || '';
-                let identifierHtml = idStr ? `<div style="color:#1e293b; margin-bottom:4px; border-bottom:1px dotted #cbd5e1; padding-bottom:4px;">🔑 Запис: <b>${idStr}</b></div>` : '';
-                
-                for (let key in newData) {
-                    if (oldData[key] !== newData[key]) {
-                        changesHtml.push(`<div><b>${key}:</b> <span style="text-decoration:line-through; color:#ef4444;">${oldData[key]}</span> ➡️ <span style="color:#16a34a;">${newData[key]}</span></div>`);
-                    }
-                }
-                detailsHtml = identifierHtml + (changesHtml.length > 0 ? changesHtml.join('') : '<span style="color:#94a3b8;">Няма промяна в полетата</span>');
-            }
+            let detailsHtml = formatAuditLogDetails(log);
             
             html += `<tr>
                 <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>

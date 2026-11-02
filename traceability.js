@@ -1,4 +1,4 @@
-// traceability.js - Inventory Detective Logic with Timeline & Nomenclature Resolution
+﻿// traceability.js - Inventory Detective Logic with Timeline, Audit Trail & Nomenclature Resolution
 
 document.getElementById('searchInput').addEventListener('keypress', function(e) {
   if(e.key === 'Enter') startSearch();
@@ -70,7 +70,10 @@ async function fetchRobustRows(table, select, searchCol, searchStr) {
 }
 
 let globalTimeline = {}; // { 'YYYY-MM-DD': { rawOtcheti: [], parentOtcheti: [] } }
-let globalAllData = { rawOtcheti: [], parentOtcheti: [], childrenBOM: [], parentsBOM: [], tRoutes: [], currentStock: 0, targetId: '', targetName: '' };
+let globalAllData = { rawOtcheti: [], parentOtcheti: [], childrenBOM: [], parentsBOM: [], tRoutes: [], currentStock: 0, targetId: '', targetName: '', auditHistory: [] };
+let currentSelectedDateKey = 'ALL';
+let filterFromTs = 0;
+let filterToTs = 0;
 
 async function startSearch() {
   const input = document.getElementById('searchInput').value.trim();
@@ -85,6 +88,7 @@ async function startSearch() {
 
   try {
       await fetchDataForPeriod(input, dateFrom, dateTo);
+      currentSelectedDateKey = 'ALL';
       renderTimeline();
       renderVSM('ALL');
   } catch (e) {
@@ -121,8 +125,8 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     globalAllData.targetId = searchCode || cleanInput;
     globalAllData.targetName = searchName || searchCode || cleanInput;
 
-    const fromTs = new Date(dateFrom).getTime();
-    const toTs = new Date(dateTo).getTime() + 86400000;
+    filterFromTs = new Date(dateFrom).getTime();
+    filterToTs = new Date(dateTo).getTime() + 86400000;
     globalTimeline = {};
 
     // 1. Fetch Routes (Marshruti)
@@ -155,7 +159,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
             if (!normCodes.has(dbId)) return;
             globalAllData.rawOtcheti.push(r);
             let dTs = new Date(r['Дата']).getTime();
-            if (dTs >= fromTs && dTs < toTs) {
+            if (dTs >= filterFromTs && dTs < filterToTs) {
                 let dateStr = r['Дата'].split('T')[0];
                 if (!globalTimeline[dateStr]) globalTimeline[dateStr] = { rawOtcheti: [], parentOtcheti: [] };
                 globalTimeline[dateStr].rawOtcheti.push(r);
@@ -271,7 +275,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
                     if (pNorms.includes(dbId)) {
                         globalAllData.parentOtcheti.push(r);
                         let dTs = new Date(r['Дата']).getTime();
-                        if (dTs >= fromTs && dTs < toTs) {
+                        if (dTs >= filterFromTs && dTs < filterToTs) {
                             let dateStr = r['Дата'].split('T')[0];
                             if (!globalTimeline[dateStr]) globalTimeline[dateStr] = { rawOtcheti: [], parentOtcheti: [] };
                             globalTimeline[dateStr].parentOtcheti.push(r);
@@ -282,7 +286,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
         }
     }
 
-    // 5. Fetch Inventory from the unified 'inventory' table (надежден прочит по код и име)
+    // 5. Fetch Inventory from the unified 'inventory' table
     globalAllData.currentStock = 0;
     
     let { data: invData } = await client
@@ -301,6 +305,31 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
             globalAllData.currentStock += (parseFloat(String(qty || '0').replace(',', '.')) || 0);
         }
     });
+
+    // 6. Fetch Audit History for warehouse changes for this item
+    globalAllData.auditHistory = [];
+    try {
+        let { data: auditData } = await client
+            .from('audit_logs')
+            .select('*')
+            .in('table_name', ['inventory', 'inventory_gp', 'inventory_wip', 'sklad'])
+            .order('changed_at', { ascending: false })
+            .limit(1000);
+        
+        if (auditData) {
+            auditData.forEach(l => {
+                let n = l.new_data || {};
+                let o = l.old_data || {};
+                let id1 = String(n['ID Детайл'] || n['Име'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                let id2 = String(o['ID Детайл'] || o['Име'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                if (normCodes.has(id1) || normCodes.has(id2)) {
+                    globalAllData.auditHistory.push(l);
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('Не можа да се зареди одит история за детайла:', e);
+    }
 }
 
 function renderTimeline() {
@@ -312,20 +341,22 @@ function renderTimeline() {
         return;
     }
     
+    let isAllActive = (currentSelectedDateKey === 'ALL');
     let html = `
-        <div style="cursor:pointer; display:flex; flex-direction:column; align-items:center;" onclick="renderVSM('ALL')">
-            <div style="width:12px; height:12px; background:var(--primary); border-radius:50%; margin-bottom:5px; box-shadow:0 0 10px var(--primary);"></div>
-            <div style="color:white; font-size:0.8rem; font-weight:bold;">ЦЕЛИЯТ ПЕРИОД</div>
+        <div style="cursor:pointer; display:flex; flex-direction:column; align-items:center;" onclick="renderVSM('ALL')" id="tl_node_ALL">
+            <div style="width:12px; height:12px; background:${isAllActive ? 'var(--primary)' : '#64748b'}; border-radius:50%; margin-bottom:5px; box-shadow:${isAllActive ? '0 0 10px var(--primary)' : 'none'}; transition:0.2s;"></div>
+            <div style="color:${isAllActive ? 'white' : '#94a3b8'}; font-size:0.8rem; font-weight:bold;">ЦЕЛИЯТ ПЕРИОД</div>
         </div>
         <div style="width:2px; height:20px; background:#475569;"></div>
     `;
     
     dates.forEach(d => {
         let displayD = d.split('-').reverse().join('.');
+        let isActive = (currentSelectedDateKey === d);
         html += `
-        <div style="cursor:pointer; display:flex; flex-direction:column; align-items:center; opacity:0.8; transition:0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" onclick="renderVSM('${d}')">
-            <div style="width:10px; height:10px; background:#94a3b8; border-radius:50%; margin-bottom:5px;"></div>
-            <div style="color:#cbd5e1; font-size:0.75rem;">${displayD}</div>
+        <div style="cursor:pointer; display:flex; flex-direction:column; align-items:center; opacity:${isActive ? '1' : '0.8'}; transition:0.2s;" onclick="renderVSM('${d}')" id="tl_node_${d}">
+            <div style="width:${isActive ? '12px' : '10px'}; height:${isActive ? '12px' : '10px'}; background:${isActive ? 'var(--primary)' : '#94a3b8'}; border-radius:50%; margin-bottom:5px; box-shadow:${isActive ? '0 0 10px var(--primary)' : 'none'};"></div>
+            <div style="color:${isActive ? '#38bdf8' : '#cbd5e1'}; font-weight:${isActive ? 'bold' : 'normal'}; font-size:0.75rem;">${displayD}</div>
         </div>
         <div style="height:1px; width:30px; background:#334155;"></div>
         `;
@@ -335,35 +366,46 @@ function renderTimeline() {
 }
 
 async function renderVSM(dateKey) {
-    let dataSlice = dateKey === 'ALL' ? globalAllData : globalTimeline[dateKey];
-    if (!dataSlice) return;
+    currentSelectedDateKey = dateKey;
+    renderTimeline();
 
-    let opsProduced = {};
-    let opsScrap = {};
-    let cumProduced = {};
-    let cumScrap = {};
-    
-    let targetTs = dateKey === 'ALL' ? Infinity : new Date(dateKey).getTime() + 86400000;
+    let curFromTs = 0;
+    let curToTs = 0;
+    let targetTs = 0;
+
+    if (dateKey === 'ALL') {
+        curFromTs = filterFromTs;
+        curToTs = filterToTs;
+        targetTs = filterToTs;
+    } else {
+        curFromTs = new Date(dateKey).getTime();
+        curToTs = curFromTs + 86400000;
+        targetTs = curToTs;
+    }
+
+    let opsProduced = {};   // Произведени в текущия интервал (за периода или за деня)
+    let opsScrap = {};      // Брак в текущия интервал
+    let opsPrior = {};      // Натрупани ПРЕДИ текущия интервал
+    let cumProduced = {};   // Общо до края на текущия интервал
+    let cumScrap = {};      // Общо брак до края на текущия интервал
 
     (globalAllData.rawOtcheti || []).forEach(r => {
         let dTs = new Date(r['Дата']).getTime();
         let st = String(r['Статус'] || '').trim().toLowerCase();
         let q = parseFloat(r['Количество']) || 0;
         let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
-        
-        if (dTs < targetTs) {
-             if (st === 'отчетено' || st === 'завършено') cumProduced[op] = (cumProduced[op] || 0) + q;
-             else if (st === 'брак') cumScrap[op] = (cumScrap[op] || 0) + Math.abs(q);
+
+        if (dTs >= curFromTs && dTs < curToTs) {
+            if (st === 'отчетено' || st === 'завършено') opsProduced[op] = (opsProduced[op] || 0) + q;
+            else if (st === 'брак') opsScrap[op] = (opsScrap[op] || 0) + Math.abs(q);
+        } else if (dTs < curFromTs) {
+            if (st === 'отчетено' || st === 'завършено') opsPrior[op] = (opsPrior[op] || 0) + q;
         }
-    });
-    
-    (dataSlice.rawOtcheti || []).forEach(r => {
-        let st = String(r['Статус'] || '').trim().toLowerCase();
-        let q = parseFloat(r['Количество']) || 0;
-        let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
-        
-        if (st === 'отчетено' || st === 'завършено') opsProduced[op] = (opsProduced[op] || 0) + q;
-        else if (st === 'брак') opsScrap[op] = (opsScrap[op] || 0) + Math.abs(q);
+
+        if (dTs < targetTs) {
+            if (st === 'отчетено' || st === 'завършено') cumProduced[op] = (cumProduced[op] || 0) + q;
+            else if (st === 'брак') cumScrap[op] = (cumScrap[op] || 0) + Math.abs(q);
+        }
     });
 
     let opChain = [];
@@ -382,7 +424,7 @@ async function renderVSM(dateKey) {
         if (targetProduced === 0) targetProduced = Math.max(0, ...Object.values(opsProduced));
     }
 
-    // Children 
+    // Children (Суровини и компоненти)
     let childrenFlowHtml = '';
     if (globalAllData.childrenBOM.length > 0) {
         let filteredChildren = globalAllData.childrenBOM;
@@ -409,32 +451,31 @@ async function renderVSM(dateKey) {
          childrenFlowHtml = `<div class="vsm-node" style="opacity:0.5"><span class="vsm-name">ЧИСТА СУРОВИНА</span></div>`;
     }
 
-    // Parents
+    // Parents (Влагане в по-горни изделия)
     let totalConsumed = 0;
     let cumTotalConsumed = 0;
     let parentsFlowHtml = '';
     
     if (globalAllData.parentsBOM.length > 0) {
         let parentOpStats = {}; 
-        (dataSlice.parentOtcheti || []).forEach(r => {
+        let cumParentOpStats = {};
+
+        (globalAllData.parentOtcheti || []).forEach(r => {
+            let dTs = new Date(r['Дата']).getTime();
             let st = String(r['Статус'] || '').trim().toLowerCase();
             if (st === 'отчетено' || st === 'завършено') {
                 let pName = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
                 let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
-                if (!parentOpStats[pName]) parentOpStats[pName] = {};
-                parentOpStats[pName][op] = (parentOpStats[pName][op] || 0) + (parseFloat(r['Количество']) || 0);
-            }
-        });
-        
-        let cumParentOpStats = {};
-        (globalAllData.parentOtcheti || []).forEach(r => {
-            let dTs = new Date(r['Дата']).getTime();
-            let st = String(r['Статус'] || '').trim().toLowerCase();
-            if (dTs < targetTs && (st === 'отчетено' || st === 'завършено')) {
-                 let pName = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-                 let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
-                 if (!cumParentOpStats[pName]) cumParentOpStats[pName] = {};
-                 cumParentOpStats[pName][op] = (cumParentOpStats[pName][op] || 0) + (parseFloat(r['Количество']) || 0);
+                let q = parseFloat(r['Количество']) || 0;
+
+                if (dTs >= curFromTs && dTs < curToTs) {
+                    if (!parentOpStats[pName]) parentOpStats[pName] = {};
+                    parentOpStats[pName][op] = (parentOpStats[pName][op] || 0) + q;
+                }
+                if (dTs < targetTs) {
+                    if (!cumParentOpStats[pName]) cumParentOpStats[pName] = {};
+                    cumParentOpStats[pName][op] = (cumParentOpStats[pName][op] || 0) + q;
+                }
             }
         });
         
@@ -486,18 +527,19 @@ async function renderVSM(dateKey) {
          parentsFlowHtml = `<div class="vsm-node"><span class="vsm-stat" style="color:var(--text-muted)">Не се влага никъде (Краен продукт)</span></div>`;
     }
 
-    // Windows
+    // Windows (Операции на детайла)
     let targetFlowHtml = '';
     for (let i = 0; i < opChain.length; i++) {
         let opName = opChain[i];
         let prodHere = 0;
         let scrapHere = 0;
-        
+        let priorHere = 0;
         let cProdHere = 0;
         let cScrapHere = 0;
         
         for (let k in opsProduced) if (k.includes(opName) || opName.includes(k)) prodHere += opsProduced[k];
         for (let k in opsScrap) if (k.includes(opName) || opName.includes(k)) scrapHere += opsScrap[k];
+        for (let k in opsPrior) if (k.includes(opName) || opName.includes(k)) priorHere += opsPrior[k];
         
         for (let k in cumProduced) if (k.includes(opName) || opName.includes(k)) cProdHere += cumProduced[k];
         for (let k in cumScrap) if (k.includes(opName) || opName.includes(k)) cScrapHere += cumScrap[k];
@@ -522,24 +564,91 @@ async function renderVSM(dateKey) {
         let cBalanceColor = cBalance < 0 ? 'var(--danger)' : (cBalance > 0 ? 'var(--success)' : 'var(--text-main)');
         let cBalanceSign = cBalance > 0 ? '+' : '';
         
-        let physicalStockHtml = isLastOp ? `
-               <div style="margin-top:15px; font-size: 0.95rem; text-align:center; color:var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px;">
-                 Склад (текущо): <b style="color:white; font-size: 1.1rem; margin-left: 5px;">${globalAllData.currentStock} бр.</b>
-               </div>` : '';
+        let physicalStockHtml = '';
+        if (isLastOp) {
+            let diff = globalAllData.currentStock - cBalance;
+            let diffSign = diff > 0 ? '+' : '';
+            let diffColor = diff === 0 ? '#94a3b8' : (diff > 0 ? '#10b981' : '#ef4444');
+            
+            let auditLinesHtml = '';
+            if (globalAllData.auditHistory && globalAllData.auditHistory.length > 0) {
+                let items = globalAllData.auditHistory.slice(0, 5).map(log => {
+                    let dStr = new Date(log.changed_at).toLocaleString('bg-BG');
+                    let o = log.old_data || {};
+                    let n = log.new_data || {};
+                    let oq = o['Количество'] !== undefined ? o['Количество'] : (o['Общо'] !== undefined ? o['Общо'] : null);
+                    let nq = n['Количество'] !== undefined ? n['Количество'] : (n['Общо'] !== undefined ? n['Общо'] : null);
+                    
+                    if (log.action_type === 'INSERT') {
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: <b style="color:#10b981;">Добавен в склад</b> с <b>${nq || 0} бр.</b></li>`;
+                    } else if (log.action_type === 'UPDATE') {
+                        let changeText = (oq !== null && nq !== null && oq !== nq) 
+                            ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${(nq - oq) > 0 ? '+' : ''}${nq - oq} бр.)`
+                            : `редакция на запис в склад`;
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: <b>Ръчна корекция</b>: ${changeText}</li>`;
+                    } else if (log.action_type === 'DELETE') {
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: <b style="color:#ef4444;">Изтрит от склад</b> (беше ${oq || 0} бр.)</li>`;
+                    }
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: Действие ${log.action_type}</li>`;
+                });
+                auditLinesHtml = `
+                    <div style="margin-top:10px; text-align:left; font-size:0.8rem; background:rgba(15,23,42,0.8); padding:8px 12px; border-radius:6px; border:1px solid #334155;">
+                        <div style="color:#38bdf8; font-weight:bold; margin-bottom:5px; font-size:0.85rem;">🔍 История на складови промени:</div>
+                        <ul style="margin:0; padding-left:16px; color:#cbd5e1; list-style-type:disc; line-height:1.4;">
+                            ${items.join('')}
+                        </ul>
+                    </div>
+                `;
+            } else if (diff !== 0) {
+                auditLinesHtml = `
+                    <div style="margin-top:8px; font-size:0.75rem; color:#94a3b8; text-align:center; background:rgba(0,0,0,0.2); padding:6px; border-radius:4px;">
+                        ℹ️ Разликата от ${diffSign}${diff} бр. идва от заварено начално салдо в склада, доставка като суровина или ръчна корекция.
+                    </div>
+                `;
+            }
+
+            physicalStockHtml = `
+               <div style="margin-top:15px; font-size: 0.95rem; text-align:center; color:var(--text-muted); background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border:1px solid #334155;">
+                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                     <span>Склад (текущо):</span>
+                     <b style="color:white; font-size: 1.15rem;">${globalAllData.currentStock} бр.</b>
+                 </div>
+                 ${diff !== 0 ? `
+                 <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; border-top:1px dashed #475569; padding-top:4px;">
+                     <span style="color:#94a3b8;">Разлика спрямо отчетено (WIP):</span>
+                     <b style="color:${diffColor}; font-weight:bold;">${diffSign}${diff} бр.</b>
+                 </div>` : ''}
+                 ${auditLinesHtml}
+               </div>`;
+        }
         
-        let dailyBalanceHtml = '';
+        let periodLabel = dateKey === 'ALL' ? 'Произведени в периода:' : `Произведени за ${dateKey.split('-').reverse().join('.')}:`;
+        
+        let dailyMovementHtml = '';
         if (dateKey !== 'ALL') {
-             dailyBalanceHtml = `
+             dailyMovementHtml = `
                <div class="target-row" style="margin-top: 5px;">
-                 <span style="color:#94a3b8; font-weight:700; font-size:0.90rem;">ДНЕВНО ДВИЖЕНИЕ ЗА ${dateKey.split('-').reverse().join('.')}:</span>
+                 <span style="color:#94a3b8; font-weight:700; font-size:0.85rem;">ДНЕВНО ДВИЖЕНИЕ:</span>
                  <span class="vsm-stat" style="color:${balanceColor}; font-weight:700; font-size: 1.1rem;">${balanceSign}${balance} бр.</span>
                </div>
                <div style="border-top: 1px dashed #334155; margin: 5px 0;"></div>
              `;
         }
         
+        let priorInfoHtml = '';
+        if (priorHere > 0) {
+            priorInfoHtml = `
+               <div class="target-row" style="font-size:0.85rem; color:#94a3b8; margin-top:-2px;">
+                 <span>Натрупани преди това:</span>
+                 <span style="color:#38bdf8; font-weight:600;">+${priorHere} бр.</span>
+               </div>
+            `;
+        }
+
         let displayName = (globalAllData.targetName || globalAllData.targetId).toUpperCase();
         let displayCode = globalAllData.targetId && globalAllData.targetId !== globalAllData.targetName ? `(${globalAllData.targetId})` : '';
+
+        let wipLabel = dateKey === 'ALL' ? 'ОБЩО НАТРУПАНИ (WIP):' : 'НАТРУПАНИ ДО ТОЗИ ДЕН:';
 
         let windowHtml = `
          <div class="vsm-target-node" style="${!isLastOp ? 'border-color:#475569;' : ''}">
@@ -550,9 +659,10 @@ async function renderVSM(dateKey) {
             </div>
             <div class="target-stats">
                <div class="target-row">
-                 <span style="color:#cbd5e1">Произведени:</span>
+                 <span style="color:#cbd5e1">${periodLabel}</span>
                  <span class="vsm-stat prod">+${prodHere} бр.</span>
                </div>
+               ${priorInfoHtml}
                ${i < opChain.length - 1 ? `
                <div class="target-row">
                  <span style="color:#cbd5e1">Към следваща оп.:</span>
@@ -567,9 +677,9 @@ async function renderVSM(dateKey) {
                  <span class="vsm-stat scrap">-${scrapHere} бр.</span>
                </div>
                <div style="border-top: 1px solid #334155; margin: 5px 0;"></div>
-               ${dailyBalanceHtml}
+               ${dailyMovementHtml}
                <div class="target-row" style="margin-top: 5px;">
-                 <span style="color:#cbd5e1; font-weight:900; font-size:0.90rem;">ОБЩО НАТРУПАНИ (WIP):</span>
+                 <span style="color:#cbd5e1; font-weight:900; font-size:0.90rem;">${wipLabel}</span>
                  <span class="vsm-stat" style="color:${cBalanceColor}; font-weight:900; font-size: 1.4rem;">${cBalanceSign}${cBalance} бр.</span>
                </div>
                ${physicalStockHtml}
@@ -586,7 +696,7 @@ async function renderVSM(dateKey) {
           <div style="margin:auto; text-align:center; color:#94a3b8; padding:30px;">
              <div style="font-size:2.5rem; margin-bottom:10px;">🔍</div>
              <div style="font-size:1.3rem; font-weight:bold; color:#f8fafc; margin-bottom:8px;">Няма намерени записи</div>
-             <div>Не бяха открити отчети или технологичен маршрут за <b>${globalAllData.targetName || globalAllData.targetId}</b> в периода от ${document.getElementById('dateFrom').value} до ${document.getElementById('dateTo').value}.</div>
+             <div>Не бяха открити отчети или технологичен маршрут за <b>${globalAllData.targetName || globalAllData.targetId}</b> в избрания период.</div>
           </div>
         `;
         return;
