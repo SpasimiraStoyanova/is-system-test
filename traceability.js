@@ -1,4 +1,4 @@
-﻿// traceability.js - Inventory Detective Logic with Timeline, Audit Trail, Nomenclature Resolution & Physical Spot-Check (Revision)
+// traceability.js - Inventory Detective Logic with Timeline, Audit Trail, Nomenclature Resolution & Physical Spot-Check (Revision)
 
 document.getElementById('searchInput').addEventListener('keypress', function(e) {
   if(e.key === 'Enter') startSearch();
@@ -884,37 +884,53 @@ window.openRevisionModal = async function(opName, cBalance, currentStock) {
 
                 // 2. Актуализация на склада в inventory
                 if (updateInv) {
-                    let { data: existing } = await client.from('inventory')
-                        .select('id')
-                        .eq('ID Детайл', targetId)
-                        .ilike('Операция', `%${opName}%`)
-                        .limit(1);
+                    let { data: allInv, error: invFetchErr } = await client.from('inventory').select('*');
+                    if (invFetchErr) throw invFetchErr;
 
-                    if (existing && existing.length > 0) {
-                        await client.from('inventory').update({
-                            'Количество': actualQty,
-                            'Общо': actualQty
-                        }).eq('id', existing[0].id);
+                    // Нормализирани кодове за надеждно намиране
+                    let normCodes = new Set([
+                        String(targetId || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase(),
+                        String(targetName || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()
+                    ]);
+                    normCodes.delete('');
+
+                    // Търсим първо запис за конкретната операция
+                    let matchedInv = (allInv || []).find(i => {
+                        let dbId = String(i['ID Детайл'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                        let dbOp = String(i['Операция'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                        let curOp = opName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                        return normCodes.has(dbId) && (dbOp === curOp || dbOp.includes(curOp) || curOp.includes(dbOp));
+                    });
+
+                    // Ако няма за операцията, търсим записа за готов продукт / склад
+                    if (!matchedInv) {
+                        matchedInv = (allInv || []).find(i => {
+                            let dbId = String(i['ID Детайл'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                            let dbOp = String(i['Операция'] || '').toLowerCase();
+                            return normCodes.has(dbId) && (dbOp.includes('готов') || dbOp.includes('склад'));
+                        });
+                    }
+
+                    // Ако няма, търсим какъвто и да е запис за този детайл
+                    if (!matchedInv) {
+                        matchedInv = (allInv || []).find(i => {
+                            let dbId = String(i['ID Детайл'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                            return normCodes.has(dbId);
+                        });
+                    }
+
+                    if (matchedInv) {
+                        const { error: updErr } = await client.from('inventory')
+                            .update({ 'Количество': actualQty })
+                            .eq('id', matchedInv.id);
+                        if (updErr) throw updErr;
                     } else {
-                        // Проверяваме дали има детайл въобще
-                        let { data: anyInv } = await client.from('inventory')
-                            .select('id')
-                            .eq('ID Детайл', targetId)
-                            .limit(1);
-                        if (anyInv && anyInv.length > 0) {
-                            await client.from('inventory').update({
-                                'Количество': actualQty,
-                                'Общо': actualQty,
-                                'Операция': opName
-                            }).eq('id', anyInv[0].id);
-                        } else {
-                            await client.from('inventory').insert([{
-                                'ID Детайл': targetId,
-                                'Операция': opName,
-                                'Количество': actualQty,
-                                'Общо': actualQty
-                            }]);
-                        }
+                        const { error: insErr } = await client.from('inventory').insert([{
+                            'ID Детайл': targetId,
+                            'Операция': 'готов продукт',
+                            'Количество': actualQty
+                        }]);
+                        if (insErr) throw insErr;
                     }
                 }
 
