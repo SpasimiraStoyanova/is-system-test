@@ -250,6 +250,70 @@ async function loadTasks(isSilent = false) {
       let scrapActivated = {};
       let componentPlanSources = {};
       let componentPlanIds = {};
+      // Map to normalize any plan ID or month to the canonical plan group name
+      let planIdToGroupKey = {};
+      plansRes.data.forEach(p => {
+          let pId = String(p.id).trim();
+          let monthYear = (p['\u041c\u0435\u0441\u0435\u0446'] && p['\u0413\u043e\u0434\u0438\u043d\u0430']) ? (p['\u041c\u0435\u0441\u0435\u0446'] + ' ' + p['\u0413\u043e\u0434\u0438\u043d\u0430']).trim() : '';
+          let grpKey = monthYear || pId;
+          planIdToGroupKey[pId] = grpKey;
+          if (monthYear) planIdToGroupKey[monthYear] = grpKey;
+          if (p['\u0412\u044a\u0442\u0440\u0435\u0448\u043d\u043e \u0438\u043c\u0435']) planIdToGroupKey[String(p['\u0412\u044a\u0442\u0440\u0435\u0448\u043d\u043e \u0438\u043c\u0435']).trim()] = grpKey;
+      });
+
+      // Pre-aggregate all reported quantities for each plan group, part, and operation
+      let monthlyReportedByOp = {};
+      if (reportsRes && reportsRes.data) {
+          reportsRes.data.forEach(r => {
+              let st = String(r['\u0421\u0442\u0430\u0442\u0443\u0441'] || '').trim();
+              if (st !== '\u041e\u0442\u0447\u0435\u0442\u0435\u043d\u043e' && st !== '\u0418\u0437\u043f\u0440\u0430\u0442\u0435\u043d\u043e') return;
+
+              let rawPlan = String(r['ID \u041f\u043b\u0430\u043d'] || '').trim();
+              let code = normalizeStr(r['ID \u0414\u0435\u0442\u0430\u0439\u043b']);
+              let op = normalizeStr(r['\u041e\u043f\u0435\u0440\u0430\u0446\u0438\u044f']);
+              let qty = parseFloat(r['\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e']) || 0;
+
+              let grp = planIdToGroupKey[rawPlan] || rawPlan;
+              let grpNorm = normalizeStr(grp);
+
+              let key = grpNorm + '___' + code + '___' + op;
+              monthlyReportedByOp[key] = (monthlyReportedByOp[key] || 0) + qty;
+          });
+      }
+
+      // Pre-calculate the total monthly plan requirements for every part in every plan group
+      let monthlyPlanTargets = {};
+      let addBomTargetReq = (grpKey, partCode, qty, visited = new Set()) => {
+          let norm = normalizeStr(partCode);
+          if (!norm || qty <= 0 || visited.has(norm)) return;
+          visited.add(norm);
+
+          let grpNorm = normalizeStr(grpKey);
+          if (!monthlyPlanTargets[grpNorm]) monthlyPlanTargets[grpNorm] = {};
+          monthlyPlanTargets[grpNorm][norm] = (monthlyPlanTargets[grpNorm][norm] || 0) + qty;
+
+          let children = globalBomData.filter(b => normalizeStr(b['ID \u0420\u043e\u0434\u0438\u0442\u0435\u043b']) === norm);
+          children.forEach(c => {
+              let cCode = normalizeStr(c['ID \u041a\u043e\u043c\u043f\u043e\u043d\u0435\u043d\u0442']);
+              let mult = parseFloat(c['\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e']) || 1;
+              addBomTargetReq(grpKey, cCode, qty * mult, new Set(visited));
+          });
+      };
+
+      plansRes.data.forEach(plan => {
+          if (String(plan['\u0421\u0442\u0430\u0442\u0443\u0441']).trim() === '\u0418\u0437\u043f\u0440\u0430\u0442\u0435\u043d') return;
+          let planId = String(plan.id).trim(); 
+          let rootItem = String(plan['\u0412\u044a\u0442\u0440\u0435\u0448\u043d\u043e \u0438\u043c\u0435']).trim(); 
+          let targetQty = parseFloat(plan['\u0426\u0435\u043b\u0435\u0432\u043e \u043a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e']) || 0;
+          let monthYear = (plan['\u041c\u0435\u0441\u0435\u0446'] && plan['\u0413\u043e\u0434\u0438\u043d\u0430']) ? (plan['\u041c\u0435\u0441\u0435\u0446'] + ' ' + plan['\u0413\u043e\u0434\u0438\u043d\u0430']).trim() : '';
+          let grpKey = monthYear || planId;
+
+          if (nomRes.data) {
+              let translated = nomRes.data.find(n => String(n['\u0412\u044a\u0442\u0440\u0435\u0448\u043d\u043e \u0438\u043c\u0435']).trim() === rootItem);
+              if (translated && translated['ID \u0414\u0435\u0442\u0430\u0439\u043b']) rootItem = String(translated['ID \u0414\u0435\u0442\u0430\u0439\u043b']).trim();
+          }
+          addBomTargetReq(grpKey, rootItem, targetQty);
+      });
 
       planIdsToProcess.forEach(pId => {
           let isBuffer = pId === 'NONE';
@@ -555,8 +619,34 @@ async function loadTasks(isSilent = false) {
                               if (totalDone < 0) totalDone = 0;
                               let taskKey = normalizeStr(machineName) + '_' + normalizeStr(displayName) + '_' + (parseInt(route['№ Операция']) || 0);
                               let manualPriority = taskPrioritiesMap[taskKey] !== undefined ? taskPrioritiesMap[taskKey] : null;
+                              let planSources = (componentPlanSources[code] && componentPlanSources[code].size > 0)
+                                  ? Array.from(componentPlanSources[code])
+                                  : [pNameOverride || pNameForCardBase];
+
+                              let partNorm = normalizeStr(code);
+                              let opNorm = normalizeStr(route['\u0418\u043c\u0435 \u043d\u0430 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u044f']);
+                              let globalMonthlyTarget = 0;
+                              let globalMonthlyDone = 0;
+
+                              planSources.forEach(ps => {
+                                  let gNorm = normalizeStr(ps);
+                                  if (monthlyPlanTargets[gNorm] && monthlyPlanTargets[gNorm][partNorm]) {
+                                      globalMonthlyTarget += monthlyPlanTargets[gNorm][partNorm];
+                                  }
+                                  let dKey = gNorm + '___' + partNorm + '___' + opNorm;
+                                  if (monthlyReportedByOp[dKey]) {
+                                      globalMonthlyDone += monthlyReportedByOp[dKey];
+                                  }
+                              });
+
+                              if (globalMonthlyTarget <= 0) {
+                                  globalMonthlyTarget = originalTarget;
+                                  globalMonthlyDone = totalDone;
+                              }
                               
                               globalTasks.push({
+                                  globalMonthlyTarget: globalMonthlyTarget,
+                                  globalMonthlyDone: globalMonthlyDone,
                                   isTransferred: isTransferred,
                                   origMachineDisplay: origMachineDisplay,
                                   manualPriority: manualPriority, 
@@ -1173,15 +1263,22 @@ function renderTasks(tasks) {
         actionButtonHtml = `<button onclick="claimCurrentTaskDOM('${t.id}')" style="background-color: ${actionButtonBg}; color: white; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 800; border: none; border-radius: 10px; cursor:pointer; box-shadow: 0 4px 6px -1px ${actionButtonShadow};">🚀 ПОЕМИ ЗАДАЧА</button>`;
     }
 
-    let targetTotal = (parseFloat(t.totalDone) || 0) + (parseFloat(t.pureQty) || 0);
-    let pct = targetTotal > 0 ? Math.min(100, Math.round(((parseFloat(t.totalDone) || 0) / targetTotal) * 100)) : 0;
+    let hasGlobal = (parseFloat(t.globalMonthlyTarget) > 0);
+    let targetTotal = hasGlobal 
+        ? parseFloat(t.globalMonthlyTarget) 
+        : ((parseFloat(t.totalDone) || 0) + (parseFloat(t.pureQty) || 0));
+
+    let doneTotal = hasGlobal 
+        ? (parseFloat(t.globalMonthlyDone) || 0) 
+        : (parseFloat(t.totalDone) || 0);
+    let pct = targetTotal > 0 ? Math.min(100, Math.round((doneTotal / targetTotal) * 100)) : 0;
     let progressFillClass = pct >= 100 ? 'task-progress-fill completed' : 'task-progress-fill';
     
     let progressBarHtml = `
       <div class="task-progress-box">
         <div class="task-progress-header">
           <span>Напредък: <b>${pct}%</b></span>
-          <span>Изработени: <b>${t.totalDone || 0}</b> от ${targetTotal} бр.</span>
+          <span>Изработени: <b>${doneTotal}</b> от ${targetTotal} бр.</span>
         </div>
         <div class="task-progress-track">
           <div class="${progressFillClass}" style="width: ${pct}%;"></div>
@@ -1210,7 +1307,7 @@ function renderTasks(tasks) {
           ${dropoffHtml}
           <div style="background-color: #f8fafc; padding: 15px; border-radius: 12px; margin-top: 5px; border: 2px solid #bae6fd;">
             <p style="color: #0369a1; font-weight: 900; text-align:center; margin-top:0; font-size: 1.1em;">🟢 В ПРОЦЕС НА РАБОТА</p>
-            <div style="display:flex; justify-content:space-between; margin-bottom: 5px; font-size: 0.85em; font-weight:bold; color: #64748b;"><span>Готови до момента:</span><span>${t.totalDone} бр.</span></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom: 5px; font-size: 0.85em; font-weight:bold; color: #64748b;"><span>Готови до момента:</span><span>${doneTotal} от ${targetTotal} бр.</span></div>
             <input type="number" id="qty_${t.id}" min="1" value="" placeholder="${t.defaultQty}" ${inputMaxHtml} inputmode="numeric" style="margin-bottom:15px;">
             <div style="display: flex; gap: 10px;">
               <button class="btn" id="btn_${t.id}" onclick="finishTask('${t.id}', this)">✅ ОТЧЕТИ</button>
