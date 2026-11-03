@@ -1466,21 +1466,22 @@ window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1
             || missingChildren.find(c => c.routes.length > 0);
 
         if (defChildWithRoute) {
-            const lastOp = defChildWithRoute.routes[defChildWithRoute.routes.length - 1];
-            const deeper = window.traceRootDeficitOrigin(
-                defChildWithRoute.code, 
-                lastOp['№ Операция'], 
-                lastOp['Име на операция'], 
-                missingQty * defChildWithRoute.multiplier, 
-                visited
-            );
-            
-            if (deeper) {
-                deeper.chain.unshift(`${defChildWithRoute.code} (Оп. ${lastOp['№ Операция']} ${lastOp['Име на операция']})`);
-                return deeper;
+            // Спираме на първото BOM ниво, което има маршрутна карта (произвеждан детайл)!
+            const cRoutes = defChildWithRoute.routes;
+            let targetChildOp = cRoutes[0];
+            for (let i = cRoutes.length - 1; i >= 0; i--) {
+                const op = cRoutes[i];
+                const opNameNorm = normalizeStr(op['Име на операция']);
+                const availAtOp = stockMap[defChildWithRoute.norm + '_' + opNameNorm] || 0;
+                if (availAtOp >= (missingQty * defChildWithRoute.multiplier) && availAtOp > 0) {
+                    if (i < cRoutes.length - 1) { targetChildOp = cRoutes[i + 1]; }
+                    else { targetChildOp = cRoutes[i]; }
+                    break;
+                }
+                if (i === 0) { targetChildOp = cRoutes[0]; }
             }
+            const firstOp = targetChildOp;
 
-            const firstOp = defChildWithRoute.routes[0];
             return {
                 rootPart: defChildWithRoute.code,
                 rootOpNum: firstOp['№ Операция'],
