@@ -73,7 +73,7 @@ async function openResolverTree(partCode, isBreadcrumbDrilldown = false) {
     if (backdrop) backdrop.style.display = 'flex';
 
     try {
-        await ensureResolverData();
+        await ensureResolverData(!isBreadcrumbDrilldown);
         renderResolverView();
     } catch (err) {
         console.error('Error loading resolver:', err);
@@ -218,8 +218,9 @@ function buildResolverMaps() {
         indexInv(code, itemEntry);
     });
 
-    // 2. Enrich from adminTabCache['sklad_inventory'] if available
+    // 2. Enrich/override from adminTabCache['sklad_inventory'] if available
     if (typeof adminTabCache !== 'undefined' && adminTabCache && adminTabCache['sklad_inventory'] && adminTabCache['sklad_inventory'].length > 0) {
+        const seenFromCache = new Set();
         adminTabCache['sklad_inventory'].forEach(item => {
             const code = String(item['ID Детайл'] || '').trim();
             if (!code) return;
@@ -227,22 +228,32 @@ function buildResolverMaps() {
             const free = parseFloat(item['Свободни']) || 0;
             const total = parseFloat(item['Общо']) || 0;
             const buf = parseFloat(item['Минимално количество/Буфер']) || 0;
-            if (invMap[norm]) {
-                if (invMap[norm].totalStock === 0 && total > 0) {
+
+            if (!seenFromCache.has(norm)) {
+                seenFromCache.add(norm);
+                if (invMap[norm]) {
                     invMap[norm].totalStock = total;
                     invMap[norm].totalFree = free;
+                    if (buf > invMap[norm].buffer) invMap[norm].buffer = buf;
+                    invMap[norm].items = [item];
+                } else {
+                    const newEntry = {
+                        codeOriginal: item['ID Детайл'],
+                        name: item['Име'] || '',
+                        totalFree: free,
+                        totalStock: total,
+                        buffer: buf,
+                        items: [item]
+                    };
+                    indexInv(code, newEntry);
                 }
-                if (buf > invMap[norm].buffer) invMap[norm].buffer = buf;
             } else {
-                const newEntry = {
-                    codeOriginal: item['ID Детайл'],
-                    name: item['Име'] || '',
-                    totalFree: free,
-                    totalStock: total,
-                    buffer: buf,
-                    items: [item]
-                };
-                indexInv(code, newEntry);
+                if (invMap[norm]) {
+                    invMap[norm].totalStock += total;
+                    invMap[norm].totalFree += free;
+                    if (buf > invMap[norm].buffer) invMap[norm].buffer = buf;
+                    invMap[norm].items.push(item);
+                }
             }
         });
     }
