@@ -1302,9 +1302,12 @@ function renderTasks(tasks) {
         ? parseFloat(t.globalMonthlyTarget) 
         : ((parseFloat(t.totalDone) || 0) + (parseFloat(t.pureQty) || 0));
 
-    let doneTotal = hasGlobal 
-        ? (parseFloat(t.globalMonthlyDone) || 0) 
-        : (parseFloat(t.totalDone) || 0);
+    let remainingToMake = (t.pureQty !== undefined && t.pureQty !== null) ? parseFloat(t.pureQty) : (parseFloat(t.totalNeed) || 0);
+    if (t.isGreenCard && t.totalNeed !== undefined) remainingToMake = parseFloat(t.totalNeed) || 0;
+    let doneTotal = Math.max(0, targetTotal - remainingToMake);
+ 
+
+
     let pct = targetTotal > 0 ? Math.min(100, Math.round((doneTotal / targetTotal) * 100)) : 0;
     let progressFillClass = pct >= 100 ? 'task-progress-fill completed' : 'task-progress-fill';
     
@@ -1312,7 +1315,7 @@ function renderTasks(tasks) {
       <div class="task-progress-box">
         <div class="task-progress-header">
           <span>Напредък: <b>${pct}%</b></span>
-          <span>Изработени: <b>${doneTotal}</b> от ${targetTotal} бр.</span>
+          <span>На склад: <b>${doneTotal}</b> от ${targetTotal} бр.</span>
         </div>
         <div class="task-progress-track">
           <div class="${progressFillClass}" style="width: ${pct}%;"></div>
@@ -1341,7 +1344,7 @@ function renderTasks(tasks) {
           ${dropoffHtml}
           <div style="background-color: #f8fafc; padding: 15px; border-radius: 12px; margin-top: 5px; border: 2px solid #bae6fd;">
             <p style="color: #0369a1; font-weight: 900; text-align:center; margin-top:0; font-size: 1.1em;">🟢 В ПРОЦЕС НА РАБОТА</p>
-            <div style="display:flex; justify-content:space-between; margin-bottom: 5px; font-size: 0.85em; font-weight:bold; color: #64748b;"><span>Готови до момента:</span><span>${doneTotal} от ${targetTotal} бр.</span></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom: 5px; font-size: 0.85em; font-weight:bold; color: #64748b;"><span>На склад:</span><span>${doneTotal} от ${targetTotal} бр.</span></div>
             <input type="number" id="qty_${t.id}" min="1" value="" placeholder="${t.defaultQty}" ${inputMaxHtml} inputmode="numeric" style="margin-bottom:15px;">
             <div style="display: flex; gap: 10px;">
               <button class="btn" id="btn_${t.id}" onclick="finishTask('${t.id}', this)">✅ ОТЧЕТИ</button>
