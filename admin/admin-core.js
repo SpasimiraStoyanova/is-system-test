@@ -305,6 +305,7 @@ async function loadCurrentTableData(forceRefresh = false) {
                   if (packMap[key]) {
                       let boxTexts = Object.keys(packMap[key]).map(b => `${packMap[key][b]} бр в кашон № ${b}`);
                       r['__packaged_info'] = ` <span style="color:#d97706; font-size:0.85em; font-weight:bold;">(${boxTexts.join(', ')})</span>`;
+                    r['__total_packed'] = Object.values(packMap[key]).reduce((a, b) => a + b, 0);
                   }
               });
           }
@@ -994,7 +995,7 @@ async function saveForm(e) {
               
               
               await client.from('sklad_bufferi').delete().eq('ID Детайл', det);
-              const { error: bufError } = await client.from('sklad_bufferi').insert([{ "ID Детайл": det, "Операция": op, "Буфер": newBuffer }]);
+              const { error: bufError } = await client.from('sklad_bufferi').insert([{ "ID Детайл": det, "Операция": op, "Буфер": newBuffer, "% Брак": newScrap }]);
               if (bufError) throw bufError;
               
               Swal.fire({icon: 'success', title: 'Успешен запис!', timer: 1500, showConfirmButton: false});
@@ -1045,7 +1046,7 @@ async function saveForm(e) {
             
             let availableStock = 0;
             if (stockData && stockData.length > 0) {
-                availableStock = parseFloat(stockData[0]['Наличност в цеха']) || 0;
+                availableStock = parseFloat(stockData[0]['Количество'] !== undefined ? stockData[0]['Количество'] : stockData[0]['Наличност в цеха']) || 0;
             }
             
             if (availableStock < qtyToDeduct) {
@@ -1233,6 +1234,7 @@ window.openLogisticsModal = async function() {
     if (contentEl) contentEl.innerHTML = '<div style="text-align:center; padding:30px; color:#0284c7; font-weight:600;">⏳ Зареждане на данни за плановете...</div>';
 
     let rows = (currentTab === 'plan' && globalRows && globalRows.length > 0) ? globalRows : null;
+    let needsPackFetch = !rows || rows.some(r => r['__total_packed'] === undefined);
     if (!rows) {
         try {
             const { data, error } = await client.from('plan').select('*');
@@ -1245,6 +1247,30 @@ window.openLogisticsModal = async function() {
         }
     }
     
+    if (needsPackFetch && rows && rows.length > 0) {
+        try {
+            const packRes = await client.from('otcheti').select('*').ilike('Операция', 'Опаковане - Кашон №%').in('Статус', ['Отчетено', 'Изпратено']);
+            if (!packRes.error && packRes.data) {
+                const packMap = {};
+                packRes.data.forEach(p => {
+                    let pId = String(p['ID План'] || '').trim();
+                    let code = String(p['ID Детайл']).trim().toUpperCase();
+                    let key = pId + '_' + code;
+                    packMap[key] = (packMap[key] || 0) + (parseFloat(p['Количество']) || 0);
+                });
+                rows.forEach(r => {
+                    if (r['__total_packed'] === undefined) {
+                        let code = String(r['ID Детайл'] || r['Вътрешно име'] || '').trim().toUpperCase();
+                        let key = String(r.id).trim() + '_' + code;
+                        r['__total_packed'] = packMap[key] || 0;
+                    }
+                });
+            }
+        } catch (packErr) {
+            console.warn('Error fetching packaging for logistics:', packErr);
+        }
+    }
+
     // Group active plan rows
     let plansMap = {};
     rows.forEach(row => {

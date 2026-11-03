@@ -1,4 +1,4 @@
-﻿function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
+function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
 
 function normalizeStr(str) {
     if (!str) return '';
@@ -75,6 +75,7 @@ async function loadTasks(isSilent = false) {
       if (plansRes.error) throw plansRes.error; if (bomRes.error) throw bomRes.error;
       if (routesRes.error) throw routesRes.error; if (reportsRes.error) throw reportsRes.error;
       if (invRes.error) throw invRes.error;
+      if (skladRes.error) throw skladRes.error; if (nomRes.error) throw nomRes.error; if (bufferRes.error) throw bufferRes.error;
 
       globalNomData = nomRes.data || [];
       let namesMap = {}; if (nomRes.data) nomRes.data.forEach(n => { let code = normalizeStr(n['ID Детайл']); namesMap[code] = n['Вътрешно име'] || ''; });
@@ -157,6 +158,7 @@ async function loadTasks(isSilent = false) {
               groupEarliestId[groupKey] = parseInt(planId);
               groupScrapDetails[groupKey] = plan['scrap_details']; // jsonb column
           }
+          if (!groupEarliestId[planId]) groupEarliestId[planId] = parseInt(planId);
           groupTotalTargets[groupKey] = (groupTotalTargets[groupKey] || 0) + targetQty;
           
           if (plan['Вътрешно име']) planNameToId[String(plan['Вътрешно име']).trim()] = planId;
@@ -1109,7 +1111,22 @@ async function loadTasks(isSilent = false) {
               if (t.isProba) return -100;
               if (t.plan_name === "БУФЕРИ") return Infinity;
               if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") return 9999999;
-              let baseWeight = groupEarliestId[t.plan_id] || 0;
+              let baseWeight = 0;
+              if (t.plan_name && groupEarliestId[t.plan_name]) {
+                  baseWeight = groupEarliestId[t.plan_name];
+              } else if (t.plan_id) {
+                  let ids = String(t.plan_id).split(',');
+                  for (let id of ids) {
+                      let trimmed = id.trim();
+                      if (groupEarliestId[trimmed]) {
+                          baseWeight = groupEarliestId[trimmed];
+                          break;
+                      } else if (!isNaN(parseInt(trimmed))) {
+                          baseWeight = parseInt(trimmed);
+                          break;
+                      }
+                  }
+              }
               if (t.pureQty <= 0 && t.scrapAllowance > 0) {
                   baseWeight += 5000000;
               }

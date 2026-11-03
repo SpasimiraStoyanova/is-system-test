@@ -455,7 +455,10 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
     let getMultiplier = (childCode, parentCode) => {
         let pNameLower = parentCode.toLowerCase();
         let cNameLower = childCode.toLowerCase();
-        let bomLines = staticCache.bomData.filter(b => String(b['ID Компонент']).trim().toLowerCase() === cNameLower && String(b['ID Детайл']).trim().toLowerCase() === pNameLower);
+        let bomLines = staticCache.bomData.filter(b => {
+            let pKey = b['ID Родител'] || b['ID Детайл'];
+            return String(b['ID Компонент']).trim().toLowerCase() === cNameLower && String(pKey || '').trim().toLowerCase() === pNameLower;
+        });
         let m = 0;
         bomLines.forEach(bl => m += (parseFloat(bl['Количество']) || 1));
         return m || 1;

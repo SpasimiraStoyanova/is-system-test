@@ -1,4 +1,4 @@
-﻿function updateHistoryUI() {
+function updateHistoryUI() {
   var list = document.getElementById('historyList');
   if (!list) return;
   if (localHistoryData.length === 0) { 
@@ -488,7 +488,7 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
             let multiplier = parseFloat(child['Количество']) || 1; 
             let qty = val * multiplier;
             if (!scrappedChildrenNames.includes(cName)) {
-                let cRoutes = globalRoutesByDetail[cName] || []; 
+                let cRoutes = globalRoutesByDetail[normalizeStr(cName)] || globalRoutesByDetail[cName] || []; 
                 let opToLog = cRoutes.length > 0 ? String(cRoutes[cRoutes.length - 1]['Име на операция']).trim() : "Готово"; 
                 inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Спасен)", "Количество": qty, "Операция": opToLog, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
             } else {
@@ -509,7 +509,7 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
                 let multiplier = parseFloat(child['Количество']) || 1; 
                 let qty = val * multiplier;
                 if (!scrappedChildrenNames.includes(cName)) {
-                    let cRoutes = globalRoutesByDetail[cName] || []; 
+                    let cRoutes = globalRoutesByDetail[normalizeStr(cName)] || globalRoutesByDetail[cName] || []; 
                     let opToLog = cRoutes.length > 0 ? String(cRoutes[cRoutes.length - 1]['Име на операция']).trim() : "Готово"; 
                     inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Спасен)", "Количество": qty, "Операция": opToLog, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
                 } else {
