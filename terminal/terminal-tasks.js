@@ -1109,7 +1109,7 @@ async function loadTasks(isSilent = false) {
           if (aBlocked !== bBlocked) return aBlocked ? 1 : -1;
 
           let getWeight = (t) => {
-              if (t.isProba) return -100;
+              if (t.isProba) return 7000000;
               if (t.plan_name === "БУФЕРИ") return Infinity;
               if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") return 9999999;
               let baseWeight = 0;
