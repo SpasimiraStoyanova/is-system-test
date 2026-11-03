@@ -34,14 +34,44 @@ async function processPDF(event) {
         }
 
         if (extractedPlan.length === 0) { Swal.fire('Внимание', 'Не открих валидни данни в първите две колони.', 'warning'); return; }
+
+        // Автоматично генериране на задни капаци (phantoms) за специфичните три вида резолвери
+        const phantoms = {
+            "575-91001-9": "Ф63.4 204J",
+            "h25-f1e": "Кв. Фл. 22108201Е",
+            "575-60021": "Капак с китайски отливки"
+        };
+        let phantomRows = [];
+        extractedPlan.forEach(p => {
+            let code = String(p['Вътрешно име'] || '').trim().toLowerCase();
+            if (phantoms[code]) {
+                let phantomName = phantoms[code];
+                phantomRows.push({
+                    'Вътрешно име': phantomName,
+                    'Целево количество': p['Целево количество'],
+                    'Месец': p['Месец'],
+                    'Година': p['Година'],
+                    'Статус': p['Статус'] || 'Активен',
+                    _existsInNom: nomSet.has(phantomName.toUpperCase()),
+                    _isPhantom: true,
+                    _forResolver: p['Вътрешно име']
+                });
+            }
+        });
+        if (phantomRows.length > 0) {
+            extractedPlan.push(...phantomRows);
+        }
         
         let summaryHtml = `<div style="max-height: 350px; overflow-y: auto; text-align: left; font-size: 14px; border: 1px solid #cbd5e1; padding: 12px; border-radius: 8px; background:#f8fafc;"><ol style="margin:0; padding-left:20px;">`;
         let hasWarnings = false;
 
         extractedPlan.forEach(p => {
-            if (p._existsInNom) { summaryHtml += `<li style="margin-bottom: 6px; padding-bottom:4px; border-bottom:1px dashed #e2e8f0;"><b style="color: #16a34a; font-size:1.1em;">${p['Целево количество']} бр.</b> — <span style="font-family:monospace; font-weight:bold; color:#1e3a8a;">${p['Вътрешно име']}</span></li>`; } 
+            let phantomNote = p._isPhantom ? ` <span style="font-size:0.82em; color:#0284c7; font-weight:bold;">(🔗 Автоматичен заден капак за ${p._forResolver})</span>` : '';
+            if (p._existsInNom) { summaryHtml += `<li style="margin-bottom: 6px; padding-bottom:4px; border-bottom:1px dashed #e2e8f0;"><b style="color: #16a34a; font-size:1.1em;">${p['Целево количество']} бр.</b> — <span style="font-family:monospace; font-weight:bold; color:#1e3a8a;">${p['Вътрешно име']}</span>${phantomNote}</li>`; } 
             else { hasWarnings = true; summaryHtml += `<li style="margin-bottom: 6px; padding-bottom:4px; border-bottom:1px dashed #e2e8f0; background-color: #fef2f2; padding: 6px; border-radius: 6px; border-left: 4px solid #dc2626;"><b style="color: #dc2626; font-size:1.1em;">${p['Целево количество']} бр.</b> — <span style="font-family:monospace; font-weight:bold; color:#dc2626;">${p['Вътрешно име']}</span><br><span style="color:#991b1b; font-size:0.85em; font-weight:bold;">⚠️ Внимание: Този детайл липсва в Номенклатурата!</span></li>`; }
-            delete p._existsInNom; 
+            delete p._existsInNom;
+            delete p._isPhantom;
+            delete p._forResolver; 
         });
         summaryHtml += `</ol></div>`;
 
