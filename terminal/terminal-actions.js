@@ -331,7 +331,32 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
         let targetPart = taskData.name;
         let reasonsText = '';
 
-        if (isPrevOp) {
+        let intermediateOp = null;
+        let rootOrigin = null;
+        if (typeof window.traceRootDeficitOrigin === 'function') {
+            rootOrigin = window.traceRootDeficitOrigin(taskData.name, taskData.opNum, taskData.op, missingQty);
+        }
+
+        if (rootOrigin) {
+            targetPart = rootOrigin.rootPart;
+            targetOpNum = rootOrigin.rootOpNum ? String(rootOrigin.rootOpNum) : '';
+            targetOpName = rootOrigin.rootOpName || '';
+            targetMachine = rootOrigin.rootMachine || 'Обща';
+            targetOperator = `Колега на ${targetMachine}`;
+            intermediateOp = rootOrigin.intermediate || (isPrevOp ? {
+                part: taskData.name,
+                opNum: taskData.prevOpNum,
+                opName: taskData.prevOpName,
+                machine: taskData.prevMachine
+            } : null);
+
+            let chainInfo = (rootOrigin.chain && rootOrigin.chain.length > 0) ? ` [Верига: ${rootOrigin.chain.join(' ⬅️ ')}]` : '';
+            let intermTxt = (intermediateOp && intermediateOp.part !== targetPart) 
+                ? ` (преминало през Оп. ${intermediateOp.opNum} ${intermediateOp.opName} без заприходени ${targetPart})`
+                : '';
+
+            reasonsText = `Разминаване: отчетени ${val} бр. за ${taskData.name} на ${curOpNum} (${taskData.op}). Липсват ${missingQty} бр. от източник ${targetPart} на ${targetMachine}${targetOpNum ? ' (Оп. ' + targetOpNum + ')' : ''}${intermTxt}.${chainInfo}`;
+        } else if (isPrevOp) {
             targetPart = taskData.name;
             targetOpNum = taskData.prevOpNum ? String(taskData.prevOpNum) : '';
             targetOpName = taskData.prevOpName || '';
@@ -398,7 +423,12 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
                 target_machine: targetMachine,
                 target_op_num: targetOpNum,
                 target_op_name: targetOpName,
-                target_operator: targetOperator
+                target_operator: targetOperator,
+                intermediate_part: intermediateOp ? intermediateOp.part : null,
+                intermediate_op_num: intermediateOp ? intermediateOp.opNum : null,
+                intermediate_op_name: intermediateOp ? intermediateOp.opName : null,
+                intermediate_machine: intermediateOp ? intermediateOp.machine : null,
+                chain: rootOrigin ? rootOrigin.chain : []
             })
         };
 
@@ -418,13 +448,25 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
             }
         } catch(e) {}
 
-        const msgTitle = isPrevOp
-            ? `🔔 Липсващи отчетени бройки (${taskData.name})`
-            : `🔔 Липсващи заприходени компоненти (${targetPart})`;
+        const msgTitle = rootOrigin
+            ? `🔔 Липсващи отчетени заготовки (${targetPart})`
+            : (isPrevOp ? `🔔 Липсващи отчетени бройки (${taskData.name})` : `🔔 Липсващи заприходени компоненти (${targetPart})`);
 
-        const msgBody = isPrevOp
-            ? `Колегата ${currentOperator} на ${curOpNum} (${taskData.op}) отчете ${val} бр., но от вас на ${targetOpNum ? 'Оп. ' + targetOpNum : 'предходна оп.'} са записани само ${prevStock} бр. (липсват ${missingQty} бр.). Моля, доотчетете си бройките!`
-            : `Операторът ${currentOperator} на ${curOpNum} (${taskData.op}) за ${taskData.name} отчете ${val} бр., но от детайл/компонент ${targetPart} има само ${prevStock} бр. (липсват ${missingQty} бр.). Моля, проверете и доотчетете/заприходете!`;
+
+
+
+        const msgBody = rootOrigin
+            ? `Операторът ${currentOperator} на ${curOpNum} (${taskData.op}) отчете ${val} бр. за ${taskData.name}, но в системата липсват ${missingQty} бр. заготовки ${targetPart} от вашето работно място (${targetMachine}${targetOpNum ? ' / Оп. ' + targetOpNum : ''}). Моля, доотчетете си изработените заготовки!`
+            : (isPrevOp
+                ? `Колегата ${currentOperator} на ${curOpNum} (${taskData.op}) отчете ${val} бр., но от вас на ${targetOpNum ? 'Оп. ' + targetOpNum : 'предходна оп.'} са записани само ${prevStock} бр. (липсват ${missingQty} бр.). Моля, доотчетете си бройките!`
+                : `Операторът ${currentOperator} на ${curOpNum} (${taskData.op}) за ${taskData.name} отчете ${val} бр., но от детайл/компонент ${targetPart} има само ${prevStock} бр. (липсват ${missingQty} бр.). Моля, проверете и доотчетете/заприходете!`);
+
+
+    
+
+
+
+
 
         await client.from('chekiraniya').insert([{
             "Име": "СИСТЕМА",
@@ -434,6 +476,31 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
             "Локация": targetEmail,
             "Бележка": msgTitle + "|||" + msgBody
         }]);
+
+
+        if (intermediateOp && intermediateOp.part !== targetPart) {
+            try {
+                let intermEmail = 'ALL';
+                if (taskData.prevOperator) {
+                    const { data: pData } = await client.from('personal').select('Имейл').ilike('Име', `%${taskData.prevOperator.trim()}%`).limit(1);
+                    if (pData && pData.length > 0 && pData[0]['Имейл']) intermEmail = pData[0]['Имейл'].trim().toLowerCase();
+                }
+                const intermTitle = `ℹ️ Инфо: Транзитни бройки за ${taskData.name}`;
+                const intermBody = `През вашето работно място (${intermediateOp.machine || ''} / Оп. ${intermediateOp.opNum || ''} ${intermediateOp.opName || ''}) са преминали ${missingQty} бр. към ${taskData.op}. Тъй като заготовката ${targetPart} липсваше на склад, сигналът за доотчитане е насочен към първоизточника: ${targetMachine}.`;
+                await client.from('chekiraniya').insert([{
+                    "Име": "СИСТЕМА",
+                    "Имейл": "СИСТЕМА",
+                    "Действие": "Съобщение",
+                    "Време": new Date().toISOString(),
+                    "Локация": intermEmail,
+                    "Бележка": intermTitle + "|||" + intermBody
+                }]);
+        
+            } catch(e) {}
+        }
+
+
+
 
     } catch(err) {
         console.error('Грешка при изпращане на сигнали за разминаване:', err);
@@ -537,6 +604,7 @@ async function forceCancelTask(taskId, taskData, msg) {
             "Дата": new Date().toISOString(), 
             "Време Старт": startedAt 
         }]);
+
     } catch(e) { console.error(e); }
     activeTaskId = null;
     Swal.fire({ title: 'Автоматично приключена', text: msg, icon: 'info', confirmButtonText: 'Разбрах' }).then(() => { loadTasks(); });

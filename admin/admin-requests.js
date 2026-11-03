@@ -93,7 +93,7 @@ function showAdminRequestToast(req) {
                 <b>${req.operator || 'Оператор'}</b> отчете <b>${parsedObj.reported_qty} бр.</b> за <span style="color:#0284c7;">${req.part_name}</span> (Оп. ${parsedObj.reported_by_op_num || ''})!
             </div>
             <div style="font-size:0.82em; color:#854d0e; background:#fefce8; padding:4px 8px; border-radius:6px; border:1px solid #fef08a;">
-                👉 Липсват <b>${parsedObj.missing_qty} бр.</b> от Оп. ${parsedObj.target_op_num || ''} (${parsedObj.target_machine || ''}). Чака се доотчитане.
+                👉 Липсват <b>${parsedObj.missing_qty} бр.</b> от първоизточник <b>${parsedObj.target_part || 'детайл'}</b> (${parsedObj.target_machine || ''})${parsedObj.intermediate_machine ? ' (транзит през ' + parsedObj.intermediate_machine + ')' : ''}. Чака се доотчитане.
             </div>
         `;
     } else {
@@ -207,7 +207,8 @@ function updatePlanningBadgesAndBanner() {
             let summaryText = '';
             if (tObj && tObj.type === 'discrepancy') {
                 const missingTargetName = tObj.target_part ? `детайл <b style="color:#0369a1;">${tObj.target_part}</b> ` : (tObj.target_op_num ? `Оп. ${tObj.target_op_num} ` : '');
-                summaryText = `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> отчете <b>${tObj.reported_qty} бр.</b> за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> ➔ <b style="color:#c2410c;">разминаване: липсват ${tObj.missing_qty} бр.</b> от ${missingTargetName}(${tObj.target_machine})`;
+                const intermInfo = (tObj.intermediate_machine && tObj.intermediate_machine !== tObj.target_machine) ? ` (транзит през ${tObj.intermediate_machine})` : '';
+                summaryText = `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> отчете <b>${tObj.reported_qty} бр.</b> за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> ➔ <b style="color:#c2410c;">разминаване: липсват ${tObj.missing_qty} бр.</b> от ${missingTargetName}(${tObj.target_machine})${intermInfo}`;
             } else {
                 summaryText = count === 1 
                     ? `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> (машина ${first.machine || 'Обща'}) чака за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span>${targetMachineTxt}`
@@ -352,6 +353,8 @@ function renderMaterialRequestsList() {
                 <div style="background: #fff7ed; border: 1.5px solid #fed7aa; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; color: #9a3412; line-height: 1.5;">
                     👉 <b>Разминаване в наличността:</b> За детайл <b>${req.part_name}</b> (Оп. ${targetObj.reported_by_op_num || ''} - ${req.op_name}) са отчетени <b>${targetObj.reported_qty} бр.</b>, но в системата ${missingTargetDesc} има само <b>${targetObj.prev_qty} бр.</b> (липсват <b>${targetObj.missing_qty} бр.</b>)!<br>
                     Работно място / Направление: <b>${tMachine}</b> &bull; Засегнат: <b>${targetObj.target_operator || 'колега / склад'}</b>
+                    ${(targetObj.intermediate_machine && targetObj.intermediate_machine !== tMachine) ? `<div style="margin-top:4px; font-size:0.82em; color:#64748b;">ℹ️ Транзитно работно място: <b>${targetObj.intermediate_machine}</b> (${targetObj.intermediate_part || ''}${targetObj.intermediate_op_num ? ' / Оп. ' + targetObj.intermediate_op_num : ''})</div>` : ''}
+                    ${(targetObj.chain && targetObj.chain.length > 0) ? `<div style="margin-top:6px; font-size:0.82em; color:#0369a1; background:#f0f9ff; border:1px solid #bae6fd; padding:4px 8px; border-radius:6px;">🔗 <b>Верига назад:</b> ${targetObj.chain.join(' ⬅️ ')}</div>` : ''}
                 </div>
             `;
         } else if (tMachine && tMachine !== 'Склад') {

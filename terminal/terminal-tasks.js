@@ -136,6 +136,7 @@ async function loadTasks(isSilent = false) {
       });
 
       let skladData = skladRes.data || [];
+      window.globalSkladData = skladData;
       let getSkladQty = (code) => { let c = normalizeStr(code); let item = skladData.find(s => normalizeStr(s['ID Детайл']) === c); return item ? (parseFloat(item['Остатък']) || 0) : 0; };
 
       let planRoots = {}; 
@@ -176,7 +177,7 @@ async function loadTasks(isSilent = false) {
           planRoots[groupKey][rootItem] = (planRoots[groupKey][rootItem] || 0) + targetQty;
       });
 
-      let physicalStock = {}; 
+      let physicalStock = {}; window.globalPhysicalStock = physicalStock; 
       if (invRes.data) {
           invRes.data.forEach(r => {
               let code = normalizeStr(r['ID Детайл']);
@@ -1360,6 +1361,167 @@ function renderTasks(tasks) {
 
 let currentRenderedTasksMap = {};
 
+window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1, visited = new Set()) {
+    if (!partName) return null;
+    const norm = normalizeStr(partName);
+    const opNorm = normalizeStr(opName || '');
+    const visitKey = norm + '_' + (opNum || opNorm);
+    if (visited.has(visitKey)) return null;
+    visited.add(visitKey);
+
+    const routes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[norm]) 
+        ? globalRoutesByDetail[norm] 
+        : [];
+    
+    let curIndex = -1;
+    if (routes.length > 0) {
+        if (opNum) curIndex = routes.findIndex(r => parseInt(r['№ Операция']) === parseInt(opNum));
+        if (curIndex === -1 && opNorm) curIndex = routes.findIndex(r => normalizeStr(r['Име на операция']) === opNorm);
+    }
+
+    const stockMap = window.globalPhysicalStock || {};
+
+    // 1. ПРОВЕРКА НА ПРЕДХОДНА ОПЕРАЦИЯ НА СЪЩИЯ ДЕТАЙЛ
+    if (curIndex > 0) {
+        const prevOp = routes[curIndex - 1];
+        const prevOpNum = prevOp['№ Операция'];
+        const prevOpName = String(prevOp['Име на операция']).trim();
+        const prevMachine = prevOp['Машина'] || 'Обща';
+        const prevStockKey = norm + '_' + normalizeStr(prevOpName);
+        const availAtPrev = (stockMap[prevStockKey] !== undefined) ? stockMap[prevStockKey] : 0;
+
+        if (availAtPrev >= missingQty && availAtPrev > 0) {
+            return {
+                rootPart: partName,
+                rootOpNum: prevOpNum,
+                rootOpName: prevOpName,
+                rootMachine: prevMachine,
+                isChild: false,
+                isRaw: false,
+                chain: [`${partName} (Оп. ${prevOpNum} ${prevOpName} / ${prevMachine})`],
+                intermediate: null,
+                reason: `Липсва отчет от Оп. ${prevOpNum} (${prevOpName}) на ${prevMachine}`
+            };
+        }
+
+        const deeper = window.traceRootDeficitOrigin(partName, prevOpNum, prevOpName, missingQty, visited);
+        if (deeper) {
+            if (!deeper.intermediate) {
+                deeper.intermediate = {
+                    part: partName,
+                    opNum: prevOpNum,
+                    opName: prevOpName,
+                    machine: prevMachine
+                };
+            }
+            deeper.chain.unshift(`${partName} (Оп. ${prevOpNum} ${prevOpName} / ${prevMachine})`);
+            return deeper;
+        }
+
+        return {
+            rootPart: partName,
+            rootOpNum: prevOpNum,
+            rootOpName: prevOpName,
+            rootMachine: prevMachine,
+            isChild: false,
+            isRaw: false,
+            chain: [`${partName} (Оп. ${prevOpNum} ${prevOpName} / ${prevMachine})`],
+            intermediate: null,
+            reason: `Липсват бройки от ${prevMachine} (Оп. ${prevOpNum} ${prevOpName})`
+        };
+    }
+
+    // 2. СТИГНАЛИ СМЕ ДО ПЪРВАТА ОПЕРАЦИЯ НА ТОЗИ ДЕТАЙЛ (или няма маршрут)
+    const bomData = (typeof globalBomData !== 'undefined' && globalBomData) ? globalBomData : [];
+    const children = bomData.filter(b => normalizeStr(b['ID Родител']) === norm);
+
+    if (children.length > 0) {
+        let missingChildren = [];
+
+        for (const child of children) {
+            const childCode = String(child['ID Компонент']).trim();
+            const cNorm = normalizeStr(childCode);
+            const cRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[cNorm]) 
+                ? globalRoutesByDetail[cNorm] 
+                : [];
+            
+            let childStock = 0;
+            if (cRoutes.length > 0) {
+                let lastOpName = normalizeStr(cRoutes[cRoutes.length - 1]['Име на операция']);
+                childStock = stockMap[cNorm + '_' + lastOpName] || 0;
+            } else {
+                childStock = stockMap[cNorm + '_готов продукт'] || 0;
+            }
+
+            missingChildren.push({
+                code: childCode,
+                norm: cNorm,
+                routes: cRoutes,
+                stock: childStock,
+                multiplier: parseFloat(child['Количество']) || 1
+            });
+        }
+
+        const defChildWithRoute = missingChildren.find(c => c.routes.length > 0 && c.stock < (missingQty * c.multiplier))
+            || missingChildren.find(c => c.routes.length > 0);
+
+        if (defChildWithRoute) {
+            const lastOp = defChildWithRoute.routes[defChildWithRoute.routes.length - 1];
+            const deeper = window.traceRootDeficitOrigin(
+                defChildWithRoute.code, 
+                lastOp['№ Операция'], 
+                lastOp['Име на операция'], 
+                missingQty * defChildWithRoute.multiplier, 
+                visited
+            );
+            
+            if (deeper) {
+                deeper.chain.unshift(`${defChildWithRoute.code} (Оп. ${lastOp['№ Операция']} ${lastOp['Име на операция']})`);
+                return deeper;
+            }
+
+            const firstOp = defChildWithRoute.routes[0];
+            return {
+                rootPart: defChildWithRoute.code,
+                rootOpNum: firstOp['№ Операция'],
+                rootOpName: firstOp['Име на операция'],
+                rootMachine: firstOp['Машина'] || 'Обща',
+                isChild: true,
+                isRaw: false,
+                chain: [`${defChildWithRoute.code} (Оп. ${firstOp['№ Операция']} ${firstOp['Име на операция']} / ${firstOp['Машина'] || 'Обща'})`],
+                intermediate: null,
+                reason: `Липсва заготовка ${defChildWithRoute.code} от ${firstOp['Машина'] || 'Обща'} (Оп. ${firstOp['№ Операция']} ${firstOp['Име на операция']})`
+            };
+        }
+
+        const rawChild = missingChildren[0];
+        return {
+            rootPart: rawChild.code,
+            rootOpNum: null,
+            rootOpName: 'Склад Материали',
+            rootMachine: 'Склад Материали',
+            isChild: true,
+            isRaw: true,
+            chain: [`${rawChild.code} (Склад Материали)`],
+            intermediate: null,
+            reason: `Липсва суровина/материал ${rawChild.code} от Склад Материали`
+        };
+    }
+
+    // 3. Fallback към Склад
+    return {
+        rootPart: partName,
+        rootOpNum: null,
+        rootOpName: 'Склад',
+        rootMachine: 'Склад',
+        isChild: false,
+        isRaw: true,
+        chain: [`${partName} (Склад)`],
+        intermediate: null,
+        reason: `Липсват заготовки/материали за ${partName} в Склад`
+    };
+};
+
 function findUpstreamTargetForBlockedTask(taskObj, fallbackPartName, fallbackOpName, reasonsStr) {
     if (!taskObj) {
         return {
@@ -1369,6 +1531,19 @@ function findUpstreamTargetForBlockedTask(taskObj, fallbackPartName, fallbackOpN
             target_machine: 'Склад',
             is_child: false
         };
+    }
+
+    if (typeof window.traceRootDeficitOrigin === 'function') {
+        const root = window.traceRootDeficitOrigin(taskObj.name, taskObj.opNum, taskObj.op, 1);
+        if (root && root.rootMachine) {
+            return {
+                target_part: root.rootPart,
+                target_op_num: root.rootOpNum,
+                target_op_name: root.rootOpName,
+                target_machine: root.rootMachine,
+                is_child: root.isChild
+            };
+        }
     }
 
     const reasonsLower = (reasonsStr || '').toLowerCase();
