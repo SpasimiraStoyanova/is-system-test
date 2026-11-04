@@ -1,4 +1,4 @@
-﻿function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
+function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
 
 function normalizeStr(str) {
     if (!str) return '';
@@ -395,11 +395,11 @@ async function loadTasks(isSilent = false) {
           let key = code + '_' + op; 
           
           if (r['Статус'] === 'Брак' || r['Статус'] === 'Отчетено' || r['Статус'] === 'Прекъсната' || r['Статус'] === 'Авто-приключена') {
-              if (String(r['Оператор']).trim() === currentOperator.trim() && takenOps[key] === undefined) takenOps[key] = false;
+              if (String(r['Оператор']).trim() === currentOperator.trim() && takenOps[key] === undefined) takenOps[key] = { isTaken: false };
           }
           else if (r['Статус'] === 'Започната') {
               if (String(r['Оператор']).trim() === currentOperator.trim() && takenOps[key] === undefined) {
-                  takenOps[key] = true;
+                  takenOps[key] = { isTaken: true, planId: (r['ID План'] !== null && r['ID План'] !== undefined ? String(r['ID План']).trim() : ''), isBuffer: (!r['ID План'] || String(r['ID План']).trim() === '' || String(r['ID План']).toLowerCase() === 'null'), isProba: String(r['ID План'] || '').startsWith('PROBA_') };
                   activeDangling.push(r);
               }
           }
@@ -697,7 +697,12 @@ async function loadTasks(isSilent = false) {
                   let cardBufferShortage = reachedBufferOp ? bufferShortage : 0;
                   let totalShortage = pureShortage + scrapShortage + cardBufferShortage;
                   
-                  if (totalShortage > 0) {
+                  let takenInfo = takenOps[opKey];
+                  let isOpTaken = takenInfo ? takenInfo.isTaken === true : false;
+                  let cardIsTakenForBuffer = isOpTaken && takenInfo.isBuffer === true;
+                  let cardIsTakenForPlan = isOpTaken && !takenInfo.isBuffer && !takenInfo.isProba;
+
+                  if (totalShortage > 0 || isOpTaken) {
                       let maxAllowed = Infinity;
                       let displayMaxAllowed = Infinity;
                       let hasLimit = false;
@@ -806,7 +811,7 @@ async function loadTasks(isSilent = false) {
                           }
                       }
                       
-                      let isTaken = takenOps[opKey] === true;
+                      let isTaken = isOpTaken;
                       if (maxAllowed < 0) maxAllowed = 0; 
                       let isBlocked = hasLimit && maxAllowed <= 0; 
                       let origMachine = route['Машина'] || '';
@@ -879,7 +884,24 @@ async function loadTasks(isSilent = false) {
                           let typeStr = i === routes.length - 1 ? "ЗЕЛЕНА" : "СИНЯ";
                           
                           let pushTask = (shortage, typeSuffix, pNameOverride, isScrapOnlyCard, originalTarget) => {
-                              if (shortage <= 0 && !isTaken) return;
+                              let thisCardIsTaken = false;
+                              if (typeSuffix === '_green') {
+                                  thisCardIsTaken = cardIsTakenForBuffer;
+                              } else if (typeSuffix === '_blue') {
+                                  thisCardIsTaken = cardIsTakenForPlan;
+                              }
+
+                              // 1. Scrap cards: NEVER create if shortage <= 0
+                              if (isScrapOnlyCard && shortage <= 0) return;
+
+                              // 2. Buffer cards: NEVER create if buffer was not configured, or if shortage <= 0 (unless specifically taken)
+                              if (typeSuffix === '_green') {
+                                  if ((originalTarget || 0) <= 0) return;
+                                  if (shortage <= 0 && !thisCardIsTaken) return;
+                              }
+
+                              // 3. Regular plan cards: only retain if shortage > 0 OR if this specific card was taken
+                              if (shortage <= 0 && !thisCardIsTaken) return;
                               let isBlocked = hasLimit && maxAllowed <= 0;
                               let targetInput = shortage;
                               let displayMaxAllowedForThis = displayMaxAllowed;
@@ -938,7 +960,7 @@ async function loadTasks(isSilent = false) {
                                   globalMonthlyDone = monitorInfo.completed;
                                   shortage = monitorInfo.deficit;
                                   totalDone = monitorInfo.completed;
-                                  if (shortage <= 0 && !isTaken) return;
+                                  if (shortage <= 0 && !thisCardIsTaken) return;
                                   if (hasLimit && realMaxAllowedForThis > 0) {
                                       targetInput = Math.min(Math.max(1, shortage), realMaxAllowedForThis);
                                   } else if (isBlocked) {
@@ -963,7 +985,7 @@ async function loadTasks(isSilent = false) {
                                   dropoff: route['Инструкция за оставяне'],
                                   defaultQty: targetInput, maxAllowed: displayMaxAllowedForThis, realMaxAllowed: realMaxAllowedForThis, hasLimit: hasLimit, isBlocked: isBlocked, blockingReasons: blockingReasons, 
                                   totalNeed: shortage, pureQty: isScrapOnlyCard ? 0 : shortage, scrapAllowance: isScrapOnlyCard ? shortage : 0,
-                                  totalDone: totalDone, totalScrapped: 0, isTaken: isTaken, isGreenCard: (pNameOverride === 'БУФЕРИ'),
+                                  totalDone: totalDone, totalScrapped: 0, isTaken: thisCardIsTaken, isGreenCard: (pNameOverride === 'БУФЕРИ'),
                                   globalGrossAtLoad: 0, globalScrapAtLoad: 0,
                                   itemsToFetch: itemsToFetch,
                                   hasPrevOp: hasPrevOp,
@@ -983,9 +1005,12 @@ async function loadTasks(isSilent = false) {
                           };
 
                           pushTask(pureShortage, '_blue', pNameForCardBase, false, planOriginalBom[code] || 0);
-                          pushTask(scrapShortage, '_scrap', pNameForCardBase, true, 0);
-                          if (reachedBufferOp) {
-                              pushTask(bufferShortage, '_green', "БУФЕРИ", false, bufferOriginalBom[code] || 0);
+                          if (scrapShortage > 0) {
+                              pushTask(scrapShortage, '_scrap', pNameForCardBase, true, 0);
+                          }
+                          let bufTarget = bufferOriginalBom[code] || 0;
+                          if (reachedBufferOp && bufTarget > 0 && (bufferShortage > 0 || cardIsTakenForBuffer)) {
+                              pushTask(bufferShortage, '_green', "БУФЕРИ", false, bufTarget);
                           }
                       }
                   }
