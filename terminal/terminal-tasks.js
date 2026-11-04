@@ -26,6 +26,272 @@ async function fetchAllRows(table, select = '*', extraFilter = null, orderBy = n
     return { data: result };
 }
 
+function computeMonitorMetrics(plansData, reportsData, skladData, invData, nomData, bomData, routesData) {
+    let nomMap = {};
+    (nomData || []).forEach(n => {
+        if (n['ID Детайл']) nomMap[String(n['ID Детайл']).trim().toLowerCase()] = n;
+    });
+
+    let routesByDetail = {};
+    (routesData || []).forEach(r => {
+        let code = String(r['Код на детайла']).trim().toLowerCase();
+        if (!routesByDetail[code]) routesByDetail[code] = [];
+        routesByDetail[code].push(r);
+    });
+    Object.keys(routesByDetail).forEach(code => {
+        routesByDetail[code].sort((a, b) => (parseInt(a['№ Операция']) || 0) - (parseInt(b['№ Операция']) || 0));
+    });
+
+    let bomChildrenMap = {};
+    (bomData || []).forEach(b => {
+        let p = String(b['ID Родител']).trim().toLowerCase();
+        if (!bomChildrenMap[p]) bomChildrenMap[p] = [];
+        bomChildrenMap[p].push(b);
+    });
+
+    let skladMap = {};
+    (skladData || []).forEach(s => {
+        if (s['ID Детайл']) skladMap[String(s['ID Детайл']).trim().toLowerCase()] = parseFloat(s['Остатък']) || 0;
+    });
+
+    let invGpMap = {};
+    let invWipMap = {};
+    (invData || []).forEach(r => {
+        let code = String(r['ID Детайл']).trim().toLowerCase();
+        let op = String(r['Операция']).trim().toLowerCase();
+        let qty = parseFloat(r['Количество']) || 0;
+        if (op === 'готов продукт') {
+            invGpMap[code] = (invGpMap[code] || 0) + qty;
+        } else {
+            if (!invWipMap[code]) invWipMap[code] = {};
+            invWipMap[code][op] = (invWipMap[code][op] || 0) + qty;
+        }
+    });
+
+    let activePlans = (plansData || []).filter(p => ['Активен', 'Завършен', 'Опакован'].includes(p['Статус']));
+    activePlans.sort((a, b) => (a.id || 0) - (b.id || 0));
+
+    let activeNodes = [];
+    activePlans.forEach(p => {
+        let originalPlanCode = String(p['Вътрешно име']).trim();
+        let actualBomName = originalPlanCode;
+        let displayName = originalPlanCode;
+        let targetQty = parseFloat(p['Целево количество']) || 0;
+
+        let translated = (nomData || []).find(n => String(n['Вътрешно име']).trim() === originalPlanCode);
+        if (translated && translated['ID Детайл']) {
+            actualBomName = String(translated['ID Детайл']).trim();
+            if (originalPlanCode.toUpperCase() === actualBomName.toUpperCase()) {
+                displayName = actualBomName;
+            } else {
+                displayName = `${originalPlanCode} - ${actualBomName}`;
+            }
+        }
+
+        function traverseAndAdd(parentName, currentCode, requiredQty, isRootLevel) {
+            let currentCodeLower = currentCode.toLowerCase();
+            let nomEntry = nomMap[currentCodeLower] || {};
+            let children = bomChildrenMap[currentCodeLower] || [];
+
+            let isRawMaterial = (children.length === 0) && (!routesByDetail[currentCodeLower]);
+            if (isRawMaterial && !isRootLevel) return;
+
+            activeNodes.push({
+                plan_id: p.id,
+                plan_month: (p['Месец'] && p['Година']) ? `${p['Месец']} ${p['Година']}`.trim() : `ПЛАН ${p.id}`,
+                code: currentCode,
+                display_name: isRootLevel ? displayName : currentCode,
+                plan_qty: requiredQty,
+                parent_code: parentName,
+                ready_qty: skladMap[currentCodeLower] || 0
+            });
+
+            children.forEach(c => {
+                let childName = String(c['ID Компонент']).trim();
+                let multiplier = parseFloat(c['Количество']) || 1;
+                traverseAndAdd(currentCode, childName, requiredQty * multiplier, false);
+            });
+        }
+
+        traverseAndAdd('', actualBomName, targetQty, true);
+    });
+
+    let mergedNodes = {};
+    let connections = [];
+    activeNodes.forEach(row => {
+        let pMonthStr = row.plan_month;
+        let codeStr = row.code ? String(row.code).trim() : '';
+        let mergedId = pMonthStr + '___' + codeStr;
+
+        if (!mergedNodes[mergedId]) {
+            mergedNodes[mergedId] = {
+                id: mergedId,
+                planId: row.plan_id,
+                planMonth: pMonthStr,
+                code: codeStr,
+                planQty: 0,
+                warehouseQty: row.ready_qty || 0,
+                operations: []
+            };
+        }
+        mergedNodes[mergedId].planQty += (parseFloat(row.plan_qty) || 0);
+
+        if (row.parent_code) {
+            let parentCodeStr = String(row.parent_code).trim();
+            let parentMergedId = pMonthStr + '___' + parentCodeStr;
+            if (!connections.find(c => c.from === mergedId && c.to === parentMergedId)) {
+                connections.push({ from: mergedId, to: parentMergedId });
+            }
+        }
+    });
+
+    let nodesByCode = {};
+    Object.values(mergedNodes).forEach(n => {
+        let cLower = n.code.toLowerCase();
+        if (!nodesByCode[cLower]) nodesByCode[cLower] = [];
+        nodesByCode[cLower].push(n);
+    });
+
+    let isLastNodeMap = {};
+    Object.keys(nodesByCode).forEach(cLower => {
+        let nodes = nodesByCode[cLower];
+        nodes.sort((a, b) => (parseInt(a.planId) || 0) - (parseInt(b.planId) || 0));
+        isLastNodeMap[nodes[nodes.length - 1].id] = true;
+    });
+
+    let childrenMap = {};
+    Object.values(mergedNodes).forEach(n => childrenMap[n.id] = []);
+    connections.forEach(c => {
+        if (childrenMap[c.to]) childrenMap[c.to].push(c.from);
+    });
+
+    let calculatedLevels = {};
+    let visitedForLevel = new Set();
+    function getLevel(nodeId) {
+        if (calculatedLevels[nodeId]) return calculatedLevels[nodeId];
+        if (visitedForLevel.has(nodeId)) return 1;
+        visitedForLevel.add(nodeId);
+        let ch = childrenMap[nodeId];
+        if (!ch || ch.length === 0) {
+            calculatedLevels[nodeId] = 1;
+            return 1;
+        }
+        let maxL = 0;
+        ch.forEach(cId => {
+            let l = getLevel(cId);
+            if (l > maxL) maxL = l;
+        });
+        calculatedLevels[nodeId] = maxL + 1;
+        return calculatedLevels[nodeId];
+    }
+    Object.values(mergedNodes).forEach(n => getLevel(n.id));
+
+    let allNodes = Object.values(mergedNodes);
+    allNodes.sort((a, b) => {
+        let lvlDiff = (calculatedLevels[b.id] || 0) - (calculatedLevels[a.id] || 0);
+        if (lvlDiff !== 0) return lvlDiff;
+        return (parseInt(a.planId) || 0) - (parseInt(b.planId) || 0);
+    });
+
+    allNodes.forEach(n => n.consumedByParents = 0);
+    let alreadyAllocated = {};
+    let alreadyAllocatedWarehouse = {};
+
+    let getMultiplier = (childCode, parentCode) => {
+        let pNameLower = parentCode.toLowerCase();
+        let cNameLower = childCode.toLowerCase();
+        let bomLines = (bomData || []).filter(b => {
+            let pKey = b['ID Родител'] || b['ID Детайл'];
+            return String(b['ID Компонент']).trim().toLowerCase() === cNameLower && String(pKey || '').trim().toLowerCase() === pNameLower;
+        });
+        let m = 0;
+        bomLines.forEach(bl => m += (parseFloat(bl['Количество']) || 1));
+        return m || 1;
+    };
+
+    allNodes.forEach(n => {
+        let isLastNode = isLastNodeMap[n.id];
+        let code = n.code;
+        let cLower = code.toLowerCase();
+        let partRoutes = routesByDetail[cLower] || [];
+        let finalDoneQtyForChildren = 0;
+        let deficit = Math.max(0, n.planQty - n.consumedByParents);
+
+        if (partRoutes.length > 0) {
+            partRoutes.forEach((route, idx) => {
+                let opName = String(route['Име на операция']).trim();
+                let opKey = cLower + '_' + opName.toLowerCase();
+
+                let globalPhysicalPassed = (invGpMap[cLower] || 0);
+                for (let j = idx; j < partRoutes.length; j++) {
+                    let nextOpName = String(partRoutes[j]['Име на операция']).trim().toLowerCase();
+                    globalPhysicalPassed += (invWipMap[cLower]?.[nextOpName] || 0);
+                }
+                let globalNet = globalPhysicalPassed;
+                let usedSoFar = alreadyAllocated[opKey] || 0;
+                let availableForThisNode = Math.max(0, globalNet - usedSoFar);
+
+                let allocatedFromWh = isLastNode ? availableForThisNode : Math.min(deficit, availableForThisNode);
+                let doneQty = n.consumedByParents + allocatedFromWh;
+                alreadyAllocated[opKey] = usedSoFar + allocatedFromWh;
+
+                n.operations.push({
+                    name: opName,
+                    completed: doneQty,
+                    deficit: Math.max(0, n.planQty - doneQty)
+                });
+
+                if (idx === 0) finalDoneQtyForChildren = doneQty;
+            });
+        } else {
+            let globalWarehouse = n.warehouseQty;
+            let usedSoFar = alreadyAllocatedWarehouse[cLower] || 0;
+            let availableForThisNode = Math.max(0, globalWarehouse - usedSoFar);
+
+            let allocatedFromWh = isLastNode ? availableForThisNode : Math.min(deficit, availableForThisNode);
+            let doneQty = n.consumedByParents + allocatedFromWh;
+            alreadyAllocatedWarehouse[cLower] = usedSoFar + allocatedFromWh;
+
+            n.operations.push({
+                name: 'Готов (Склад)',
+                completed: doneQty,
+                deficit: Math.max(0, n.planQty - doneQty)
+            });
+            finalDoneQtyForChildren = doneQty;
+        }
+
+        (childrenMap[n.id] || []).forEach(childId => {
+            let childNode = mergedNodes[childId];
+            if (childNode) {
+                let mult = getMultiplier(childNode.code, n.code);
+                childNode.consumedByParents += finalDoneQtyForChildren * mult;
+            }
+        });
+    });
+
+    let progressMap = {};
+    Object.values(mergedNodes).forEach(n => {
+        let pMonthNorm = normalizeStr(n.planMonth);
+        let cNorm = normalizeStr(n.code);
+        n.operations.forEach(op => {
+            let opNorm = normalizeStr(op.name);
+            let fullKey = pMonthNorm + '___' + cNorm + '___' + opNorm;
+            let shortKey = cNorm + '___' + opNorm;
+            let info = {
+                target: n.planQty,
+                completed: op.completed,
+                deficit: op.deficit
+            };
+            progressMap[fullKey] = info;
+            if (!progressMap[shortKey] || info.target > progressMap[shortKey].target) {
+                progressMap[shortKey] = info;
+            }
+        });
+    });
+
+    return progressMap;
+}
+
 async function changeMachine(isInitial = false) {
     Swal.fire({ title: 'Зареждане...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     try {
@@ -138,6 +404,12 @@ async function loadTasks(isSilent = false) {
       let skladData = skladRes.data || [];
       window.globalSkladData = skladData;
       let getSkladQty = (code) => { let c = normalizeStr(code); let item = skladData.find(s => normalizeStr(s['ID Детайл']) === c); return item ? (parseFloat(item['Остатък']) || 0) : 0; };
+      let monitorProgressMap = {};
+      try {
+          monitorProgressMap = computeMonitorMetrics(plansRes.data, reportsRes.data, skladRes.data, invRes.data, nomRes.data, bomRes.data, routesRes.data) || {};
+      } catch (err) {
+          console.error("Error computing monitor metrics:", err);
+      }
 
       let planRoots = {}; 
       let planNames = {};
@@ -652,6 +924,25 @@ async function loadTasks(isSilent = false) {
                                   globalMonthlyDone = totalDone;
                               }
                               
+                              let monitorKey = normalizeStr(pNameOverride) + '___' + partNorm + '___' + opNorm;
+                              let monitorFallbackKey = partNorm + '___' + opNorm;
+                              let monitorInfo = monitorProgressMap ? (monitorProgressMap[monitorKey] || monitorProgressMap[monitorFallbackKey]) : null;
+
+                              if (monitorInfo && pNameOverride !== 'БУФЕРИ' && pNameOverride !== 'СВРЪХПРОИЗВОДСТВО' && !isScrapOnlyCard) {
+                                  globalMonthlyTarget = monitorInfo.target;
+                                  globalMonthlyDone = monitorInfo.completed;
+                                  shortage = monitorInfo.deficit;
+                                  totalDone = monitorInfo.completed;
+                                  if (shortage <= 0) return;
+                                  if (hasLimit && realMaxAllowedForThis > 0) {
+                                      targetInput = Math.min(shortage, realMaxAllowedForThis);
+                                  } else if (isBlocked) {
+                                      targetInput = 0;
+                                  } else {
+                                      targetInput = shortage;
+                                  }
+                              }
+
                               globalTasks.push({
                                   globalMonthlyTarget: globalMonthlyTarget,
                                   globalMonthlyDone: globalMonthlyDone,
@@ -1305,7 +1596,10 @@ function renderTasks(tasks) {
 
     let remainingToMake = (t.pureQty !== undefined && t.pureQty !== null) ? parseFloat(t.pureQty) : (parseFloat(t.totalNeed) || 0);
     if (t.isGreenCard && t.totalNeed !== undefined) remainingToMake = parseFloat(t.totalNeed) || 0;
-    let doneTotal = Math.max(0, targetTotal - remainingToMake);
+    let doneTotal = (t.globalMonthlyDone !== undefined && t.globalMonthlyDone !== null && !t.isGreenCard)
+        ? parseFloat(t.globalMonthlyDone)
+        : Math.max(0, targetTotal - remainingToMake);
+    let labelDone = t.isGreenCard ? '\u041D\u0430 \u0441\u043A\u043B\u0430\u0434:' : '\u0413\u043E\u0442\u043E\u0432\u0438:';
  
 
 
@@ -1316,7 +1610,7 @@ function renderTasks(tasks) {
       <div class="task-progress-box">
         <div class="task-progress-header">
           <span>Напредък: <b>${pct}%</b></span>
-          <span>На склад: <b>${doneTotal}</b> от ${targetTotal} бр.</span>
+          <span>${labelDone} <b>${doneTotal}</b> от ${targetTotal} бр.</span>
         </div>
         <div class="task-progress-track">
           <div class="${progressFillClass}" style="width: ${pct}%;"></div>
@@ -1345,7 +1639,7 @@ function renderTasks(tasks) {
           ${dropoffHtml}
           <div style="background-color: #f8fafc; padding: 15px; border-radius: 12px; margin-top: 5px; border: 2px solid #bae6fd;">
             <p style="color: #0369a1; font-weight: 900; text-align:center; margin-top:0; font-size: 1.1em;">🟢 В ПРОЦЕС НА РАБОТА</p>
-            <div style="display:flex; justify-content:space-between; margin-bottom: 5px; font-size: 0.85em; font-weight:bold; color: #64748b;"><span>На склад:</span><span>${doneTotal} от ${targetTotal} бр.</span></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom: 5px; font-size: 0.85em; font-weight:bold; color: #64748b;"><span>${labelDone}</span><span>${doneTotal} от ${targetTotal} бр.</span></div>
             <input type="number" id="qty_${t.id}" min="1" value="" placeholder="${t.defaultQty}" ${inputMaxHtml} inputmode="numeric" style="margin-bottom:15px;">
             <div style="display: flex; gap: 10px;">
               <button class="btn" id="btn_${t.id}" onclick="finishTask('${t.id}', this)">✅ ОТЧЕТИ</button>
