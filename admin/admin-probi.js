@@ -939,18 +939,40 @@ async function openProbiInventoryModal() {
 // --- PROGRESS MODAL ---
 async function openProbiProgressModal(probaId) {
     const proba = probiCache.find(p => p.id === probaId);
-    const comps = probiComponentsCache[probaId] || [];
+    if (!proba) {
+        Swal.fire('Грешка', 'Пробата не е намерена!', 'error');
+        return;
+    }
 
-    Swal.fire({ title: 'Зареждане на прогреса...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    let comps = probiComponentsCache[probaId] || [];
+    if (!comps || comps.length === 0) {
+        const { data: cData } = await client.from('probi_components').select('*').eq('proba_id', probaId);
+        if (cData) {
+            comps = cData;
+            probiComponentsCache[probaId] = comps;
+        }
+    }
+
+    Swal.fire({ title: 'Зареждане на прогреса и наличностите...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
     try {
         const planKey = 'PROBA_' + probaId;
-        const [reportsRes, bomRes] = await Promise.all([
+        const [reportsRes, bomRes, probiInvRes, invRes, skladRes, routesRes] = await Promise.all([
             client.from('otcheti').select('*').eq('ID План', planKey),
-            client.from('bom').select('*')
+            client.from('bom').select('*'),
+            client.from('probi_inventory').select('*').eq('proba_id', probaId),
+            client.from('inventory').select('*'),
+            client.from('sklad').select('*'),
+            client.from('marshruti').select('*')
         ]);
         const otchetiList = reportsRes.data || [];
         const allBom = bomRes.data || [];
+        const probiInvList = probiInvRes.data || [];
+        const inventoryList = invRes.data || [];
+        const skladList = skladRes.data || [];
+        const allRoutes = routesRes.data || [];
+
+        const normStr = s => String(s || '').trim().toLowerCase();
 
         let partsList = [];
         let partsMap = {};
@@ -959,7 +981,7 @@ async function openProbiProgressModal(probaId) {
             let mult = parseFloat(comp.qty_per_unit) || 1;
             let needed = (parseFloat(proba.target_qty) || 1) * mult;
             let pCode = String(comp.part_code).trim();
-            let pNorm = pCode.toLowerCase();
+            let pNorm = normStr(pCode);
 
             if (!partsMap[pNorm]) {
                 partsMap[pNorm] = {
@@ -977,14 +999,14 @@ async function openProbiProgressModal(probaId) {
         });
 
         function expandComponent(parentCode, parentNeeded, curDepth, visited = new Set()) {
-            let normP = parentCode.toLowerCase().trim();
+            let normP = normStr(parentCode);
             if (visited.has(normP)) return;
             visited.add(normP);
 
-            let children = allBom.filter(b => b['ID Родител'] && b['ID Родител'].toLowerCase().trim() === normP);
+            let children = allBom.filter(b => b['ID Родител'] && normStr(b['ID Родител']) === normP);
             children.forEach(ch => {
                 let childCode = String(ch['ID Компонент']).trim();
-                let childNorm = childCode.toLowerCase();
+                let childNorm = normStr(childCode);
                 let childMult = parseFloat(ch['Количество']) || 1;
                 let childNeeded = parentNeeded * childMult;
 
@@ -1012,85 +1034,214 @@ async function openProbiProgressModal(probaId) {
             }
         });
 
-        let progressHtml = `
-            <div style="text-align:left; font-size:0.9rem;">
-                <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px; padding:10px 14px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <span style="font-weight:800; color:#6d28d9; font-size:1.1rem;">🧪 ${proba.name}</span>
-                        <span style="color:#5b21b6; margin-left:12px;">Цел: <b>${proba.target_qty} бр.</b></span>
-                    </div>
-                    <span style="background:#7c3aed; color:white; padding:3px 10px; border-radius:15px; font-weight:800; font-size:0.8rem;">⚡ В ПРОИЗВОДСТВО</span>
-                </div>
+        let readyCount = 0;
+        let inProgressCount = 0;
+        let missingCount = 0;
+        let totalPiecesInProbiInv = probiInvList.reduce((sum, pi) => sum + (parseFloat(pi.quantity) || 0), 0);
 
-                <div style="max-height:450px; overflow-y:auto;">
-        `;
+        let cardsHtmlArray = [];
 
         for (const item of partsList) {
+            let pNorm = normStr(item.part_code);
             let needed = item.needed;
-            
+
+            // 1. Stock in Склад Проби
+            let pInvMatches = probiInvList.filter(pi => normStr(pi.part_code) === pNorm);
+            let probiInvReady = pInvMatches.filter(pi => normStr(pi.operation) === 'готов продукт').reduce((s, pi) => s + (parseFloat(pi.quantity) || 0), 0);
+            let probiInvWip = pInvMatches.filter(pi => normStr(pi.operation) !== 'готов продукт').reduce((s, pi) => s + (parseFloat(pi.quantity) || 0), 0);
+            let probiInvTotal = pInvMatches.reduce((s, pi) => s + (parseFloat(pi.quantity) || 0), 0);
+
+            // 2. Stock in General Finished Goods (inventory)
+            let invMatches = inventoryList.filter(inv => normStr(inv['ID Детайл']) === pNorm);
+            let mainInvTotal = invMatches.reduce((s, r) => s + (parseFloat(r['Количество']) || 0), 0);
+
+            // 3. Stock in Materials (sklad)
+            let skladMatches = skladList.filter(s => normStr(s['ID Детайл']) === pNorm);
+            let skladStock = skladMatches.reduce((s, r) => s + (parseFloat(r['Остатък']) || 0), 0);
+
+            // 4. Routes
             let routes = [];
             if (item.is_new && Array.isArray(item.custom_routes) && item.custom_routes.length > 0) {
                 routes = item.custom_routes;
             } else {
-                const { data: rData } = await client.from('marshruti').select('*').ilike('Код на детайла', item.part_code).order('№ Операция');
-                routes = (rData || []).map(r => ({
+                routes = allRoutes.filter(r => normStr(r['Код на детайла']) === pNorm).map(r => ({
                     op_num: parseInt(r['№ Операция']) || 10,
                     op_name: String(r['Име на операция']).trim(),
                     machine: String(r['Машина'] || '').trim()
-                }));
+                })).sort((a, b) => a.op_num - b.op_num);
             }
 
             let opsProgressHtml = '';
-            if (routes.length === 0) {
-                opsProgressHtml = `<span style="color:#94a3b8; font-size:0.85rem;">📦 Складов детайл / заготовка (няма машинни операции)</span>`;
-            } else {
+            let partStatusBadge = '';
+            let isPartDone = false;
+            let isPartInProgress = false;
+
+            if (routes.length > 0) {
+                let lastOp = routes[routes.length - 1];
+                let lastOpDone = 0;
+                let hasAnyDone = false;
+
                 opsProgressHtml = routes.map(op => {
                     let done = 0;
                     otchetiList.forEach(r => {
-                        if (String(r['ID Детайл']).trim().toLowerCase() === item.part_code.toLowerCase() &&
-                            String(r['Операция']).trim().toLowerCase() === op.op_name.toLowerCase() &&
+                        if (normStr(r['ID Детайл']) === pNorm &&
+                            normStr(r['Операция']) === normStr(op.op_name) &&
                             r['Статус'] === 'Отчетено') {
                             done += (parseFloat(r['Количество']) || 0);
                         }
                     });
+                    if (done > 0) hasAnyDone = true;
+                    if (normStr(op.op_name) === normStr(lastOp.op_name)) {
+                        lastOpDone = done;
+                    }
 
-                    let isDone = done >= needed;
-                    let badgeBg = isDone ? '#dcfce7' : (done > 0 ? '#dbeafe' : '#f1f5f9');
-                    let badgeColor = isDone ? '#15803d' : (done > 0 ? '#1d4ed8' : '#64748b');
+                    let isOpDone = done >= needed;
+                    let badgeBg = isOpDone ? '#dcfce7' : (done > 0 ? '#dbeafe' : '#f8fafc');
+                    let badgeBorder = isOpDone ? '#bbf7d0' : (done > 0 ? '#bfdbfe' : '#e2e8f0');
+                    let badgeColor = isOpDone ? '#15803d' : (done > 0 ? '#1d4ed8' : '#64748b');
+                    let opIcon = isOpDone ? '✅' : (done > 0 ? '⏳' : '⚪');
 
                     return `
-                        <div style="background:${badgeBg}; color:${badgeColor}; border:1px solid rgba(0,0,0,0.06); padding:4px 8px; border-radius:6px; font-size:0.82rem; font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between;">
-                            <span>${op.op_name} <span style="font-weight:400; font-size:0.75rem;">(${op.machine || 'без машина'})</span></span>
-                            <span>${done} / ${needed} бр.</span>
+                        <div style="background:${badgeBg}; color:${badgeColor}; border:1px solid ${badgeBorder}; padding:6px 10px; border-radius:6px; font-size:0.83rem; font-weight:700; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center;">
+                            <span>${opIcon} ${op.op_num ? op.op_num + '. ' : ''}${op.op_name} <span style="font-weight:500; font-size:0.75rem; color:#64748b;">(${op.machine || 'без машина'})</span></span>
+                            <span style="font-weight:900;">${done} / ${needed} бр.</span>
                         </div>
                     `;
                 }).join('');
+
+                let readyFinished = Math.max(lastOpDone, probiInvReady);
+                isPartDone = readyFinished >= needed;
+                isPartInProgress = !isPartDone && (readyFinished > 0 || hasAnyDone || probiInvWip > 0);
+
+                if (isPartDone) {
+                    readyCount++;
+                    partStatusBadge = `<span style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:3px 10px; border-radius:12px; font-weight:800; font-size:0.78rem;">✅ Готов: ${readyFinished} от ${needed} бр.</span>`;
+                } else if (isPartInProgress) {
+                    inProgressCount++;
+                    partStatusBadge = `<span style="background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; padding:3px 10px; border-radius:12px; font-weight:800; font-size:0.78rem;">⏳ В изработка (${readyFinished} готови / ${needed} нужни)</span>`;
+                } else {
+                    missingCount++;
+                    partStatusBadge = `<span style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; padding:3px 10px; border-radius:12px; font-weight:800; font-size:0.78rem;">⚪ Чака изработка (0 / ${needed} бр.)</span>`;
+                }
+
+                opsProgressHtml += `
+                    <div style="margin-top:8px; padding:6px 10px; background:#faf5ff; border:1px solid #e9d5ff; border-radius:6px; display:flex; justify-content:space-between; align-items:center; font-size:0.82rem;">
+                        <span style="color:#6b21a8; font-weight:700;">📦 В Склад Проби:</span>
+                        <span style="font-weight:900; color:${probiInvTotal > 0 ? '#7c3aed' : '#94a3b8'};">
+                            ${probiInvReady > 0 ? `<b style="color:#15803d;">${probiInvReady} бр.</b> готови` : ''}
+                            ${probiInvWip > 0 ? `${probiInvReady > 0 ? ' + ' : ''}<b>${probiInvWip} бр.</b> полуфабрикат` : ''}
+                            ${probiInvTotal === 0 ? '0 бр. (очаква се отчитане)' : ''}
+                        </span>
+                    </div>
+                `;
+            } else {
+                let totalAvail = probiInvTotal + mainInvTotal + skladStock;
+                isPartDone = totalAvail >= needed;
+                isPartInProgress = !isPartDone && totalAvail > 0;
+
+                if (isPartDone) {
+                    readyCount++;
+                    partStatusBadge = `<span style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:3px 10px; border-radius:12px; font-weight:800; font-size:0.78rem;">✅ Наличен: ${totalAvail} от ${needed} бр.</span>`;
+                } else if (isPartInProgress) {
+                    inProgressCount++;
+                    partStatusBadge = `<span style="background:#fed7aa; color:#c2410c; border:1px solid #fdba74; padding:3px 10px; border-radius:12px; font-weight:800; font-size:0.78rem;">⚠️ Частичен: ${totalAvail} / ${needed} бр. (липсват ${needed - totalAvail})</span>`;
+                } else {
+                    missingCount++;
+                    partStatusBadge = `<span style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; padding:3px 10px; border-radius:12px; font-weight:800; font-size:0.78rem;">❌ Липсва на склад (0 / ${needed} бр.)</span>`;
+                }
+
+                opsProgressHtml = `
+                    <div style="font-size:0.82rem; color:#475569; margin-bottom:6px; font-weight:600;">
+                        📦 Складов детайл / заготовка (няма машинни операции в цеха):
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:130px; background:#faf5ff; border:1px solid #e9d5ff; border-radius:6px; padding:6px 10px;">
+                            <div style="font-size:0.73rem; color:#7c3aed; font-weight:700;">📦 Склад Проби</div>
+                            <div style="font-size:1.05rem; font-weight:900; color:${probiInvTotal > 0 ? '#6d28d9' : '#94a3b8'};">${probiInvTotal} бр.</div>
+                        </div>
+                        <div style="flex:1; min-width:130px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:6px 10px;">
+                            <div style="font-size:0.73rem; color:#16a34a; font-weight:700;">🏭 Склад Готови Детайли</div>
+                            <div style="font-size:1.05rem; font-weight:900; color:${mainInvTotal > 0 ? '#15803d' : '#94a3b8'};">${mainInvTotal} бр.</div>
+                        </div>
+                        ${skladStock > 0 ? `
+                        <div style="flex:1; min-width:130px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:6px 10px;">
+                            <div style="font-size:0.73rem; color:#2563eb; font-weight:700;">🪵 Склад Материали</div>
+                            <div style="font-size:1.05rem; font-weight:900; color:#1d4ed8;">${skladStock} бр.</div>
+                        </div>` : ''}
+                    </div>
+                `;
             }
 
             let isSub = item.depth > 0 || !!item.parent_part_code;
-            let boxBorder = isSub ? '1px dashed #cbd5e1' : '1px solid #e2e8f0';
-            let boxBg = isSub ? '#f8fafc' : 'white';
-            let badgeSub = isSub ? `<span style="font-size:0.75rem; background:#e0e7ff; color:#4338ca; padding:1px 6px; border-radius:4px; font-weight:700; margin-left:6px;">под-детайл ${item.parent_part_code ? '(↳ към ' + item.parent_part_code + ')' : ''}</span>` : '';
+            let boxBorder = isPartDone ? '1.5px solid #86efac' : (isSub ? '1px dashed #cbd5e1' : '1px solid #e2e8f0');
+            let boxBg = isPartDone ? '#f0fdf4' : (isSub ? '#f8fafc' : 'white');
+            let badgeSub = isSub ? `<span style="font-size:0.73rem; background:#e0e7ff; color:#4338ca; padding:1px 6px; border-radius:4px; font-weight:700; margin-left:6px;">под-детайл ${item.parent_part_code ? '(↳ към ' + item.parent_part_code + ')' : ''}</span>` : '';
 
-            progressHtml += `
-                <div style="background:${boxBg}; border:${boxBorder}; border-radius:8px; padding:12px; margin-bottom:10px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            cardsHtmlArray.push(`
+                <div style="background:${boxBg}; border:${boxBorder}; border-radius:10px; padding:12px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
                         <span style="font-weight:800; color:#1e293b; font-size:0.95rem;">${item.part_code} ${badgeSub}</span>
-                        <span style="font-weight:700; color:#7c3aed; font-size:0.85rem;">Нужни: ${needed} бр.</span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-weight:700; color:#64748b; font-size:0.83rem;">Нужни: <b>${needed} бр.</b></span>
+                            ${partStatusBadge}
+                        </div>
                     </div>
                     <div>
                         ${opsProgressHtml}
                     </div>
                 </div>
-            `;
+            `);
         }
 
-        progressHtml += `</div></div>`;
+        let totalItems = partsList.length || 1;
+        let overallPercent = Math.round((readyCount / totalItems) * 100);
+
+        let progressHtml = `
+            <div style="text-align:left; font-size:0.9rem;">
+                <!-- Header Banner -->
+                <div style="background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); border: 1.5px solid #c4b5fd; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; box-shadow: 0 2px 5px rgba(124, 58, 237, 0.08);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <span style="font-weight:900; color:#5b21b6; font-size:1.25rem;">🧪 ${proba.name}</span>
+                            <span style="background:#7c3aed; color:white; padding:3px 10px; border-radius:12px; font-weight:800; font-size:0.8rem; margin-left:10px;">⚡ В ПРОИЗВОДСТВО</span>
+                            ${proba.is_urgent ? '<span style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; padding:3px 9px; border-radius:12px; font-weight:900; font-size:0.78rem; margin-left:6px;">⚡ СПЕШНА</span>' : ''}
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color:#6d28d9; font-weight:700; font-size:0.95rem;">Целева серия: <b style="font-size:1.15rem; color:#4c1d95;">${proba.target_qty} бр.</b></span>
+                            <button type="button" onclick="openProbiInventoryModal()" style="background:#ffffff; color:#6d28d9; border:1.5px solid #a78bfa; padding:5px 12px; border-radius:8px; font-weight:800; font-size:0.8rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 2px rgba(0,0,0,0.05);" title="Преглед на Склад Проби">📦 Склад Проби</button>
+                        </div>
+                    </div>
+
+                    <!-- Progress bar -->
+                    <div style="margin-top:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem; font-weight:700; margin-bottom:4px; color:#4c1d95;">
+                            <span>Обща осигуреност и готовност на компонентите:</span>
+                            <span><b>${overallPercent}%</b> (${readyCount} от ${totalItems} напълно готови)</span>
+                        </div>
+                        <div style="background:#e2e8f0; border-radius:10px; height:12px; overflow:hidden; position:relative;">
+                            <div style="background: linear-gradient(90deg, #8b5cf6, #10b981); width:${overallPercent}%; height:100%; transition:width 0.4s ease-in-out;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Summary Pills -->
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; font-size:0.8rem;">
+                        <span style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:3px 9px; border-radius:8px; font-weight:800;">🟢 Готови: ${readyCount}</span>
+                        <span style="background:#dbeafe; color:#1d4ed8; border:1px solid #93c5fd; padding:3px 9px; border-radius:8px; font-weight:800;">🟡 В изработка: ${inProgressCount}</span>
+                        <span style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; padding:3px 9px; border-radius:8px; font-weight:800;">🔴 Липсващи: ${missingCount}</span>
+                        <span style="background:#ffffff; color:#6b21a8; border:1px solid #ddd6fe; padding:3px 9px; border-radius:8px; font-weight:800; margin-left:auto;">📦 Общо полуфабрикати в Склад Проби: <b>${totalPiecesInProbiInv} бр.</b></span>
+                    </div>
+                </div>
+
+                <div style="max-height:450px; overflow-y:auto; padding-right:4px;">
+                    ${cardsHtmlArray.join('')}
+                </div>
+            </div>
+        `;
 
         Swal.fire({
             title: 'Напредък на пробата в цеха',
             html: progressHtml,
-            width: 750,
+            width: 820,
             confirmButtonText: 'Затвори',
             confirmButtonColor: '#7c3aed'
         });
