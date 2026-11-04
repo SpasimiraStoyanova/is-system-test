@@ -569,25 +569,69 @@ function renderMonthlyOverview() {
         return d >= monthStartStr && d <= monthEndStr;
     });
 
-    // 1. KPI Totals
+    // Accumulators for table and KPIs strictly for target items in this department
     let totalPlan = 0;
     let totalAssignedPeriod = 0;
     let totalDonePeriod = 0;
     let totalDoneMonth = 0;
+    let totalRemaining = 0;
+
+    let tableRowsHtml = '';
 
     globalState.targetItems.forEach(item => {
-        totalPlan += (item.planQty || 0);
+        let planQty = item.planQty || 0;
+        totalPlan += planQty;
+
+        let assignedInPeriod = 0;
+        rangeQuotas.forEach(q => {
+            if (q.detail_name === item.detailName && q.operation_name === item.operationName) {
+                assignedInPeriod += q.qty;
+            }
+        });
+        totalAssignedPeriod += assignedInPeriod;
+
+        let doneInPeriod = 0;
+        rangeOtcheti.forEach(r => {
+            if (normalizeStr(r['ID Детайл']) === normalizeStr(item.detailName) && normalizeStr(r['Операция']) === normalizeStr(item.operationName)) {
+                doneInPeriod += (parseFloat(r['Количество']) || 0);
+            }
+        });
+        totalDonePeriod += doneInPeriod;
+
+        let doneAllMonth = 0;
+        allMonthOtcheti.forEach(r => {
+            if (normalizeStr(r['ID Детайл']) === normalizeStr(item.detailName) && normalizeStr(r['Операция']) === normalizeStr(item.operationName)) {
+                doneAllMonth += (parseFloat(r['Количество']) || 0);
+            }
+        });
+        totalDoneMonth += doneAllMonth;
+
+        let remaining = Math.max(0, planQty - doneAllMonth);
+        totalRemaining += remaining;
+
+        let pct = planQty > 0 ? Math.min(100, Math.round((doneAllMonth / planQty) * 100)) : 0;
+        let barColor = pct >= 100 ? '#10b981' : (pct >= 50 ? '#38bdf8' : '#f59e0b');
+
+        tableRowsHtml += `
+          <tr>
+            <td><strong>${item.detailName}</strong></td>
+            <td style="color:#94a3b8;">${item.operationName}</td>
+            <td style="text-align:right; font-weight:bold;">${planQty} бр.</td>
+            <td style="text-align:right; color:#38bdf8; font-weight:bold;">${assignedInPeriod} бр.</td>
+            <td style="text-align:right; color:#10b981; font-weight:bold;">${doneInPeriod} бр.</td>
+            <td style="text-align:right; font-weight:bold;">${doneAllMonth} бр.</td>
+            <td style="text-align:right; color:${remaining > 0 ? '#f59e0b' : '#10b981'}; font-weight:bold;">${remaining} бр.</td>
+            <td>
+              <div style="display:flex; justify-content:space-between; font-size:0.8em; margin-bottom:2px;">
+                <span>${pct}%</span>
+              </div>
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" style="width:${pct}%; background:${barColor};"></div>
+              </div>
+            </td>
+          </tr>
+        `;
     });
-    rangeQuotas.forEach(q => {
-        totalAssignedPeriod += (q.qty || 0);
-    });
-    rangeOtcheti.forEach(r => {
-        totalDonePeriod += (parseFloat(r['Количество']) || 0);
-    });
-    allMonthOtcheti.forEach(r => {
-        totalDoneMonth += (parseFloat(r['Количество']) || 0);
-    });
-    let totalRemaining = Math.max(0, totalPlan - totalDoneMonth);
 
     let kpisHtml = `
       <div class="kpi-card" style="border-top-color:#38bdf8;">
@@ -624,57 +668,7 @@ function renderMonthlyOverview() {
         </tr>
       </thead>
       <tbody>
-    `;
-
-    globalState.targetItems.forEach(item => {
-        let planQty = item.planQty || 0;
-        let assignedInPeriod = 0;
-        rangeQuotas.forEach(q => {
-            if (q.detail_name === item.detailName && q.operation_name === item.operationName) {
-                assignedInPeriod += q.qty;
-            }
-        });
-
-        let doneInPeriod = 0;
-        rangeOtcheti.forEach(r => {
-            if (normalizeStr(r['ID Детайл']) === normalizeStr(item.detailName) && normalizeStr(r['Операция']) === normalizeStr(item.operationName)) {
-                doneInPeriod += (parseFloat(r['Количество']) || 0);
-            }
-        });
-
-        let doneAllMonth = 0;
-        allMonthOtcheti.forEach(r => {
-            if (normalizeStr(r['ID Детайл']) === normalizeStr(item.detailName) && normalizeStr(r['Операция']) === normalizeStr(item.operationName)) {
-                doneAllMonth += (parseFloat(r['Количество']) || 0);
-            }
-        });
-
-        let remaining = Math.max(0, planQty - doneAllMonth);
-        let pct = planQty > 0 ? Math.min(100, Math.round((doneAllMonth / planQty) * 100)) : 0;
-        let barColor = pct >= 100 ? '#10b981' : (pct >= 50 ? '#38bdf8' : '#f59e0b');
-
-        detTableHtml += `
-          <tr>
-            <td><strong>${item.detailName}</strong></td>
-            <td style="color:#94a3b8;">${item.operationName}</td>
-            <td style="text-align:right; font-weight:bold;">${planQty} бр.</td>
-            <td style="text-align:right; color:#38bdf8; font-weight:bold;">${assignedInPeriod} бр.</td>
-            <td style="text-align:right; color:#10b981; font-weight:bold;">${doneInPeriod} бр.</td>
-            <td style="text-align:right; font-weight:bold;">${doneAllMonth} бр.</td>
-            <td style="text-align:right; color:${remaining > 0 ? '#f59e0b' : '#10b981'}; font-weight:bold;">${remaining} бр.</td>
-            <td>
-              <div style="display:flex; justify-content:space-between; font-size:0.8em; margin-bottom:2px;">
-                <span>${pct}%</span>
-              </div>
-              <div class="progress-bar-bg">
-                <div class="progress-bar-fill" style="width:${pct}%; background:${barColor};"></div>
-              </div>
-            </td>
-          </tr>
-        `;
-    });
-
-    detTableHtml += `
+        ${tableRowsHtml}
       </tbody>
       <tfoot>
         <tr style="background:#0f172a; font-weight:bold;">
@@ -711,7 +705,15 @@ function renderMonthlyOverview() {
 
         let opDone = 0;
         rangeOtcheti.forEach(r => {
-            if (String(r['Оператор']).trim() === opName) opDone += (parseFloat(r['Количество']) || 0);
+            if (String(r['Оператор']).trim() === opName) {
+                let isBobini = globalState.targetItems.some(item => 
+                    normalizeStr(r['ID Детайл']) === normalizeStr(item.detailName) && 
+                    normalizeStr(r['Операция']) === normalizeStr(item.operationName)
+                );
+                if (isBobini) {
+                    opDone += (parseFloat(r['Количество']) || 0);
+                }
+            }
         });
 
         let eff = opAssigned > 0 ? Math.round((opDone / opAssigned) * 100) : '-';
