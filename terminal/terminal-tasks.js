@@ -1426,39 +1426,28 @@ async function loadTasks(isSilent = false) {
           console.warn("Грешка при зареждане на проби:", errProbaLoad);
       }
       function getCardTier(t) {
-          // Tier 1: РЎРїРµС€РЅРё / РџСЂРёРѕСЂРёС‚РµС‚РЅРё Р·Р°РґР°С‡Рё (Р СЉС‡РµРЅ РїСЂРёРѕСЂРёС‚РµС‚ #1-#10 РёР»Рё РЎРїРµС€РЅРё РџСЂРѕР±Рё)
           let hasManualPrio = (t.manualPriority !== null && t.manualPriority !== undefined && t.manualPriority <= 10);
           let isUrgentProba = (t.isProba && (t.isUrgent === true || hasManualPrio));
           if (hasManualPrio || isUrgentProba) return 1;
-
-          // Tier 2: РЎС‚Р°РЅРґР°СЂС‚РЅРё РЎРёРЅРё РєР°СЂС‚Рё (Р РµРґРѕРІРµРЅ РјРµСЃРµС‡РµРЅ РїСЂРѕРёР·РІРѕРґСЃС‚РІРµРЅ РїР»Р°РЅ)
-          if (!t.isProba && !t.isGreenCard && t.plan_name !== "Р‘РЈР¤Р•Р Р" && t.plan_name !== "РЎР’Р РЄРҐРџР РћРР—Р’РћР”РЎРўР’Рћ" && t.plan_id !== "РЎР’Р РЄРҐРџР РћРР—Р’РћР”РЎРўР’Рћ") return 2;
-
-          // Tier 3: РЎС‚Р°РЅРґР°СЂС‚РЅРё Р›РёР»Р°РІРё РєР°СЂС‚Рё (РћР±РёРєРЅРѕРІРµРЅРё R&D РџСЂРѕР±Рё)
+          if (!t.isProba && !t.isGreenCard && t.plan_name !== "БУФЕРИ" && t.plan_name !== "СВРЪХПРОИЗВОДСТВО" && t.plan_id !== "СВРЪХПРОИЗВОДСТВО") return 2;
           if (t.isProba) return 3;
-
-          // Tier 4: Р—РµР»РµРЅРё РєР°СЂС‚Рё (Р‘СѓС„РµСЂРё)
-          if (t.isGreenCard || t.plan_name === "Р‘РЈР¤Р•Р Р") return 4;
-
-          // Tier 5: РЎРІСЂСЉС…РїСЂРѕРёР·РІРѕРґСЃС‚РІРѕ
+          if (t.isGreenCard || t.plan_name === "БУФЕРИ") return 4;
           return 5;
       }
-
       globalTasks.sort((a, b) => {
           // 1. РџРѕРµС‚РёС‚Рµ РѕС‚ РѕРїРµСЂР°С‚РѕСЂР° Р·Р°РґР°С‡Рё (РІ РїСЂРѕС†РµСЃ РЅР° СЂР°Р±РѕС‚Р°) РІРёРЅР°РіРё РѕСЃС‚Р°РІР°С‚ РЅР°Р№-РѕС‚РіРѕСЂРµ
           if (a.isTaken !== b.isTaken) return a.isTaken ? -1 : 1;
 
-          // 2. РЎРўР РћР“Рђ Р™Р•Р РђР РҐРРЇ РџРћ РљРђРўР•Р“РћР РР (Р’Р°СЂРёР°РЅС‚ 1 + Р’Р°СЂРёР°РЅС‚ 3):
-          //    Tier 1: РЎРџР•РЁРќР / РџР РРћР РРўР•РўРќР РљРђР РўР (Р СЉС‡РµРЅ РїСЂРёРѕСЂРёС‚РµС‚ #1-#10 РёР»Рё РЎРїРµС€РЅРё РџСЂРѕР±Рё)
-          //    Tier 2: РЎРРќР РљРђР РўР (Р РµРґРѕРІРµРЅ РјРµСЃРµС‡РµРЅ РїСЂРѕРёР·РІРѕРґСЃС‚РІРµРЅ РїР»Р°РЅ)
-          //    Tier 3: Р›РР›РђР’Р РљРђР РўР (РЎС‚Р°РЅРґР°СЂС‚РЅРё R&D РџСЂРѕР±Рё)
-          //    Tier 4: Р—Р•Р›Р•РќР РљРђР РўР (Р‘СѓС„РµСЂРё)
-          //    Tier 5: РЎРІСЂСЉС…РїСЂРѕРёР·РІРѕРґСЃС‚РІРѕ
+          // 2. РЎРўР РћР“Рђ Р™Р•Р РђР РҐРРЇ РџРћ РљРђРўР•Р“РћР РР:
+          //    Tier 1: РЎРРќР РљРђР РўР (РњРµСЃРµС‡РµРЅ РїР»Р°РЅ / Р РµРґРѕРІРЅРѕ РїСЂРѕРёР·РІРѕРґСЃС‚РІРѕ)
+          //    Tier 2: Р›РР›РђР’Р РљРђР РўР (РџСЂРѕР±Рё)
+          //    Tier 3: Р—Р•Р›Р•РќР РљРђР РўР (Р‘СѓС„РµСЂРё)
+          //    Tier 4: РЎРІСЂСЉС…РїСЂРѕРёР·РІРѕРґСЃС‚РІРѕ
           let tierA = getCardTier(a);
           let tierB = getCardTier(b);
           if (tierA !== tierB) return tierA - tierB;
 
-          // 3. Р СЉС‡РµРЅ РїСЂРёРѕСЂРёС‚РµС‚ (РІ СЂР°РјРєРёС‚Рµ РЅР° СЃСЉС‰Р°С‚Р° РєР°С‚РµРіРѕСЂРёСЏ)
+          // 3. Р СЉС‡РµРЅ РїСЂРёРѕСЂРёС‚РµС‚ РѕС‚ РўР°Р±Р»РѕС‚Рѕ РїРѕ РјР°С€РёРЅРё (РІ СЂР°РјРєРёС‚Рµ РЅР° СЃСЉС‰Р°С‚Р° РєР°С‚РµРіРѕСЂРёСЏ)
           let aPrio = (a.manualPriority !== null && a.manualPriority !== undefined && a.manualPriority <= 10) ? a.manualPriority : 9999;
           let bPrio = (b.manualPriority !== null && b.manualPriority !== undefined && b.manualPriority <= 10) ? b.manualPriority : 9999;
           if (aPrio !== bPrio) return aPrio - bPrio;
@@ -1578,13 +1567,13 @@ function renderTasks(tasks) {
     let badgeStyle = t.isGreenCard ? 'background-color:#16a34a;' : '';
     let actionButtonBg = '#2563eb';
     let actionButtonShadow = 'rgba(37, 99, 235, 0.2)';
-    let transferBadgeHtml = (t.isTransferred && t.origMachineDisplay) ? `<span class="plan-label" style="background:#f3e8ff; color:#7e22ce; border:1px solid #d8b4fe; font-weight:900; margin-right:6px;">рџ”„ РџР Р•РҐР’РЄР Р›Р•РќРђ РћРў ${t.origMachineDisplay}</span>` : '';
+    let transferBadgeHtml = (t.isTransferred && t.origMachineDisplay) ? `<span class="plan-label" style="background:#f3e8ff; color:#7e22ce; border:1px solid #d8b4fe; font-weight:900; margin-right:6px;">🔄 ПРЕХВЪРЛЕНА ОТ ${t.origMachineDisplay}</span>` : '';
     let hasManualPrio = (t.manualPriority !== null && t.manualPriority !== undefined && t.manualPriority <= 10);
-    let priorityBadgeHtml = hasManualPrio ? `<span class="plan-label" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-weight:900; margin-right:6px;">в­ђ РџР РРћР РРўР•Рў #${t.manualPriority}</span>` : '';
-    let urgentProbaBadgeHtml = (t.isProba && t.isUrgent) ? `<span class="plan-label" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-weight:900; margin-right:6px; box-shadow:0 2px 4px rgba(185,28,28,0.25);">вљЎ РЎРџР•РЁРќРђ РџР РћР‘Рђ</span>` : '';
+    let priorityBadgeHtml = hasManualPrio ? `<span class="plan-label" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-weight:900; margin-right:6px;">⭐ ПРИОРИТЕТ #${t.manualPriority}</span>` : '';
+    let urgentProbaBadgeHtml = (t.isProba && t.isUrgent) ? `<span class="plan-label" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-weight:900; margin-right:6px; box-shadow:0 2px 4px rgba(185,28,28,0.25);">⚡ СПЕШНА ПРОБА</span>` : '';
     let labelHtml = '';
     if (t.isGreenCard) {
-        labelHtml = priorityBadgeHtml + transferBadgeHtml + `<span class="plan-label" style="color: #16a34a;">Р—Р•Р›Р•РќРђ РљРђР РўРђ: ${t.plan_name}</span>`;
+        labelHtml = priorityBadgeHtml + transferBadgeHtml + `<span class="plan-label" style="color: #16a34a;">ЗЕЛЕНА КАРТА: ${t.plan_name}</span>`;
     } else if (t.isProba) {
         if (t.isUrgent) {
             borderStyle = 'border-left: 6px solid #ef4444; background: linear-gradient(180deg, #fff5f5 0%, #fef2f2 100%);';
@@ -1597,8 +1586,7 @@ function renderTasks(tasks) {
             actionButtonBg = '#8b5cf6';
             actionButtonShadow = 'rgba(139, 92, 246, 0.3)';
         }
-        labelHtml = priorityBadgeHtml + urgentProbaBadgeHtml + transferBadgeHtml + `<span class="plan-label" style="background:#8b5cf6; color:white; font-weight:900; box-shadow:0 2px 4px rgba(139,92,246,0.3);">рџ§Є РџР РћР‘Рђ: ${t.probaName || t.plan_name}</span>`;
-    }
+        labelHtml = priorityBadgeHtml + urgentProbaBadgeHtml + transferBadgeHtml + `<span class="plan-label" style="background:#8b5cf6; color:white; font-weight:900; box-shadow:0 2px 4px rgba(139,92,246,0.3);">🧪 ПРОБА: ${t.probaName || t.plan_name}</span>`;
     } else if (t.plan_name === 'КОМПОНЕНТ') {
         labelHtml = priorityBadgeHtml + transferBadgeHtml + `<span class="plan-label">КОМПОНЕНТ</span>`;
     } else {

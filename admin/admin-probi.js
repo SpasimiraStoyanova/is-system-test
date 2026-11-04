@@ -346,7 +346,7 @@ async function openCreateProbaModal() {
 }
 
 window.toggleProbaUrgent = async function(probaId, makeUrgent) {
-    let proba = rawProbiList.find(p => p.id === probaId);
+    let proba = probiCache.find(p => p.id === probaId);
     if (!proba) return;
     let cleanNotes = (proba.notes || '').replace(/\[СПЕШНА\]\s*/g, '').trim();
     let newNotes = makeUrgent ? ('[СПЕШНА] ' + cleanNotes).trim() : cleanNotes;

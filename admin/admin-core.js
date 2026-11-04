@@ -12,7 +12,7 @@ let globalActivePlansForDropdown = [];
 let globalColumnFilters = {};
 
 function initializeApp() { 
-    client.from('plan').select('id, Вътрешно име').in('Статус', ['Активен']).then(res => {
+    client.from('plan').select('id, "Вътрешно име"').in('Статус', ['Активен']).then(res => {
         if (res.data) globalActivePlansForDropdown = res.data;
     });
     buildNavbar(); loadCurrentTableData(); runInvisibleAutoCheckout(); loadFormDatalists();
@@ -35,7 +35,7 @@ document.addEventListener('click', (e) => {
 });
 
 function loadFormDatalists() {
-    client.from('Номенклатура').select('ID Детайл, Вътрешно име').limit(10000).then(res => {
+    client.from('Номенклатура').select('"ID Детайл", "Вътрешно име"').limit(10000).then(res => {
         if (res.data) {
             const dl = document.getElementById('dl_nomenklatura');
             if (dl) {
