@@ -174,7 +174,8 @@ function pauseTaskDOM(taskId) {
 
 
 async function finishTask(taskId, btn) {
-  let startTime = window['startTime_' + taskId];
+  let taskData = globalTasks.find(t => t.id === taskId);
+  let startTime = window['startTime_' + taskId] || (taskData && taskData.startedAt);
   if (startTime) {
       let diffSeconds = (new Date() - new Date(startTime)) / 1000;
       if (diffSeconds < 5) {
@@ -274,7 +275,7 @@ async function finishTask(taskId, btn) {
           }
       }
 
-      let startedAt = window['startTime_' + taskId] || new Date().toISOString();
+      let startedAt = window['startTime_' + taskId] || (taskData && taskData.startedAt) || new Date().toISOString();
       let inserts = [];
       if (taskData.scrapAllowance && taskData.scrapAllowance > 0 && val > taskData.pureQty) {
           let excess = val - taskData.pureQty;
@@ -298,7 +299,7 @@ async function finishTask(taskId, btn) {
       Swal.fire({ icon: 'success', title: 'Браво!', text: 'Отчетени: ' + val + ' бр.', timer: 1500, showConfirmButton: false }).then(() => { loadTasks(); });
       } catch(err) { 
           if (!navigator.onLine || err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('fetch')) {
-              let startedAt = window['startTime_' + taskId] || new Date().toISOString();
+              let startedAt = window['startTime_' + taskId] || (taskData && taskData.startedAt) || new Date().toISOString();
               let inserts = [];
               if (taskData.scrapAllowance && taskData.scrapAllowance > 0 && val > taskData.pureQty) {
                   let excess = val - taskData.pureQty;
@@ -606,7 +607,7 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
             }
         }
 
-        let startedAt = window['startTime_' + taskData.id] || new Date().toISOString();
+        let startedAt = window['startTime_' + taskData.id] || (taskData && taskData.startedAt) || new Date().toISOString();
         let inserts = [{ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt }];
 
         allChildren.forEach(child => {
@@ -632,7 +633,7 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
         addLogToHistory('БРАК', val, taskData.id); Swal.close(); activeTaskId = null; loadTasks();
     } catch(err) { 
         if (!navigator.onLine || err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('fetch')) {
-            let startedAt = window['startTime_' + taskData.id] || new Date().toISOString();
+            let startedAt = window['startTime_' + taskData.id] || (taskData && taskData.startedAt) || new Date().toISOString();
             let inserts = [{ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt }];
             allChildren.forEach(child => {
                 let cName = String(child['ID Компонент']).trim();

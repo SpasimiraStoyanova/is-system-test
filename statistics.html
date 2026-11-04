@@ -9,7 +9,7 @@
   <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-  <script src="statistics.js?v=5" defer></script>
+  <script src="statistics.js?v=6" defer></script>
   <style>
     body {
       background: #0f172a;
@@ -205,6 +205,11 @@
       <label for="date-to">До:</label>
       <input type="date" id="date-to">
       
+      <label for="operator-filter">Служител:</label>
+      <select id="operator-filter" onchange="applyOperatorFilter()" style="padding: 7px 12px; background: #334155; border: 1px solid #475569; border-radius: 4px; color: #f8fafc; font-family: 'Sofia Sans', sans-serif; font-size: 0.95em; outline: none; cursor: pointer;">
+        <option value="ALL">Всички служители</option>
+      </select>
+      
       <button class="btn-apply" onclick="fetchAndRenderData()">Приложи филтър</button>
       <button class="btn-apply" onclick="exportStatsToExcel()" style="background:#10b981; color:white;" title="Свали справката в Excel">📥 Excel</button>
     </div>
@@ -215,11 +220,15 @@
     <div style="display: flex; gap: 20px; flex-direction: row; margin-top: 0px; flex-wrap: wrap;">
       <!-- Summary Table -->
       <div class="timeline-wrapper" style="flex: 1.2; min-width: 380px; max-width: 650px;">
-        <div class="timeline-header">
-          <span>Справка по Детайли &amp; Нормовремена</span>
+        <div class="timeline-header" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>Справка Нормовремена</span>
+          <div style="display: flex; gap: 6px; font-size: 0.75em; text-transform: none;">
+            <button id="btnViewDetail" onclick="setViewMode('detail')" style="background: #38bdf8; color: #0f172a; border: none; padding: 5px 10px; border-radius: 4px; font-weight: 800; cursor: pointer;">Обобщено</button>
+            <button id="btnViewOperator" onclick="setViewMode('operator')" style="background: #334155; color: #94a3b8; border: none; padding: 5px 10px; border-radius: 4px; font-weight: 800; cursor: pointer;">По служители</button>
+          </div>
         </div>
         <table class="summary-table" style="font-size: 0.95em;">
-          <thead>
+          <thead id="summary-thead">
             <tr>
               <th>Детайл</th>
               <th>Операция</th>

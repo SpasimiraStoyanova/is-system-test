@@ -17,6 +17,32 @@ function init() {
 }
 
 let lastComputedStats = [];
+let rawOtchetiData = [];
+let currentNormsMap = {};
+let currentViewMode = 'detail'; // 'detail' | 'operator'
+let selectedOperator = 'ALL';
+
+function setViewMode(mode) {
+    currentViewMode = mode;
+    let btnDet = document.getElementById('btnViewDetail');
+    let btnOp = document.getElementById('btnViewOperator');
+    if (btnDet && btnOp) {
+        if (mode === 'detail') {
+            btnDet.style.background = '#38bdf8'; btnDet.style.color = '#0f172a';
+            btnOp.style.background = '#334155'; btnOp.style.color = '#94a3b8';
+        } else {
+            btnOp.style.background = '#38bdf8'; btnOp.style.color = '#0f172a';
+            btnDet.style.background = '#334155'; btnDet.style.color = '#94a3b8';
+        }
+    }
+    renderCurrentView();
+}
+
+function applyOperatorFilter() {
+    let opSelect = document.getElementById('operator-filter');
+    selectedOperator = opSelect ? opSelect.value : 'ALL';
+    renderCurrentView();
+}
 
 async function fetchAndRenderData() {
     let dateFrom = document.getElementById('date-from').value;
@@ -29,7 +55,7 @@ async function fetchAndRenderData() {
     
     document.getElementById('loading').style.display = 'flex';
     
-    // Convert to ISO range covering full days in UTC relative to local (naive but good enough for general range)
+    // Convert to ISO range covering full days in UTC relative to local
     let startIso = new Date(dateFrom + 'T00:00:00').toISOString();
     let endIso = new Date(dateTo + 'T23:59:59').toISOString();
     
@@ -46,15 +72,32 @@ async function fetchAndRenderData() {
         ]);
         if (otchetiRes.error) throw otchetiRes.error;
 
-        const normsMap = {};
+        currentNormsMap = {};
         if (routesRes.data) {
             routesRes.data.forEach(r => {
                 const k = `${String(r['Код на детайла'] || '').trim()}|${String(r['Име на операция'] || '').trim()}`;
-                if (r['Норма (мин/бр)']) normsMap[k] = parseFloat(r['Норма (мин/бр)']);
+                if (r['Норма (мин/бр)']) currentNormsMap[k] = parseFloat(r['Норма (мин/бр)']);
             });
         }
         
-        processAndRender(otchetiRes.data, normsMap);
+        rawOtchetiData = otchetiRes.data || [];
+
+        // Обновяване на списъка със служители в падащото меню
+        let opSelect = document.getElementById('operator-filter');
+        let currentSelected = opSelect ? opSelect.value : 'ALL';
+        let uniqueOps = [...new Set(rawOtchetiData.map(r => String(r['Оператор'] || 'Неизвестен').trim()).filter(Boolean))].sort();
+
+        let opHtml = '<option value="ALL">Всички служители</option>';
+        uniqueOps.forEach(op => {
+            let sel = (op === currentSelected) ? 'selected' : '';
+            opHtml += `<option value="${op}" ${sel}>${op}</option>`;
+        });
+        if (opSelect) {
+            opSelect.innerHTML = opHtml;
+            selectedOperator = opSelect.value;
+        }
+
+        renderCurrentView();
     } catch(err) {
         alert("Грешка при зареждане на данните: " + err.message);
     } finally {
@@ -62,10 +105,15 @@ async function fetchAndRenderData() {
     }
 }
 
-function processAndRender(data, normsMap = {}) {
+function renderCurrentView() {
+    let data = rawOtchetiData;
+    if (selectedOperator && selectedOperator !== 'ALL') {
+        data = data.filter(r => String(r['Оператор'] || '').trim() === selectedOperator);
+    }
+
     let totalQty = 0;
     let totalDurationMs = 0;
-    let detailStats = {};
+    let aggregatedStats = {};
     let timelineData = [];
 
     data.forEach(row => {
@@ -121,22 +169,57 @@ function processAndRender(data, normsMap = {}) {
         totalQty += qty;
         totalDurationMs += durationMs;
         
-        let detailKey = `${detail}|${operation}`;
-        if(!detailStats[detailKey]) {
-            detailStats[detailKey] = { detail: detail, operation: operation, qty: 0, durationMs: 0 };
+        let statKey = (currentViewMode === 'operator') 
+            ? `${opName}|||${detail}|||${operation}`
+            : `${detail}|||${operation}`;
+
+        if(!aggregatedStats[statKey]) {
+            aggregatedStats[statKey] = {
+                operator: opName,
+                detail: detail,
+                operation: operation,
+                qty: 0,
+                durationMs: 0
+            };
         }
-        detailStats[detailKey].qty += qty;
-        detailStats[detailKey].durationMs += durationMs;
+        aggregatedStats[statKey].qty += qty;
+        aggregatedStats[statKey].durationMs += durationMs;
     });
 
-    
+    // Update Table Header
+    let thead = document.getElementById('summary-thead');
+    if (thead) {
+        if (currentViewMode === 'operator') {
+            thead.innerHTML = `
+                <tr>
+                    <th>Служител</th>
+                    <th>Детайл</th>
+                    <th>Операция</th>
+                    <th>Бройки</th>
+                    <th>Общо време</th>
+                    <th>Средно / Норма</th>
+                </tr>
+            `;
+        } else {
+            thead.innerHTML = `
+                <tr>
+                    <th>Детайл</th>
+                    <th>Операция</th>
+                    <th>Бройки</th>
+                    <th>Общо време</th>
+                    <th>Средно / Норма</th>
+                </tr>
+            `;
+        }
+    }
+
     // Render Summary Table
     let tbody = document.getElementById('summary-tbody');
     tbody.innerHTML = '';
     lastComputedStats = [];
     
-    for(let key in detailStats) {
-        let stat = detailStats[key];
+    for(let key in aggregatedStats) {
+        let stat = aggregatedStats[key];
         
         let tMin = Math.floor(stat.durationMs / 60000);
         let th = Math.floor(tMin / 60);
@@ -148,7 +231,8 @@ function processAndRender(data, normsMap = {}) {
 
         let avgMinStr = '-';
         let avgNumber = null;
-        let normVal = normsMap[key] || null;
+        let normKey = `${stat.detail}|${stat.operation}`;
+        let normVal = currentNormsMap[normKey] || null;
 
         if (stat.qty > 0 && stat.durationMs > 0) {
             avgNumber = (stat.durationMs / 60000) / stat.qty;
@@ -162,23 +246,37 @@ function processAndRender(data, normsMap = {}) {
             }
         }
 
-        lastComputedStats.push({
-            'Детайл': stat.detail,
-            'Операция': stat.operation,
-            'Количество (бр.)': stat.qty,
-            'Общо време': timeStr,
-            'Средно време (мин/бр)': avgNumber ? parseFloat(avgNumber.toFixed(2)) : '',
-            'Норма (мин/бр)': normVal || ''
-        });
+        let exportRow = {};
+        if (currentViewMode === 'operator') {
+            exportRow['Служител'] = stat.operator;
+        }
+        exportRow['Детайл'] = stat.detail;
+        exportRow['Операция'] = stat.operation;
+        exportRow['Количество (бр.)'] = stat.qty;
+        exportRow['Общо време'] = timeStr;
+        exportRow['Средно време (мин/бр)'] = avgNumber ? parseFloat(avgNumber.toFixed(2)) : '';
+        exportRow['Норма (мин/бр)'] = normVal || '';
+        lastComputedStats.push(exportRow);
         
         let tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><strong>${stat.detail}</strong></td>
-            <td>${stat.operation}</td>
-            <td style="color:#10b981; font-weight:900;">${stat.qty} бр.</td>
-            <td style="color:#f59e0b; font-weight:600;">${timeStr}</td>
-            <td style="font-weight:700;">${avgMinStr}</td>
-        `;
+        if (currentViewMode === 'operator') {
+            tr.innerHTML = `
+                <td><strong style="color:#38bdf8;">${stat.operator}</strong></td>
+                <td><strong>${stat.detail}</strong></td>
+                <td>${stat.operation}</td>
+                <td style="color:#10b981; font-weight:900;">${stat.qty} бр.</td>
+                <td style="color:#f59e0b; font-weight:600;">${timeStr}</td>
+                <td style="font-weight:700;">${avgMinStr}</td>
+            `;
+        } else {
+            tr.innerHTML = `
+                <td><strong>${stat.detail}</strong></td>
+                <td>${stat.operation}</td>
+                <td style="color:#10b981; font-weight:900;">${stat.qty} бр.</td>
+                <td style="color:#f59e0b; font-weight:600;">${timeStr}</td>
+                <td style="font-weight:700;">${avgMinStr}</td>
+            `;
+        }
         tbody.appendChild(tr);
     }
     

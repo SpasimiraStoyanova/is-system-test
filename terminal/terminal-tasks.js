@@ -399,7 +399,7 @@ async function loadTasks(isSilent = false) {
           }
           else if (r['Статус'] === 'Започната') {
               if (String(r['Оператор']).trim() === currentOperator.trim() && takenOps[key] === undefined) {
-                  takenOps[key] = { isTaken: true, planId: (r['ID План'] !== null && r['ID План'] !== undefined ? String(r['ID План']).trim() : ''), isBuffer: (!r['ID План'] || String(r['ID План']).trim() === '' || String(r['ID План']).toLowerCase() === 'null'), isProba: String(r['ID План'] || '').startsWith('PROBA_') };
+                  takenOps[key] = { isTaken: true, planId: (r['ID План'] !== null && r['ID План'] !== undefined ? String(r['ID План']).trim() : ''), isBuffer: (!r['ID План'] || String(r['ID План']).trim() === '' || String(r['ID План']).toLowerCase() === 'null'), isProba: String(r['ID План'] || '').startsWith('PROBA_'), startTime: (r['Време Старт'] || r['Дата'] || new Date().toISOString()) };
                   activeDangling.push(r);
               }
           }
@@ -890,6 +890,11 @@ async function loadTasks(isSilent = false) {
                               } else if (typeSuffix === '_blue') {
                                   thisCardIsTaken = cardIsTakenForPlan;
                               }
+                              let currentStartTime = null;
+                              if (thisCardIsTaken) {
+                                  currentStartTime = window['startTime_' + safeIdBase + typeSuffix] || (takenInfo && takenInfo.startTime) || new Date().toISOString();
+                                  window['startTime_' + safeIdBase + typeSuffix] = currentStartTime;
+                              }
 
                               // 1. Scrap cards: NEVER create if shortage <= 0
                               if (isScrapOnlyCard && shortage <= 0) return;
@@ -985,7 +990,7 @@ async function loadTasks(isSilent = false) {
                                   dropoff: route['Инструкция за оставяне'],
                                   defaultQty: targetInput, maxAllowed: displayMaxAllowedForThis, realMaxAllowed: realMaxAllowedForThis, hasLimit: hasLimit, isBlocked: isBlocked, blockingReasons: blockingReasons, 
                                   totalNeed: shortage, pureQty: isScrapOnlyCard ? 0 : shortage, scrapAllowance: isScrapOnlyCard ? shortage : 0,
-                                  totalDone: totalDone, totalScrapped: 0, isTaken: thisCardIsTaken, isGreenCard: (pNameOverride === 'БУФЕРИ'),
+                                  totalDone: totalDone, totalScrapped: 0, isTaken: thisCardIsTaken, isGreenCard: (pNameOverride === 'БУФЕРИ'), startedAt: currentStartTime,
                                   globalGrossAtLoad: 0, globalScrapAtLoad: 0,
                                   itemsToFetch: itemsToFetch,
                                   hasPrevOp: hasPrevOp,
