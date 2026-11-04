@@ -218,14 +218,26 @@ function renderProbaCard(proba) {
         `;
     }
 
+    let isUrgent = (proba.is_urgent === true || (proba.notes && proba.notes.includes('[СПЕШНА]')) || (proba.notes && proba.notes.toLowerCase().includes('спешн')));
+
     return `
-        <div style="background: white; border-radius: 12px; border: 2px solid ${cardBorder}; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between;">
+        <div style="background: white; border-radius: 12px; border: 2px solid ${isUrgent ? '#ef4444' : cardBorder}; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between;">
             <div>
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-                    <span style="font-size:1.15rem; font-weight:800; color:#1e293b; line-height:1.3;">${proba.name}</span>
-                    <span style="background:${statusBg}; color:white; padding:3px 9px; border-radius:20px; font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; margin-left:8px;">
-                        ${statusIcon} ${statusText}
-                    </span>
+                    <div>
+                        <span style="font-size:1.15rem; font-weight:800; color:#1e293b; line-height:1.3;">${proba.name}</span>
+                        ${isUrgent ? `<span style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:900; margin-left:8px; display:inline-block;">⚡ СПЕШНА (ТОП ПРИОРИТЕТ)</span>` : ''}
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        ${(proba.status === 'Чернова' || proba.status === 'В производство') ? `
+                            <button type="button" onclick="toggleProbaUrgent(${proba.id}, ${!isUrgent})" style="background:${isUrgent ? '#fee2e2' : '#f1f5f9'}; color:${isUrgent ? '#b91c1c' : '#475569'}; border:1px solid ${isUrgent ? '#fca5a5' : '#cbd5e1'}; padding:3px 8px; border-radius:14px; font-size:0.75rem; font-weight:800; cursor:pointer;" title="${isUrgent ? 'Премахни спешен приоритет' : 'Направи СПЕШНА (излиза начело в цеха)'}">
+                                ${isUrgent ? '⚡ Спешна' : '☆ Направи Спешна'}
+                            </button>
+                        ` : ''}
+                        <span style="background:${statusBg}; color:white; padding:3px 9px; border-radius:20px; font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">
+                            ${statusIcon} ${statusText}
+                        </span>
+                    </div>
                 </div>
 
                 <div style="display:flex; gap:14px; font-size:0.88rem; color:#475569; margin-bottom:12px; font-weight:600;">
@@ -233,7 +245,7 @@ function renderProbaCard(proba) {
                     ${createdDate ? `<span style="color:#64748b;">📅 Създадена: ${createdDate}</span>` : ''}
                 </div>
 
-                ${proba.notes ? `<div style="background:#f8fafc; border-left:3px solid #7c3aed; padding:6px 10px; font-size:0.83rem; color:#475569; border-radius:4px; margin-bottom:12px;">${proba.notes}</div>` : ''}
+                ${proba.notes ? `<div style="background:#f8fafc; border-left:3px solid ${isUrgent ? '#ef4444' : '#7c3aed'}; padding:6px 10px; font-size:0.83rem; color:#475569; border-radius:4px; margin-bottom:12px;">${proba.notes}</div>` : ''}
 
                 <div style="margin-bottom:14px;">
                     <div style="font-size:0.8rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:5px;">
@@ -274,6 +286,11 @@ async function openCreateProbaModal() {
                 <label style="display:block; font-weight:700; margin-bottom:4px; color:#1e293b;">Целева бройка за изработка *</label>
                 <input id="swalProbaQty" type="number" min="1" value="1" class="swal2-input" placeholder="напр. 5" style="width:100%; box-sizing:border-box; margin:0 0 14px 0;">
 
+                <label style="display:flex; align-items:center; gap:8px; font-weight:700; margin:10px 0 12px 0; color:#b91c1c; cursor:pointer;">
+                    <input type="checkbox" id="swalProbaUrgent" style="width:18px; height:18px; cursor:pointer;">
+                    <span>⚡ Спешна проба (Топ приоритет в цеха - изпреварва серийния план)</span>
+                </label>
+
                 <label style="display:block; font-weight:700; margin-bottom:4px; color:#1e293b;">Бележки и цел на изпитанието (по избор)</label>
                 <textarea id="swalProbaNotes" class="swal2-textarea" placeholder="Особености, специални хлабини, изисквания към инженерите..." style="width:100%; box-sizing:border-box; margin:0; height:80px;"></textarea>
             </div>
@@ -287,7 +304,8 @@ async function openCreateProbaModal() {
         preConfirm: () => {
             const name = document.getElementById('swalProbaName').value.trim();
             const qty = parseFloat(document.getElementById('swalProbaQty').value);
-            const notes = document.getElementById('swalProbaNotes').value.trim();
+            let notes = document.getElementById('swalProbaNotes').value.trim();
+            const isUrgent = document.getElementById('swalProbaUrgent').checked;
 
             if (!name) {
                 Swal.showValidationMessage('Моля, въведете име на пробата!');
@@ -296,6 +314,9 @@ async function openCreateProbaModal() {
             if (isNaN(qty) || qty <= 0) {
                 Swal.showValidationMessage('Въведете валидна целева бройка!');
                 return false;
+            }
+            if (isUrgent) {
+                notes = ('[СПЕШНА] ' + notes).trim();
             }
             return { name, target_qty: qty, notes };
         }
@@ -323,6 +344,28 @@ async function openCreateProbaModal() {
         }
     }
 }
+
+window.toggleProbaUrgent = async function(probaId, makeUrgent) {
+    let proba = rawProbiList.find(p => p.id === probaId);
+    if (!proba) return;
+    let cleanNotes = (proba.notes || '').replace(/\[СПЕШНА\]\s*/g, '').trim();
+    let newNotes = makeUrgent ? ('[СПЕШНА] ' + cleanNotes).trim() : cleanNotes;
+
+    Swal.fire({ title: 'Обновяване на статус...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    try {
+        const { error } = await client.from('probi').update({ notes: newNotes || null }).eq('id', probaId);
+        if (error) throw error;
+        await fetchProbiData(true);
+        buildProbiUI();
+        const toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+        toast.fire({
+            icon: makeUrgent ? 'warning' : 'info',
+            title: makeUrgent ? '⚡ Пробата е маркирана като СПЕШНА! В Терминала ще застане начело.' : 'Спешният приоритет на пробата беше премахнат.'
+        });
+    } catch (err) {
+        Swal.fire('Грешка', err.message, 'error');
+    }
+};
 
 // --- CONSTRUCTOR MODAL WITH HIERARCHICAL SUB-COMPONENTS ---
 async function openProbiConstructorModal(probaId) {

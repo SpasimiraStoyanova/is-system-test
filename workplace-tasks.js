@@ -642,7 +642,7 @@ function calculateAllMachineTasks() {
             // Check saved priority
             let prioKey = normalize(effectiveMachine) + '||' + detailCode + '||' + opNum;
             let savedPrio = priorityMap[prioKey];
-            let priorityOrder = savedPrio ? savedPrio.order : 999;
+            let priorityOrder = (savedPrio && savedPrio.order <= 10) ? savedPrio.order : null;
             let notes = savedPrio ? savedPrio.notes : (transferInfo ? transferInfo.notes : '');
 
             machineTasksMap[effectiveMachine].push({
@@ -666,7 +666,7 @@ function calculateAllMachineTasks() {
                 status: status,
                 priority_order: priorityOrder,
                 notes: notes,
-                has_custom_priority: !!savedPrio
+                has_custom_priority: (priorityOrder !== null)
             });
         });
     });
@@ -675,16 +675,14 @@ function calculateAllMachineTasks() {
     Object.keys(machineTasksMap).forEach(m => {
         let list = machineTasksMap[m];
         list.sort((a, b) => {
-            if (a.priority_order !== b.priority_order) return a.priority_order - b.priority_order;
+            let aPrio = (a.priority_order !== null && a.priority_order !== undefined) ? a.priority_order : 999;
+            let bPrio = (b.priority_order !== null && b.priority_order !== undefined) ? b.priority_order : 999;
+            if (aPrio !== bPrio) return aPrio - bPrio;
             if (a.status === 'ready' && b.status !== 'ready') return -1;
             if (b.status === 'ready' && a.status !== 'ready') return 1;
             if (a.remain_qty > 0 && b.remain_qty <= 0) return -1;
             if (b.remain_qty > 0 && a.remain_qty <= 0) return 1;
             return a.op_num - b.op_num;
-        });
-
-        list.forEach((t, i) => {
-            t.priority_order = i + 1;
         });
     });
 }
@@ -782,7 +780,8 @@ function renderAllMachines() {
             `;
         } else {
             visibleTasks.forEach(t => {
-                let isTop3 = (t.priority_order <= 3);
+                let hasPrio = (t.priority_order !== null && t.priority_order !== undefined && t.priority_order <= 10);
+                let isTop3 = hasPrio && (t.priority_order <= 3);
                 let statusClass = `status-${t.status}`;
                 let statusPill = '';
                 if (t.status === 'ready') {
@@ -833,7 +832,10 @@ function renderAllMachines() {
                         data-op="${t.op_num}">
                         
                         <div class="task-left">
-                            <span class="prio-badge ${isTop3 ? 'top-3' : ''}">${t.priority_order}</span>
+                            ${hasPrio 
+                                ? `<span class="prio-badge top-3" onclick="clearTaskPriority('${escapeHtml(machineName)}', '${escapeHtml(t.detail_id)}', ${t.op_num})" title="Приоритет #${t.priority_order} (Кликнете за премахване)" style="cursor:pointer;">⭐ ${t.priority_order}</span>` 
+                                : `<span class="prio-badge" onclick="setTaskPriorityPrompt('${escapeHtml(machineName)}', '${escapeHtml(t.detail_id)}', ${t.op_num})" title="Задай приоритет за тази задача" style="opacity:0.4; background:#94a3b8; cursor:pointer;">☆</span>`
+                            }
                             <span class="drag-handle" title="Хванете и преместете с мишката">⋮⋮</span>
                             ${quickTransferBtn}
                         </div>
@@ -932,9 +934,6 @@ function handleTaskTransferred(detailId, opNum, fromMachine, toMachine) {
     }
     toList.push(task);
 
-    fromList.forEach((t, i) => t.priority_order = i + 1);
-    toList.forEach((t, i) => t.priority_order = i + 1);
-
     if (!window.tasksMovedLocations) window.tasksMovedLocations = [];
     window.tasksMovedLocations.push({ fromMachine: fromMachine, detail_id: detailId, op_num: opNum });
 
@@ -1003,20 +1002,12 @@ function reindexMachineTasks(machineName, listEl) {
         let op = parseInt(el.getAttribute('data-op'));
         let task = machineTasks.find(t => t.detail_id === detail && t.op_num === op);
         if (task) {
-            task.priority_order = index + 1;
             newOrderList.push(task);
-            const badge = el.querySelector('.prio-badge');
-            if (badge) {
-                badge.innerText = task.priority_order;
-                if (task.priority_order <= 3) badge.classList.add('top-3');
-                else badge.classList.remove('top-3');
-            }
         }
     });
 
     machineTasks.forEach(t => {
         if (!newOrderList.includes(t)) {
-            t.priority_order = newOrderList.length + 1;
             newOrderList.push(t);
         }
     });
@@ -1024,6 +1015,83 @@ function reindexMachineTasks(machineName, listEl) {
     machineTasksMap[machineName] = newOrderList;
     setSaveStatus(true);
 }
+
+window.setTaskPriorityPrompt = async function(machineName, detailId, opNum) {
+    let list = machineTasksMap[machineName] || [];
+    let task = list.find(t => t.detail_id === detailId && t.op_num === opNum);
+    if (!task) return;
+
+    const { value: prio } = await Swal.fire({
+        title: '⭐ Задаване на Приоритет',
+        html: `
+            <div style="text-align:left; font-size:0.95em; color:#334155;">
+                <p>Детайл: <b>${escapeHtml(task.detail_name)}</b> (${escapeHtml(task.detail_id)})</p>
+                <p>Операция: <b>Оп. ${task.op_num} - ${escapeHtml(task.op_name)}</b></p>
+                <p>Машина: <b>${escapeHtml(machineName)}</b></p>
+                <label style="display:block; margin-top:12px; font-weight:700;">Изберете приоритет (1 - най-висок):</label>
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                    <button type="button" class="swal2-confirm swal2-styled" onclick="document.getElementById('swalPrioVal').value=1; Swal.clickConfirm();" style="flex:1; background:#dc2626; margin:0;">⭐ #1 (Топ)</button>
+                    <button type="button" class="swal2-confirm swal2-styled" onclick="document.getElementById('swalPrioVal').value=2; Swal.clickConfirm();" style="flex:1; background:#ea580c; margin:0;">⭐ #2</button>
+                    <button type="button" class="swal2-confirm swal2-styled" onclick="document.getElementById('swalPrioVal').value=3; Swal.clickConfirm();" style="flex:1; background:#d97706; margin:0;">⭐ #3</button>
+                </div>
+                <div style="margin-top:12px;">
+                    <label style="font-size:0.85em; color:#64748b;">Или въведете число (1-10):</label>
+                    <input id="swalPrioVal" type="number" min="1" max="10" value="1" class="swal2-input" style="width:100%; box-sizing:border-box; margin:4px 0 0 0;">
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Задай',
+        cancelButtonText: 'Отказ',
+        preConfirm: () => {
+            let val = parseInt(document.getElementById('swalPrioVal').value);
+            if (isNaN(val) || val < 1) val = 1;
+            return val;
+        }
+    });
+
+    if (prio !== undefined) {
+        task.priority_order = prio;
+        task.has_custom_priority = true;
+        setSaveStatus(true);
+        list.sort((a, b) => {
+            let aPrio = (a.priority_order !== null && a.priority_order !== undefined) ? a.priority_order : 999;
+            let bPrio = (b.priority_order !== null && b.priority_order !== undefined) ? b.priority_order : 999;
+            if (aPrio !== bPrio) return aPrio - bPrio;
+            return a.op_num - b.op_num;
+        });
+        renderAllMachines();
+    }
+};
+
+window.clearTaskPriority = async function(machineName, detailId, opNum) {
+    let list = machineTasksMap[machineName] || [];
+    let task = list.find(t => t.detail_id === detailId && t.op_num === opNum);
+    if (!task) return;
+
+    const { isConfirmed } = await Swal.fire({
+        title: 'Премахване на приоритет',
+        text: `Премахване на приоритет #${task.priority_order} за ${task.detail_name} (Оп. ${task.op_num})?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        confirmButtonText: 'Да, премахни',
+        cancelButtonText: 'Отказ'
+    });
+
+    if (isConfirmed) {
+        task.priority_order = null;
+        task.has_custom_priority = false;
+        setSaveStatus(true);
+        list.sort((a, b) => {
+            let aPrio = (a.priority_order !== null && a.priority_order !== undefined) ? a.priority_order : 999;
+            let bPrio = (b.priority_order !== null && b.priority_order !== undefined) ? b.priority_order : 999;
+            if (aPrio !== bPrio) return aPrio - bPrio;
+            return a.op_num - b.op_num;
+        });
+        renderAllMachines();
+    }
+};
 
 function updateTaskNotes(machineName, detailId, opNum, newNote) {
     let list = machineTasksMap[machineName];
@@ -1096,6 +1164,14 @@ async function saveAllPriorities() {
         let tasks = machineTasksMap[m] || [];
         tasks.forEach(t => {
             let noteContent = t.notes || '';
+            let hasPriority = (t.priority_order !== null && t.priority_order !== undefined && t.priority_order <= 10);
+            let isTransferred = t.is_transferred;
+            let hasNote = !!noteContent.trim();
+
+            if (!hasPriority && !isTransferred && !hasNote) {
+                return; // Do NOT save default unprioritized tasks
+            }
+
             if (t.is_transferred && t.original_machine) {
                 noteContent = `[ORIG:${t.original_machine}] ` + noteContent.replace(/\[ORIG:.*?\]\s*/g, '').trim();
                 machinesToCleanForTask.push({
@@ -1123,7 +1199,7 @@ async function saveAllPriorities() {
                 op_num: t.op_num,
                 op_name: t.op_name,
                 detail_name: t.detail_name,
-                priority_order: t.priority_order,
+                priority_order: hasPriority ? t.priority_order : 999,
                 priority_score: 0,
                 notes: noteContent.trim() || null,
                 updated_at: new Date().toISOString()
@@ -1147,14 +1223,9 @@ async function saveAllPriorities() {
         });
     }
 
-    if (allTasksToSave.length === 0) {
-        Swal.fire('Информация', 'Няма задачи за запазване в текущия период.', 'info');
-        return;
-    }
-
     Swal.fire({
         title: 'Запазване на промените...',
-        html: `Записване на подредбата и прехвърлянията за <b>${Object.keys(machineTasksMap).length} машини</b>...`,
+        html: `Записване на приоритетите и прехвърлянията...`,
         allowOutsideClick: false,
         didOpen: () => Swal.showLoading()
     });
@@ -1180,7 +1251,33 @@ async function saveAllPriorities() {
         }
         window.tasksMovedLocations = [];
 
-        // 2. Upsert in batches of 500
+        // 2. Clean up any cleared/removed priorities for this period
+        try {
+            const { data: existingRows } = await client
+                .from('task_priorities')
+                .select('id, machine, detail_id, op_num')
+                .eq('plan_year', selectedYear)
+                .eq('plan_month', selectedMonth);
+
+            if (existingRows && existingRows.length > 0) {
+                let idsToDelete = existingRows.filter(er => {
+                    let stillKept = allTasksToSave.some(ts => 
+                        normalize(ts.machine) === normalize(er.machine) &&
+                        normalize(ts.detail_id) === normalize(er.detail_id) &&
+                        ts.op_num === er.op_num
+                    );
+                    return !stillKept;
+                }).map(er => er.id);
+
+                if (idsToDelete.length > 0) {
+                    await client.from('task_priorities').delete().in('id', idsToDelete);
+                }
+            }
+        } catch (eClean) {
+            console.warn('Could not clean obsolete priorities:', eClean);
+        }
+
+        // 3. Upsert explicitly prioritized tasks in batches of 500
         for (let i = 0; i < allTasksToSave.length; i += 500) {
             let chunk = allTasksToSave.slice(i, i + 500);
             const { error } = await client
@@ -1204,7 +1301,9 @@ async function saveAllPriorities() {
         Swal.fire({
             icon: 'success',
             title: 'Успешно запазване!',
-            html: `Приоритетите и прехвърлянията на <b>${allTasksToSave.length} задачи</b> бяха записани.<br><small class="text-muted">Терминалите в цеха веднага отразяват промените за този месец.</small>`,
+            html: allTasksToSave.length > 0 
+                ? `Приоритетите и прехвърлянията на <b>${allTasksToSave.length} задачи</b> бяха записани.<br><small class="text-muted">Терминалите в цеха веднага отразяват промените за този месец.</small>`
+                : `Всички промени са записани.<br><small class="text-muted">Няма активни специфични приоритети.</small>`,
             confirmButtonColor: '#2563eb',
             timer: 2500
         });
