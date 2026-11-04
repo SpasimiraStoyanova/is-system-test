@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=9">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="planner-bobini.js?v=13" defer></script>
+  <script src="planner-bobini.js?v=14" defer></script>
   <style>
     :root {
       --bg-dark: #0f172a;
@@ -464,14 +464,24 @@
       padding: 20px;
       border-radius: 10px;
       width: 100%;
-      max-width: 380px;
+      max-width: 420px;
       border: 1px solid var(--border-light);
       box-shadow: 0 10px 25px rgba(0,0,0,0.6);
       box-sizing: border-box;
     }
+    .pool-modal-content {
+      max-width: 720px;
+      width: 95%;
+      height: 90vh;
+      max-height: 92vh;
+      display: flex;
+      flex-direction: column;
+      padding: 18px;
+    }
     .wizard-modal-content {
-      max-width: 580px;
-      max-height: 90vh;
+      max-width: 650px;
+      width: 95%;
+      max-height: 92vh;
       overflow-y: auto;
     }
     .wizard-chips-grid {
@@ -525,6 +535,28 @@
 
     /* Mobile Responsive Optimizations */
     @media (max-width: 900px) {
+      .modal {
+        padding: 5px !important;
+      }
+      .modal-content {
+        padding: 14px 10px !important;
+      }
+      .pool-modal-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 96vh !important;
+        max-height: 98vh !important;
+        padding: 12px 10px !important;
+        border-radius: 12px !important;
+      }
+      .wizard-modal-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 96vh !important;
+        max-height: 98vh !important;
+        padding: 14px 10px !important;
+        border-radius: 12px !important;
+      }
       .layout-wrapper {
         height: auto;
         min-height: 100vh;
@@ -838,27 +870,33 @@
 
     <!-- 4. Modal: Mobile Task Pool List -->
     <div id="task-pool-modal" class="modal" onclick="if(event.target===this) closePoolModal()">
-      <div class="modal-content" style="max-width: 550px; width: 95%; max-height: 85vh; display: flex; flex-direction: column; padding: 16px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-dark); padding-bottom:10px; margin-bottom:10px;">
-          <h3 style="margin:0; font-size:1.15em; color:#fff; display:flex; align-items:center; gap:8px;">
+      <div class="modal-content pool-modal-content">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-dark); padding-bottom:8px; margin-bottom:8px;">
+          <h3 style="margin:0; font-size:1.2em; color:#fff; display:flex; align-items:center; gap:8px;">
             📥 Свободни задачи за месеца
           </h3>
-          <button onclick="closePoolModal()" style="background:transparent; border:none; color:var(--text-muted); font-size:1.5em; cursor:pointer;">&times;</button>
+          <button onclick="closePoolModal()" style="background:transparent; border:none; color:var(--text-muted); font-size:2em; cursor:pointer; line-height:1; padding:2px 8px;">&times;</button>
+        </div>
+
+        <!-- Quick search box -->
+        <div style="margin-bottom:8px;">
+          <input type="text" id="pool-search-input" placeholder="🔍 Бързо търсене на детайл..." oninput="onPoolSearchInput(this.value)" style="width:100%; padding:9px 12px; background:#0f172a; color:#fff; border:1px solid var(--border-light); border-radius:6px; font-size:1em; box-sizing:border-box;">
         </div>
 
         <!-- Filter tabs for quick tracking -->
         <div style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;" id="pool-filter-buttons">
-          <button class="btn-micro active" id="btn-pool-filter-all" onclick="setPoolFilter('all')">Всички (<span id="pool-filter-all-count">0</span>)</button>
-          <button class="btn-micro" id="btn-pool-filter-pending" onclick="setPoolFilter('pending')" style="color:#f59e0b; border-color:rgba(245,158,11,0.4);">⏳ За залагане (<span id="pool-filter-pending-count">0</span>)</button>
-          <button class="btn-micro" id="btn-pool-filter-done" onclick="setPoolFilter('done')" style="color:#10b981; border-color:rgba(16,185,129,0.4);">✅ Заложени (<span id="pool-filter-done-count">0</span>)</button>
+          <button class="btn-micro active" id="btn-pool-filter-all" onclick="setPoolFilter('all')" style="padding:6px 12px; font-size:0.9em;">Всички (<span id="pool-filter-all-count">0</span>)</button>
+          <button class="btn-micro" id="btn-pool-filter-pending" onclick="setPoolFilter('pending')" style="padding:6px 12px; font-size:0.9em; color:#f59e0b; border-color:rgba(245,158,11,0.4);">⏳ За залагане (<span id="pool-filter-pending-count">0</span>)</button>
+          <button class="btn-micro" id="btn-pool-filter-done" onclick="setPoolFilter('done')" style="padding:6px 12px; font-size:0.9em; color:#10b981; border-color:rgba(16,185,129,0.4);">✅ Заложени (<span id="pool-filter-done-count">0</span>)</button>
         </div>
 
         <!-- Task items list (compact, clear, with status badges) -->
-        <div id="w-task-pool-modal-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:4px;">
+        <div id="w-task-pool-modal-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:2px; -webkit-overflow-scrolling:touch;">
         </div>
         
-        <div style="display:flex; justify-content:flex-end; margin-top:12px; border-top:1px solid var(--border-dark); padding-top:10px;">
-          <button class="btn-cancel" onclick="closePoolModal()">Затвори</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; border-top:1px solid var(--border-dark); padding-top:8px;">
+          <span style="font-size:0.85em; color:var(--text-muted);" id="pool-shown-count-label"></span>
+          <button class="btn-cancel" style="padding:8px 20px; font-size:0.95em;" onclick="closePoolModal()">Затвори</button>
         </div>
       </div>
     </div>

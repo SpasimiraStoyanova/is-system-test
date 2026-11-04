@@ -390,21 +390,21 @@ function renderTaskPool() {
         }
 
         return `
-            <div style="${borderStyle} ${cardBg} padding:10px 12px; border-radius:6px; border:1px solid #334155; margin-bottom:8px; box-shadow:0 2px 4px rgba(0,0,0,0.2);" draggable="true" ondragstart="dragStart(event, '${safeDetail}', '${safeOp}', ${remaining}, ${totalAssignedMonth})">
+            <div style="${borderStyle} ${cardBg} padding:11px 12px; border-radius:8px; border:1px solid #334155; margin-bottom:6px; box-shadow:0 2px 4px rgba(0,0,0,0.25);" draggable="true" ondragstart="dragStart(event, '${safeDetail}', '${safeOp}', ${remaining}, ${totalAssignedMonth})">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                    <div style="flex:1;">
-                        <div style="font-weight:bold; font-size:1.02em; color:#fff; line-height:1.2;">${item.detailName}</div>
-                        <div style="font-size:0.8em; color:#94a3b8; margin-top:2px;">${item.operationName}</div>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-weight:bold; font-size:1.05em; color:#fff; line-height:1.2; word-wrap:break-word;">${item.detailName}</div>
+                        <div style="font-size:0.82em; color:#94a3b8; margin-top:3px;">${item.operationName}</div>
                     </div>
-                    <div>${badgeHtml}</div>
+                    <div style="flex-shrink:0;">${badgeHtml}</div>
                 </div>
 
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:0.85em; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.06); padding-top:6px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:0.88em; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.08); padding-top:6px;">
                     <div>
-                        <span>Остават: <strong style="color:${remaining > 0 ? '#f59e0b' : '#10b981'}; font-size:1.05em;">${remaining} бр.</strong></span>
+                        <span>Остават: <strong style="color:${remaining > 0 ? '#f59e0b' : '#10b981'}; font-size:1.08em;">${remaining} бр.</strong></span>
                         <span style="color:#64748b; margin-left:6px; font-size:0.85em;">(План: ${planQty})</span>
                     </div>
-                    <button class="btn-micro" style="background:${isDone ? '#334155' : '#3b82f6'}; color:#fff; font-weight:bold; padding:5px 12px; font-size:0.9em;" onclick="openWizardModal('${safeDetail}', '${safeOp}'); if(${isModal}) closePoolModal();">
+                    <button class="btn-micro" style="background:${isDone ? '#334155' : '#3b82f6'}; color:#fff; font-weight:bold; padding:6px 15px; font-size:0.95em; border-radius:6px;" onclick="openWizardModal('${safeDetail}', '${safeOp}'); if(${isModal}) closePoolModal();">
                         ${isDone ? '✏️ Преразпредели' : '⚡ Заложи'}
                     </button>
                 </div>
@@ -423,8 +423,9 @@ function renderTaskPool() {
     let sidebarPool = document.getElementById('w-task-pool');
     if (sidebarPool) sidebarPool.innerHTML = sidebarHtml;
 
-    // 2. Render mobile modal list (respecting globalState.poolFilter)
+    // 2. Render mobile modal list (respecting globalState.poolFilter and globalState.poolSearchQuery)
     let currentFilter = globalState.poolFilter || 'all';
+    let qSearch = (globalState.poolSearchQuery || '').trim().toLowerCase();
     
     // Update active class on filter buttons
     ['all', 'pending', 'done'].forEach(f => {
@@ -436,8 +437,13 @@ function renderTaskPool() {
     });
 
     let filteredItems = itemsWithMeta.filter(data => {
-        if (currentFilter === 'pending') return !data.isDone;
-        if (currentFilter === 'done') return data.isDone;
+        if (currentFilter === 'pending' && data.isDone) return false;
+        if (currentFilter === 'done' && !data.isDone) return false;
+        if (qSearch) {
+            let dName = (data.item.detailName || '').toLowerCase();
+            let oName = (data.item.operationName || '').toLowerCase();
+            if (!dName.includes(qSearch) && !oName.includes(qSearch)) return false;
+        }
         return true;
     });
 
@@ -446,12 +452,17 @@ function renderTaskPool() {
         modalHtml += makeCardHtml(data, true);
     });
     if (filteredItems.length === 0) {
-        modalHtml = `<div style="color:#94a3b8; text-align:center; padding:25px; font-size:1em;">
-            ${currentFilter === 'pending' ? '🎉 Страхотно! Всички задачи по плана са напълно разпределени.' : 'Няма намерени задачи в този филтър.'}
+        modalHtml = `<div style="color:#94a3b8; text-align:center; padding:35px 20px; font-size:1em;">
+            ${qSearch ? 'Няма намерени задачи, отговарящи на търсенето.' : (currentFilter === 'pending' ? '🎉 Страхотно! Всички задачи по плана са напълно разпределени.' : 'Няма намерени задачи в този филтър.')}
         </div>`;
     }
     let modalList = document.getElementById('w-task-pool-modal-list');
     if (modalList) modalList.innerHTML = modalHtml;
+
+    let countLabel = document.getElementById('pool-shown-count-label');
+    if (countLabel) {
+        countLabel.innerText = `Показани: ${filteredItems.length} от ${allCount} задачи`;
+    }
 }
 
 // Render Weekly Board (Work week Mon - Fri)
@@ -1590,12 +1601,21 @@ window.closeTaskOptionsModal = function() {
 };
 
 window.openPoolModal = function() {
+    let searchInput = document.getElementById('pool-search-input');
+    if (searchInput) {
+        searchInput.value = globalState.poolSearchQuery || '';
+    }
     renderTaskPool();
     document.getElementById('task-pool-modal').style.display = 'flex';
 };
 
 window.closePoolModal = function() {
     document.getElementById('task-pool-modal').style.display = 'none';
+};
+
+window.onPoolSearchInput = function(query) {
+    globalState.poolSearchQuery = (query || '').trim().toLowerCase();
+    renderTaskPool();
 };
 
 window.setPoolFilter = function(filter) {
