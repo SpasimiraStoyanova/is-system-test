@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=9">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="planner-bobini.js?v=11" defer></script>
+  <script src="planner-bobini.js?v=13" defer></script>
   <style>
     :root {
       --bg-dark: #0f172a;
@@ -762,28 +762,33 @@
       </div>
     </div>
 
-    <!-- 3. Modal: Wizard for Bulk Assignment (Task-to-People) -->
+    <!-- 3. Modal: Wizard for Schedule & Capacity Planning -->
     <div id="wizard-modal" class="modal" onclick="if(event.target===this) closeWizardModal()">
       <div class="modal-content wizard-modal-content">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-dark); padding-bottom:10px; margin-bottom:12px;">
           <h3 style="margin:0; font-size:1.2em; color:#f8fafc; display:flex; align-items:center; gap:8px;">
-            ⚡ Бърз разпределител (Wizard)
+            ⚡ Планиране на Изработка & Прогноза (ETA)
           </h3>
           <button onclick="closeWizardModal()" style="background:transparent; border:none; color:var(--text-muted); font-size:1.5em; cursor:pointer; line-height:1;">&times;</button>
         </div>
 
-        <!-- Step 1: Detail Selection -->
+        <!-- Step 1: Detail & Quantity -->
         <div style="margin-bottom:12px;">
-          <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">1. Избор на Детайл / Задача</label>
+          <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">1. Избор на Детайл и Количество</label>
           <select id="wz-detail-select" onchange="onWizardDetailChange()" style="width:100%; padding:8px; background:#0f172a; color:#fff; border:1px solid var(--border-light); border-radius:6px; font-size:1em; margin-top:4px;">
           </select>
           <div id="wz-detail-info" style="font-size:0.85em; color:#38bdf8; margin-top:4px; font-weight:600;"></div>
+          
+          <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+            <input type="number" id="wz-qty-input" min="1" placeholder="Бройки за изработка..." oninput="updateWizardCalc()" style="flex:1; padding:8px; font-size:1.1em; background:#0f172a; color:#fff; border:1px solid var(--border-light); border-radius:6px;">
+            <button type="button" class="btn-micro" style="padding:8px 12px; font-size:0.9em; background:#3b82f6; color:#fff;" onclick="fillWizardRemaining()">Остатък по план</button>
+          </div>
         </div>
 
         <!-- Step 2: Operator Selection -->
         <div style="margin-bottom:12px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">2. Избор на Оператори (<span id="wz-op-count">0</span>)</label>
+            <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">2. Кои оператори ще го изработват? (<span id="wz-op-count">0</span>)</label>
             <div style="display:flex; gap:6px;">
               <button type="button" class="btn-micro" onclick="toggleAllWizardOps(true)">Всички</button>
               <button type="button" class="btn-micro" onclick="toggleAllWizardOps(false)">Изчисти</button>
@@ -792,44 +797,40 @@
           <div id="wz-ops-container" class="wizard-chips-grid"></div>
         </div>
 
-        <!-- Step 3: Days Selection -->
-        <div style="margin-bottom:12px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">3. Работни Дни (<span id="wz-day-count">0</span>)</label>
-            <div style="display:flex; gap:6px;">
-              <button type="button" class="btn-micro" onclick="setWizardDaysPreset('all')">Цялата седмица</button>
-              <button type="button" class="btn-micro" onclick="setWizardDaysPreset('today')">Днес</button>
-              <button type="button" class="btn-micro" onclick="setWizardDaysPreset('remaining')">От днес до Пт</button>
+        <!-- Step 3: Start Date and Daily Norm per Person -->
+        <div style="margin-bottom:12px; background:#0f172a; padding:12px; border-radius:8px; border:1px solid var(--border-dark);">
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:140px;">
+              <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">Начална дата:</label>
+              <input type="date" id="wz-start-date" onchange="updateWizardCalc()" style="width:100%; padding:8px; margin-top:4px; background:#1e293b; color:#fff; border:1px solid var(--border-light); border-radius:6px; font-size:1em;">
+            </div>
+            <div style="flex:1; min-width:140px;">
+              <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">Дневна норма на човек:</label>
+              <input type="number" id="wz-daily-norm" value="6" min="1" oninput="updateWizardCalc()" style="width:100%; padding:8px; margin-top:4px; background:#1e293b; color:#38bdf8; border:1px solid var(--border-light); border-radius:6px; font-size:1.15em; font-weight:bold;">
             </div>
           </div>
-          <div id="wz-days-container" class="wizard-chips-grid"></div>
+          <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; align-items:center;">
+            <span style="font-size:0.8em; color:#94a3b8;">Бърз избор:</span>
+            <button type="button" class="btn-micro" onclick="setWzNorm(4)">4 бр./ден</button>
+            <button type="button" class="btn-micro" onclick="setWzNorm(6)">6 бр./ден</button>
+            <button type="button" class="btn-micro" onclick="setWzNorm(8)">8 бр./ден</button>
+            <button type="button" class="btn-micro" onclick="setWzNorm(10)">10 бр./ден</button>
+            <button type="button" class="btn-micro" onclick="setWzNorm(12)">12 бр./ден</button>
+            <button type="button" class="btn-micro" onclick="setWzNorm(15)">15 бр./ден</button>
+            <button type="button" class="btn-micro" onclick="setWzNorm(20)">20 бр./ден</button>
+          </div>
         </div>
 
-        <!-- Step 4: Quantity Mode & Input -->
-        <div style="margin-bottom:12px;">
-          <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">4. Разпределение на бройки</label>
-          <div style="display:flex; gap:12px; margin-top:6px; flex-wrap:wrap;">
-            <label style="cursor:pointer; display:flex; align-items:center; gap:6px; color:#f8fafc; font-size:0.9em;">
-              <input type="radio" name="wz-qty-mode" value="total" checked onchange="updateWizardCalc()"> Общо количество за разделяне
-            </label>
-            <label style="cursor:pointer; display:flex; align-items:center; gap:6px; color:#f8fafc; font-size:0.9em;">
-              <input type="radio" name="wz-qty-mode" value="per_person" onchange="updateWizardCalc()"> По фиксирано бр./ден на човек
-            </label>
-          </div>
-          <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
-            <input type="number" id="wz-qty-input" min="1" placeholder="Въведете брой..." oninput="updateWizardCalc()" style="flex:1; padding:8px; font-size:1.1em; background:#0f172a; color:#fff; border:1px solid var(--border-light); border-radius:6px;">
-            <button type="button" class="btn-micro" style="padding:8px 12px; font-size:0.9em; background:#3b82f6; color:#fff;" onclick="fillWizardRemaining()">Остатък по план</button>
-          </div>
-          <div id="wz-calc-preview" style="background:#0f172a; padding:10px; border-radius:6px; border:1px dashed var(--border-dark); margin-top:8px; font-size:0.9em; color:#a5f3fc;">
-            👉 Изберете оператори, дни и количество за калкулация.
-          </div>
+        <!-- Step 4: LIVE CALCULATION & ETA BANNER -->
+        <div id="wz-calc-preview" style="background:#0f172a; padding:12px; border-radius:8px; border:1px solid var(--border-dark); margin-top:8px;">
+          👉 Посочете оператори, начална дата и дневна норма за прогноза.
         </div>
 
         <!-- Footer Actions -->
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px; border-top:1px solid var(--border-dark); padding-top:12px;">
           <button class="btn-cancel" onclick="closeWizardModal()">Отказ</button>
           <button class="btn-assign" id="btn-wizard-confirm" onclick="confirmWizardAssign()">
-            ✅ Заложи в Графика
+            ✅ Разпредели в Календара
           </button>
         </div>
       </div>

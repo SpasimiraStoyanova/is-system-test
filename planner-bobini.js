@@ -716,6 +716,34 @@ function renderMonthlyOverview() {
         let pct = planQty > 0 ? Math.min(100, Math.round((doneAllMonth / planQty) * 100)) : 0;
         let barColor = pct >= 100 ? '#10b981' : (pct >= 50 ? '#38bdf8' : '#f59e0b');
 
+        // Calculate ETA completion date based on assigned quotas
+        let itemQuotas = globalState.quotas.filter(q => q.detail_name === item.detailName && q.operation_name === item.operationName && q.detail_name !== 'OFF');
+        let totalAssignedAll = 0;
+        let maxQuotaDate = null;
+        let uniqueDaysSet = new Set();
+        itemQuotas.forEach(q => {
+            totalAssignedAll += q.qty;
+            uniqueDaysSet.add(q.date);
+            if (!maxQuotaDate || q.date > maxQuotaDate) {
+                maxQuotaDate = q.date;
+            }
+        });
+
+        let etaHtml = '';
+        if (remaining === 0 && doneAllMonth >= planQty) {
+            etaHtml = `<span style="color:#10b981; font-weight:bold;">✅ Изпълнен</span>`;
+        } else if (maxQuotaDate) {
+            let maxD = new Date(maxQuotaDate + 'T00:00:00');
+            let dateFormatted = `${String(maxD.getDate()).padStart(2,'0')}.${String(maxD.getMonth()+1).padStart(2,'0')}`;
+            if (totalAssignedAll >= remaining) {
+                etaHtml = `<span style="color:#38bdf8; font-weight:bold; white-space:nowrap;" title="Завършва на ${dateFormatted}.${maxD.getFullYear()} г. за ${uniqueDaysSet.size} работни дни">🏁 ${dateFormatted} (${uniqueDaysSet.size} д.)</span>`;
+            } else {
+                etaHtml = `<span style="color:#f59e0b; white-space:nowrap;" title="Заложени частично: ${totalAssignedAll} от ${remaining} бр.">⏳ ~${dateFormatted} (част.)</span>`;
+            }
+        } else {
+            etaHtml = `<span style="color:#64748b; font-style:italic;">Не е заложен</span>`;
+        }
+
         tableRowsHtml += `
           <tr>
             <td><strong>${item.detailName}</strong></td>
@@ -725,6 +753,7 @@ function renderMonthlyOverview() {
             <td style="text-align:right; color:#10b981; font-weight:bold;">${doneInPeriod} бр.</td>
             <td style="text-align:right; font-weight:bold;">${doneAllMonth} бр.</td>
             <td style="text-align:right; color:${remaining > 0 ? '#f59e0b' : '#10b981'}; font-weight:bold;">${remaining} бр.</td>
+            <td style="text-align:center;">${etaHtml}</td>
             <td>
               <div style="display:flex; justify-content:space-between; font-size:0.8em; margin-bottom:2px;">
                 <span>${pct}%</span>
@@ -768,6 +797,7 @@ function renderMonthlyOverview() {
           <th style="text-align:right;">Готови в периода</th>
           <th style="text-align:right;">Общо готови (м.)</th>
           <th style="text-align:right;">Остават по план</th>
+          <th style="text-align:center;">🏁 Готов на (ETA)</th>
           <th style="min-width:140px;">Прогрес %</th>
         </tr>
       </thead>
@@ -782,6 +812,7 @@ function renderMonthlyOverview() {
           <td style="text-align:right; color:#10b981;">${totalDonePeriod} бр.</td>
           <td style="text-align:right;">${totalDoneMonth} бр.</td>
           <td style="text-align:right; color:#f59e0b;">${totalRemaining} бр.</td>
+          <td></td>
           <td></td>
         </tr>
       </tfoot>
@@ -1111,7 +1142,78 @@ window.confirmQuickCellAssign = async function() {
     }
 };
 
-// Wizard Modal Logic (Task-to-People Bulk Assign)
+// ==========================================
+// FORWARD CAPACITY SCHEDULING & WIZARD (ETA)
+// ==========================================
+
+function calculateSchedule(startDateStr, totalQty, operators, dailyNorm, detailName, operationName) {
+    if (!startDateStr || !totalQty || totalQty <= 0 || !operators || operators.length === 0 || !dailyNorm || dailyNorm <= 0) {
+        return null;
+    }
+
+    let cur = new Date(startDateStr + 'T00:00:00');
+    let remaining = totalQty;
+    let schedule = [];
+    let workDaysSet = new Set();
+    let maxDays = 90; // guard against infinite loop
+    let dayCounter = 0;
+
+    while (remaining > 0 && dayCounter < maxDays) {
+        dayCounter++;
+        let dayOfWeek = cur.getDay(); // 0 Sun, 6 Sat
+        let dateStr = formatDateISO(cur);
+
+        // Monday to Friday
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            // Find operators who are NOT on vacation / OFF on this date
+            let availOps = operators.filter(op => {
+                return !globalState.quotas.some(q => q.operator_name === op && q.date === dateStr && q.detail_name === 'OFF');
+            });
+
+            if (availOps.length > 0) {
+                let dayHadWork = false;
+                for (let i = 0; i < availOps.length; i++) {
+                    if (remaining <= 0) break;
+                    let opName = availOps[i];
+                    let assignQty = Math.min(dailyNorm, remaining);
+                    if (assignQty > 0) {
+                        schedule.push({
+                            date: dateStr,
+                            operator_name: opName,
+                            detail_name: detailName,
+                            operation_name: operationName,
+                            qty: assignQty
+                        });
+                        remaining -= assignQty;
+                        dayHadWork = true;
+                    }
+                }
+                if (dayHadWork) {
+                    workDaysSet.add(dateStr);
+                }
+            }
+        }
+        // Advance 1 day
+        cur.setDate(cur.getDate() + 1);
+    }
+
+    let endDateStr = schedule.length > 0 ? schedule[schedule.length - 1].date : null;
+    return {
+        schedule,
+        workDaysCount: workDaysSet.size,
+        endDateStr,
+        remainingUnassigned: remaining
+    };
+}
+
+window.setWzNorm = function(num) {
+    let normInput = document.getElementById('wz-daily-norm');
+    if (normInput) {
+        normInput.value = num;
+        updateWizardCalc();
+    }
+};
+
 window.openWizardModal = function(preselectedDetail, preselectedOp) {
     let select = document.getElementById('wz-detail-select');
     select.innerHTML = '';
@@ -1141,19 +1243,27 @@ window.openWizardModal = function(preselectedDetail, preselectedOp) {
         opsCont.appendChild(label);
     });
 
-    // Populate 5 days of current week
-    let daysCont = document.getElementById('wz-days-container');
-    daysCont.innerHTML = '';
-    let mon = new Date(globalState.currentWeekMonday || getMonday(new Date()));
-    let dayNames = ['Пон', 'Вт', 'Ср', 'Чт', 'Пт'];
-    for (let i = 0; i < 5; i++) {
-        let d = new Date(mon);
-        d.setDate(mon.getDate() + i);
-        let isoStr = formatDateISO(d);
-        let label = document.createElement('label');
-        label.className = 'wizard-chip selected';
-        label.innerHTML = `<input type="checkbox" value="${isoStr}" checked onchange="onWizardChipChange(this); updateWizardCalc();"> 📅 ${dayNames[i]} (${formatDateDisplay(d)})`;
-        daysCont.appendChild(label);
+    // Default start date: today or first working day of selected month
+    let startDateInput = document.getElementById('wz-start-date');
+    if (startDateInput) {
+        let today = new Date();
+        let selectedMonth = document.getElementById('month-picker')?.value || getMonthString();
+        let [y, m] = selectedMonth.split('-').map(Number);
+        if (today.getFullYear() === y && (today.getMonth() + 1) === m) {
+            startDateInput.value = formatDateISO(today);
+        } else {
+            let d1 = new Date(y, m - 1, 1);
+            while (d1.getDay() === 0 || d1.getDay() === 6) {
+                d1.setDate(d1.getDate() + 1);
+            }
+            startDateInput.value = formatDateISO(d1);
+        }
+    }
+
+    // Default daily norm
+    let normInput = document.getElementById('wz-daily-norm');
+    if (normInput && (!normInput.value || parseInt(normInput.value) <= 0)) {
+        normInput.value = 6;
     }
 
     onWizardDetailChange();
@@ -1187,15 +1297,16 @@ window.onWizardDetailChange = function() {
         }
     });
 
-    let remaining = targetItem ? Math.max(0, targetItem.planQty - totalAssigned) : 0;
+    let planQty = targetItem ? targetItem.planQty : 0;
+    let remaining = Math.max(0, planQty - totalAssigned);
     let info = document.getElementById('wz-detail-info');
     if (info) {
-        info.innerHTML = `План: <strong>${targetItem ? targetItem.planQty : 0} бр.</strong> | Заложени за месеца: <strong>${totalAssigned} бр.</strong> | Остава за залагане: <strong style="color:#10b981;">${remaining} бр.</strong>`;
+        info.innerHTML = `План: <strong>${planQty} бр.</strong> | Заложени досега: <strong>${totalAssigned} бр.</strong> | Остава за залагане: <strong style="color:#10b981;">${remaining} бр.</strong>`;
     }
 
     let qtyInput = document.getElementById('wz-qty-input');
-    if (qtyInput && (!qtyInput.value || parseInt(qtyInput.value) <= 0)) {
-        qtyInput.value = remaining > 0 ? remaining : 50;
+    if (qtyInput) {
+        qtyInput.value = remaining > 0 ? remaining : (planQty > 0 ? planQty : 50);
     }
     updateWizardCalc();
 };
@@ -1229,58 +1340,120 @@ window.toggleAllWizardOps = function(select) {
     updateWizardCalc();
 };
 
-window.setWizardDaysPreset = function(preset) {
-    let inputs = document.querySelectorAll('#wz-days-container input[type="checkbox"]');
-    let todayStr = formatDateISO(new Date());
-
-    inputs.forEach(i => {
-        let val = i.value;
-        if (preset === 'all') {
-            i.checked = true;
-        } else if (preset === 'today') {
-            i.checked = (val === todayStr);
-        } else if (preset === 'remaining') {
-            i.checked = (val >= todayStr);
-        }
-        if (i.checked) i.parentElement.classList.add('selected');
-        else i.parentElement.classList.remove('selected');
-    });
-    updateWizardCalc();
-};
-
 window.updateWizardCalc = function() {
-    let selectedOps = Array.from(document.querySelectorAll('#wz-ops-container input:checked')).map(i => i.value);
-    let selectedDays = Array.from(document.querySelectorAll('#wz-days-container input:checked')).map(i => i.value);
+    let select = document.getElementById('wz-detail-select');
+    if (!select || !select.value) return;
+    let parts = select.value.split('___');
+    let detail = parts[0];
+    let op = parts[1];
 
+    let selectedOps = Array.from(document.querySelectorAll('#wz-ops-container input:checked')).map(i => i.value);
     let opCountEl = document.getElementById('wz-op-count');
     if (opCountEl) opCountEl.innerText = selectedOps.length;
-    let dayCountEl = document.getElementById('wz-day-count');
-    if (dayCountEl) dayCountEl.innerText = selectedDays.length;
 
     let qtyInput = document.getElementById('wz-qty-input');
     let inputQty = parseInt(qtyInput ? qtyInput.value : 0) || 0;
-    let mode = document.querySelector('input[name="wz-qty-mode"]:checked')?.value || 'total';
+
+    let normInput = document.getElementById('wz-daily-norm');
+    let dailyNorm = parseInt(normInput ? normInput.value : 0) || 0;
+
+    let startDateStr = document.getElementById('wz-start-date')?.value;
 
     let preview = document.getElementById('wz-calc-preview');
-    if (selectedOps.length === 0 || selectedDays.length === 0 || inputQty <= 0) {
-        preview.innerHTML = `👉 Изберете поне един оператор, един работен ден и въведете количество.`;
+    if (!preview) return;
+
+    if (selectedOps.length === 0) {
+        preview.innerHTML = `<span style="color:#f59e0b;">👉 Моля, изберете поне един оператор (бобиньорка).</span>`;
+        return;
+    }
+    if (inputQty <= 0) {
+        preview.innerHTML = `<span style="color:#f59e0b;">👉 Въведете количество за изработка (бр.).</span>`;
+        return;
+    }
+    if (dailyNorm <= 0) {
+        preview.innerHTML = `<span style="color:#f59e0b;">👉 Задайте дневна норма (напр. 6 бр./ден на човек).</span>`;
+        return;
+    }
+    if (!startDateStr) {
+        preview.innerHTML = `<span style="color:#f59e0b;">👉 Изберете начална дата.</span>`;
         return;
     }
 
-    let totalSlots = selectedOps.length * selectedDays.length;
+    let result = calculateSchedule(startDateStr, inputQty, selectedOps, dailyNorm, detail, op);
+    if (!result || !result.endDateStr) {
+        preview.innerHTML = `<span style="color:#ef4444;">⚠️ Не можа да се генерира график. Проверете дали избраните дати не са изцяло почивни.</span>`;
+        return;
+    }
 
-    if (mode === 'total') {
-        let basePerSlot = Math.floor(inputQty / totalSlots);
-        let remainder = inputQty % totalSlots;
+    let teamDailyCap = selectedOps.length * dailyNorm;
+    let endD = new Date(result.endDateStr + 'T00:00:00');
+    let startD = new Date(startDateStr + 'T00:00:00');
+    let dayNames = ['Неделя', 'Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота'];
+    let endDayName = dayNames[endD.getDay()];
+    let endDateFormatted = `${String(endD.getDate()).padStart(2,'0')}.${String(endD.getMonth()+1).padStart(2,'0')}.${endD.getFullYear()} г. (${endDayName})`;
+
+    // Deadline check (target is 20th of the month of startDate)
+    let deadlineDay = 20;
+    let deadlineDate = new Date(startD.getFullYear(), startD.getMonth(), deadlineDay);
+    
+    // Check if finishes on or before the 20th
+    let isOnTime = (endD <= deadlineDate);
+
+    // Calculate suggested norm if delayed
+    let suggestionHtml = '';
+    if (!isOnTime) {
+        let availableWorkDays = 0;
+        let tempCur = new Date(startD);
+        while (tempCur <= deadlineDate) {
+            let dw = tempCur.getDay();
+            if (dw !== 0 && dw !== 6) availableWorkDays++;
+            tempCur.setDate(tempCur.getDate() + 1);
+        }
+
+        if (availableWorkDays > 0) {
+            let neededTeamCap = Math.ceil(inputQty / availableWorkDays);
+            let neededNormPerPerson = Math.ceil(neededTeamCap / selectedOps.length);
+            suggestionHtml = `
+              <div style="margin-top:8px; padding-top:8px; border-top:1px dashed rgba(239,68,68,0.4); font-size:0.9em;">
+                💡 <strong>Препоръка:</strong> До 20-то число остават <strong>${availableWorkDays} работни дни</strong>.<br>
+                За да приключите навреме, вдигнете нормата на <button type="button" class="btn-micro" style="background:#ef4444; color:#fff; font-weight:bold; padding:3px 10px; margin:2px 0;" onclick="setWzNorm(${neededNormPerPerson})">⚡ ${neededNormPerPerson} бр./ден</button> или включете още оператори.
+              </div>
+            `;
+        } else {
+            suggestionHtml = `
+              <div style="margin-top:8px; padding-top:8px; border-top:1px dashed rgba(239,68,68,0.4); font-size:0.9em;">
+                💡 Началната дата (${formatDateDisplay(startD)}) е след 20-то число на месеца. Преместете началната дата по-рано или увеличете дневната норма.
+              </div>
+            `;
+        }
+    }
+
+    if (isOnTime) {
         preview.innerHTML = `
-          ⚡ <strong>${inputQty} бр. общо</strong> ще бъдат разделени на <strong>${selectedOps.length} човека</strong> за <strong>${selectedDays.length} дни</strong> (${totalSlots} слота):<br>
-          👉 По <strong>${basePerSlot}${remainder > 0 ? ' до ' + (basePerSlot + 1) : ''} бр./ден</strong> на служител.
+          <div style="background:rgba(16,185,129,0.12); border:1px solid #10b981; border-radius:8px; padding:12px;">
+            <div style="color:#10b981; font-weight:900; font-size:1.05em; display:flex; align-items:center; gap:6px;">
+              ✅ Срокът е изпълним до 20-то число!
+            </div>
+            <div style="margin-top:6px; color:#f1f5f9; font-size:0.92em; line-height:1.6;">
+              🏁 <strong>Очаквано завършване (ETA):</strong> <span style="color:#38bdf8; font-weight:bold; font-size:1.15em;">${endDateFormatted}</span><br>
+              ⏳ <strong>Времетраене:</strong> <strong style="color:#fff;">${result.workDaysCount} работни дни</strong> (без съботи и недели)<br>
+              ⚡ <strong>Дневен капацитет:</strong> ${teamDailyCap} бр./ден общо (${selectedOps.length} човека × ${dailyNorm} бр./ден)
+            </div>
+          </div>
         `;
     } else {
-        let totalAssigned = inputQty * totalSlots;
         preview.innerHTML = `
-          ⚡ По <strong>${inputQty} бр./ден</strong> за <strong>${selectedOps.length} човека</strong> за <strong>${selectedDays.length} дни</strong>:<br>
-          👉 Общо заложени: <strong>${totalAssigned} бр.</strong>
+          <div style="background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:8px; padding:12px;">
+            <div style="color:#ef4444; font-weight:900; font-size:1.05em; display:flex; align-items:center; gap:6px;">
+              ⚠️ ВНИМАНИЕ: Поръчката надхвърля 20-то число!
+            </div>
+            <div style="margin-top:6px; color:#f1f5f9; font-size:0.92em; line-height:1.6;">
+              🏁 <strong>Очаквано завършване (ETA):</strong> <span style="color:#f87171; font-weight:bold; font-size:1.15em;">${endDateFormatted}</span><br>
+              ⏳ <strong>Времетраене:</strong> <strong style="color:#fff;">${result.workDaysCount} работни дни</strong> при текуща норма ${dailyNorm} бр./ден.<br>
+              ⚡ <strong>Дневен капацитет:</strong> ${teamDailyCap} бр./ден общо (${selectedOps.length} човека × ${dailyNorm} бр./ден)
+            </div>
+            ${suggestionHtml}
+          </div>
         `;
     }
 };
@@ -1296,14 +1469,8 @@ window.confirmWizardAssign = async function() {
     let op = parts[1];
 
     let selectedOps = Array.from(document.querySelectorAll('#wz-ops-container input:checked')).map(i => i.value);
-    let selectedDays = Array.from(document.querySelectorAll('#wz-days-container input:checked')).map(i => i.value);
-
     if (selectedOps.length === 0) {
         alert("Моля, изберете поне един оператор.");
-        return;
-    }
-    if (selectedDays.length === 0) {
-        alert("Моля, изберете поне един работен ден.");
         return;
     }
 
@@ -1314,41 +1481,22 @@ window.confirmWizardAssign = async function() {
         return;
     }
 
-    let mode = document.querySelector('input[name="wz-qty-mode"]:checked')?.value || 'total';
-    let totalSlots = selectedOps.length * selectedDays.length;
+    let normInput = document.getElementById('wz-daily-norm');
+    let dailyNorm = parseInt(normInput ? normInput.value : 0) || 0;
+    if (dailyNorm <= 0) {
+        alert("Моля, въведете дневна норма.");
+        return;
+    }
 
-    let inserts = [];
-    let existingIdsToDelete = [];
+    let startDateStr = document.getElementById('wz-start-date')?.value;
+    if (!startDateStr) {
+        alert("Моля, изберете начална дата.");
+        return;
+    }
 
-    let slotIndex = 0;
-    let basePerSlot = mode === 'total' ? Math.floor(inputQty / totalSlots) : inputQty;
-    let remainder = mode === 'total' ? (inputQty % totalSlots) : 0;
-
-    selectedDays.forEach(d => {
-        selectedOps.forEach(opName => {
-            let isOff = globalState.quotas.some(q => q.operator_name === opName && q.date === d && q.detail_name === 'OFF');
-            if (isOff) return;
-
-            let qtyForThis = basePerSlot + (slotIndex < remainder ? 1 : 0);
-            slotIndex++;
-
-            if (qtyForThis <= 0) return;
-
-            let existing = globalState.quotas.filter(q => q.operator_name === opName && q.date === d && q.detail_name === detail && q.operation_name === op);
-            existing.forEach(ex => existingIdsToDelete.push(ex.id));
-
-            inserts.push({
-                date: d,
-                operator_name: opName,
-                detail_name: detail,
-                operation_name: op,
-                qty: qtyForThis
-            });
-        });
-    });
-
-    if (inserts.length === 0) {
-        alert("Няма валидни работни дни за залагане (всички избрани слотове са почивни дни).");
+    let result = calculateSchedule(startDateStr, inputQty, selectedOps, dailyNorm, detail, op);
+    if (!result || result.schedule.length === 0) {
+        alert("Не бяха намерени работни дни за разпределяне.");
         return;
     }
 
@@ -1357,20 +1505,36 @@ window.confirmWizardAssign = async function() {
     loader.style.display = 'flex';
 
     try {
+        let scheduledDates = Array.from(new Set(result.schedule.map(s => s.date)));
+        
+        let existingIdsToDelete = [];
+        globalState.quotas.forEach(q => {
+            if (q.detail_name === detail && q.operation_name === op && scheduledDates.includes(q.date)) {
+                existingIdsToDelete.push(q.id);
+            }
+        });
+
         if (existingIdsToDelete.length > 0) {
             await client.from('planner_bobini').delete().in('id', existingIdsToDelete);
             globalState.quotas = globalState.quotas.filter(q => !existingIdsToDelete.includes(q.id));
         }
 
-        const { data, error } = await client.from('planner_bobini').insert(inserts).select();
+        const { data, error } = await client.from('planner_bobini').insert(result.schedule).select();
         if (error) throw error;
 
         if (data && data.length > 0) {
             globalState.quotas.push(...data);
         }
 
+        let startD = new Date(startDateStr + 'T00:00:00');
+        globalState.currentWeekMonday = getMonday(startD);
+
         renderCalendarUI();
         loader.style.display = 'none';
+
+        let endD = new Date(result.endDateStr + 'T00:00:00');
+        let dayNames = ['Неделя', 'Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота'];
+        alert(`✅ Успешно разпределени ${inputQty} бр. за ${result.workDaysCount} работни дни!\n\n🏁 Очаквано завършване (ETA): ${String(endD.getDate()).padStart(2,'0')}.${String(endD.getMonth()+1).padStart(2,'0')}.${endD.getFullYear()} г. (${dayNames[endD.getDay()]})\n\nКалендарът е обновен с новия график.`);
     } catch (err) {
         alert("Грешка при запис: " + err.message);
         loader.style.display = 'none';
