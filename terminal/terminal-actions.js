@@ -186,7 +186,7 @@ async function finishTask(taskId, btn) {
 
   var inputElem = document.getElementById('qty_' + taskId); if (!inputElem) return; var val = parseFloat(inputElem.value);
   if(isNaN(val) || val <= 0) { Swal.fire('Грешка', 'Въведи валидна бройка!', 'error'); return; }
-  let taskData = globalTasks.find(t => t.id === taskId);
+  taskData = globalTasks.find(t => t.id === taskId);
   if (!taskData) return;
 
   let isDiscrepancyAccepted = false;
