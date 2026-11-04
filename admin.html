@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="admin/admin.css?v=21">
+    <link rel="stylesheet" href="admin/admin.css?v=22">
     <link rel="stylesheet" href="admin/admin-calendar.css?v=5">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -232,7 +232,7 @@
           </div>
         </div>
 
-        <div class="modal-backdrop" id="resolverModalBackdrop">
+        <div class="modal-backdrop" id="resolverModalBackdrop" style="z-index: 2000;" onclick="if(event.target === this) closeResolverModal();">
           <div class="modal" style="max-width: 1050px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
             <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
                 <div style="display: flex; align-items: center; gap: 12px;">
