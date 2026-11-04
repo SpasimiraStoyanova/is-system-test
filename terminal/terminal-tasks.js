@@ -1423,21 +1423,48 @@ async function loadTasks(isSilent = false) {
       } catch (errProbaLoad) {
           console.warn("Грешка при зареждане на проби:", errProbaLoad);
       }
+      function getCardTier(t) {
+          if (t.isGreenCard) return 3;
+          if (t.isProba) return 2;
+          if (t.plan_name === "РЎР’Р РЄРҐРџР РћРР—Р’РћР”РЎРўР’Рћ" || t.plan_id === "РЎР’Р РЄРҐРџР РћРР—Р’РћР”РЎРўР’Рћ") return 4;
+          return 1;
+      }
+
       globalTasks.sort((a, b) => {
+          // 1. РџРѕРµС‚РёС‚Рµ РѕС‚ РѕРїРµСЂР°С‚РѕСЂР° Р·Р°РґР°С‡Рё (РІ РїСЂРѕС†РµСЃ РЅР° СЂР°Р±РѕС‚Р°) РІРёРЅР°РіРё РѕСЃС‚Р°РІР°С‚ РЅР°Р№-РѕС‚РіРѕСЂРµ
+          if (a.isTaken !== b.isTaken) return a.isTaken ? -1 : 1;
+
+          // 2. РЎРўР РћР“Рђ Р™Р•Р РђР РҐРРЇ РџРћ РљРђРўР•Р“РћР РР:
+          //    Tier 1: РЎРРќР РљРђР РўР (РњРµСЃРµС‡РµРЅ РїР»Р°РЅ / Р РµРґРѕРІРЅРѕ РїСЂРѕРёР·РІРѕРґСЃС‚РІРѕ)
+          //    Tier 2: Р›РР›РђР’Р РљРђР РўР (РџСЂРѕР±Рё)
+          //    Tier 3: Р—Р•Р›Р•РќР РљРђР РўР (Р‘СѓС„РµСЂРё)
+          //    Tier 4: РЎРІСЂСЉС…РїСЂРѕРёР·РІРѕРґСЃС‚РІРѕ
+          let tierA = getCardTier(a);
+          let tierB = getCardTier(b);
+          if (tierA !== tierB) return tierA - tierB;
+
+          // 3. Р СЉС‡РµРЅ РїСЂРёРѕСЂРёС‚РµС‚ РѕС‚ РўР°Р±Р»РѕС‚Рѕ РїРѕ РјР°С€РёРЅРё (РІ СЂР°РјРєРёС‚Рµ РЅР° СЃСЉС‰Р°С‚Р° РєР°С‚РµРіРѕСЂРёСЏ)
           let aPrio = (a.manualPriority !== null && a.manualPriority !== undefined) ? a.manualPriority : 9999;
           let bPrio = (b.manualPriority !== null && b.manualPriority !== undefined) ? b.manualPriority : 9999;
           if (aPrio !== bPrio) return aPrio - bPrio;
 
-          if (a.isTaken !== b.isTaken) return a.isTaken ? -1 : 1;
-          
+          // 4. РЎРІРѕР±РѕРґРЅРёС‚Рµ Р·Р°РґР°С‡Рё РїСЂРµРґРё Р±Р»РѕРєРёСЂР°РЅРёС‚Рµ (РІ СЂР°РјРєРёС‚Рµ РЅР° СЃСЉС‰Р°С‚Р° РєР°С‚РµРіРѕСЂРёСЏ)
           let aBlocked = (a.hasLimit && Number(a.maxAllowed) <= 0);
           let bBlocked = (b.hasLimit && Number(b.maxAllowed) <= 0);
           if (aBlocked !== bBlocked) return aBlocked ? 1 : -1;
 
+          // 5. Р—Р° Р»РёР»Р°РІРёС‚Рµ РєР°СЂС‚Рё (РџСЂРѕР±Рё): РїРѕРґСЂРµР¶РґР°РЅРµ РїРѕ РџСЂРѕР±Р° ID, РґСЉР»Р±РѕС‡РёРЅР° РЅР° РґРµС‚Р°Р№Р»Р° (РЅР°Р№-РґСЉР»Р±РѕРєРёС‚Рµ РїСЉСЂРІРѕ) Рё РѕРїРµСЂР°С†РёСЏ
+          if (a.isProba && b.isProba) {
+              if (a.probaId !== b.probaId) return a.probaId - b.probaId;
+              let depthA = a.partDepth || 0;
+              let depthB = b.partDepth || 0;
+              if (depthA !== depthB) return depthB - depthA;
+              if (a.name !== b.name) return a.name.localeCompare(b.name);
+              return (a.opNum || 0) - (b.opNum || 0);
+          }
+
+          // 6. Р—Р° СЃРёРЅРёС‚Рµ РєР°СЂС‚Рё: РїРѕРґСЂРµР¶РґР°РЅРµ РїРѕ РЅР°Р№-СЂР°РЅРµРЅ РјРµСЃРµС‡РµРЅ РїР»Р°РЅ Рё РЅР°РІР°РєСЃРІР°РЅРµ РЅР° Р±СЂР°Рє
           let getWeight = (t) => {
-              if (t.isProba) return 7000000;
-              if (t.plan_name === "БУФЕРИ") return Infinity;
-              if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") return 9999999;
               let baseWeight = 0;
               if (t.plan_name && groupEarliestId[t.plan_name]) {
                   baseWeight = groupEarliestId[t.plan_name];
@@ -1463,15 +1490,7 @@ async function loadTasks(isSilent = false) {
           let bPlanWeight = getWeight(b);
           if (aPlanWeight !== bPlanWeight) return aPlanWeight - bPlanWeight;
 
-          if (a.isProba && b.isProba) {
-              if (a.probaId !== b.probaId) return a.probaId - b.probaId;
-              let depthA = a.partDepth || 0;
-              let depthB = b.partDepth || 0;
-              if (depthA !== depthB) return depthB - depthA; // deeper parts first
-              if (a.name !== b.name) return a.name.localeCompare(b.name);
-              return (a.opNum || 0) - (b.opNum || 0);
-          }
-          return a.opNum - b.opNum;
+          return (a.opNum || 0) - (b.opNum || 0);
       });
 
       // AUTO-CLOSE DANGLING TASKS
