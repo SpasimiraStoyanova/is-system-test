@@ -1,4 +1,4 @@
-function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
+﻿function setTaskFilter(filterType) { currentTaskFilter = filterType; document.querySelectorAll('.t-filter-btn').forEach(btn => btn.classList.remove('active')); document.getElementById('filter_' + filterType).classList.add('active'); renderTasks(globalTasks); }
 
 function normalizeStr(str) {
     if (!str) return '';
@@ -68,7 +68,11 @@ function computeMonitorMetrics(plansData, reportsData, skladData, invData, nomDa
         }
     });
 
-    let activePlans = (plansData || []).filter(p => ['Активен', 'Завършен', 'Опакован'].includes(p['Статус']));
+    let activePlans = (plansData || []).filter(p => {
+        let st = String(p['Статус'] || '').trim();
+        if (st.includes('Опакован') || st.includes('Изпратен')) return false;
+        return st.includes('Активен') || st.includes('Завършен');
+    });
     activePlans.sort((a, b) => (a.id || 0) - (b.id || 0));
 
     let activeNodes = [];
@@ -98,7 +102,7 @@ function computeMonitorMetrics(plansData, reportsData, skladData, invData, nomDa
 
             activeNodes.push({
                 plan_id: p.id,
-                plan_month: (p['Месец'] && p['Година']) ? `${p['Месец']} ${p['Година']}`.trim() : `ПЛАН ${p.id}`,
+                plan_month: (p['Месец'] && p['Година']) ? `${p['Месец']} ${p['Година']}`.trim() : (p['Вътрешно име'] ? String(p['Вътрешно име']).trim() : `ПЛАН ${p.id}`),
                 code: currentCode,
                 display_name: isRootLevel ? displayName : currentCode,
                 plan_qty: requiredQty,
@@ -419,13 +423,14 @@ async function loadTasks(isSilent = false) {
       let groupScrapDetails = {};
       
       plansRes.data.forEach(plan => {
-          if (String(plan['Статус']).trim() === 'Изпратен') return;
+          if (String(plan['Статус'] || '').includes('Изпратен')) return;
           let planId = String(plan.id).trim(); 
           let rootItem = String(plan['Вътрешно име']).trim(); 
           let targetQty = parseFloat(plan['Целево количество']) || 0;
           let monthYear = (plan['Месец'] && plan['Година']) ? (plan['Месец'] + ' ' + plan['Година']) : '';
           
-          let groupKey = monthYear || planId; 
+          let defaultPlanName = plan['Вътрешно име'] ? String(plan['Вътрешно име']).trim() : ('ПЛАН ' + planId);
+          let groupKey = monthYear || defaultPlanName; 
           
           if (!groupEarliestId[groupKey] || parseInt(planId) < groupEarliestId[groupKey]) {
               groupEarliestId[groupKey] = parseInt(planId);
@@ -437,7 +442,7 @@ async function loadTasks(isSilent = false) {
           if (plan['Вътрешно име']) planNameToId[String(plan['Вътрешно име']).trim()] = planId;
           planNameToId[planId] = planId;
           
-          planNames[groupKey] = monthYear ? monthYear : plan['Вътрешно име'];
+          planNames[groupKey] = monthYear ? monthYear : defaultPlanName;
           
           if (nomRes.data) {
               let translated = nomRes.data.find(n => String(n['Вътрешно име']).trim() === rootItem);
@@ -874,7 +879,7 @@ async function loadTasks(isSilent = false) {
                           let typeStr = i === routes.length - 1 ? "ЗЕЛЕНА" : "СИНЯ";
                           
                           let pushTask = (shortage, typeSuffix, pNameOverride, isScrapOnlyCard, originalTarget) => {
-                              if (shortage <= 0) return;
+                              if (shortage <= 0 && !isTaken) return;
                               let isBlocked = hasLimit && maxAllowed <= 0;
                               let targetInput = shortage;
                               let displayMaxAllowedForThis = displayMaxAllowed;
@@ -933,13 +938,13 @@ async function loadTasks(isSilent = false) {
                                   globalMonthlyDone = monitorInfo.completed;
                                   shortage = monitorInfo.deficit;
                                   totalDone = monitorInfo.completed;
-                                  if (shortage <= 0) return;
+                                  if (shortage <= 0 && !isTaken) return;
                                   if (hasLimit && realMaxAllowedForThis > 0) {
-                                      targetInput = Math.min(shortage, realMaxAllowedForThis);
+                                      targetInput = Math.min(Math.max(1, shortage), realMaxAllowedForThis);
                                   } else if (isBlocked) {
                                       targetInput = 0;
                                   } else {
-                                      targetInput = shortage;
+                                      targetInput = Math.max(1, shortage);
                                   }
                               }
 
