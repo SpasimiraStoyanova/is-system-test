@@ -22,6 +22,12 @@ let currentNormsMap = {};
 let currentViewMode = 'detail'; // 'detail' | 'operator'
 let selectedOperator = 'ALL';
 
+let currentSearchQuery = '';
+let currentSearchScope = 'period'; // 'period' | 'all'
+let isGlobalHistoryLoaded = false;
+let globalPartHistoryData = [];
+let searchDebounceTimer = null;
+
 function setViewMode(mode) {
     currentViewMode = mode;
     let btnDet = document.getElementById('btnViewDetail');
@@ -42,6 +48,41 @@ function applyOperatorFilter() {
     let opSelect = document.getElementById('operator-filter');
     selectedOperator = opSelect ? opSelect.value : 'ALL';
     renderCurrentView();
+}
+
+function setQuickDate(preset) {
+    const fromEl = document.getElementById('date-from');
+    const toEl = document.getElementById('date-to');
+    const today = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    if (preset === 'today') {
+        fromEl.value = fmt(today);
+        toEl.value = fmt(today);
+    } else if (preset === 'week') {
+        let monday = new Date(today);
+        let day = monday.getDay();
+        let diff = monday.getDate() - day + (day === 0 ? -6 : 1);
+        monday.setDate(diff);
+        fromEl.value = fmt(monday);
+        toEl.value = fmt(today);
+    } else if (preset === 'month') {
+        let firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        fromEl.value = fmt(firstDay);
+        toEl.value = fmt(today);
+    } else if (preset === 'all') {
+        fromEl.value = '2024-01-01';
+        toEl.value = fmt(today);
+    }
+
+    // Reset global search state if active so the date filter takes precedence
+    if (isGlobalHistoryLoaded) {
+        isGlobalHistoryLoaded = false;
+        globalPartHistoryData = [];
+        updateSearchBadge();
+    }
+    fetchAndRenderData();
 }
 
 async function fetchAndRenderData() {
@@ -81,6 +122,8 @@ async function fetchAndRenderData() {
         }
         
         rawOtchetiData = otchetiRes.data || [];
+        isGlobalHistoryLoaded = false;
+        globalPartHistoryData = [];
 
         // Обновяване на списъка със служители в падащото меню
         let opSelect = document.getElementById('operator-filter');
@@ -97,6 +140,7 @@ async function fetchAndRenderData() {
             selectedOperator = opSelect.value;
         }
 
+        updateSearchBadge();
         renderCurrentView();
     } catch(err) {
         alert("Грешка при зареждане на данните: " + err.message);
@@ -105,10 +149,213 @@ async function fetchAndRenderData() {
     }
 }
 
+// --- DETAIL SEARCH & HISTORY SCOPE ---
+
+function onDetailSearchInput() {
+    const input = document.getElementById('detailSearchInput');
+    const val = input ? input.value.trim() : '';
+    const clearBtn = document.getElementById('btnClearSearch');
+    if (clearBtn) clearBtn.style.display = val ? 'block' : 'none';
+
+    currentSearchQuery = val;
+    clearTimeout(searchDebounceTimer);
+
+    if (currentSearchScope === 'period') {
+        isGlobalHistoryLoaded = false;
+        globalPartHistoryData = [];
+        updateSearchBadge();
+        renderCurrentView();
+    } else {
+        if (!val) {
+            isGlobalHistoryLoaded = false;
+            globalPartHistoryData = [];
+            updateSearchBadge();
+            renderCurrentView();
+        } else {
+            searchDebounceTimer = setTimeout(() => {
+                executeDetailSearch();
+            }, 400);
+        }
+    }
+}
+
+function setSearchScope(scope) {
+    currentSearchScope = scope;
+    const btnPeriod = document.getElementById('btnScopePeriod');
+    const btnAll = document.getElementById('btnScopeAll');
+    if (btnPeriod && btnAll) {
+        if (scope === 'period') {
+            btnPeriod.style.background = '#38bdf8'; btnPeriod.style.color = '#0f172a';
+            btnAll.style.background = 'transparent'; btnAll.style.color = '#94a3b8';
+        } else {
+            btnAll.style.background = '#38bdf8'; btnAll.style.color = '#0f172a';
+            btnPeriod.style.background = 'transparent'; btnPeriod.style.color = '#94a3b8';
+        }
+    }
+
+    if (currentSearchQuery) {
+        if (scope === 'all') {
+            executeDetailSearch();
+        } else {
+            isGlobalHistoryLoaded = false;
+            globalPartHistoryData = [];
+            updateSearchBadge();
+            renderCurrentView();
+        }
+    } else {
+        updateSearchBadge();
+        renderCurrentView();
+    }
+}
+
+async function executeDetailSearch() {
+    const input = document.getElementById('detailSearchInput');
+    const val = input ? input.value.trim() : '';
+    currentSearchQuery = val;
+    if (!val) {
+        clearDetailSearch();
+        return;
+    }
+
+    if (currentSearchScope === 'all') {
+        await fetchPartAllHistory(val);
+    } else {
+        isGlobalHistoryLoaded = false;
+        globalPartHistoryData = [];
+        updateSearchBadge();
+        renderCurrentView();
+    }
+}
+
+async function fetchPartAllHistory(query) {
+    const loader = document.getElementById('loading');
+    if (loader) loader.style.display = 'flex';
+    try {
+        const [otchetiRes, routesRes] = await Promise.all([
+            client.from('otcheti')
+                  .select('*')
+                  .eq('Статус', 'Отчетено')
+                  .ilike('ID Детайл', `%${query}%`)
+                  .order('Дата', { ascending: true }),
+            client.from('marshruti')
+                  .select('Код на детайла, Име на операция, "Норма (мин/бр)"')
+        ]);
+        if (otchetiRes.error) throw otchetiRes.error;
+
+        if (routesRes.data) {
+            routesRes.data.forEach(r => {
+                const k = `${String(r['Код на детайла'] || '').trim()}|${String(r['Име на операция'] || '').trim()}`;
+                if (r['Норма (мин/бр)']) currentNormsMap[k] = parseFloat(r['Норма (мин/бр)']);
+            });
+        }
+
+        globalPartHistoryData = otchetiRes.data || [];
+        isGlobalHistoryLoaded = true;
+
+        // Update operator filter to show who worked on this part
+        let opSelect = document.getElementById('operator-filter');
+        let currentSelected = opSelect ? opSelect.value : 'ALL';
+        let uniqueOps = [...new Set(globalPartHistoryData.map(r => String(r['Оператор'] || 'Неизвестен').trim()).filter(Boolean))].sort();
+
+        let opHtml = '<option value="ALL">Всички служители</option>';
+        uniqueOps.forEach(op => {
+            let sel = (op === currentSelected) ? 'selected' : '';
+            opHtml += `<option value="${op}" ${sel}>${op}</option>`;
+        });
+        if (opSelect) {
+            opSelect.innerHTML = opHtml;
+            selectedOperator = opSelect.value;
+        }
+
+        updateSearchBadge();
+        renderCurrentView();
+    } catch (err) {
+        alert('Грешка при зареждане на историята: ' + err.message);
+    } finally {
+        if (loader) loader.style.display = 'none';
+    }
+}
+
+function clearDetailSearch() {
+    currentSearchQuery = '';
+    isGlobalHistoryLoaded = false;
+    globalPartHistoryData = [];
+    const input = document.getElementById('detailSearchInput');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('btnClearSearch');
+    if (clearBtn) clearBtn.style.display = 'none';
+
+    // Restore operators list from rawOtchetiData
+    let opSelect = document.getElementById('operator-filter');
+    let currentSelected = opSelect ? opSelect.value : 'ALL';
+    let uniqueOps = [...new Set(rawOtchetiData.map(r => String(r['Оператор'] || 'Неизвестен').trim()).filter(Boolean))].sort();
+    let opHtml = '<option value="ALL">Всички служители</option>';
+    uniqueOps.forEach(op => {
+        let sel = (op === currentSelected) ? 'selected' : '';
+        opHtml += `<option value="${op}" ${sel}>${op}</option>`;
+    });
+    if (opSelect) {
+        opSelect.innerHTML = opHtml;
+        selectedOperator = opSelect.value;
+    }
+
+    updateSearchBadge();
+    renderCurrentView();
+}
+
+function quickFilterByDetail(detailName) {
+    const input = document.getElementById('detailSearchInput');
+    if (input) input.value = detailName;
+    const clearBtn = document.getElementById('btnClearSearch');
+    if (clearBtn) clearBtn.style.display = 'block';
+    currentSearchQuery = detailName;
+
+    if (currentSearchScope === 'all') {
+        executeDetailSearch();
+    } else {
+        isGlobalHistoryLoaded = false;
+        globalPartHistoryData = [];
+        updateSearchBadge();
+        renderCurrentView();
+    }
+}
+
+function updateSearchBadge() {
+    const badge = document.getElementById('searchBadgeInfo');
+    const badgeText = document.getElementById('searchBadgeText');
+    if (!badge || !badgeText) return;
+
+    if (!currentSearchQuery) {
+        badge.style.display = 'none';
+        return;
+    }
+
+    badge.style.display = 'flex';
+    if (isGlobalHistoryLoaded) {
+        badgeText.innerHTML = `🌐 Цялата история за <b>"${currentSearchQuery}"</b> (${globalPartHistoryData.length} отчитания от старта на системата)`;
+    } else {
+        badgeText.innerHTML = `📅 Резултати в избрания период за <b>"${currentSearchQuery}"</b>`;
+    }
+}
+
+// --- RENDER VIEW ---
+
 function renderCurrentView() {
-    let data = rawOtchetiData;
+    let data = isGlobalHistoryLoaded ? globalPartHistoryData : rawOtchetiData;
+
+    // Филтър по служител
     if (selectedOperator && selectedOperator !== 'ALL') {
         data = data.filter(r => String(r['Оператор'] || '').trim() === selectedOperator);
+    }
+
+    // Текстово филтриране в рамките на периода (ако не сме в режим пълна история)
+    if (!isGlobalHistoryLoaded && currentSearchQuery) {
+        const q = currentSearchQuery.toLowerCase();
+        data = data.filter(r => {
+            const det = String(r['ID Детайл'] || '').toLowerCase();
+            const op = String(r['Операция'] || '').toLowerCase();
+            return det.includes(q) || op.includes(q);
+        });
     }
 
     let totalQty = 0;
@@ -144,11 +391,13 @@ function renderCurrentView() {
             else durationText = `${mLabel} мин.`;
             
             let taskLabel = `${detail} (${operation})`;
+            let dateFormatted = `${endTime.getDate().toString().padStart(2, '0')}.${(endTime.getMonth()+1).toString().padStart(2, '0')}.${endTime.getFullYear()}`;
             
             // Custom HTML Tooltip for Timeline
             let tooltip = `
                 <div style="padding:10px; font-family:'Sofia Sans',sans-serif; background:#334155; color:#f8fafc; border:1px solid #475569; border-radius:4px;">
                     <strong style="color:#38bdf8;">${taskLabel}</strong><br>
+                    <span style="color:#94a3b8;">Дата:</span> ${dateFormatted}<br>
                     <span style="color:#94a3b8;">Оператор:</span> ${opName}<br>
                     <span style="color:#94a3b8;">Количество:</span> <strong style="color:#10b981;">${qty} бр.</strong><br>
                     <span style="color:#94a3b8;">Начало:</span> ${startTime.toLocaleTimeString()}<br>
@@ -218,6 +467,14 @@ function renderCurrentView() {
     tbody.innerHTML = '';
     lastComputedStats = [];
     
+    let keys = Object.keys(aggregatedStats);
+    if (keys.length === 0) {
+        let msg = currentSearchQuery 
+            ? `Няма намерени отчитания за детайл "${currentSearchQuery}".`
+            : `Няма намерени отчитания за избрания период.`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:#94a3b8; font-style:italic;">${msg}</td></tr>`;
+    }
+
     for(let key in aggregatedStats) {
         let stat = aggregatedStats[key];
         
@@ -259,10 +516,13 @@ function renderCurrentView() {
         lastComputedStats.push(exportRow);
         
         let tr = document.createElement('tr');
+        let safeDet = stat.detail.replace(/'/g, "\\'");
+        let detailHtml = `<strong style="cursor:pointer; color:#f8fafc; transition:color 0.15s;" onmouseover="this.style.color='#38bdf8'" onmouseout="this.style.color='#f8fafc'" onclick="quickFilterByDetail('${safeDet}')" title="Кликни за бързо филтриране по този детайл">${stat.detail}</strong>`;
+
         if (currentViewMode === 'operator') {
             tr.innerHTML = `
                 <td><strong style="color:#38bdf8;">${stat.operator}</strong></td>
-                <td><strong>${stat.detail}</strong></td>
+                <td>${detailHtml}</td>
                 <td>${stat.operation}</td>
                 <td style="color:#10b981; font-weight:900;">${stat.qty} бр.</td>
                 <td style="color:#f59e0b; font-weight:600;">${timeStr}</td>
@@ -270,7 +530,7 @@ function renderCurrentView() {
             `;
         } else {
             tr.innerHTML = `
-                <td><strong>${stat.detail}</strong></td>
+                <td>${detailHtml}</td>
                 <td>${stat.operation}</td>
                 <td style="color:#10b981; font-weight:900;">${stat.qty} бр.</td>
                 <td style="color:#f59e0b; font-weight:600;">${timeStr}</td>
@@ -295,10 +555,12 @@ function exportStatsToExcel() {
     }
     let dateFrom = document.getElementById('date-from').value;
     let dateTo = document.getElementById('date-to').value;
+    let suffix = currentSearchQuery ? `_${currentSearchQuery.replace(/[^a-zA-Z0-9а-яА-Я]/g, '_')}` : '';
+    if (isGlobalHistoryLoaded) suffix += '_ALL_HISTORY';
     const ws = XLSX.utils.json_to_sheet(lastComputedStats);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Справка Нормовремена");
-    XLSX.writeFile(wb, `IS_SYSTEM_Normovremena_${dateFrom}_${dateTo}.xlsx`);
+    XLSX.writeFile(wb, `IS_SYSTEM_Normovremena_${dateFrom}_${dateTo}${suffix}.xlsx`);
 }
 
 function renderTimeline(timelineData) {
@@ -320,14 +582,12 @@ function renderTimeline(timelineData) {
     
     dataTable.addRows(timelineData);
     
-    // Figure out how many unique operators we have to size the chart properly
     let uniqueOps = new Set(timelineData.map(d => d[0])).size;
     let chartHeight = Math.max(200, (uniqueOps * 60) + 80);
     
     let minDate = new Date(Math.min(...timelineData.map(d => d[3].getTime())));
     let maxDate = new Date(Math.max(...timelineData.map(d => d[4].getTime())));
     
-    // Ensure at least a 4-hour window so short tasks don't get stretched over the whole screen
     let diffMs = maxDate - minDate;
     if (diffMs < 4 * 60 * 60 * 1000) {
         let padding = (4 * 60 * 60 * 1000 - diffMs) / 2;
@@ -336,7 +596,6 @@ function renderTimeline(timelineData) {
         diffMs = maxDate - minDate;
     }
     
-    // Set dynamic width to allow scroll if there are many hours (approx 150px per hour)
     let hours = diffMs / (1000 * 60 * 60);
     container.style.minWidth = `max(100%, ${Math.floor(hours * 150)}px)`;
     
