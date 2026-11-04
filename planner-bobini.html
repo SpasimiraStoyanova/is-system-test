@@ -4,77 +4,131 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Планьор Бобиньорки</title>
-  <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=9">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="planner-bobini.js?v=8" defer></script>
+  <script src="planner-bobini.js?v=9" defer></script>
   <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-dark: #1e293b;
+      --border-dark: #334155;
+      --border-light: #475569;
+      --accent-blue: #3b82f6;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --text-bright: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    
     body {
-      background: #0f172a;
-      color: #f8fafc;
+      background: var(--bg-dark);
+      color: var(--text-bright);
       font-family: 'Sofia Sans', sans-serif;
       margin: 0;
       padding: 0;
+      -webkit-tap-highlight-color: transparent;
     }
+
     .layout-wrapper {
       display: flex;
       flex-direction: column;
-      gap: 20px;
-      padding: 20px;
-      height: 100vh;
+      gap: 12px;
+      padding: 16px;
+      min-height: 100vh;
       box-sizing: border-box;
       overflow: hidden;
     }
-    .top-row {
-      display: flex;
-      gap: 20px;
-      flex: 0 0 auto;
-      max-height: 40%;
-    }
-    .bottom-row {
-      flex: 1;
-      display: flex;
-      overflow-y: auto;
-    }
-    .window {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      background: #1e293b;
-      border: 1px solid #334155;
+
+    /* View Switcher Tabs */
+    .view-mode-tabs {
+      display: inline-flex;
+      background: #0f172a;
+      padding: 4px;
       border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--border-dark);
+      gap: 4px;
     }
-    .window-header {
-      padding: 10px 15px;
-      font-size: 1.1em;
-      font-weight: 900;
-      letter-spacing: 1px;
-      color: #f1f5f9;
-      display: flex;
-      justify-content: space-between;
+    .view-mode-btn {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      padding: 8px 16px;
+      font-size: 0.95em;
+      font-weight: 700;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .view-mode-btn.active {
+      background: var(--accent-blue);
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+    }
+
+    .mode-toggle {
+      background: #334155;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 700;
+      border: 2px solid transparent;
+      user-select: none;
+      font-size: 0.9em;
+      display: inline-flex;
       align-items: center;
-      text-transform: uppercase;
+      gap: 6px;
     }
-    .window-body {
-      flex: 1;
-      padding: 15px;
-      overflow-y: auto;
+    .mode-toggle.active {
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+    }
+
+    /* Week Navigation Bar */
+    .week-nav-bar {
       display: flex;
-      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      background: #1e293b;
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border-dark);
+      flex-wrap: wrap;
       gap: 10px;
     }
-    
-    h1#monitorTitle {
-      margin: 0;
-      padding: 0;
-      font-size: 24px;
+    .week-badge {
+      font-size: 1.15em;
+      font-weight: 800;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: 0.5px;
+    }
+    .btn-nav-week {
+      background: #334155;
+      color: #f8fafc;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      padding: 7px 12px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.9em;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-nav-week:hover {
+      background: #475569;
+    }
+    .btn-nav-week.active {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
       color: #fff;
-      text-align: center;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-      flex: 0 0 auto;
     }
 
     /* Kanban Layout */
@@ -83,26 +137,30 @@
       flex: 1;
       gap: 15px;
       overflow: hidden;
-      height: 100%;
+      min-height: 0;
     }
     
     .task-pool {
-      width: 300px;
+      width: 310px;
       background: #1e293b;
       border-radius: 8px;
       display: flex;
       flex-direction: column;
-      border: 1px solid #334155;
+      border: 1px solid var(--border-dark);
       box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+      flex-shrink: 0;
     }
     
     .task-pool-header {
       background: linear-gradient(180deg, rgba(245,158,11,0.15) 0%, transparent 100%);
-      border-top: 3px solid #f59e0b;
-      padding: 15px;
+      border-top: 3px solid var(--accent-amber);
+      padding: 12px 15px;
       font-weight: 900;
-      font-size: 1.1em;
+      font-size: 1.05em;
       text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     
     .task-pool-body {
@@ -121,21 +179,23 @@
       overflow: auto;
       background: #1e293b;
       border-radius: 8px;
-      border: 1px solid #334155;
+      border: 1px solid var(--border-dark);
       box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+      min-width: 0;
     }
     
     table.calendar-table {
       border-collapse: collapse;
       width: 100%;
+      min-width: 650px;
     }
     
     th, td {
-      border: 1px solid #0f172a; /* Very dark slate for vertical borders */
-      border-bottom: 2px solid #3b82f6; /* Bright blue for horizontal row separators */
+      border: 1px solid #0f172a;
+      border-bottom: 2px solid #3b82f6;
       border-right: 1px solid #0f172a;
       text-align: center;
-      min-width: 80px;
+      min-width: 95px;
       vertical-align: top;
     }
     
@@ -145,6 +205,7 @@
       position: sticky;
       top: 0;
       z-index: 2;
+      font-size: 0.95em;
     }
     
     td.op-name {
@@ -155,6 +216,8 @@
       z-index: 1;
       padding: 10px;
       text-align: left;
+      min-width: 140px;
+      max-width: 180px;
     }
     
     th.first-cell {
@@ -162,11 +225,12 @@
       left: 0;
       top: 0;
       z-index: 3;
+      min-width: 140px;
     }
     
     td.day-cell {
-      padding: 5px;
-      min-height: 80px;
+      padding: 6px;
+      min-height: 85px;
       position: relative;
       transition: background 0.2s;
     }
@@ -176,25 +240,19 @@
     }
     
     td.day-cell.off-day {
-      background: rgba(239, 68, 68, 0.1);
+      background: rgba(239, 68, 68, 0.12);
       background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(239,68,68,0.2) 10px, rgba(239,68,68,0.2) 20px);
     }
-    
-    .mode-toggle {
-      background: #334155;
-      padding: 5px 15px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: bold;
-      border: 2px solid transparent;
-      user-select: none;
+
+    .off-day-badge {
+      color: #ef4444;
+      font-weight: 800;
+      font-size: 0.85em;
+      margin-top: 15px;
+      display: inline-block;
+      letter-spacing: 1px;
     }
-    .mode-toggle.active {
-      border-color: #ef4444;
-      background: rgba(239, 68, 68, 0.2);
-      color: #fca5a5;
-    }
-    
+
     /* Task Cards */
     .task-card {
       background: #334155;
@@ -204,24 +262,56 @@
       cursor: grab;
       user-select: none;
       box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      position: relative;
+      transition: transform 0.15s, border-color 0.15s;
+    }
+    .task-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.4);
     }
     .task-card:active { cursor: grabbing; }
     .task-card-title { font-weight: 900; color: #f8fafc; margin-bottom: 3px; font-size: 1.05em; }
     .task-card-op { color: #94a3b8; font-size: 0.85em; margin-bottom: 8px; }
-    
     .task-stat { display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 3px; }
-    
+
+    .btn-card-wizard {
+      width: 100%;
+      margin-top: 8px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 6px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-size: 0.85em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      transition: background 0.2s;
+    }
+    .btn-card-wizard:hover {
+      background: #2563eb;
+    }
+
     .assigned-card {
       background: #0f172a;
       border: 1px solid #475569;
       border-left: 3px solid #3b82f6;
-      padding: 5px;
-      border-radius: 4px;
+      padding: 6px 8px;
+      border-radius: 5px;
       display: flex;
       flex-direction: column;
-      margin-bottom: 5px;
+      margin-bottom: 6px;
       font-size: 0.85em;
       position: relative;
+      cursor: pointer;
+      transition: transform 0.1s, border-color 0.1s;
+    }
+    .assigned-card:hover {
+      border-color: #38bdf8;
+      transform: scale(1.02);
     }
     .assigned-card-forecast {
       border-left-color: #64748b;
@@ -232,17 +322,19 @@
     }
     .assigned-card-actual {
       border-left-color: #10b981;
-      background: rgba(16, 185, 129, 0.1);
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
     }
     .assigned-card-actual strong {
       color: #10b981 !important;
     }
     .assigned-card-unplanned {
-      border-left-color: #10b981;
-      background: rgba(16, 185, 129, 0.2);
+      border-left-color: #f59e0b;
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.4);
     }
     .assigned-card-unplanned strong {
-      color: #10b981 !important;
+      color: #f59e0b !important;
     }
     .assigned-card-title {
       font-weight: bold;
@@ -251,67 +343,229 @@
       word-wrap: break-word;
       line-height: 1.2;
     }
-    
-    .btn-copy-forward {
-      position: absolute;
-      bottom: 2px;
-      right: 25px;
-      background: #3b82f6;
-      color: white;
-      border: none;
-      border-radius: 3px;
-      padding: 2px 5px;
+
+    .cell-add-btn {
+      width: 100%;
+      padding: 5px;
+      margin-top: 4px;
+      background: transparent;
+      border: 1px dashed #475569;
+      border-radius: 4px;
+      color: #94a3b8;
       font-size: 0.8em;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: all 0.2s;
     }
-    .btn-copy-forward:hover { background: #2563eb; }
-    
-    .btn-del-quota {
-      position: absolute;
-      bottom: 2px;
-      right: 2px;
-      background: #ef4444;
-      color: white;
-      border: none;
-      border-radius: 3px;
-      padding: 2px 5px;
-      font-size: 0.8em;
-      cursor: pointer;
+    .cell-add-btn:hover {
+      border-color: #38bdf8;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
     }
-    .btn-del-quota:hover { background: #dc2626; }
-    
-    .hide-past-weeks .past-week-col {
-      display: none !important;
+
+    /* Monthly Overview Styling */
+    .overview-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      padding: 4px;
     }
-    
-    .date-mass-checkbox, .op-mass-checkbox {
-      width: 20px;
-      height: 20px;
-      accent-color: #3b82f6;
+    .overview-kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
     }
-    
-    /* Modal */
+    .kpi-card {
+      background: #1e293b;
+      border: 1px solid var(--border-dark);
+      border-radius: 8px;
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border-top: 3px solid var(--accent-blue);
+    }
+    .kpi-title {
+      font-size: 0.85em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .kpi-value {
+      font-size: 1.8em;
+      font-weight: 900;
+      color: var(--text-bright);
+    }
+    .overview-table-wrapper {
+      background: #1e293b;
+      border: 1px solid var(--border-dark);
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+    }
+    .overview-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 650px;
+    }
+    .overview-table th {
+      background: #0f172a;
+      color: var(--text-muted);
+      font-size: 0.85em;
+      text-transform: uppercase;
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 2px solid var(--border-dark);
+      position: static;
+    }
+    .overview-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-dark);
+      color: var(--text-bright);
+      font-size: 0.95em;
+      text-align: left;
+    }
+    .overview-table tr:hover {
+      background: rgba(59, 130, 246, 0.05);
+    }
+    .progress-bar-bg {
+      background: #0f172a;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #10b981;
+      border-radius: 4px;
+    }
+
+    /* Modals */
     .modal {
       display: none;
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7);
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(2px);
       align-items: center;
       justify-content: center;
       z-index: 1000;
+      padding: 15px;
+      box-sizing: border-box;
     }
     .modal-content {
       background: #1e293b;
       padding: 20px;
-      border-radius: 8px;
-      width: 350px;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 380px;
+      border: 1px solid var(--border-light);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+      box-sizing: border-box;
+    }
+    .wizard-modal-content {
+      max-width: 580px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .wizard-chips-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .wizard-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #0f172a;
+      border: 1px solid var(--border-dark);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9em;
+      color: #cbd5e1;
+      user-select: none;
+      transition: all 0.15s;
+    }
+    .wizard-chip.selected {
+      background: rgba(59, 130, 246, 0.25);
+      border-color: #3b82f6;
+      color: #ffffff;
+      font-weight: 700;
+    }
+    .btn-micro {
+      background: #334155;
+      color: #cbd5e1;
       border: 1px solid #475569;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 0.8em;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn-micro:hover {
+      background: #475569;
+      color: #fff;
     }
     .btn-cancel {
-      background: #475569; border: none; color: white; cursor: pointer; padding: 8px 15px; border-radius: 4px;
+      background: #475569; border: none; color: white; cursor: pointer; padding: 9px 16px; border-radius: 6px; font-weight: bold;
     }
     .btn-cancel:hover { background: #334155; }
+    .btn-assign {
+      background: #10b981; border: none; color: white; cursor: pointer; padding: 9px 18px; border-radius: 6px; font-weight: bold;
+    }
+    .btn-assign:hover { background: #059669; }
+
+    /* Mobile Responsive Optimizations */
+    @media (max-width: 900px) {
+      .layout-wrapper {
+        height: auto;
+        min-height: 100vh;
+        padding: 10px;
+        overflow-y: auto;
+      }
+      .kanban-layout {
+        flex-direction: column;
+        height: auto;
+      }
+      .task-pool {
+        width: 100%;
+        max-height: 280px;
+      }
+      .task-pool.mobile-collapsed .task-pool-body {
+        display: none;
+      }
+      #mobile-toggle-pool-btn {
+        display: inline-flex !important;
+      }
+      .calendar-board {
+        overflow-x: auto;
+      }
+      th, td {
+        min-width: 110px;
+      }
+      #monitorTitle {
+        font-size: 18px;
+        width: 100%;
+        justify-content: flex-start;
+      }
+      .view-mode-tabs {
+        width: 100%;
+        display: flex;
+      }
+      .view-mode-btn {
+        flex: 1;
+        text-align: center;
+        padding: 10px 8px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -321,82 +575,256 @@
   </div>
   
   <div class="layout-wrapper" style="display:none;" id="main-layout">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex: 0 0 auto;">
-        <h1 id="monitorTitle" style="display:flex; justify-content:center; align-items:center; gap:15px; margin:0;">
-          ПЛАНЬОР БОБИНЬОРКИ
-          <input type="month" id="month-picker" style="padding: 5px 10px; font-size: 18px; border-radius: 4px; border: none; background: #334155; color: #f8fafc; font-family: 'Sofia Sans', sans-serif; cursor: pointer; outline: none;">
-        </h1>
-        
-        <div id="forecast-bar" style="flex:1; margin: 0 30px; display:none; flex-direction:column; background:#1e293b; padding:10px; border-radius:6px; border:1px solid #334155;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                <strong id="fc-title"></strong>
-                <span id="fc-eta" style="color:#f59e0b;"></span>
-            </div>
-            <div style="background:#0f172a; height:10px; border-radius:5px; overflow:hidden; position:relative;">
-                <div id="fc-fill" style="background:#10b981; height:100%; width:0%; transition:width 0.3s;"></div>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:0.85em; color:#94a3b8; margin-top:3px;">
-                <span id="fc-done"></span>
-                <span id="fc-total"></span>
-            </div>
-        </div>
-        
-        <div style="display:flex; gap:10px;">
-            <div class="mode-toggle" id="delete-selected-dates-btn" onclick="deleteSelectedDates()" style="border-color:#f59e0b; color:#f59e0b; background: rgba(245, 158, 11, 0.1); display:none;" title="Изтрива всички задачи от маркираните дати">
-                🗑️ Изтрий маркирани
-            </div>
-            <div class="mode-toggle" id="clear-month-btn" onclick="clearMonth()" style="border-color:#ef4444; color:#ef4444; background: rgba(239, 68, 68, 0.1);" title="Изтрива всички възложени задачи и почивки за избрания месец">
-                🗑️ Изчисти Месеца
-            </div>
-            <div class="mode-toggle" id="off-mode-toggle" onclick="toggleOffMode()" title="Ако е включено, цъкането върху клетка в календара я маркира като почивен ден (Х)">
-                🛑 Режим Почивки: ИЗКЛ
-            </div>
-        </div>
-    </div>
     
-    <div class="kanban-layout">
-      <!-- Task Pool Sidebar -->
-      <div class="task-pool" id="task-pool">
-        <div class="task-pool-header">📥 СВОБОДНИ ЗАДАЧИ</div>
-        <div class="task-pool-body" id="w-task-pool">
-          <!-- Task cards -->
+    <!-- Top Header & Controls Bar -->
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; flex: 0 0 auto;">
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <h1 id="monitorTitle" style="display:flex; align-items:center; gap:8px; margin:0; font-size:20px; font-weight:900; letter-spacing:1px;">
+          ⚙️ ПЛАНЬОР БОБИНЬОРКИ
+        </h1>
+        <div class="view-mode-tabs">
+          <button id="view-weekly-btn" class="view-mode-btn active" onclick="switchViewMode('weekly')">📅 Седмица (Пн - Пт)</button>
+          <button id="view-monthly-btn" class="view-mode-btn" onclick="switchViewMode('monthly')">📊 Месечен обзор & Засечка</button>
         </div>
       </div>
       
-      <!-- Calendar Board -->
-      <div class="calendar-board" id="w-calendar-board">
-        <!-- Calendar Table -->
-      </div>
-    </div>
-    
-    <!-- Modal for Assigning Quantity -->
-    <div id="assign-modal" class="modal">
-      <div class="modal-content">
-        <h3 id="modal-task-title" style="margin-top:0;">Възлагане на задача</h3>
-        <p style="color:#94a3b8; font-size:0.9em; margin-bottom:15px;" id="modal-task-op"></p>
-        <p>Оператор: <strong id="modal-operator-name"></strong></p>
-        <div style="margin: 15px 0;">
-          <label>Количество (бр.):</label><br>
-          <input type="number" id="modal-qty" style="width:100%; margin-top:5px; font-size:1.2em;" min="1">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <button class="mode-toggle" id="btn-open-wizard" onclick="openWizardModal()" style="border-color:#10b981; color:#10b981; background: rgba(16, 185, 129, 0.15);" title="Бързо залагане на детайл за няколко оператора и дни">
+          ⚡ Бърз разпределител
+        </button>
+        <input type="month" id="month-picker" style="padding: 6px 10px; font-size: 15px; border-radius: 6px; border: 1px solid var(--border-light); background: #334155; color: #f8fafc; font-family: 'Sofia Sans', sans-serif; cursor: pointer; outline: none;">
+        <div class="mode-toggle" id="off-mode-toggle" onclick="toggleOffMode()" title="Ако е включено, цъкането върху клетка в календара я маркира като почивен ден (Х)">
+          🛑 Почивки: ИЗКЛ
         </div>
-        <div style="display:flex; justify-content:flex-end; gap:10px;">
-          <button class="btn-cancel" onclick="closeAssignModal()">Отказ</button>
-          <button class="btn-assign" onclick="confirmAssign()">Запази</button>
-        </div>
+        <div class="mode-toggle" id="clear-month-btn" onclick="clearMonth()" style="border-color:#ef4444; color:#ef4444; background: rgba(239, 68, 68, 0.1);" title="Изтрива всички задачи и почивки за избрания месец">
+          🗑️ Изчисти Месеца
         </div>
       </div>
     </div>
-    
-    <!-- Modal for Task Options -->
-    <div id="task-options-modal" class="modal" onclick="if(event.target===this) closeTaskOptionsModal()">
-      <div class="modal-content" style="width: 280px; text-align: center;">
-        <h3 id="opt-task-title" style="margin-top:0; font-size:1.1em;"></h3>
-        <p style="color:#94a3b8; font-size:0.9em; margin-bottom:20px;" id="opt-task-op"></p>
+
+    <!-- WEEKLY VIEW CONTAINER (Work Week Mon-Fri) -->
+    <div id="weekly-view-container" style="display:flex; flex-direction:column; flex:1; overflow:hidden; gap:10px;">
+      
+      <!-- Week Navigation Bar -->
+      <div class="week-nav-bar">
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <button class="btn-nav-week" onclick="navWeek(-1)">◀ Предна</button>
+          <button class="btn-nav-week" onclick="navWeek(0)">📍 Тази седмица</button>
+          <button class="btn-nav-week" onclick="navWeek(1)">Следваща ▶</button>
+        </div>
         
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <button style="background: #3b82f6; color: white; border: none; padding: 12px; border-radius: 6px; font-size: 1.1em; font-weight: bold; cursor: pointer;" id="opt-btn-copy">» Разпъни напред</button>
-          <button style="background: #ef4444; color: white; border: none; padding: 12px; border-radius: 6px; font-size: 1.1em; font-weight: bold; cursor: pointer;" id="opt-btn-delete">X Изтрий задача</button>
-          <button class="btn-cancel" style="margin-top:10px; padding: 10px;" onclick="closeTaskOptionsModal()">Отказ</button>
+        <div class="week-badge" id="current-week-label">
+          Седмица -- (Пн - Пт)
+        </div>
+        
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button id="mobile-toggle-pool-btn" class="btn-nav-week" onclick="togglePoolMobile()" style="display:none; background:#1e293b; border-color:#38bdf8; color:#38bdf8;">
+            📥 Свободни задачи (<span id="mobile-pool-count">0</span>) ▾
+          </button>
+        </div>
+      </div>
+
+      <!-- Kanban Layout -->
+      <div class="kanban-layout">
+        <!-- Task Pool Sidebar -->
+        <div class="task-pool" id="task-pool">
+          <div class="task-pool-header">
+            <span>📥 СВОБОДНИ ЗАДАЧИ</span>
+            <button class="btn-micro" style="background:#10b981; color:#fff;" onclick="openWizardModal()">⚡ Wizard</button>
+          </div>
+          <div class="task-pool-body" id="w-task-pool">
+            <!-- Task cards -->
+          </div>
+        </div>
+        
+        <!-- Calendar Board -->
+        <div class="calendar-board" id="w-calendar-board">
+          <!-- Calendar Table generated dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- MONTHLY OVERVIEW CONTAINER (Read-only / Summary) -->
+    <div id="monthly-overview-container" class="overview-container" style="display:none; flex:1;">
+      
+      <!-- Overview Filter Bar -->
+      <div style="background:#1e293b; padding:14px 18px; border-radius:8px; border:1px solid var(--border-dark); display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <div style="font-size:1.15em; font-weight:800; color:#38bdf8; display:flex; align-items:center; gap:8px;">
+              📊 ОБЗОР И ЗАСЕЧКА НА БРОЙКИТЕ ЗА МЕСЕЦА
+            </div>
+            <div style="font-size:0.85em; color:var(--text-muted); margin-top:2px;">
+              Вижте обобщената информация на един екран без прелистване
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;" id="overview-period-buttons">
+            <button class="btn-nav-week active" data-period="all" onclick="setOverviewPeriod('all')">🌐 Цял месец</button>
+            <button class="btn-nav-week" data-period="w1" onclick="setOverviewPeriod('w1')">1️⃣ Седмица 1 (1-7)</button>
+            <button class="btn-nav-week" data-period="w1_2" onclick="setOverviewPeriod('w1_2')">2️⃣ Седмици 1-2 (1-14)</button>
+            <button class="btn-nav-week" data-period="w1_3" onclick="setOverviewPeriod('w1_3')">3️⃣ Седмици 1-3 (1-21)</button>
+            <button class="btn-nav-week" data-period="w4" onclick="setOverviewPeriod('w4')">4️⃣ Седмица 4 (22+)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <div class="overview-kpis" id="overview-kpis-container"></div>
+
+      <!-- Details Breakdown Table -->
+      <div class="overview-table-wrapper">
+        <div style="padding:12px 16px; background:#0f172a; border-bottom:1px solid var(--border-dark); font-weight:800; color:#f8fafc; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <span>📋 ЗАСЕЧКА ПО ДЕТАЙЛИ В ИЗБРАНИЯ ПЕРИОД</span>
+          <span id="overview-period-label" style="color:#38bdf8; font-size:0.9em; font-weight:normal;"></span>
+        </div>
+        <table class="overview-table" id="overview-details-table"></table>
+      </div>
+
+      <!-- Operators Breakdown Table -->
+      <div class="overview-table-wrapper">
+        <div style="padding:12px 16px; background:#0f172a; border-bottom:1px solid var(--border-dark); font-weight:800; color:#f8fafc;">
+          <span>👥 ЗАСЕЧКА ПО ОПЕРАТОРИ (ПРОИЗВОДИТЕЛНОСТ И ВЪЗЛОЖЕНИ)</span>
+        </div>
+        <table class="overview-table" id="overview-operators-table"></table>
+      </div>
+
+      <!-- Collapsible Full Month Matrix (Days 1 to 31) -->
+      <div class="overview-table-wrapper" style="margin-top:5px;">
+        <div style="padding:12px 16px; background:#0f172a; border-bottom:1px solid var(--border-dark); font-weight:800; color:#f8fafc; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="toggleFullMonthMatrix()">
+          <span>🗓️ ПЪЛНА МЕСЕЧНА МАТРИЦА (ДНИ 1 ДО 31)</span>
+          <span id="full-month-matrix-indicator" style="color:#38bdf8; font-size:0.9em;">[ Показване ▾ ]</span>
+        </div>
+        <div id="full-month-matrix-body" style="display:none; overflow-x:auto;"></div>
+      </div>
+    </div>
+
+    <!-- MODALS -->
+
+    <!-- 1. Modal for Quick Cell Assign -->
+    <div id="quick-cell-modal" class="modal" onclick="if(event.target===this) closeQuickCellModal()">
+      <div class="modal-content">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-dark); padding-bottom:10px; margin-bottom:12px;">
+          <h3 style="margin:0; font-size:1.15em; color:#fff;" id="qc-title">Възлагане на задача</h3>
+          <button onclick="closeQuickCellModal()" style="background:transparent; border:none; color:var(--text-muted); font-size:1.4em; cursor:pointer;">&times;</button>
+        </div>
+        <p style="color:#38bdf8; font-size:0.9em; margin-bottom:14px; font-weight:600;" id="qc-subtitle"></p>
+        
+        <div style="margin-bottom:12px;">
+          <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold;">Избери Детайл:</label>
+          <select id="qc-detail-select" style="width:100%; padding:8px; margin-top:4px; background:#0f172a; color:#fff; border:1px solid var(--border-light); border-radius:6px; font-size:1em;">
+          </select>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold;">Количество (бр.):</label>
+          <input type="number" id="qc-qty-input" min="1" style="width:100%; padding:8px; margin-top:4px; background:#0f172a; color:#fff; border:1px solid var(--border-light); border-radius:6px; font-size:1.2em;">
+          <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+            <button type="button" class="btn-micro" onclick="setQcQty(5)">5 бр.</button>
+            <button type="button" class="btn-micro" onclick="setQcQty(10)">10 бр.</button>
+            <button type="button" class="btn-micro" onclick="setQcQty(15)">15 бр.</button>
+            <button type="button" class="btn-micro" onclick="setQcQty(20)">20 бр.</button>
+            <button type="button" class="btn-micro" onclick="setQcQty(30)">30 бр.</button>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+          <button class="btn-cancel" onclick="closeQuickCellModal()">Отказ</button>
+          <button class="btn-assign" onclick="confirmQuickCellAssign()">✅ Запази</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Modal for Task Options & Edit -->
+    <div id="task-options-modal" class="modal" onclick="if(event.target===this) closeTaskOptionsModal()">
+      <div class="modal-content" style="text-align: center;">
+        <h3 id="opt-task-title" style="margin-top:0; font-size:1.15em; color:#fff;"></h3>
+        <p style="color:var(--text-muted); font-size:0.9em; margin-bottom:12px;" id="opt-task-op"></p>
+        
+        <div style="background:#0f172a; padding:12px; border-radius:8px; margin-bottom:15px; border:1px solid var(--border-dark);">
+          <label style="font-size:0.85em; color:var(--text-muted); font-weight:bold;">Количество за този ден:</label>
+          <div style="display:flex; gap:8px; justify-content:center; align-items:center; margin-top:6px;">
+            <input type="number" id="opt-task-qty" min="1" style="width:90px; text-align:center; padding:6px; font-size:1.2em; background:#1e293b; color:#fff; border:1px solid var(--border-light); border-radius:6px;">
+            <button style="background:#10b981; color:#fff; border:none; padding:8px 14px; border-radius:6px; font-weight:bold; cursor:pointer;" id="opt-btn-save-qty">💾 Запази</button>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button style="background: #3b82f6; color: white; border: none; padding: 10px; border-radius: 6px; font-size: 1em; font-weight: bold; cursor: pointer;" id="opt-btn-copy">» Разпъни напред за седмицата</button>
+          <button style="background: #ef4444; color: white; border: none; padding: 10px; border-radius: 6px; font-size: 1em; font-weight: bold; cursor: pointer;" id="opt-btn-delete">🗑️ Изтрий задача</button>
+          <button class="btn-cancel" style="margin-top:6px;" onclick="closeTaskOptionsModal()">Затвори</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Modal: Wizard for Bulk Assignment (Task-to-People) -->
+    <div id="wizard-modal" class="modal" onclick="if(event.target===this) closeWizardModal()">
+      <div class="modal-content wizard-modal-content">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-dark); padding-bottom:10px; margin-bottom:12px;">
+          <h3 style="margin:0; font-size:1.2em; color:#f8fafc; display:flex; align-items:center; gap:8px;">
+            ⚡ Бърз разпределител (Wizard)
+          </h3>
+          <button onclick="closeWizardModal()" style="background:transparent; border:none; color:var(--text-muted); font-size:1.5em; cursor:pointer; line-height:1;">&times;</button>
+        </div>
+
+        <!-- Step 1: Detail Selection -->
+        <div style="margin-bottom:12px;">
+          <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">1. Избор на Детайл / Задача</label>
+          <select id="wz-detail-select" onchange="onWizardDetailChange()" style="width:100%; padding:8px; background:#0f172a; color:#fff; border:1px solid var(--border-light); border-radius:6px; font-size:1em; margin-top:4px;">
+          </select>
+          <div id="wz-detail-info" style="font-size:0.85em; color:#38bdf8; margin-top:4px; font-weight:600;"></div>
+        </div>
+
+        <!-- Step 2: Operator Selection -->
+        <div style="margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">2. Избор на Оператори (<span id="wz-op-count">0</span>)</label>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn-micro" onclick="toggleAllWizardOps(true)">Всички</button>
+              <button type="button" class="btn-micro" onclick="toggleAllWizardOps(false)">Изчисти</button>
+            </div>
+          </div>
+          <div id="wz-ops-container" class="wizard-chips-grid"></div>
+        </div>
+
+        <!-- Step 3: Days Selection -->
+        <div style="margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">3. Работни Дни (<span id="wz-day-count">0</span>)</label>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn-micro" onclick="setWizardDaysPreset('all')">Цялата седмица</button>
+              <button type="button" class="btn-micro" onclick="setWizardDaysPreset('today')">Днес</button>
+              <button type="button" class="btn-micro" onclick="setWizardDaysPreset('remaining')">От днес до Пт</button>
+            </div>
+          </div>
+          <div id="wz-days-container" class="wizard-chips-grid"></div>
+        </div>
+
+        <!-- Step 4: Quantity Mode & Input -->
+        <div style="margin-bottom:12px;">
+          <label style="color:var(--text-muted); font-size:0.85em; font-weight:bold; text-transform:uppercase;">4. Разпределение на бройки</label>
+          <div style="display:flex; gap:12px; margin-top:6px; flex-wrap:wrap;">
+            <label style="cursor:pointer; display:flex; align-items:center; gap:6px; color:#f8fafc; font-size:0.9em;">
+              <input type="radio" name="wz-qty-mode" value="total" checked onchange="updateWizardCalc()"> Общо количество за разделяне
+            </label>
+            <label style="cursor:pointer; display:flex; align-items:center; gap:6px; color:#f8fafc; font-size:0.9em;">
+              <input type="radio" name="wz-qty-mode" value="per_person" onchange="updateWizardCalc()"> По фиксирано бр./ден на човек
+            </label>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+            <input type="number" id="wz-qty-input" min="1" placeholder="Въведете брой..." oninput="updateWizardCalc()" style="flex:1; padding:8px; font-size:1.1em; background:#0f172a; color:#fff; border:1px solid var(--border-light); border-radius:6px;">
+            <button type="button" class="btn-micro" style="padding:8px 12px; font-size:0.9em; background:#3b82f6; color:#fff;" onclick="fillWizardRemaining()">Остатък по план</button>
+          </div>
+          <div id="wz-calc-preview" style="background:#0f172a; padding:10px; border-radius:6px; border:1px dashed var(--border-dark); margin-top:8px; font-size:0.9em; color:#a5f3fc;">
+            👉 Изберете оператори, дни и количество за калкулация.
+          </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px; border-top:1px solid var(--border-dark); padding-top:12px;">
+          <button class="btn-cancel" onclick="closeWizardModal()">Отказ</button>
+          <button class="btn-assign" id="btn-wizard-confirm" onclick="confirmWizardAssign()">
+            ✅ Заложи в Графика
+          </button>
         </div>
       </div>
     </div>

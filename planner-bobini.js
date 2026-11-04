@@ -16,19 +16,43 @@ let globalState = {
     checkedIn: [],
     targetItems: [],
     quotas: [],
-    otcheti: []
+    otcheti: [],
+    activeOperators: [],
+    currentWeekMonday: null,
+    currentViewMode: 'weekly', // 'weekly' or 'monthly'
+    overviewPeriod: 'all', // 'all', 'w1', 'w1_2', 'w1_3', 'w4'
+    isFullMonthMatrixExpanded: false
 };
 
-window.onload = async function() {
-    const monthPicker = document.getElementById('month-picker');
-    if (monthPicker) {
-        monthPicker.value = getMonthString();
-        monthPicker.addEventListener('change', loadData);
-    }
-    await initialFetch();
-    loadData();
-    setInterval(loadData, 15000); 
-};
+// Date helper utilities
+function getMonday(d) {
+    let date = new Date(d);
+    let day = date.getDay();
+    let diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    let monday = new Date(date.setDate(diff));
+    monday.setHours(0,0,0,0);
+    return monday;
+}
+
+function formatDateISO(d) {
+    let y = d.getFullYear();
+    let m = String(d.getMonth() + 1).padStart(2, '0');
+    let day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function formatDateDisplay(d) {
+    let day = String(d.getDate()).padStart(2, '0');
+    let m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}.${m}`;
+}
+
+function getWeekNumber(d) {
+    d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+    var yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+    return Math.ceil(( ( (d - yearStart) / 86400000) + 1)/7);
+}
 
 function getMonthString() {
     const today = new Date();
@@ -37,16 +61,42 @@ function getMonthString() {
     return `${yyyy}-${mm}`;
 }
 
+function normalizeStr(str) {
+    if (!str) return '';
+    return String(str).replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
+}
+
+window.onload = async function() {
+    globalState.currentWeekMonday = getMonday(new Date());
+    const monthPicker = document.getElementById('month-picker');
+    if (monthPicker) {
+        monthPicker.value = getMonthString();
+        monthPicker.addEventListener('change', () => {
+            let parts = monthPicker.value.split('-');
+            let y = parseInt(parts[0]);
+            let m = parseInt(parts[1]) - 1;
+            let firstDay = new Date(y, m, 1);
+            globalState.currentWeekMonday = getMonday(firstDay);
+            loadData();
+        });
+    }
+    await initialFetch();
+    await loadData();
+    setInterval(loadData, 20000); 
+};
+
 let offMode = false;
 function toggleOffMode() {
     offMode = !offMode;
     const btn = document.getElementById('off-mode-toggle');
-    if (offMode) {
-        btn.classList.add('active');
-        btn.innerText = '🛑 Режим Почивки: ВКЛЮЧЕН';
-    } else {
-        btn.classList.remove('active');
-        btn.innerText = '🛑 Режим Почивки: ИЗКЛ';
+    if (btn) {
+        if (offMode) {
+            btn.classList.add('active');
+            btn.innerText = '🛑 Почивки: ВКЛ';
+        } else {
+            btn.classList.remove('active');
+            btn.innerText = '🛑 Почивки: ИЗКЛ';
+        }
     }
 }
 
@@ -112,45 +162,40 @@ async function loadData() {
     }
 
     try {
-        const selectedMonth = document.getElementById('month-picker').value;
-        const startOfMonth = selectedMonth + '-01';
-        let d = new Date(selectedMonth + '-01');
-        let lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-        const endOfMonth = selectedMonth + '-' + String(lastDay).padStart(2,'0');
+        const selectedMonth = document.getElementById('month-picker').value || getMonthString();
+        
+        let dStart = new Date(selectedMonth + '-01');
+        dStart.setMonth(dStart.getMonth() - 1);
+        let prevMonthStr = `${dStart.getFullYear()}-${String(dStart.getMonth() + 1).padStart(2,'0')}-01`;
+
+        let dEnd = new Date(selectedMonth + '-01');
+        dEnd.setMonth(dEnd.getMonth() + 2);
+        dEnd.setDate(0);
+        let nextMonthStr = `${dEnd.getFullYear()}-${String(dEnd.getMonth() + 1).padStart(2,'0')}-${String(dEnd.getDate()).padStart(2,'0')}`;
 
         // Fetch Plans (Active only)
         const plansRes = await client.from('plan').select('*').in('Статус', ['Активен']);
-        // Fetch otcheti for these operations (to calculate progress)
+        // Fetch otcheti
         const otchetiRes = await client.from('otcheti').select('*').eq('Статус', 'Отчетено');
-        // Fetch quotas for the entire month
-        const quotasRes = await client.from('planner_bobini').select('*').gte('date', startOfMonth).lte('date', endOfMonth);
-
-        // Fetch personal to filter by department and map emails
+        // Fetch quotas for 3 month range
+        const quotasRes = await client.from('planner_bobini').select('*').gte('date', prevMonthStr).lte('date', nextMonthStr);
+        // Fetch personal
         const personalRes = await client.from('personal').select('Име, Имейл, Длъжност').eq('Статус', 'Активен');
-        let personalData = personalRes.data || [];
         
-        let emailToName = {};
+        let personalData = personalRes.data || [];
         let validNames = new Set();
-
         personalData.forEach(p => {
             let name = String(p['Име'] || '').trim();
-            let email = String(p['Имейл'] || '').trim().toLowerCase();
-            if (email && name) emailToName[email] = name;
-            
             if (p['Длъжност'] && p['Длъжност'].toLowerCase().includes('бобин') && name) {
                 validNames.add(name);
             }
         });
 
-        let activePlans = plansRes.data || [];
         globalState.otcheti = otchetiRes.data || [];
         globalState.quotas = quotasRes.data || [];
-
-        // All active operators in bobini department
         globalState.activeOperators = Array.from(validNames).sort();
 
         let allTasks = await generateTerminalTasks(client);
-        
         let filteredTargetNodes = {};
         
         if (allTasks) {
@@ -170,36 +215,36 @@ async function loadData() {
                 if (isRotor && (op.includes('навиване') || op.includes('спояване'))) isValidOp = true;
                 if ((isTransformer || isToroid) && (op.includes('навиване') || op.includes('спояване'))) isValidOp = true;
                 
-                // Explicit catches based on operation name
                 if (op.includes('бобиньорки')) isValidOp = true;
                 if (op.includes('ротор') && (op.includes('навиване') || op.includes('спояване'))) isValidOp = true;
                 
                 if (isValidOp) {
-                        let key = t.name + "___" + t.op;
-                        if (!filteredTargetNodes[key]) {
-                            filteredTargetNodes[key] = {
-                                detailName: t.name,
-                                operationName: t.op,
-                                planQty: 0,
-                                totalDone: 0,
-                                isBlocked: true,
-                                availableQty: 0
-                            };
-                        }
-                        
-                        filteredTargetNodes[key].planQty += t.totalNeed;
-                        filteredTargetNodes[key].totalDone += t.totalDone;
-                        
-                        if (!t.isBlocked) {
-                            filteredTargetNodes[key].isBlocked = false;
-                            filteredTargetNodes[key].availableQty += t.totalNeed;
-                        }
+                    let key = t.name + "___" + t.op;
+                    if (!filteredTargetNodes[key]) {
+                        filteredTargetNodes[key] = {
+                            detailName: t.name,
+                            operationName: t.op,
+                            planQty: 0,
+                            totalDone: 0,
+                            isBlocked: true,
+                            availableQty: 0
+                        };
                     }
+                    
+                    filteredTargetNodes[key].planQty += t.totalNeed;
+                    filteredTargetNodes[key].totalDone += t.totalDone;
+                    
+                    if (!t.isBlocked) {
+                        filteredTargetNodes[key].isBlocked = false;
+                        filteredTargetNodes[key].availableQty += t.totalNeed;
+                    }
+                }
             });
         }
         
         globalState.targetItems = Object.values(filteredTargetNodes);
         globalState.targetItems.sort((a,b) => a.detailName.localeCompare(b.detailName));
+        
         renderCalendarUI();
 
         if (firstLoad) {
@@ -217,21 +262,64 @@ async function loadData() {
     }
 }
 
-let currentDragTask = null;
-let currentDropOperator = null;
-let currentDropDateStr = null;
+// View switcher
+window.switchViewMode = function(mode) {
+    globalState.currentViewMode = mode;
+    let btnWeekly = document.getElementById('view-weekly-btn');
+    let btnMonthly = document.getElementById('view-monthly-btn');
+    let weeklyCont = document.getElementById('weekly-view-container');
+    let monthlyCont = document.getElementById('monthly-overview-container');
+    
+    if (mode === 'weekly') {
+        if (btnWeekly) btnWeekly.classList.add('active');
+        if (btnMonthly) btnMonthly.classList.remove('active');
+        if (weeklyCont) weeklyCont.style.display = 'flex';
+        if (monthlyCont) monthlyCont.style.display = 'none';
+        renderWeeklyBoard();
+    } else {
+        if (btnMonthly) btnMonthly.classList.add('active');
+        if (btnWeekly) btnWeekly.classList.remove('active');
+        if (weeklyCont) weeklyCont.style.display = 'none';
+        if (monthlyCont) monthlyCont.style.display = 'flex';
+        renderMonthlyOverview();
+    }
+};
+
+// Week navigation
+window.navWeek = function(direction) {
+    if (direction === 0) {
+        globalState.currentWeekMonday = getMonday(new Date());
+    } else {
+        let m = new Date(globalState.currentWeekMonday || getMonday(new Date()));
+        m.setDate(m.getDate() + (direction * 7));
+        globalState.currentWeekMonday = m;
+    }
+    
+    let yyyyMm = `${globalState.currentWeekMonday.getFullYear()}-${String(globalState.currentWeekMonday.getMonth() + 1).padStart(2, '0')}`;
+    let mp = document.getElementById('month-picker');
+    if (mp && mp.value !== yyyyMm) {
+        mp.value = yyyyMm;
+        loadData();
+        return;
+    }
+    renderCalendarUI();
+};
 
 function renderCalendarUI() {
-    const selectedMonth = document.getElementById('month-picker').value; 
-    let year = parseInt(selectedMonth.split('-')[0]);
-    let month = parseInt(selectedMonth.split('-')[1]);
-    let daysInMonth = new Date(year, month, 0).getDate();
+    renderTaskPool();
+    if (globalState.currentViewMode === 'weekly') {
+        renderWeeklyBoard();
+    } else {
+        renderMonthlyOverview();
+    }
+}
 
-    // 1. Render Task Pool (Left Sidebar)
+// Render Task Pool
+function renderTaskPool() {
     let poolHtml = '';
+    let count = 0;
     globalState.targetItems.forEach(item => {
         let remaining = item.planQty || 0;
-        
         let totalAssignedMonth = 0;
         globalState.quotas.forEach(q => {
             if (q.detail_name === item.detailName && q.operation_name === item.operationName && q.detail_name !== 'OFF') {
@@ -248,42 +336,42 @@ function renderCalendarUI() {
                 <div class="task-card-op">${item.operationName}</div>
                 <div class="task-stat"><span style="color:#94a3b8">Остават по план:</span> <strong>${remaining} бр.</strong></div>
                 <div class="task-stat"><span style="color:#94a3b8">Налични:</span> <strong style="color:#f59e0b">${item.availableQty} бр.</strong></div>
-                <div class="task-stat" style="margin-top:5px; padding-top:5px; border-top:1px solid #475569;"><span style="color:#94a3b8">Възложени м.:</span> <strong style="color:#38bdf8">${totalAssignedMonth} бр.</strong></div>
+                <div class="task-stat" style="margin-top:4px; padding-top:4px; border-top:1px solid #475569;"><span style="color:#94a3b8">Възложени м.:</span> <strong style="color:#38bdf8">${totalAssignedMonth} бр.</strong></div>
+                <button class="btn-card-wizard" onclick="openWizardModal('${safeDetail}', '${safeOp}')">⚡ Разпредели</button>
             </div>
         `;
+        count++;
     });
     if(globalState.targetItems.length === 0) {
-        poolHtml = '<div style="color:#94a3b8; text-align:center;">Няма заредени статори/ротори.</div>';
+        poolHtml = '<div style="color:#94a3b8; text-align:center; padding:15px;">Няма заредени статори/ротори.</div>';
     }
     document.getElementById('w-task-pool').innerHTML = poolHtml;
+    let poolCountEl = document.getElementById('mobile-pool-count');
+    if (poolCountEl) poolCountEl.innerText = count;
+}
 
-    // 2. Render Calendar Board
-    let today = new Date();
-    let isCurrentMonth = (year === today.getFullYear() && month === (today.getMonth() + 1));
-    let currentMonday = new Date(today);
-    let dayOfWeek = currentMonday.getDay();
-    let diff = currentMonday.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-    currentMonday.setDate(diff);
-    currentMonday.setHours(0,0,0,0);
-    
-    let toggleBtnHtml = isCurrentMonth ? `<br><button id="togglePastBtn" onclick="togglePastWeeks()" style="background:#3b82f6; color:#fff; border:none; border-radius:4px; padding:3px 6px; font-size:0.85em; font-weight:normal; cursor:pointer; margin-top:8px;" title="Скрий/Покажи миналите седмици">Покажи минали</button>` : '';
-
-    let tableClass = isCurrentMonth ? "calendar-table hide-past-weeks" : "calendar-table";
-    let boardHtml = `<table class="${tableClass}" id="planner-table"><thead><tr><th class="first-cell" style="vertical-align: top; padding-top: 15px;">Оператор${toggleBtnHtml}</th>`;
-    for (let d = 1; d <= daysInMonth; d++) {
-        let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        let dateObj = new Date(year, month - 1, d);
-        let dayStr = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][dateObj.getDay()];
-        let isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6) ? 'color:#f87171;' : '';
-        let hideClass = (isCurrentMonth && dateObj < currentMonday) ? "past-week-col" : "";
-        boardHtml += `<th class="${hideClass}" style="${isWeekend} position:relative; padding-top:25px;">
-            <input type="checkbox" class="date-mass-checkbox" data-date="${fullDateStr}" onchange="toggleMassDeleteBtn()" style="position:absolute; top:5px; left:50%; transform:translateX(-50%); cursor:pointer;" title="Маркирай за масово изтриване">
-            ${d}<br><span style="font-size:0.7em; font-weight:normal;">${dayStr}</span>
-        </th>`;
+// Render Weekly Board (Work week Mon - Fri)
+function renderWeeklyBoard() {
+    if (!globalState.currentWeekMonday) {
+        globalState.currentWeekMonday = getMonday(new Date());
     }
-    boardHtml += '</tr></thead><tbody>';
-
-
+    let mon = new Date(globalState.currentWeekMonday);
+    
+    // 5 work days
+    let workDays = [];
+    for (let i = 0; i < 5; i++) {
+        let d = new Date(mon);
+        d.setDate(mon.getDate() + i);
+        workDays.push(d);
+    }
+    let fri = workDays[4];
+    
+    let weekLabel = document.getElementById('current-week-label');
+    if (weekLabel) {
+        weekLabel.innerHTML = `Седмица ${getWeekNumber(mon)}: <strong>${formatDateDisplay(mon)} – ${formatDateDisplay(fri)}.${fri.getFullYear()}</strong>`;
+    }
+    
+    // Map actual reports from otcheti
     let actualsMap = {};
     if (globalState.otcheti) {
         globalState.otcheti.forEach(r => {
@@ -294,58 +382,64 @@ function renderCalendarUI() {
             let op = normalizeStr(r['Операция']);
             let qty = parseFloat(r['Количество']) || 0;
             if (qty > 0) {
-                let lowerDetail = detail.toLowerCase();
-                let lowerOp = op.toLowerCase();
-                
-                let isStator = lowerDetail.includes('статор') && !lowerDetail.includes('пак');
-                let isRotor = lowerDetail.includes('ротор');
-                let isTransformer = lowerDetail.includes('трансформатор');
-                let isToroid = lowerDetail.includes('тороид');
-
-                let isValidOp = false;
-                if (isStator && lowerOp.includes('навиване')) isValidOp = true;
-                if (isRotor && (lowerOp.includes('навиване') || lowerOp.includes('спояване'))) isValidOp = true;
-                if ((isTransformer || isToroid) && (lowerOp.includes('навиване') || lowerOp.includes('спояване'))) isValidOp = true;
-                
-                // Explicit catches based on operation name
-                if (lowerOp.includes('бобиньорки')) isValidOp = true;
-                if (lowerOp.includes('ротор') && (lowerOp.includes('навиване') || lowerOp.includes('спояване'))) isValidOp = true;
-                
-                // Allow any manual quotas that match exactly
-                let isAssigned = globalState.quotas && globalState.quotas.some(q => q.detail_name === r['ID Детайл'] && q.operation_name === r['Операция']);
-
-                if (isValidOp || isAssigned) {
-                    let key = `${dateStr}|${name}|${detail}|${op}`;
-                    actualsMap[key] = (actualsMap[key] || 0) + qty;
-                }
+                let key = `${dateStr}|${name}|${detail}|${op}`;
+                actualsMap[key] = (actualsMap[key] || 0) + qty;
             }
         });
     }
 
+    let dayNames = ['Пон', 'Вт', 'Ср', 'Чт', 'Пт'];
+    let todayStr = formatDateISO(new Date());
+
+    let boardHtml = `
+      <table class="calendar-table" id="planner-table">
+        <thead>
+          <tr>
+            <th class="first-cell" style="vertical-align: middle; text-align: left;">👤 Оператор</th>
+    `;
+    
+    workDays.forEach((wd, idx) => {
+        let dStr = formatDateISO(wd);
+        let isToday = (dStr === todayStr) ? 'border-top: 3px solid #38bdf8;' : '';
+        boardHtml += `
+          <th style="${isToday}">
+            <div style="font-size:1.05em; font-weight:800;">${dayNames[idx]}</div>
+            <div style="font-size:0.8em; color:#94a3b8; font-weight:normal;">${formatDateDisplay(wd)}</div>
+          </th>
+        `;
+    });
+    
+    boardHtml += `
+            <th style="background:#1e293b; color:#38bdf8; min-width:110px;">📊 Седмичен сбор</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
     if (globalState.activeOperators.length === 0) {
-        boardHtml += '<tr><td colspan="' + (daysInMonth + 1) + '" style="padding:20px; color:#94a3b8;">Няма активни оператори в този отдел.</td></tr>';
+        boardHtml += `<tr><td colspan="7" style="padding:25px; color:#94a3b8; text-align:center;">Няма намерени активни оператори в отдел Бобини.</td></tr>`;
     } else {
         globalState.activeOperators.forEach(opName => {
-            boardHtml += `<tr><td class="op-name">
-                <input type="checkbox" class="op-mass-checkbox" data-op="${opName}" onchange="toggleMassDeleteBtn()" style="margin-right:5px; cursor:pointer;" title="Маркирай за масови действия">
-                👤 ${opName}
-            </td>`;
-            for (let d = 1; d <= daysInMonth; d++) {
-                let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                
+            let opTotalAssigned = 0;
+            let opTotalDone = 0;
+
+            let safeOp = opName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+
+            boardHtml += `<tr><td class="op-name">👤 ${opName}</td>`;
+
+            workDays.forEach(wd => {
+                let fullDateStr = formatDateISO(wd);
                 let dayQuotas = globalState.quotas.filter(q => q.operator_name === opName && q.date === fullDateStr);
                 let isOffDay = dayQuotas.some(q => q.detail_name === 'OFF');
-                
+
                 let dayActualKeys = Object.keys(actualsMap).filter(k => k.startsWith(`${fullDateStr}|${opName}|`));
-                
-                let dateObj2 = new Date(year, month - 1, d);
-                let hideClass = (isCurrentMonth && dateObj2 < currentMonday) ? "past-week-col" : "";
-                
-                let cellClass = isOffDay ? `day-cell off-day ${hideClass}` : `day-cell ${hideClass}`;
-                
-                boardHtml += `<td class="${cellClass}" onclick="cellClick('${fullDateStr}', '${opName}')" ondragover="allowDrop(event)" ondrop="drop(event, '${opName}', '${fullDateStr}')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">`;
-                
-                if (!isOffDay) {
+                let cellClass = isOffDay ? 'day-cell off-day' : 'day-cell';
+
+                boardHtml += `<td class="${cellClass}" onclick="cellClick('${fullDateStr}', '${safeOp}')" ondragover="allowDrop(event)" ondrop="drop(event, '${safeOp}', '${fullDateStr}')" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)">`;
+
+                if (isOffDay) {
+                    boardHtml += `<div class="off-day-badge">ПОЧИВКА (X)</div>`;
+                } else {
                     dayQuotas.forEach(q => {
                         let aKey = `${fullDateStr}|${opName}|${normalizeStr(q.detail_name)}|${normalizeStr(q.operation_name)}`;
                         let actualQty = actualsMap[aKey] || 0;
@@ -356,73 +450,374 @@ function renderCalendarUI() {
                         if (actualQty > 0) {
                             displayQty = `${actualQty} / ${q.qty} бр.`;
                             bgClass = "assigned-card-actual";
+                            opTotalDone += actualQty;
                         } else {
                             displayQty = `${q.qty} бр.`;
                             bgClass = "assigned-card-forecast";
                         }
+                        opTotalAssigned += q.qty;
                         
-                        actualsMap[aKey] = -1; // flag as processed
-                        
+                        actualsMap[aKey] = -1; // Flag as handled
+
                         let safeDetail = q.detail_name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
-                        let safeOp = q.operation_name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+                        let safeOpName = q.operation_name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
 
                         boardHtml += `
-                            <div class="assigned-card ${bgClass}" onclick="event.stopPropagation(); openTaskOptionsModal('${q.id}', '${safeDetail}', '${safeOp}')" style="cursor: pointer;" title="Натиснете за опции">
-                                <div class="assigned-card-title" title="${q.detail_name}">${q.detail_name}</div>
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+                            <div class="assigned-card ${bgClass}" onclick="event.stopPropagation(); openTaskOptionsModal('${q.id}', '${safeDetail}', '${safeOpName}', ${q.qty})" title="Натиснете за редакция или разпъване">
+                                <div class="assigned-card-title">${q.detail_name}</div>
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:3px;">
                                     <strong>${displayQty}</strong>
+                                    <span style="font-size:0.75em; color:#94a3b8;">${q.operation_name}</span>
                                 </div>
                             </div>
                         `;
                     });
-                    
+
+                    // Unplanned reports
                     dayActualKeys.forEach(k => {
                         if (actualsMap[k] > 0) {
                             let parts = k.split('|');
                             let detail = parts[2];
                             let actualQty = actualsMap[k];
-                            
-                            // Try to find un-normalized name
+                            opTotalDone += actualQty;
+
                             let originalDetail = detail;
                             let report = globalState.otcheti.find(r => r['Дата'].startsWith(fullDateStr) && String(r['Оператор']).trim() === opName && normalizeStr(r['ID Детайл']) === detail);
                             if (report && report['ID Детайл']) originalDetail = report['ID Детайл'];
-                            
+
                             boardHtml += `
-                                <div class="assigned-card assigned-card-unplanned" style="cursor: default;" onclick="event.stopPropagation();" title="Отчетена извънредна работа през терминала">
-                                    <div class="assigned-card-title" title="${originalDetail}">${originalDetail}</div>
-                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
-                                        <strong>${actualQty} бр. (Извънр.)</strong>
+                                <div class="assigned-card assigned-card-unplanned" onclick="event.stopPropagation();" title="Отчетено извънредно през терминала">
+                                    <div class="assigned-card-title">${originalDetail}</div>
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:3px;">
+                                        <strong>${actualQty} бр.</strong>
+                                        <span style="font-size:0.75em; color:#f59e0b;">(Извънр.)</span>
                                     </div>
                                 </div>
                             `;
                         }
                     });
+
+                    // Fast touch "+ Добави" button
+                    boardHtml += `
+                        <button class="cell-add-btn" onclick="event.stopPropagation(); openQuickCellModal('${safeOp}', '${fullDateStr}')">
+                          ➕ Добави
+                        </button>
+                    `;
                 }
+
                 boardHtml += `</td>`;
-            }
-            boardHtml += '</tr>';
+            });
+
+            // Weekly Total Column
+            boardHtml += `
+              <td style="background:#1e293b; vertical-align:middle; text-align:center; padding:10px;">
+                <div style="font-size:1.15em; font-weight:800; color:#38bdf8;">
+                  ${opTotalDone} / ${opTotalAssigned}
+                </div>
+                <div style="font-size:0.75em; color:#94a3b8; margin-top:2px;">бр. готови / заложени</div>
+              </td>
+            </tr>`;
         });
     }
-    boardHtml += '</tbody></table>';
+
+    boardHtml += `</tbody></table>`;
     document.getElementById('w-calendar-board').innerHTML = boardHtml;
+}
+
+// Render Monthly Overview (Read-only / Summary)
+function renderMonthlyOverview() {
+    const selectedMonth = document.getElementById('month-picker').value || getMonthString();
+    let parts = selectedMonth.split('-');
+    let year = parseInt(parts[0]);
+    let month = parseInt(parts[1]);
+    let daysInMonth = new Date(year, month, 0).getDate();
+
+    let startDay = 1;
+    let endDay = daysInMonth;
+
+    if (globalState.overviewPeriod === 'w1') {
+        startDay = 1; endDay = Math.min(7, daysInMonth);
+    } else if (globalState.overviewPeriod === 'w1_2') {
+        startDay = 1; endDay = Math.min(14, daysInMonth);
+    } else if (globalState.overviewPeriod === 'w1_3') {
+        startDay = 1; endDay = Math.min(21, daysInMonth);
+    } else if (globalState.overviewPeriod === 'w4') {
+        startDay = 22; endDay = daysInMonth;
+    }
+
+    let rangeStart = `${year}-${String(month).padStart(2,'0')}-${String(startDay).padStart(2,'0')}`;
+    let rangeEnd = `${year}-${String(month).padStart(2,'0')}-${String(endDay).padStart(2,'0')}`;
+
+    let periodLabel = document.getElementById('overview-period-label');
+    if (periodLabel) {
+        periodLabel.innerText = `(Период: ${String(startDay).padStart(2,'0')}.${String(month).padStart(2,'0')} – ${String(endDay).padStart(2,'0')}.${String(month).padStart(2,'0')}.${year} г.)`;
+    }
+
+    // Filter quotas and reports for this range
+    let rangeQuotas = globalState.quotas.filter(q => q.date >= rangeStart && q.date <= rangeEnd && q.detail_name !== 'OFF');
+    let rangeOtcheti = globalState.otcheti.filter(r => {
+        if (!r['Дата'] || r['Статус'] !== 'Отчетено') return false;
+        let d = r['Дата'].split('T')[0];
+        return d >= rangeStart && d <= rangeEnd;
+    });
+
+    let monthStartStr = `${year}-${String(month).padStart(2,'0')}-01`;
+    let monthEndStr = `${year}-${String(month).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+    let allMonthOtcheti = globalState.otcheti.filter(r => {
+        if (!r['Дата'] || r['Статус'] !== 'Отчетено') return false;
+        let d = r['Дата'].split('T')[0];
+        return d >= monthStartStr && d <= monthEndStr;
+    });
+
+    // 1. KPI Totals
+    let totalPlan = 0;
+    let totalAssignedPeriod = 0;
+    let totalDonePeriod = 0;
+    let totalDoneMonth = 0;
+
+    globalState.targetItems.forEach(item => {
+        totalPlan += (item.planQty || 0);
+    });
+    rangeQuotas.forEach(q => {
+        totalAssignedPeriod += (q.qty || 0);
+    });
+    rangeOtcheti.forEach(r => {
+        totalDonePeriod += (parseFloat(r['Количество']) || 0);
+    });
+    allMonthOtcheti.forEach(r => {
+        totalDoneMonth += (parseFloat(r['Количество']) || 0);
+    });
+    let totalRemaining = Math.max(0, totalPlan - totalDoneMonth);
+
+    let kpisHtml = `
+      <div class="kpi-card" style="border-top-color:#38bdf8;">
+        <span class="kpi-title">🎯 Месечен План (Цел)</span>
+        <span class="kpi-value">${totalPlan} <small style="font-size:0.5em; color:#94a3b8;">бр.</small></span>
+      </div>
+      <div class="kpi-card" style="border-top-color:#3b82f6;">
+        <span class="kpi-title">📅 Заложени в Периода</span>
+        <span class="kpi-value">${totalAssignedPeriod} <small style="font-size:0.5em; color:#94a3b8;">бр.</small></span>
+      </div>
+      <div class="kpi-card" style="border-top-color:#10b981;">
+        <span class="kpi-title">✅ Изработени в Периода</span>
+        <span class="kpi-value" style="color:#10b981;">${totalDonePeriod} <small style="font-size:0.5em; color:#94a3b8;">бр.</small></span>
+      </div>
+      <div class="kpi-card" style="border-top-color:#f59e0b;">
+        <span class="kpi-title">⏳ Оставащи за Месеца</span>
+        <span class="kpi-value" style="color:#f59e0b;">${totalRemaining} <small style="font-size:0.5em; color:#94a3b8;">бр.</small></span>
+      </div>
+    `;
+    document.getElementById('overview-kpis-container').innerHTML = kpisHtml;
+
+    // 2. Details Breakdown Table
+    let detTableHtml = `
+      <thead>
+        <tr>
+          <th>Детайл</th>
+          <th>Операция</th>
+          <th style="text-align:right;">План за месеца</th>
+          <th style="text-align:right;">Възложени в периода</th>
+          <th style="text-align:right;">Готови в периода</th>
+          <th style="text-align:right;">Общо готови (м.)</th>
+          <th style="text-align:right;">Остават по план</th>
+          <th style="min-width:140px;">Прогрес %</th>
+        </tr>
+      </thead>
+      <tbody>
+    `;
+
+    globalState.targetItems.forEach(item => {
+        let planQty = item.planQty || 0;
+        let assignedInPeriod = 0;
+        rangeQuotas.forEach(q => {
+            if (q.detail_name === item.detailName && q.operation_name === item.operationName) {
+                assignedInPeriod += q.qty;
+            }
+        });
+
+        let doneInPeriod = 0;
+        rangeOtcheti.forEach(r => {
+            if (normalizeStr(r['ID Детайл']) === normalizeStr(item.detailName) && normalizeStr(r['Операция']) === normalizeStr(item.operationName)) {
+                doneInPeriod += (parseFloat(r['Количество']) || 0);
+            }
+        });
+
+        let doneAllMonth = 0;
+        allMonthOtcheti.forEach(r => {
+            if (normalizeStr(r['ID Детайл']) === normalizeStr(item.detailName) && normalizeStr(r['Операция']) === normalizeStr(item.operationName)) {
+                doneAllMonth += (parseFloat(r['Количество']) || 0);
+            }
+        });
+
+        let remaining = Math.max(0, planQty - doneAllMonth);
+        let pct = planQty > 0 ? Math.min(100, Math.round((doneAllMonth / planQty) * 100)) : 0;
+        let barColor = pct >= 100 ? '#10b981' : (pct >= 50 ? '#38bdf8' : '#f59e0b');
+
+        detTableHtml += `
+          <tr>
+            <td><strong>${item.detailName}</strong></td>
+            <td style="color:#94a3b8;">${item.operationName}</td>
+            <td style="text-align:right; font-weight:bold;">${planQty} бр.</td>
+            <td style="text-align:right; color:#38bdf8; font-weight:bold;">${assignedInPeriod} бр.</td>
+            <td style="text-align:right; color:#10b981; font-weight:bold;">${doneInPeriod} бр.</td>
+            <td style="text-align:right; font-weight:bold;">${doneAllMonth} бр.</td>
+            <td style="text-align:right; color:${remaining > 0 ? '#f59e0b' : '#10b981'}; font-weight:bold;">${remaining} бр.</td>
+            <td>
+              <div style="display:flex; justify-content:space-between; font-size:0.8em; margin-bottom:2px;">
+                <span>${pct}%</span>
+              </div>
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" style="width:${pct}%; background:${barColor};"></div>
+              </div>
+            </td>
+          </tr>
+        `;
+    });
+
+    detTableHtml += `
+      </tbody>
+      <tfoot>
+        <tr style="background:#0f172a; font-weight:bold;">
+          <td colspan="2">ОБЩО:</td>
+          <td style="text-align:right;">${totalPlan} бр.</td>
+          <td style="text-align:right; color:#38bdf8;">${totalAssignedPeriod} бр.</td>
+          <td style="text-align:right; color:#10b981;">${totalDonePeriod} бр.</td>
+          <td style="text-align:right;">${totalDoneMonth} бр.</td>
+          <td style="text-align:right; color:#f59e0b;">${totalRemaining} бр.</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    `;
+    document.getElementById('overview-details-table').innerHTML = detTableHtml;
+
+    // 3. Operators Breakdown Table
+    let opTableHtml = `
+      <thead>
+        <tr>
+          <th>👤 Оператор</th>
+          <th style="text-align:right;">Възложени в периода</th>
+          <th style="text-align:right;">Изработени в периода</th>
+          <th style="text-align:right;">Изпълнение спрямо нормата</th>
+        </tr>
+      </thead>
+      <tbody>
+    `;
+
+    globalState.activeOperators.forEach(opName => {
+        let opAssigned = 0;
+        rangeQuotas.forEach(q => {
+            if (q.operator_name === opName) opAssigned += q.qty;
+        });
+
+        let opDone = 0;
+        rangeOtcheti.forEach(r => {
+            if (String(r['Оператор']).trim() === opName) opDone += (parseFloat(r['Количество']) || 0);
+        });
+
+        let eff = opAssigned > 0 ? Math.round((opDone / opAssigned) * 100) : '-';
+        let effColor = (eff !== '-' && eff >= 100) ? '#10b981' : ((eff !== '-' && eff >= 75) ? '#38bdf8' : '#94a3b8');
+
+        opTableHtml += `
+          <tr>
+            <td><strong>👤 ${opName}</strong></td>
+            <td style="text-align:right; color:#38bdf8; font-weight:bold;">${opAssigned} бр.</td>
+            <td style="text-align:right; color:#10b981; font-weight:bold;">${opDone} бр.</td>
+            <td style="text-align:right; font-weight:bold; color:${effColor};">${eff !== '-' ? eff + '%' : 'Няма заложена норма'}</td>
+          </tr>
+        `;
+    });
+
+    opTableHtml += `</tbody>`;
+    document.getElementById('overview-operators-table').innerHTML = opTableHtml;
+
+    // 4. Render Full Month Matrix if expanded
+    if (globalState.isFullMonthMatrixExpanded) {
+        renderFullMonthMatrix();
+    }
+}
+
+window.setOverviewPeriod = function(period) {
+    globalState.overviewPeriod = period;
+    let buttons = document.querySelectorAll('#overview-period-buttons button');
+    buttons.forEach(b => {
+        if (b.getAttribute('data-period') === period) b.classList.add('active');
+        else b.classList.remove('active');
+    });
+    renderMonthlyOverview();
+};
+
+window.toggleFullMonthMatrix = function() {
+    globalState.isFullMonthMatrixExpanded = !globalState.isFullMonthMatrixExpanded;
+    let body = document.getElementById('full-month-matrix-body');
+    let indicator = document.getElementById('full-month-matrix-indicator');
+    if (globalState.isFullMonthMatrixExpanded) {
+        body.style.display = 'block';
+        indicator.innerText = '[ Свиване ▴ ]';
+        renderFullMonthMatrix();
+    } else {
+        body.style.display = 'none';
+        indicator.innerText = '[ Показване ▾ ]';
+    }
+};
+
+function renderFullMonthMatrix() {
+    const selectedMonth = document.getElementById('month-picker').value || getMonthString();
+    let parts = selectedMonth.split('-');
+    let year = parseInt(parts[0]);
+    let month = parseInt(parts[1]);
+    let daysInMonth = new Date(year, month, 0).getDate();
+
+    let tableHtml = `<table class="calendar-table"><thead><tr><th class="first-cell">Оператор</th>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+        let dateObj = new Date(year, month - 1, d);
+        let dayStr = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][dateObj.getDay()];
+        let isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6) ? 'color:#f87171;' : '';
+        tableHtml += `<th style="${isWeekend}">${d}<br><span style="font-size:0.7em; font-weight:normal;">${dayStr}</span></th>`;
+    }
+    tableHtml += '</tr></thead><tbody>';
+
+    globalState.activeOperators.forEach(opName => {
+        tableHtml += `<tr><td class="op-name">👤 ${opName}</td>`;
+        for (let d = 1; d <= daysInMonth; d++) {
+            let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            let dayQuotas = globalState.quotas.filter(q => q.operator_name === opName && q.date === fullDateStr);
+            let isOffDay = dayQuotas.some(q => q.detail_name === 'OFF');
+            let cellClass = isOffDay ? 'day-cell off-day' : 'day-cell';
+
+            tableHtml += `<td class="${cellClass}">`;
+            if (isOffDay) {
+                tableHtml += `<div class="off-day-badge">X</div>`;
+            } else {
+                dayQuotas.forEach(q => {
+                    tableHtml += `
+                      <div class="assigned-card assigned-card-forecast" style="margin-bottom:2px; padding:3px 5px;">
+                        <span style="font-weight:bold;">${q.detail_name}</span>
+                        <div><strong>${q.qty} бр.</strong></div>
+                      </div>
+                    `;
+                });
+            }
+            tableHtml += `</td>`;
+        }
+        tableHtml += '</tr>';
+    });
+    tableHtml += '</tbody></table>';
+    document.getElementById('full-month-matrix-body').innerHTML = tableHtml;
 }
 
 // Cell click for OFF mode
 async function cellClick(dateStr, opName) {
     if (!offMode) return;
     
-    // Check if it's already an off day
     let existingOff = globalState.quotas.find(q => q.operator_name === opName && q.date === dateStr && q.detail_name === 'OFF');
     
     const loader = document.getElementById('loading');
     loader.style.display = 'flex';
     
     if (existingOff) {
-        // Remove it
         await client.from('planner_bobini').delete().eq('id', existingOff.id);
         globalState.quotas = globalState.quotas.filter(q => q.id !== existingOff.id);
     } else {
-        // Add it
         const { data } = await client.from('planner_bobini').insert([{
             date: dateStr, operator_name: opName, detail_name: 'OFF', operation_name: '-', qty: 0
         }]).select();
@@ -437,130 +832,71 @@ async function copyForward(quotaId) {
     let q = globalState.quotas.find(x => String(x.id) === String(quotaId));
     if (!q) return;
     
-    let sameDayQuotas = globalState.quotas.filter(x => x.date === q.date && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
-    let operators = [{ name: q.operator_name, qty: q.qty }];
+    if(!confirm(`Искате ли да копирате задачата (${q.qty} бр.) за всички оставащи работни дни от седмицата за ${q.operator_name}?`)) return;
     
-    if (sameDayQuotas.length > 1) {
-        if (confirm(`Тази задача е възложена на ${sameDayQuotas.length} служители днес.\n\nИскате ли да я разтегнете едновременно за ВСИЧКИ тях (за да си разпределят бройките)?\n\n[OK] - Да, разпъни за всички ${sameDayQuotas.length} служители\n[Cancel] - Не, разпъни САМО за ${q.operator_name}`)) {
-            operators = sameDayQuotas.map(x => ({ name: x.operator_name, qty: x.qty }));
-        } else {
-            if(!confirm(`Искате ли да копирате задачата (${q.qty} бр.) за всички оставащи работни дни до края на месеца САМО за ${q.operator_name}?`)) return;
+    let parts = q.date.split('-');
+    let qDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    let monday = getMonday(qDate);
+    
+    let remainingDays = [];
+    for (let i = 0; i < 5; i++) {
+        let d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        let isoStr = formatDateISO(d);
+        if (isoStr > q.date) {
+            remainingDays.push(isoStr);
         }
-    } else {
-        if(!confirm(`Искате ли да копирате задачата (${q.qty} бр.) за всички оставащи работни дни до края на месеца за ${q.operator_name}?\n\nВнимание: Това автоматично ще презапише (замени) всички съществуващи дневни цели за същия детайл и операция в следващите дни!`)) return;
     }
-    
-    const selectedMonth = document.getElementById('month-picker').value; 
-    let year = parseInt(selectedMonth.split('-')[0]);
-    let month = parseInt(selectedMonth.split('-')[1]);
-    let daysInMonth = new Date(year, month, 0).getDate();
-    
-    let startDay = parseInt(q.date.split('-')[2]) + 1;
-    let inserts = [];
-    let existingIdsToDelete = [];
-    
-    // Find how much is remaining to assign across the whole month
-    let targetItem = globalState.targetItems.find(t => t.detailName === q.detail_name && t.operationName === q.operation_name);
-    let maxAllowed = targetItem ? targetItem.planQty : Infinity;
-    
-    let otherAssigned = 0;
-    globalState.quotas.forEach(x => {
-        if (x.detail_name === q.detail_name && x.operation_name === q.operation_name) {
-            let xDay = parseInt(x.date.split('-')[2]);
-            let isOverwritten = operators.some(op => op.name === x.operator_name) && xDay >= startDay;
-            if (!isOverwritten) {
-                otherAssigned += x.qty;
-            }
-        }
-    });
-    
-    let remainingToAssign = maxAllowed - otherAssigned;
-    if (targetItem && remainingToAssign <= 0) {
-        alert("Планът за тази задача вече е напълно разпределен. Не може да се копира повече.");
+
+    if (remainingDays.length === 0) {
+        alert("Няма оставащи работни дни в тази седмица.");
         return;
     }
-    
-    for (let d = startDay; d <= daysInMonth; d++) {
-        if (targetItem && remainingToAssign <= 0) break;
-        
-        let fullDateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        let dateObj = new Date(year, month - 1, d);
-        let isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6);
-        
-        if (isWeekend) continue;
-        
-        // Find valid operators for this day
-        let validOps = [];
-        for (let op of operators) {
-            let isOffDay = globalState.quotas.some(x => x.operator_name === op.name && x.date === fullDateStr && x.detail_name === 'OFF');
-            if (!isOffDay) validOps.push(op);
-        }
-        if (validOps.length === 0) continue;
-        
-        let totalRequested = validOps.reduce((sum, op) => sum + op.qty, 0);
-        
-        if (targetItem && remainingToAssign < totalRequested) {
-            // Distribute remaining evenly
-            let base = Math.floor(remainingToAssign / validOps.length);
-            let remainder = remainingToAssign % validOps.length;
-            
-            validOps.forEach((op, index) => {
-                let qtyToAssign = base + (index < remainder ? 1 : 0);
-                if (qtyToAssign <= 0) return;
-                
-                let existing = globalState.quotas.filter(x => x.operator_name === op.name && x.date === fullDateStr && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
-                existing.forEach(ex => existingIdsToDelete.push(ex.id));
-                
-                inserts.push({
-                    date: fullDateStr,
-                    operator_name: op.name,
-                    detail_name: q.detail_name,
-                    operation_name: q.operation_name,
-                    qty: qtyToAssign
-                });
+
+    const loader = document.getElementById('loading');
+    loader.style.display = 'flex';
+
+    try {
+        let inserts = [];
+        let existingIdsToDelete = [];
+
+        for (let dStr of remainingDays) {
+            let isOff = globalState.quotas.some(x => x.operator_name === q.operator_name && x.date === dStr && x.detail_name === 'OFF');
+            if (isOff) continue;
+
+            let existing = globalState.quotas.filter(x => x.operator_name === q.operator_name && x.date === dStr && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
+            existing.forEach(ex => existingIdsToDelete.push(ex.id));
+
+            inserts.push({
+                date: dStr,
+                operator_name: q.operator_name,
+                detail_name: q.detail_name,
+                operation_name: q.operation_name,
+                qty: q.qty
             });
-            remainingToAssign = 0;
-            break;
-        } else {
-            // Normal assignment
-            for (let op of validOps) {
-                let qtyToAssign = op.qty;
-                
-                let existing = globalState.quotas.filter(x => x.operator_name === op.name && x.date === fullDateStr && x.detail_name === q.detail_name && x.operation_name === q.operation_name);
-                existing.forEach(ex => existingIdsToDelete.push(ex.id));
-                
-                inserts.push({
-                    date: fullDateStr,
-                    operator_name: op.name,
-                    detail_name: q.detail_name,
-                    operation_name: q.operation_name,
-                    qty: qtyToAssign
-                });
-                if (targetItem) remainingToAssign -= qtyToAssign;
-            }
         }
+
+        if (existingIdsToDelete.length > 0) {
+            await client.from('planner_bobini').delete().in('id', existingIdsToDelete);
+            globalState.quotas = globalState.quotas.filter(x => !existingIdsToDelete.includes(x.id));
+        }
+
+        if (inserts.length > 0) {
+            const { data, error } = await client.from('planner_bobini').insert(inserts).select();
+            if (error) throw error;
+            if (data && data.length > 0) globalState.quotas.push(...data);
+        }
+
+        renderCalendarUI();
+        loader.style.display = 'none';
+    } catch(err) {
+        alert("Грешка при разпъване: " + err.message);
+        loader.style.display = 'none';
     }
-    
-    if (inserts.length === 0) {
-        alert("Няма оставащи свободни работни дни или планът е запълнен."); return;
-    }
-    
-    document.getElementById('loading').style.display = 'flex';
-    
-    if (existingIdsToDelete.length > 0) {
-        await client.from('planner_bobini').delete().in('id', existingIdsToDelete);
-        globalState.quotas = globalState.quotas.filter(x => !existingIdsToDelete.includes(x.id));
-    }
-    
-    const { data, error } = await client.from('planner_bobini').insert(inserts).select();
-    if (!error && data) {
-        globalState.quotas.push(...data);
-    }
-    renderCalendarUI();
-    document.getElementById('loading').style.display = 'none';
 }
 
-// Drag & Drop Handlers
+// Drag & Drop Handlers (Desktop compatibility)
+let currentDragTask = null;
 function dragStart(e, detailName, operationName, remaining, totalAssignedMonth) {
     currentDragTask = { detailName, operationName, remaining, totalAssignedMonth };
     e.dataTransfer.setData('text/plain', detailName); 
@@ -583,211 +919,429 @@ function drop(e, operatorName, dateStr) {
     if (offMode) return;
     e.preventDefault();
     e.currentTarget.classList.remove('drag-over');
+    if (e.currentTarget.classList.contains('off-day')) return;
     
-    if (e.currentTarget.classList.contains('off-day')) return; // Cannot drop on off day
-    if (!currentDragTask) return;
-    
-    currentDropOperator = operatorName;
-    currentDropDateStr = dateStr;
-    
-    let selectedDates = document.querySelectorAll('.date-mass-checkbox:checked').length;
-    let selectedOps = document.querySelectorAll('.op-mass-checkbox:checked').length;
-    let massText = '';
-    if (selectedDates > 0 || selectedOps > 0) {
-        let dText = selectedDates > 0 ? selectedDates + ' дати' : dateStr;
-        let oText = selectedOps > 0 ? selectedOps + ' човека' : operatorName;
-        massText = `МАСОВО: ${oText} за ${dText}`;
-    } else {
-        massText = operatorName + ' (' + dateStr + ')';
+    if (currentDragTask) {
+        openQuickCellModal(operatorName, dateStr, currentDragTask.detailName, currentDragTask.operationName);
     }
-    
-    document.getElementById('modal-task-title').innerText = currentDragTask.detailName;
-    document.getElementById('modal-task-op').innerText = currentDragTask.operationName;
-    document.getElementById('modal-operator-name').innerText = massText;
-    document.getElementById('modal-qty').value = '';
-    
-    // Update Forecast Bar temporarily
-    let fBar = document.getElementById('forecast-bar');
-    fBar.style.display = 'flex';
-    document.getElementById('fc-title').innerText = currentDragTask.detailName;
-    
-    let target = currentDragTask.remaining;
-    let done = currentDragTask.totalAssignedMonth;
-    let pct = target > 0 ? (done / target) * 100 : 0;
-    if(pct > 100) pct = 100;
-    
-    document.getElementById('fc-fill').style.width = pct + '%';
-    document.getElementById('fc-done').innerText = done + ' възложени';
-    document.getElementById('fc-total').innerText = target + ' план';
-    
-    if (done >= target) document.getElementById('fc-eta').innerText = "Планът е покрит!";
-    else document.getElementById('fc-eta').innerText = "Остават " + (target - done) + " бр.";
-    
-    document.getElementById('assign-modal').style.display = 'flex';
 }
 
-function closeAssignModal() {
-    document.getElementById('assign-modal').style.display = 'none';
-    document.getElementById('forecast-bar').style.display = 'none';
-    currentDragTask = null;
-    currentDropOperator = null;
-    currentDropDateStr = null;
-}
+// Quick Cell Modal Logic
+let currentQcOp = null;
+let currentQcDate = null;
 
-async function confirmAssign() {
-    const qty = parseInt(document.getElementById('modal-qty').value);
-    if (!qty || qty <= 0) {
+window.openQuickCellModal = function(operatorName, dateStr, preDetail, preOp) {
+    currentQcOp = operatorName;
+    currentQcDate = dateStr;
+
+    document.getElementById('qc-title').innerText = `Възлагане за ${operatorName}`;
+    document.getElementById('qc-subtitle').innerText = `📅 Дата: ${dateStr}`;
+
+    let select = document.getElementById('qc-detail-select');
+    select.innerHTML = '';
+    globalState.targetItems.forEach(t => {
+        let opt = document.createElement('option');
+        opt.value = `${t.detailName}___${t.operationName}`;
+        opt.text = `${t.detailName} (${t.operationName}) — План: ${t.planQty} бр.`;
+        if (preDetail && t.detailName === preDetail && (!preOp || t.operationName === preOp)) {
+            opt.selected = true;
+        }
+        select.appendChild(opt);
+    });
+
+    document.getElementById('qc-qty-input').value = '10';
+    document.getElementById('quick-cell-modal').style.display = 'flex';
+};
+
+window.closeQuickCellModal = function() {
+    document.getElementById('quick-cell-modal').style.display = 'none';
+};
+
+window.setQcQty = function(num) {
+    document.getElementById('qc-qty-input').value = num;
+};
+
+window.confirmQuickCellAssign = async function() {
+    let select = document.getElementById('qc-detail-select');
+    if (!select || !select.value) return;
+    let parts = select.value.split('___');
+    let detail = parts[0];
+    let op = parts[1];
+
+    let qty = parseInt(document.getElementById('qc-qty-input').value) || 0;
+    if (qty <= 0) {
         alert("Моля, въведете валидно количество.");
         return;
     }
 
-    document.getElementById('assign-modal').style.display = 'none';
-    document.getElementById('forecast-bar').style.display = 'none';
-    
+    closeQuickCellModal();
     const loader = document.getElementById('loading');
     loader.style.display = 'flex';
-    document.getElementById('main-layout').style.display = 'none';
 
     try {
-        let selectedDates = Array.from(document.querySelectorAll('.date-mass-checkbox:checked')).map(cb => cb.getAttribute('data-date'));
-        let selectedOperators = Array.from(document.querySelectorAll('.op-mass-checkbox:checked')).map(cb => cb.getAttribute('data-op'));
-
-        let datesToAssign = selectedDates.length > 0 ? selectedDates : [currentDropDateStr];
-        let opsToAssign = selectedOperators.length > 0 ? selectedOperators : [currentDropOperator];
-
-        let inserts = [];
-        let existingIdsToDelete = [];
-        let totalAssignedByNew = 0;
-        
-        for (let d of datesToAssign) {
-            for (let op of opsToAssign) {
-                // Skip if it's an off day
-                let isOffDay = globalState.quotas.some(q => q.operator_name === op && q.date === d && q.detail_name === 'OFF');
-                if (isOffDay) continue;
-
-                let existing = globalState.quotas.filter(q => q.operator_name === op && q.date === d && q.detail_name === currentDragTask.detailName && q.operation_name === currentDragTask.operationName);
-                existing.forEach(ex => existingIdsToDelete.push(ex.id));
-
-                inserts.push({
-                    date: d,
-                    operator_name: op,
-                    detail_name: currentDragTask.detailName,
-                    operation_name: currentDragTask.operationName,
-                    qty: qty
-                });
-                totalAssignedByNew += qty;
-            }
+        let existing = globalState.quotas.filter(q => q.operator_name === currentQcOp && q.date === currentQcDate && q.detail_name === detail && q.operation_name === op);
+        if (existing.length > 0) {
+            let ids = existing.map(e => e.id);
+            await client.from('planner_bobini').delete().in('id', ids);
+            globalState.quotas = globalState.quotas.filter(q => !ids.includes(q.id));
         }
 
-        if (inserts.length === 0) {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('main-layout').style.display = 'flex';
-            alert("Няма валидни дни за възлагане (всички са маркирани като почивни).");
-            return;
-        }
-        
-        // Auto-balance if exceeding plan
-        let targetItem = globalState.targetItems.find(t => t.detailName === currentDragTask.detailName && t.operationName === currentDragTask.operationName);
-        if (targetItem) {
-            let maxAllowed = targetItem.planQty;
-            let otherAssigned = 0;
-            let otherQuotas = [];
-            
-            globalState.quotas.forEach(q => {
-                if (q.detail_name === currentDragTask.detailName && q.operation_name === currentDragTask.operationName) {
-                    if (!existingIdsToDelete.includes(q.id)) {
-                        otherAssigned += q.qty;
-                        otherQuotas.push(q);
-                    }
-                }
-            });
-            
-            let totalNew = otherAssigned + totalAssignedByNew;
-            if (totalNew > maxAllowed) {
-                let excess = totalNew - maxAllowed;
-                if (excess > 0 && otherQuotas.length > 0) {
-                    if (confirm(`Внимание: Общо възложените бройки ще станат ${totalNew}, а по план ви трябват само ${maxAllowed} (с ${excess} бр. повече).\n\nИскате ли автоматично да извадим тези ${excess} бр. от другите дни, за да се изравни планът?`)) {
-                        otherQuotas.sort((a,b) => b.date.localeCompare(a.date)); // Latest first
-                        
-                        let deletes = [];
-                        let updates = [];
-                        
-                        for (let q of otherQuotas) {
-                            if (excess <= 0) break;
-                            if (q.qty <= excess) {
-                                excess -= q.qty;
-                                deletes.push(q.id);
-                            } else {
-                                updates.push({ id: q.id, qty: q.qty - excess });
-                                excess = 0;
-                            }
-                        }
-                        
-                        if (deletes.length > 0) {
-                            await client.from('planner_bobini').delete().in('id', deletes);
-                            globalState.quotas = globalState.quotas.filter(x => !deletes.includes(x.id));
-                        }
-                        for (let u of updates) {
-                            await client.from('planner_bobini').update({ qty: u.qty }).eq('id', u.id);
-                            let idx = globalState.quotas.findIndex(x => x.id === u.id);
-                            if (idx !== -1) globalState.quotas[idx].qty = u.qty;
-                        }
-                    }
-                }
-            }
-        }
-        
-        if (existingIdsToDelete.length > 0) {
-            await client.from('planner_bobini').delete().in('id', existingIdsToDelete);
-            globalState.quotas = globalState.quotas.filter(x => !existingIdsToDelete.includes(x.id));
-        }
-
-        const { error, data } = await client.from('planner_bobini').insert(inserts).select();
+        const { data, error } = await client.from('planner_bobini').insert([{
+            date: currentQcDate,
+            operator_name: currentQcOp,
+            detail_name: detail,
+            operation_name: op,
+            qty: qty
+        }]).select();
 
         if (error) throw error;
-        
-        if (data && data.length > 0) {
-            if (!globalState.quotas) globalState.quotas = [];
-            globalState.quotas.push(...data);
-        }
-        
-        currentDragTask = null;
-        currentDropOperator = null;
-        currentDropDateStr = null;
-        
+        if (data && data[0]) globalState.quotas.push(data[0]);
+
         renderCalendarUI();
         loader.style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
-
     } catch(err) {
         alert("Грешка при запис: " + err.message);
         loader.style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
     }
-}
+};
 
+// Wizard Modal Logic (Task-to-People Bulk Assign)
+window.openWizardModal = function(preselectedDetail, preselectedOp) {
+    let select = document.getElementById('wz-detail-select');
+    select.innerHTML = '';
+    
+    if (globalState.targetItems.length === 0) {
+        alert("Няма налични свободни задачи за разпределяне.");
+        return;
+    }
+
+    globalState.targetItems.forEach(t => {
+        let opt = document.createElement('option');
+        opt.value = `${t.detailName}___${t.operationName}`;
+        opt.text = `${t.detailName} (${t.operationName}) — План: ${t.planQty} бр.`;
+        if (preselectedDetail && t.detailName === preselectedDetail && (!preselectedOp || t.operationName === preselectedOp)) {
+            opt.selected = true;
+        }
+        select.appendChild(opt);
+    });
+
+    // Populate operators chips
+    let opsCont = document.getElementById('wz-ops-container');
+    opsCont.innerHTML = '';
+    globalState.activeOperators.forEach(op => {
+        let label = document.createElement('label');
+        label.className = 'wizard-chip selected';
+        label.innerHTML = `<input type="checkbox" value="${op}" checked onchange="onWizardChipChange(this); updateWizardCalc();"> 👤 ${op}`;
+        opsCont.appendChild(label);
+    });
+
+    // Populate 5 days of current week
+    let daysCont = document.getElementById('wz-days-container');
+    daysCont.innerHTML = '';
+    let mon = new Date(globalState.currentWeekMonday || getMonday(new Date()));
+    let dayNames = ['Пон', 'Вт', 'Ср', 'Чт', 'Пт'];
+    for (let i = 0; i < 5; i++) {
+        let d = new Date(mon);
+        d.setDate(mon.getDate() + i);
+        let isoStr = formatDateISO(d);
+        let label = document.createElement('label');
+        label.className = 'wizard-chip selected';
+        label.innerHTML = `<input type="checkbox" value="${isoStr}" checked onchange="onWizardChipChange(this); updateWizardCalc();"> 📅 ${dayNames[i]} (${formatDateDisplay(d)})`;
+        daysCont.appendChild(label);
+    }
+
+    onWizardDetailChange();
+    document.getElementById('wizard-modal').style.display = 'flex';
+};
+
+window.closeWizardModal = function() {
+    document.getElementById('wizard-modal').style.display = 'none';
+};
+
+window.onWizardChipChange = function(input) {
+    if (input.checked) {
+        input.parentElement.classList.add('selected');
+    } else {
+        input.parentElement.classList.remove('selected');
+    }
+};
+
+window.onWizardDetailChange = function() {
+    let select = document.getElementById('wz-detail-select');
+    if (!select || !select.value) return;
+    let parts = select.value.split('___');
+    let detail = parts[0];
+    let op = parts[1];
+
+    let targetItem = globalState.targetItems.find(t => t.detailName === detail && t.operationName === op);
+    let totalAssigned = 0;
+    globalState.quotas.forEach(q => {
+        if (q.detail_name === detail && q.operation_name === op && q.detail_name !== 'OFF') {
+            totalAssigned += q.qty;
+        }
+    });
+
+    let remaining = targetItem ? Math.max(0, targetItem.planQty - totalAssigned) : 0;
+    let info = document.getElementById('wz-detail-info');
+    if (info) {
+        info.innerHTML = `План: <strong>${targetItem ? targetItem.planQty : 0} бр.</strong> | Заложени за месеца: <strong>${totalAssigned} бр.</strong> | Остава за залагане: <strong style="color:#10b981;">${remaining} бр.</strong>`;
+    }
+
+    let qtyInput = document.getElementById('wz-qty-input');
+    if (qtyInput && (!qtyInput.value || parseInt(qtyInput.value) <= 0)) {
+        qtyInput.value = remaining > 0 ? remaining : 50;
+    }
+    updateWizardCalc();
+};
+
+window.fillWizardRemaining = function() {
+    let select = document.getElementById('wz-detail-select');
+    if (!select || !select.value) return;
+    let parts = select.value.split('___');
+    let detail = parts[0];
+    let op = parts[1];
+
+    let targetItem = globalState.targetItems.find(t => t.detailName === detail && t.operationName === op);
+    let totalAssigned = 0;
+    globalState.quotas.forEach(q => {
+        if (q.detail_name === detail && q.operation_name === op && q.detail_name !== 'OFF') {
+            totalAssigned += q.qty;
+        }
+    });
+    let remaining = targetItem ? Math.max(0, targetItem.planQty - totalAssigned) : 0;
+    document.getElementById('wz-qty-input').value = remaining > 0 ? remaining : 10;
+    updateWizardCalc();
+};
+
+window.toggleAllWizardOps = function(select) {
+    let inputs = document.querySelectorAll('#wz-ops-container input[type="checkbox"]');
+    inputs.forEach(i => {
+        i.checked = select;
+        if (select) i.parentElement.classList.add('selected');
+        else i.parentElement.classList.remove('selected');
+    });
+    updateWizardCalc();
+};
+
+window.setWizardDaysPreset = function(preset) {
+    let inputs = document.querySelectorAll('#wz-days-container input[type="checkbox"]');
+    let todayStr = formatDateISO(new Date());
+
+    inputs.forEach(i => {
+        let val = i.value;
+        if (preset === 'all') {
+            i.checked = true;
+        } else if (preset === 'today') {
+            i.checked = (val === todayStr);
+        } else if (preset === 'remaining') {
+            i.checked = (val >= todayStr);
+        }
+        if (i.checked) i.parentElement.classList.add('selected');
+        else i.parentElement.classList.remove('selected');
+    });
+    updateWizardCalc();
+};
+
+window.updateWizardCalc = function() {
+    let selectedOps = Array.from(document.querySelectorAll('#wz-ops-container input:checked')).map(i => i.value);
+    let selectedDays = Array.from(document.querySelectorAll('#wz-days-container input:checked')).map(i => i.value);
+
+    let opCountEl = document.getElementById('wz-op-count');
+    if (opCountEl) opCountEl.innerText = selectedOps.length;
+    let dayCountEl = document.getElementById('wz-day-count');
+    if (dayCountEl) dayCountEl.innerText = selectedDays.length;
+
+    let qtyInput = document.getElementById('wz-qty-input');
+    let inputQty = parseInt(qtyInput ? qtyInput.value : 0) || 0;
+    let mode = document.querySelector('input[name="wz-qty-mode"]:checked')?.value || 'total';
+
+    let preview = document.getElementById('wz-calc-preview');
+    if (selectedOps.length === 0 || selectedDays.length === 0 || inputQty <= 0) {
+        preview.innerHTML = `👉 Изберете поне един оператор, един работен ден и въведете количество.`;
+        return;
+    }
+
+    let totalSlots = selectedOps.length * selectedDays.length;
+
+    if (mode === 'total') {
+        let basePerSlot = Math.floor(inputQty / totalSlots);
+        let remainder = inputQty % totalSlots;
+        preview.innerHTML = `
+          ⚡ <strong>${inputQty} бр. общо</strong> ще бъдат разделени на <strong>${selectedOps.length} човека</strong> за <strong>${selectedDays.length} дни</strong> (${totalSlots} слота):<br>
+          👉 По <strong>${basePerSlot}${remainder > 0 ? ' до ' + (basePerSlot + 1) : ''} бр./ден</strong> на служител.
+        `;
+    } else {
+        let totalAssigned = inputQty * totalSlots;
+        preview.innerHTML = `
+          ⚡ По <strong>${inputQty} бр./ден</strong> за <strong>${selectedOps.length} човека</strong> за <strong>${selectedDays.length} дни</strong>:<br>
+          👉 Общо заложени: <strong>${totalAssigned} бр.</strong>
+        `;
+    }
+};
+
+window.confirmWizardAssign = async function() {
+    let select = document.getElementById('wz-detail-select');
+    if (!select || !select.value) {
+        alert("Моля, изберете детайл.");
+        return;
+    }
+    let parts = select.value.split('___');
+    let detail = parts[0];
+    let op = parts[1];
+
+    let selectedOps = Array.from(document.querySelectorAll('#wz-ops-container input:checked')).map(i => i.value);
+    let selectedDays = Array.from(document.querySelectorAll('#wz-days-container input:checked')).map(i => i.value);
+
+    if (selectedOps.length === 0) {
+        alert("Моля, изберете поне един оператор.");
+        return;
+    }
+    if (selectedDays.length === 0) {
+        alert("Моля, изберете поне един работен ден.");
+        return;
+    }
+
+    let qtyInput = document.getElementById('wz-qty-input');
+    let inputQty = parseInt(qtyInput ? qtyInput.value : 0) || 0;
+    if (inputQty <= 0) {
+        alert("Моля, въведете валидно количество.");
+        return;
+    }
+
+    let mode = document.querySelector('input[name="wz-qty-mode"]:checked')?.value || 'total';
+    let totalSlots = selectedOps.length * selectedDays.length;
+
+    let inserts = [];
+    let existingIdsToDelete = [];
+
+    let slotIndex = 0;
+    let basePerSlot = mode === 'total' ? Math.floor(inputQty / totalSlots) : inputQty;
+    let remainder = mode === 'total' ? (inputQty % totalSlots) : 0;
+
+    selectedDays.forEach(d => {
+        selectedOps.forEach(opName => {
+            let isOff = globalState.quotas.some(q => q.operator_name === opName && q.date === d && q.detail_name === 'OFF');
+            if (isOff) return;
+
+            let qtyForThis = basePerSlot + (slotIndex < remainder ? 1 : 0);
+            slotIndex++;
+
+            if (qtyForThis <= 0) return;
+
+            let existing = globalState.quotas.filter(q => q.operator_name === opName && q.date === d && q.detail_name === detail && q.operation_name === op);
+            existing.forEach(ex => existingIdsToDelete.push(ex.id));
+
+            inserts.push({
+                date: d,
+                operator_name: opName,
+                detail_name: detail,
+                operation_name: op,
+                qty: qtyForThis
+            });
+        });
+    });
+
+    if (inserts.length === 0) {
+        alert("Няма валидни работни дни за залагане (всички избрани слотове са почивни дни).");
+        return;
+    }
+
+    closeWizardModal();
+    const loader = document.getElementById('loading');
+    loader.style.display = 'flex';
+
+    try {
+        if (existingIdsToDelete.length > 0) {
+            await client.from('planner_bobini').delete().in('id', existingIdsToDelete);
+            globalState.quotas = globalState.quotas.filter(q => !existingIdsToDelete.includes(q.id));
+        }
+
+        const { data, error } = await client.from('planner_bobini').insert(inserts).select();
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+            globalState.quotas.push(...data);
+        }
+
+        renderCalendarUI();
+        loader.style.display = 'none';
+    } catch (err) {
+        alert("Грешка при запис: " + err.message);
+        loader.style.display = 'none';
+    }
+};
+
+// Task Options Modal (Enhanced with Quantity Edit)
+let currentOptionQuotaId = null;
+
+window.openTaskOptionsModal = function(quotaId, detailName, operationName, currentQty) {
+    currentOptionQuotaId = quotaId;
+    document.getElementById('opt-task-title').innerText = detailName;
+    document.getElementById('opt-task-op').innerText = operationName;
+    document.getElementById('opt-task-qty').value = currentQty || '';
+
+    document.getElementById('opt-btn-save-qty').onclick = async function() {
+        let newQty = parseInt(document.getElementById('opt-task-qty').value) || 0;
+        if (newQty <= 0) {
+            alert("Моля, въведете валидно количество.");
+            return;
+        }
+        closeTaskOptionsModal();
+        const loader = document.getElementById('loading');
+        loader.style.display = 'flex';
+        try {
+            const { error } = await client.from('planner_bobini').update({ qty: newQty }).eq('id', quotaId);
+            if (error) throw error;
+            let q = globalState.quotas.find(x => String(x.id) === String(quotaId));
+            if (q) q.qty = newQty;
+            renderCalendarUI();
+            loader.style.display = 'none';
+        } catch (err) {
+            alert("Грешка при редакция: " + err.message);
+            loader.style.display = 'none';
+        }
+    };
+
+    document.getElementById('opt-btn-copy').onclick = function() {
+        closeTaskOptionsModal();
+        copyForward(quotaId);
+    };
+
+    document.getElementById('opt-btn-delete').onclick = function() {
+        closeTaskOptionsModal();
+        deleteQuota(quotaId);
+    };
+
+    document.getElementById('task-options-modal').style.display = 'flex';
+};
+
+window.closeTaskOptionsModal = function() {
+    document.getElementById('task-options-modal').style.display = 'none';
+};
+
+window.togglePoolMobile = function() {
+    let pool = document.getElementById('task-pool');
+    if (pool) {
+        pool.classList.toggle('mobile-collapsed');
+    }
+};
 
 async function deleteQuota(id) {
-    if(!confirm("Сигурни ли сте, че искате да изтриете тази норма?")) return;
+    if(!confirm("Сигурни ли сте, че искате да изтриете тази задача?")) return;
     
     const loader = document.getElementById('loading');
     loader.style.display = 'flex';
-    document.getElementById('main-layout').style.display = 'none';
 
     try {
         const { error } = await client.from('planner_bobini').delete().eq('id', id);
         if (error) throw error;
         
-        // Optimistic update
         globalState.quotas = globalState.quotas.filter(q => q.id !== id);
         renderCalendarUI();
-        
         loader.style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
     } catch(err) {
         alert("Грешка при изтриване: " + err.message);
         loader.style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
     }
 }
 
@@ -803,7 +1357,6 @@ async function clearMonth() {
     let endOfMonth = `${year}-${String(month).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
     
     document.getElementById('loading').style.display = 'flex';
-    document.getElementById('main-layout').style.display = 'none';
     
     try {
         const { error } = await client.from('planner_bobini')
@@ -814,85 +1367,14 @@ async function clearMonth() {
         
         globalState.quotas = globalState.quotas.filter(q => q.date < startOfMonth || q.date > endOfMonth);
         renderCalendarUI();
-        
         document.getElementById('loading').style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
     } catch(err) {
         alert("Грешка при нулиране: " + err.message);
         document.getElementById('loading').style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
     }
-}
-
-function toggleMassDeleteBtn() {
-    let dateCb = document.querySelectorAll('.date-mass-checkbox:checked').length;
-    let opCb = document.querySelectorAll('.op-mass-checkbox:checked').length;
-    let btn = document.getElementById('delete-selected-dates-btn');
-    if (dateCb > 0 || opCb > 0) {
-        btn.style.display = 'block';
-        if (dateCb > 0 && opCb > 0) btn.innerHTML = `🗑️ Изтрий за ${opCb} човека на ${dateCb} дати`;
-        else if (dateCb > 0) btn.innerHTML = `🗑️ Изтрий за ${dateCb} дати`;
-        else btn.innerHTML = `🗑️ Изтрий за ${opCb} човека`;
-    } else {
-        btn.style.display = 'none';
-    }
-}
-
-async function deleteSelectedDates() {
-    let selectedDates = Array.from(document.querySelectorAll('.date-mass-checkbox:checked')).map(cb => cb.getAttribute('data-date'));
-    let selectedOperators = Array.from(document.querySelectorAll('.op-mass-checkbox:checked')).map(cb => cb.getAttribute('data-op'));
-    
-    if (selectedDates.length === 0 && selectedOperators.length === 0) return;
-    
-    let msg = `Сигурни ли сте, че искате да изтриете задачите?`;
-    if (selectedDates.length > 0 && selectedOperators.length > 0) {
-        msg = `Ще изтриете ВСИЧКИ задачи за ${selectedOperators.length} оператора в избраните ${selectedDates.length} дати!`;
-    } else if (selectedDates.length > 0) {
-        msg = `Ще изтриете задачите на ВСИЧКИ оператори за избраните ${selectedDates.length} дати!`;
-    } else {
-        msg = `Ще изтриете ВСИЧКИ задачи на избраните ${selectedOperators.length} оператора за ЦЕЛИЯ месец!`;
-    }
-    
-    if(!confirm(msg)) return;
-    
-    document.getElementById('loading').style.display = 'flex';
-    document.getElementById('main-layout').style.display = 'none';
-    
-    try {
-        let query = client.from('planner_bobini').delete();
-        if (selectedDates.length > 0) query = query.in('date', selectedDates);
-        if (selectedOperators.length > 0) query = query.in('operator_name', selectedOperators);
-        
-        const { error } = await query;
-        if (error) throw error;
-        
-        globalState.quotas = globalState.quotas.filter(q => {
-            let matchDate = selectedDates.length === 0 || selectedDates.includes(q.date);
-            let matchOp = selectedOperators.length === 0 || selectedOperators.includes(q.operator_name);
-            return !(matchDate && matchOp);
-        });
-        renderCalendarUI();
-        toggleMassDeleteBtn(); 
-        
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
-    } catch (err) {
-        alert("Грешка при изтриване: " + err.message);
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('main-layout').style.display = 'flex';
-    }
-}
-
-function normalizeStr(str) {
-    if (!str) return '';
-    return String(str).replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
 }
 
 async function generateTerminalTasks(client) {
-  
-  
-  
-  
   try {
       const [plansRes, reportsRes, skladRes, bufferRes, invRes] = await Promise.all([
           client.from('plan').select('*').in('Статус', ['Активен']).limit(100000), 
@@ -911,10 +1393,6 @@ async function generateTerminalTasks(client) {
       
       let bufferMap = {};
       let bufferScrapMap = {};
-      
-      if (globalNomData) {
-          // The old hardcoded 20% logic is removed
-      }
 
       if (bufferRes && bufferRes.data) {
           bufferRes.data.forEach(b => {
@@ -1089,7 +1567,7 @@ async function generateTerminalTasks(client) {
                   let targetQty = planRoots[pId][root];
                   let available = getVirtualSklad(root);
                   let pureDeficit = Math.max(0, targetQty - available);
-                  consumeSklad(root, targetQty); // The plan claims its targetQty from warehouse
+                  consumeSklad(root, targetQty);
                   
                   planPureBom[root] = (planPureBom[root] || 0) + pureDeficit;
                   planOriginalBom[root] = (planOriginalBom[root] || 0) + targetQty;
@@ -1159,7 +1637,6 @@ async function generateTerminalTasks(client) {
                       let hasLimit = false;
                       let blockingReasons = [];
                       
-                      // 1. Check previous operation availability
                       if (i > 0) {
                           hasLimit = true;
                           let prevRoute = routes[i - 1]; 
@@ -1169,7 +1646,6 @@ async function generateTerminalTasks(client) {
                           if (maxAllowed < totalShortage) blockingReasons.push(`Липсва наличност на предходна операция (${String(prevRoute['Име на операция']).trim()})`);
                       }
 
-                      // 2. Check BOM availability for THIS specific operation
                       let isLastOp = (i === routes.length - 1);
                       let currentOpNum = parseInt(route['№ Операция']) || 0;
                       let children = globalBomData.filter(b => normalizeStr(b['ID Родител']) === code);
@@ -1200,7 +1676,6 @@ async function generateTerminalTasks(client) {
                               if (sets < minSets) { minSets = sets; blockingReasons.push(`${cCode} (${childAvail} налични)`); }
                               if (sets < rawMinSets) rawMinSets = sets;
                               
-                              // Build itemsToFetch
                               let nomItem = globalNomData.find(n => normalizeStr(n['ID Детайл']) === cCode);
                               let type = nomItem ? normalizeStr(nomItem['Тип']) : '';
                               if (type !== 'материал' || i === 0) {
@@ -1331,7 +1806,6 @@ async function generateTerminalTasks(client) {
                       }
                   }
 
-                  
                   if ((takenPure + takenScrap + takenBuffer) > 0) {
                       physicalStock[opKey] -= (takenPure + takenScrap + takenBuffer);
                   }
@@ -1381,9 +1855,7 @@ async function generateTerminalTasks(client) {
               });
           }
       });
-      // WIP SWEEP Removed as per user request
 
-      // Save any new scrap configurations asynchronously
       if (Object.keys(scrapUpdatesToSave).length > 0) {
           Promise.all(Object.keys(scrapUpdatesToSave).map(pId => {
               return client.from('plan').update({ scrap_details: scrapUpdatesToSave[pId] }).eq('id', pId);
@@ -1395,7 +1867,6 @@ async function generateTerminalTasks(client) {
               if (t.plan_name === "БУФЕРИ") return Infinity;
               if (t.plan_name === "СВРЪХПРОИЗВОДСТВО") return 9999999;
               let baseWeight = groupEarliestId[t.plan_id] || 0;
-              // Scrap-only cards (no pure quantity left) go after all normal cards
               if (t.pureQty <= 0 && t.scrapAllowance > 0) {
                   baseWeight += 5000000;
               }
@@ -1409,40 +1880,3 @@ async function generateTerminalTasks(client) {
       return generatedTasks;
   } catch (err) { console.error(err); return []; }
 }
-
-window.togglePastWeeks = function() {
-    let table = document.getElementById('planner-table');
-    if (table) {
-        table.classList.toggle('hide-past-weeks');
-        let btn = document.getElementById('togglePastBtn');
-        if (btn) {
-            if (table.classList.contains('hide-past-weeks')) {
-                btn.innerText = 'Покажи минали';
-            } else {
-                btn.innerText = 'Скрий минали';
-            }
-        }
-    }
-};
-
-window.openTaskOptionsModal = function(quotaId, detailName, operationName) {
-    document.getElementById('opt-task-title').innerText = detailName;
-    document.getElementById('opt-task-op').innerText = operationName;
-    
-    document.getElementById('opt-btn-copy').onclick = function() {
-        closeTaskOptionsModal();
-        copyForward(quotaId);
-    };
-    
-    document.getElementById('opt-btn-delete').onclick = function() {
-        closeTaskOptionsModal();
-        deleteQuota(quotaId);
-    };
-    
-    document.getElementById('task-options-modal').style.display = 'flex';
-};
-
-window.closeTaskOptionsModal = function() {
-    document.getElementById('task-options-modal').style.display = 'none';
-};
-
