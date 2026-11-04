@@ -21,7 +21,8 @@ let globalState = {
     currentWeekMonday: null,
     currentViewMode: 'weekly', // 'weekly' or 'monthly'
     overviewPeriod: 'all', // 'all', 'w1', 'w1_2', 'w1_3', 'w4'
-    isFullMonthMatrixExpanded: false
+    isFullMonthMatrixExpanded: false,
+    poolFilter: 'all'
 };
 
 // Date helper utilities
@@ -314,40 +315,143 @@ function renderCalendarUI() {
     }
 }
 
-// Render Task Pool
+// Render Task Pool (Compact, clear tracking, color-coded badges)
 function renderTaskPool() {
-    let poolHtml = '';
-    let count = 0;
-    globalState.targetItems.forEach(item => {
-        let remaining = item.planQty || 0;
+    let allCount = 0;
+    let pendingCount = 0;
+    let doneCount = 0;
+
+    let itemsWithMeta = globalState.targetItems.map(item => {
+        let planQty = item.planQty || 0;
         let totalAssignedMonth = 0;
         globalState.quotas.forEach(q => {
             if (q.detail_name === item.detailName && q.operation_name === item.operationName && q.detail_name !== 'OFF') {
                 totalAssignedMonth += q.qty;
             }
         });
+        let remaining = Math.max(0, planQty - totalAssignedMonth);
+        let isDone = (totalAssignedMonth >= planQty && planQty > 0);
+        let isPartial = (totalAssignedMonth > 0 && totalAssignedMonth < planQty);
+        
+        allCount++;
+        if (isDone) doneCount++;
+        else pendingCount++;
 
+        return {
+            item,
+            planQty,
+            totalAssignedMonth,
+            remaining,
+            isDone,
+            isPartial
+        };
+    });
+
+    // Update filter counts in modal
+    let allEl = document.getElementById('pool-filter-all-count');
+    if (allEl) allEl.innerText = allCount;
+    let pendEl = document.getElementById('pool-filter-pending-count');
+    if (pendEl) pendEl.innerText = pendingCount;
+    let doneEl = document.getElementById('pool-filter-done-count');
+    if (doneEl) doneEl.innerText = doneCount;
+
+    // Update mobile toggle button text
+    let poolBtn = document.getElementById('mobile-toggle-pool-btn');
+    if (poolBtn) {
+        if (pendingCount > 0) {
+            poolBtn.innerHTML = `📥 Свободни задачи: <strong style="color:#f59e0b;">${pendingCount} за залагане</strong> ▾`;
+        } else {
+            poolBtn.innerHTML = `📥 Свободни задачи: <strong style="color:#10b981;">Всички са заложени ✅</strong> ▾`;
+        }
+    }
+
+    // Generate HTML for card
+    let makeCardHtml = (data, isModal = false) => {
+        let { item, planQty, totalAssignedMonth, remaining, isDone, isPartial } = data;
         let safeDetail = item.detailName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
         let safeOp = item.operationName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
 
-        poolHtml += `
-            <div class="task-card" draggable="true" ondragstart="dragStart(event, '${safeDetail}', '${safeOp}', ${remaining}, ${totalAssignedMonth})">
-                <div class="task-card-title">${item.detailName}</div>
-                <div class="task-card-op">${item.operationName}</div>
-                <div class="task-stat"><span style="color:#94a3b8">Остават по план:</span> <strong>${remaining} бр.</strong></div>
-                <div class="task-stat"><span style="color:#94a3b8">Налични:</span> <strong style="color:#f59e0b">${item.availableQty} бр.</strong></div>
-                <div class="task-stat" style="margin-top:4px; padding-top:4px; border-top:1px solid #475569;"><span style="color:#94a3b8">Възложени м.:</span> <strong style="color:#38bdf8">${totalAssignedMonth} бр.</strong></div>
-                <button class="btn-card-wizard" onclick="openWizardModal('${safeDetail}', '${safeOp}')">⚡ Разпредели</button>
+        let badgeHtml = '';
+        let borderStyle = '';
+        let cardBg = '';
+
+        if (isDone) {
+            badgeHtml = `<span style="background:rgba(16,185,129,0.2); color:#10b981; border:1px solid #10b981; padding:2px 7px; border-radius:4px; font-size:0.75em; font-weight:bold; white-space:nowrap;">✅ 100% Заложена</span>`;
+            borderStyle = 'border-left: 4px solid #10b981;';
+            cardBg = 'background: #1e293b; opacity: 0.85;';
+        } else if (isPartial) {
+            badgeHtml = `<span style="background:rgba(245,158,11,0.2); color:#f59e0b; border:1px solid #f59e0b; padding:2px 7px; border-radius:4px; font-size:0.75em; font-weight:bold; white-space:nowrap;">⏳ Заложени: ${totalAssignedMonth}/${planQty}</span>`;
+            borderStyle = 'border-left: 4px solid #f59e0b;';
+            cardBg = 'background: #1e293b;';
+        } else {
+            badgeHtml = `<span style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid #ef4444; padding:2px 7px; border-radius:4px; font-size:0.75em; font-weight:bold; white-space:nowrap;">🔴 Неразпределена</span>`;
+            borderStyle = 'border-left: 4px solid #ef4444;';
+            cardBg = 'background: #1e293b;';
+        }
+
+        return `
+            <div style="${borderStyle} ${cardBg} padding:10px 12px; border-radius:6px; border:1px solid #334155; margin-bottom:8px; box-shadow:0 2px 4px rgba(0,0,0,0.2);" draggable="true" ondragstart="dragStart(event, '${safeDetail}', '${safeOp}', ${remaining}, ${totalAssignedMonth})">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                    <div style="flex:1;">
+                        <div style="font-weight:bold; font-size:1.02em; color:#fff; line-height:1.2;">${item.detailName}</div>
+                        <div style="font-size:0.8em; color:#94a3b8; margin-top:2px;">${item.operationName}</div>
+                    </div>
+                    <div>${badgeHtml}</div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:0.85em; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.06); padding-top:6px;">
+                    <div>
+                        <span>Остават: <strong style="color:${remaining > 0 ? '#f59e0b' : '#10b981'}; font-size:1.05em;">${remaining} бр.</strong></span>
+                        <span style="color:#64748b; margin-left:6px; font-size:0.85em;">(План: ${planQty})</span>
+                    </div>
+                    <button class="btn-micro" style="background:${isDone ? '#334155' : '#3b82f6'}; color:#fff; font-weight:bold; padding:5px 12px; font-size:0.9em;" onclick="openWizardModal('${safeDetail}', '${safeOp}'); if(${isModal}) closePoolModal();">
+                        ${isDone ? '✏️ Преразпредели' : '⚡ Заложи'}
+                    </button>
+                </div>
             </div>
         `;
-        count++;
+    };
+
+    // 1. Render desktop sidebar list
+    let sidebarHtml = '';
+    itemsWithMeta.forEach(data => {
+        sidebarHtml += makeCardHtml(data, false);
     });
-    if(globalState.targetItems.length === 0) {
-        poolHtml = '<div style="color:#94a3b8; text-align:center; padding:15px;">Няма заредени статори/ротори.</div>';
+    if (itemsWithMeta.length === 0) {
+        sidebarHtml = '<div style="color:#94a3b8; text-align:center; padding:15px;">Няма заредени детайли.</div>';
     }
-    document.getElementById('w-task-pool').innerHTML = poolHtml;
-    let poolCountEl = document.getElementById('mobile-pool-count');
-    if (poolCountEl) poolCountEl.innerText = count;
+    let sidebarPool = document.getElementById('w-task-pool');
+    if (sidebarPool) sidebarPool.innerHTML = sidebarHtml;
+
+    // 2. Render mobile modal list (respecting globalState.poolFilter)
+    let currentFilter = globalState.poolFilter || 'all';
+    
+    // Update active class on filter buttons
+    ['all', 'pending', 'done'].forEach(f => {
+        let b = document.getElementById(`btn-pool-filter-${f}`);
+        if (b) {
+            if (f === currentFilter) b.classList.add('active');
+            else b.classList.remove('active');
+        }
+    });
+
+    let filteredItems = itemsWithMeta.filter(data => {
+        if (currentFilter === 'pending') return !data.isDone;
+        if (currentFilter === 'done') return data.isDone;
+        return true;
+    });
+
+    let modalHtml = '';
+    filteredItems.forEach(data => {
+        modalHtml += makeCardHtml(data, true);
+    });
+    if (filteredItems.length === 0) {
+        modalHtml = `<div style="color:#94a3b8; text-align:center; padding:25px; font-size:1em;">
+            ${currentFilter === 'pending' ? '🎉 Страхотно! Всички задачи по плана са напълно разпределени.' : 'Няма намерени задачи в този филтър.'}
+        </div>`;
+    }
+    let modalList = document.getElementById('w-task-pool-modal-list');
+    if (modalList) modalList.innerHTML = modalHtml;
 }
 
 // Render Weekly Board (Work week Mon - Fri)
@@ -1321,11 +1425,22 @@ window.closeTaskOptionsModal = function() {
     document.getElementById('task-options-modal').style.display = 'none';
 };
 
+window.openPoolModal = function() {
+    renderTaskPool();
+    document.getElementById('task-pool-modal').style.display = 'flex';
+};
+
+window.closePoolModal = function() {
+    document.getElementById('task-pool-modal').style.display = 'none';
+};
+
+window.setPoolFilter = function(filter) {
+    globalState.poolFilter = filter;
+    renderTaskPool();
+};
+
 window.togglePoolMobile = function() {
-    let pool = document.getElementById('task-pool');
-    if (pool) {
-        pool.classList.toggle('mobile-collapsed');
-    }
+    openPoolModal();
 };
 
 async function deleteQuota(id) {
