@@ -2,3 +2,14 @@
 supabase.exe
 supabase.tar.gz
 supabase-go.exe
+
+# Scratch & test query scripts
+scratch/
+resolvers_query.sql
+temp_query.js
+test_inv.sql
+test_sklad.sql
+uniques.sql
+server.pl
+
+

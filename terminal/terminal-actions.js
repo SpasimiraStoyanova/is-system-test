@@ -511,7 +511,61 @@ async function reportScrap(taskId, btn) {
   var inputElem = document.getElementById('qty_' + taskId); if (!inputElem) return; var val = parseFloat(inputElem.value);
   if(isNaN(val) || val <= 0) { Swal.fire('Грешка', 'Въведи валидна бройка!', 'error'); return; }
   let taskData = globalTasks.find(t => t.id === taskId);
-  if (taskData.hasLimit && val > taskData.maxAllowed) { Swal.fire('Невъзможно', `Имаш материал само за ${taskData.maxAllowed} бр.!`, 'error'); return; }
+  if (!taskData) return;
+
+  let isDiscrepancyAccepted = false;
+  let prevStock = (taskData.prevOpStock !== undefined) ? taskData.prevOpStock : (taskData.maxAllowed || 0);
+  let missingQty = Math.max(0, val - (taskData.maxAllowed || 0));
+
+  if (taskData.hasLimit && val > taskData.maxAllowed) {
+      const isPrevOpDiscrepancy = Boolean(taskData.hasPrevOp || taskData.prevOpName);
+      const prevOpNumStr = taskData.prevOpNum ? ('Оп. ' + taskData.prevOpNum) : 'предходната операция';
+      const prevOpNameStr = taskData.prevOpName ? (' (' + taskData.prevOpName + ')') : '';
+
+      let descHtml = '';
+      if (isPrevOpDiscrepancy) {
+          descHtml = `
+              На предходната операция <b>(${prevOpNumStr}${prevOpNameStr})</b> са отчетени само <b>${prevStock} бр.</b>
+              <br><br>
+              Вие бракувате <b style="color:#ef4444; font-size:1.15em;">${val} бр.</b> (липсват <b>${missingQty} бр.</b> от предходната операция).
+          `;
+      } else {
+          descHtml = `
+              В системата / склада има налични материали само за <b>${taskData.maxAllowed} бр.</b>
+              <br><br>
+              Вие бракувате <b style="color:#ef4444; font-size:1.15em;">${val} бр.</b> (надвишаване с <b>${missingQty} бр.</b>).
+          `;
+      }
+
+      const notifyTargetStr = isPrevOpDiscrepancy 
+          ? ('до колегата на ' + prevOpNumStr + ' и до администратора да си доотчете бройките')
+          : 'до склада и администратора за незаприходени материали';
+
+      const warnResult = await Swal.fire({
+          title: '⚠️ Разминаване в наличността при Брак',
+          html: `
+              <div style="font-size:1.02em; line-height:1.5; color:#1e293b; text-align:left; background:#fff7ed; border:1.5px solid #fed7aa; border-radius:10px; padding:14px; margin-bottom:12px;">
+                  ${descHtml}
+              </div>
+              <div style="font-size:1.05em; font-weight:700; color:#0f172a; margin-top:8px;">
+                  Имате ли физически пред машината тези бракувани ${val} бр.?
+              </div>
+              <div style="font-size:0.85em; color:#64748b; margin-top:6px;">
+                  При потвърждение бракът се отразява веднага, а системата ще изпрати известие ${notifyTargetStr}.
+              </div>
+          `,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: '🗑️ Да, бракувай детайлите',
+          cancelButtonText: 'Отказ',
+          confirmButtonColor: '#ea580c',
+          cancelButtonColor: '#94a3b8',
+          focusConfirm: true
+      });
+
+      if (!warnResult.isConfirmed) return;
+      isDiscrepancyAccepted = true;
+  }
 
   let allowedResolverOps = ['зареждане', 'хонинговане', 'сглобяване + измерване'];
   if (allowedResolverOps.includes(taskData.op.trim().toLowerCase())) {
@@ -525,17 +579,22 @@ async function reportScrap(taskId, btn) {
           });
           checkboxHtml += '</div>';
           const { value: formValues, isConfirmed } = await Swal.fire({ title: 'Бракуване', html: `Ще бракувате <b>${val} бр.</b><br>` + checkboxHtml, icon: 'warning', showCancelButton: true, confirmButtonColor: '#e74c3c', confirmButtonText: 'Да, бракувай!', cancelButtonText: 'Отказ', preConfirm: () => { let scrapped = []; document.querySelectorAll('.scrap-child-cb:checked').forEach(cb => scrapped.push(cb.value)); return scrapped; } });
-          if (isConfirmed) await executeScrapLogic(taskData, val, children, formValues);
+          if (isConfirmed) await executeScrapLogic(taskData, val, children, formValues, isDiscrepancyAccepted, prevStock, missingQty);
           return;
       }
   }
-  Swal.fire({ title: 'Сигурен ли си?', text: "⚠️ БРАКУВАШ " + val + " бр.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#e74c3c', confirmButtonText: 'Да, бракувай!', cancelButtonText: 'Отказ' }).then(async (result) => { if (result.isConfirmed) await executeScrapLogic(taskData, val, [], []); });
+
+  if (isDiscrepancyAccepted) {
+      await executeScrapLogic(taskData, val, [], [], true, prevStock, missingQty);
+  } else {
+      Swal.fire({ title: 'Сигурен ли си?', text: "⚠️ БРАКУВАШ " + val + " бр.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#e74c3c', confirmButtonText: 'Да, бракувай!', cancelButtonText: 'Отказ' }).then(async (result) => { if (result.isConfirmed) await executeScrapLogic(taskData, val, [], [], false, prevStock, 0); });
+  }
 }
 
-async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNames) {
+async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNames, isDiscrepancyAccepted = false, prevStock = 0, missingQty = 0) {
     Swal.fire({ title: 'Проверка и Отразяване на брака...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
     try {
-        if (taskData.hasLimit) {
+        if (taskData.hasLimit && !isDiscrepancyAccepted) {
             let validation = await validateRealTimeStock(taskData, val);
             if (!validation.ok) {
                 if (validation.maxAllowed <= 0) {
@@ -565,8 +624,12 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
 
         const { error } = await client.from('otcheti').insert(inserts);
         if (error) throw error; 
+
+        if (isDiscrepancyAccepted) {
+            await sendDiscrepancyAlerts(taskData, val, prevStock, missingQty);
+        }
         
-        addLogToHistory('БРАК', val, taskData.id); Swal.close(); activeTaskId = null; loadTasks(); 
+        addLogToHistory('БРАК', val, taskData.id); Swal.close(); activeTaskId = null; loadTasks();
     } catch(err) { 
         if (!navigator.onLine || err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('fetch')) {
             let startedAt = window['startTime_' + taskData.id] || new Date().toISOString();
