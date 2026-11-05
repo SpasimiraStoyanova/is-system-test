@@ -108,8 +108,10 @@ function render3sLayout() {
                             <label style="display:block; font-size:0.82em; font-weight:800; color:#475569; margin-bottom:4px;">Категория 3S:</label>
                             <select id="m3sCategory" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.95em;">
                                 <option value="1. Sort (Сортиране)">1. Sort (Сортиране)</option>
-                                <option value="2. Sweep (Почистване)">2. Sweep (Почистване)</option>
-                                <option value="3. Standardize (Стандартизация)">3. Standardize (Стандартизация)</option>
+                                <option value="2. Set in Order (Подреждане)">2. Set in Order (Подреждане)</option>
+                                <option value="3. Sweep (Почистване)">3. Sweep (Почистване)</option>
+                                <option value="4. Standardize (Стандартизация)">4. Standardize (Стандартизация)</option>
+                                <option value="3S Общи части">3S Общи части</option>
                             </select>
                         </div>
                         <div style="width:120px;">

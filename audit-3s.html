@@ -727,35 +727,53 @@
       }
     }
 
+    function getActiveQuestions() {
+      let hasAreaQuestions = state.questions.some(q => q.category && q.category.includes('Общи части'));
+      if (hasAreaQuestions) {
+        if (state.targetType === 'area') {
+          return state.questions.filter(q => q.category && q.category.includes('Общи части'));
+        } else {
+          return state.questions.filter(q => !q.category || !q.category.includes('Общи части'));
+        }
+      }
+      return state.questions;
+    }
+
     function setTargetType(type) {
-      state.targetType = type;
-      document.getElementById('btnTypeWorker').classList.toggle('active', type === 'worker');
-      document.getElementById('btnTypeArea').classList.toggle('active', type === 'area');
+      if (state.targetType !== type) {
+        state.targetType = type;
+        document.getElementById('btnTypeWorker').classList.toggle('active', type === 'worker');
+        document.getElementById('btnTypeArea').classList.toggle('active', type === 'area');
 
-      document.getElementById('workerSelectGroup').style.display = type === 'worker' ? 'flex' : 'none';
-      document.getElementById('areaSelectGroup').style.display = type === 'area' ? 'flex' : 'none';
+        document.getElementById('workerSelectGroup').style.display = type === 'worker' ? 'flex' : 'none';
+        document.getElementById('areaSelectGroup').style.display = type === 'area' ? 'flex' : 'none';
 
-      checkFormValidity();
+        renderQuestions();
+        checkFormValidity();
+      }
     }
 
     function renderQuestions() {
       const container = document.getElementById('questionsContainer');
       container.innerHTML = '';
 
-      if (state.questions.length === 0) {
+      let activeQs = getActiveQuestions();
+
+      if (activeQs.length === 0) {
         container.innerHTML = `
           <div class="card" style="text-align:center; color:#f59e0b; padding:24px;">
-            ⚠️ Все още няма въведени въпроси за звено <strong>"${state.selectedAuditor ? state.selectedAuditor.sector : ''}"</strong>.<br>
+            ⚠️ Все още няма въведени въпроси за ${state.targetType === 'area' ? 'общи части' : 'служители'} в звено <strong>"${state.selectedAuditor ? state.selectedAuditor.sector : ''}"</strong>.<br>
             <span style="font-size:0.9em; color:#94a3b8; display:block; margin-top:8px;">
               Можете да ги въведете през Администраторския панел &gt; "3S Одити &amp; Настройки".
             </span>
           </div>`;
+        updateScoreDisplay();
         return;
       }
 
       // Group by category
       let grouped = {};
-      state.questions.forEach(q => {
+      activeQs.forEach(q => {
         let cat = q.category || 'Общи въпроси';
         if (!grouped[cat]) grouped[cat] = [];
         grouped[cat].push(q);
@@ -784,17 +802,21 @@
             ];
           }
 
+          let existingAns = state.answers[q.id];
           let optionsHtml = criteriaList.map(opt => `
-            <div class="rubric-opt" onclick="selectAnswer(${q.id}, ${opt.points}, '${escapeHtml(opt.text)}')">
+            <div class="rubric-opt ${existingAns && existingAns.points === opt.points ? 'selected' : ''}" onclick="selectAnswer(${q.id}, ${opt.points}, '${escapeHtml(opt.text)}')">
               <div class="opt-pts">${opt.points}</div>
               <div class="opt-text">${escapeHtml(opt.text)}</div>
             </div>
           `).join('');
 
+          let badgeText = existingAns ? `✅ ${existingAns.points} т.` : '⏳ Очаква';
+          let badgeClass = existingAns ? 'q-badge answered' : 'q-badge';
+
           card.innerHTML = `
             <div class="q-header">
               <div class="q-title">${q.question_code ? q.question_code + ' ' : ''}${escapeHtml(q.question_title)}</div>
-              <div class="q-badge" id="q-badge-${q.id}">⏳ Очаква</div>
+              <div class="q-badge ${badgeClass}" id="q-badge-${q.id}">${badgeText}</div>
             </div>
             ${q.question_desc ? `<div class="q-desc">${escapeHtml(q.question_desc)}</div>` : ''}
             <div class="rubric-options" id="rubric-opts-${q.id}">
@@ -837,11 +859,16 @@
     }
 
     function updateScoreDisplay() {
-      let totalPts = 0;
-      let maxPts = state.questions.length * 4;
+      let activeQs = getActiveQuestions();
+      let activeIds = new Set(activeQs.map(q => q.id));
 
-      Object.values(state.answers).forEach(ans => {
-        totalPts += (ans.points || 0);
+      let totalPts = 0;
+      let maxPts = activeQs.length * 4;
+
+      Object.entries(state.answers).forEach(([qid, ans]) => {
+        if (activeIds.has(Number(qid))) {
+          totalPts += (ans.points || 0);
+        }
       });
 
       let pct = maxPts > 0 ? Math.round((totalPts / maxPts) * 100) : 0;
@@ -872,14 +899,16 @@
         isTargetValid = !!(aSelect && aSelect.value);
       }
 
-      let answeredCount = Object.keys(state.answers).length;
-      let isAllQuestionsAnswered = (state.questions.length > 0 && answeredCount === state.questions.length);
+      let activeQs = getActiveQuestions();
+      let activeIds = new Set(activeQs.map(q => q.id));
+      let answeredCount = Object.keys(state.answers).filter(qid => activeIds.has(Number(qid))).length;
+      let isAllQuestionsAnswered = (activeQs.length > 0 && answeredCount === activeQs.length);
 
       let btn = document.getElementById('btnSaveAudit');
       btn.disabled = !(isAuditorValid && isTargetValid && isAllQuestionsAnswered);
 
-      if (!isAllQuestionsAnswered && state.questions.length > 0) {
-        btn.innerHTML = `<span>⏳</span> Оценете всички (${answeredCount}/${state.questions.length})`;
+      if (!isAllQuestionsAnswered && activeQs.length > 0) {
+        btn.innerHTML = `<span>⏳</span> Оценете всички (${answeredCount}/${activeQs.length})`;
       } else {
         btn.innerHTML = `<span>💾</span> Запиши Одит`;
       }
@@ -981,9 +1010,18 @@
         return;
       }
 
+      let activeQs = getActiveQuestions();
+      let activeAnswers = {};
       let totalPts = 0;
-      let maxPts = state.questions.length * 4;
-      Object.values(state.answers).forEach(ans => totalPts += (ans.points || 0));
+      let maxPts = activeQs.length * 4;
+
+      activeQs.forEach(q => {
+        if (state.answers[q.id]) {
+          activeAnswers[q.id] = state.answers[q.id];
+          totalPts += (state.answers[q.id].points || 0);
+        }
+      });
+
       let pct = maxPts > 0 ? Math.round((totalPts / maxPts) * 100) : 0;
       let notes = document.getElementById('auditNotesInput').value.trim();
 
@@ -1023,7 +1061,7 @@
           total_points: totalPts,
           max_points: maxPts,
           percentage: pct,
-          answers: state.answers,
+          answers: activeAnswers,
           notes: notes || null,
           photo_url: photoUrl
         };
