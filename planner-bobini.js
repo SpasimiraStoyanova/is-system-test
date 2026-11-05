@@ -1147,6 +1147,78 @@ function closeModalCentered(modalId) {
     document.body.style.overflow = '';
 }
 
+// Screen Lock Helpers for Fullscreen Modals (Pool & Wizard)
+let activeLockedModals = new Set();
+let savedScrollPos = { x: 0, y: 0 };
+
+function lockScreenForFullModal(modalId) {
+    let modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.left = '';
+        modal.style.top = '';
+        modal.style.width = '';
+        modal.style.height = '';
+        modal.style.position = '';
+    }
+
+    if (activeLockedModals.size === 0) {
+        savedScrollPos.x = window.scrollX || window.pageXOffset || 0;
+        savedScrollPos.y = window.scrollY || window.pageYOffset || 0;
+
+        let vp = document.getElementById('meta-viewport') || document.querySelector('meta[name="viewport"]');
+        if (vp) {
+            vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
+        }
+
+        document.documentElement.classList.add('modal-screen-locked');
+        document.body.classList.add('modal-screen-locked');
+        let lw = document.querySelector('.layout-wrapper');
+        if (lw) lw.classList.add('modal-screen-locked');
+
+        try {
+            window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+        } catch (e) {
+            window.scrollTo(0, 0);
+        }
+    }
+    activeLockedModals.add(modalId);
+
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+function unlockScreenForFullModal(modalId) {
+    let modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+        modal.style.left = '';
+        modal.style.top = '';
+        modal.style.width = '';
+        modal.style.height = '';
+    }
+
+    activeLockedModals.delete(modalId);
+
+    if (activeLockedModals.size === 0) {
+        let vp = document.getElementById('meta-viewport') || document.querySelector('meta[name="viewport"]');
+        if (vp) {
+            vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes');
+        }
+
+        document.documentElement.classList.remove('modal-screen-locked');
+        document.body.classList.remove('modal-screen-locked');
+        let lw = document.querySelector('.layout-wrapper');
+        if (lw) lw.classList.remove('modal-screen-locked');
+
+        try {
+            window.scrollTo({ left: savedScrollPos.x, top: savedScrollPos.y, behavior: 'instant' });
+        } catch (e) {
+            window.scrollTo(savedScrollPos.x, savedScrollPos.y);
+        }
+    }
+}
+
 // Quick Cell Modal Logic
 let currentQcOp = null;
 let currentQcDate = null;
@@ -1337,11 +1409,11 @@ window.openWizardModal = function(preselectedDetail, preselectedOp) {
     if (overwriteCb) overwriteCb.checked = false;
 
     onWizardDetailChange();
-    openModalCentered('wizard-modal');
+    lockScreenForFullModal('wizard-modal');
 };
 
 window.closeWizardModal = function() {
-    closeModalCentered('wizard-modal');
+    unlockScreenForFullModal('wizard-modal');
 };
 
 window.onWizardChipChange = function(input) {
@@ -1720,13 +1792,13 @@ window.openPoolModal = function() {
     } catch (err) {
         console.error("Грешка при зареждане на списъка със свободни задачи:", err);
     }
-    openModalCentered('task-pool-modal');
+    lockScreenForFullModal('task-pool-modal');
     let list = document.getElementById('w-task-pool-modal-list');
     if (list) list.scrollTop = 0;
 };
 
 window.closePoolModal = function() {
-    closeModalCentered('task-pool-modal');
+    unlockScreenForFullModal('task-pool-modal');
 };
 
 window.clearPoolSearch = function() {
