@@ -378,35 +378,42 @@ function renderTaskPool() {
         let cardBg = '';
 
         if (isDone) {
-            badgeHtml = `<span style="background:rgba(16,185,129,0.2); color:#10b981; border:1px solid #10b981; padding:2px 7px; border-radius:4px; font-size:0.75em; font-weight:bold; white-space:nowrap;">✅ 100% Заложена</span>`;
-            borderStyle = 'border-left: 4px solid #10b981;';
-            cardBg = 'background: #1e293b; opacity: 0.85;';
+            badgeHtml = `<span style="background:rgba(16,185,129,0.2); color:#10b981; border:1px solid #10b981; padding:${isModal ? '5px 12px' : '2px 7px'}; border-radius:6px; font-size:${isModal ? '0.85em' : '0.75em'}; font-weight:bold; white-space:nowrap;">✅ 100% Заложена</span>`;
+            borderStyle = isModal ? 'border-left: 6px solid #10b981;' : 'border-left: 4px solid #10b981;';
+            cardBg = 'background: #1e293b; opacity: 0.9;';
         } else if (isPartial) {
-            badgeHtml = `<span style="background:rgba(245,158,11,0.2); color:#f59e0b; border:1px solid #f59e0b; padding:2px 7px; border-radius:4px; font-size:0.75em; font-weight:bold; white-space:nowrap;">⏳ Заложени: ${totalAssignedMonth}/${planQty}</span>`;
-            borderStyle = 'border-left: 4px solid #f59e0b;';
+            badgeHtml = `<span style="background:rgba(245,158,11,0.2); color:#f59e0b; border:1px solid #f59e0b; padding:${isModal ? '5px 12px' : '2px 7px'}; border-radius:6px; font-size:${isModal ? '0.85em' : '0.75em'}; font-weight:bold; white-space:nowrap;">⏳ Заложени: ${totalAssignedMonth}/${planQty}</span>`;
+            borderStyle = isModal ? 'border-left: 6px solid #f59e0b;' : 'border-left: 4px solid #f59e0b;';
             cardBg = 'background: #1e293b;';
         } else {
-            badgeHtml = `<span style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid #ef4444; padding:2px 7px; border-radius:4px; font-size:0.75em; font-weight:bold; white-space:nowrap;">🔴 Неразпределена</span>`;
-            borderStyle = 'border-left: 4px solid #ef4444;';
+            badgeHtml = `<span style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid #ef4444; padding:${isModal ? '5px 12px' : '2px 7px'}; border-radius:6px; font-size:${isModal ? '0.85em' : '0.75em'}; font-weight:bold; white-space:nowrap;">🔴 Неразпределена</span>`;
+            borderStyle = isModal ? 'border-left: 6px solid #ef4444;' : 'border-left: 4px solid #ef4444;';
             cardBg = 'background: #1e293b;';
         }
 
+        let cardPadding = isModal ? '14px 15px' : '11px 12px';
+        let titleSize = isModal ? '1.18em' : '1.05em';
+        let opSize = isModal ? '0.95em' : '0.82em';
+        let btnPadding = isModal ? '10px 22px' : '6px 15px';
+        let btnFontSize = isModal ? '1.08em' : '0.95em';
+        let btnBg = isDone ? '#334155' : '#10b981';
+
         return `
-            <div style="${borderStyle} ${cardBg} padding:11px 12px; border-radius:8px; border:1px solid #334155; margin-bottom:6px; box-shadow:0 2px 4px rgba(0,0,0,0.25);" draggable="true" ondragstart="dragStart(event, '${safeDetail}', '${safeOp}', ${remaining}, ${totalAssignedMonth})">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+            <div style="${borderStyle} ${cardBg} padding:${cardPadding}; border-radius:10px; border:1px solid #334155; margin-bottom:8px; box-shadow:0 3px 6px rgba(0,0,0,0.3);" draggable="true" ondragstart="dragStart(event, '${safeDetail}', '${safeOp}', ${remaining}, ${totalAssignedMonth})">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
                     <div style="flex:1; min-width:0;">
-                        <div style="font-weight:bold; font-size:1.05em; color:#fff; line-height:1.2; word-wrap:break-word;">${item.detailName}</div>
-                        <div style="font-size:0.82em; color:#94a3b8; margin-top:3px;">${item.operationName}</div>
+                        <div style="font-weight:800; font-size:${titleSize}; color:#fff; line-height:1.25; word-wrap:break-word;">${item.detailName}</div>
+                        <div style="font-size:${opSize}; color:#94a3b8; margin-top:4px;">${item.operationName}</div>
                     </div>
                     <div style="flex-shrink:0;">${badgeHtml}</div>
                 </div>
 
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:0.88em; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.08); padding-top:6px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:${isModal ? '0.95em' : '0.88em'}; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.08); padding-top:8px;">
                     <div>
-                        <span>Остават: <strong style="color:${remaining > 0 ? '#f59e0b' : '#10b981'}; font-size:1.08em;">${remaining} бр.</strong></span>
-                        <span style="color:#64748b; margin-left:6px; font-size:0.85em;">(План: ${planQty})</span>
+                        <span>Остават: <strong style="color:${remaining > 0 ? '#f59e0b' : '#10b981'}; font-size:1.18em;">${remaining} бр.</strong></span>
+                        <span style="color:#64748b; margin-left:6px; font-size:0.9em;">(План: ${planQty})</span>
                     </div>
-                    <button class="btn-micro" style="background:${isDone ? '#334155' : '#3b82f6'}; color:#fff; font-weight:bold; padding:6px 15px; font-size:0.95em; border-radius:6px;" onclick="openWizardModal('${safeDetail}', '${safeOp}'); if(${isModal}) closePoolModal();">
+                    <button class="btn-micro" style="background:${btnBg}; color:#fff; font-weight:800; padding:${btnPadding}; font-size:${btnFontSize}; border-radius:8px; min-height:${isModal ? '44px' : 'auto'}; cursor:pointer;" onclick="openWizardModal('${safeDetail}', '${safeOp}'); if(${isModal}) closePoolModal();">
                         ${isDone ? '✏️ Преразпредели' : '⚡ Заложи'}
                     </button>
                 </div>
@@ -1100,10 +1107,12 @@ window.openQuickCellModal = function(operatorName, dateStr, preDetail, preOp) {
     });
 
     document.getElementById('qc-qty-input').value = '10';
+    document.body.style.overflow = 'hidden';
     document.getElementById('quick-cell-modal').style.display = 'flex';
 };
 
 window.closeQuickCellModal = function() {
+    document.body.style.overflow = '';
     document.getElementById('quick-cell-modal').style.display = 'none';
 };
 
@@ -1280,10 +1289,12 @@ window.openWizardModal = function(preselectedDetail, preselectedOp) {
     }
 
     onWizardDetailChange();
+    document.body.style.overflow = 'hidden';
     document.getElementById('wizard-modal').style.display = 'flex';
 };
 
 window.closeWizardModal = function() {
+    document.body.style.overflow = '';
     document.getElementById('wizard-modal').style.display = 'none';
 };
 
@@ -1595,10 +1606,12 @@ window.openTaskOptionsModal = function(quotaId, detailName, operationName, curre
         deleteQuota(quotaId);
     };
 
+    document.body.style.overflow = 'hidden';
     document.getElementById('task-options-modal').style.display = 'flex';
 };
 
 window.closeTaskOptionsModal = function() {
+    document.body.style.overflow = '';
     document.getElementById('task-options-modal').style.display = 'none';
 };
 
@@ -1608,11 +1621,20 @@ window.openPoolModal = function() {
         searchInput.value = globalState.poolSearchQuery || '';
     }
     renderTaskPool();
+    document.body.style.overflow = 'hidden';
     document.getElementById('task-pool-modal').style.display = 'flex';
 };
 
 window.closePoolModal = function() {
+    document.body.style.overflow = '';
     document.getElementById('task-pool-modal').style.display = 'none';
+};
+
+window.clearPoolSearch = function() {
+    let searchInput = document.getElementById('pool-search-input');
+    if (searchInput) searchInput.value = '';
+    globalState.poolSearchQuery = '';
+    renderTaskPool();
 };
 
 window.onPoolSearchInput = function(query) {
