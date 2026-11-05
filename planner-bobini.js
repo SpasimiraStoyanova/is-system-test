@@ -1121,12 +1121,17 @@ window.openQuickCellModal = function(operatorName, dateStr, preDetail, preOp) {
     });
 
     document.getElementById('qc-qty-input').value = '10';
+    if (window.scrollX !== 0) {
+        try { window.scrollTo({ left: 0, top: window.scrollY, behavior: 'instant' }); } catch(e) { window.scrollTo(0, window.scrollY); }
+    }
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
     document.getElementById('quick-cell-modal').style.display = 'flex';
 };
 
 window.closeQuickCellModal = function() {
     document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
     document.getElementById('quick-cell-modal').style.display = 'none';
 };
 
@@ -1303,12 +1308,17 @@ window.openWizardModal = function(preselectedDetail, preselectedOp) {
     }
 
     onWizardDetailChange();
+    if (window.scrollX !== 0) {
+        try { window.scrollTo({ left: 0, top: window.scrollY, behavior: 'instant' }); } catch(e) { window.scrollTo(0, window.scrollY); }
+    }
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
     document.getElementById('wizard-modal').style.display = 'flex';
 };
 
 window.closeWizardModal = function() {
     document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
     document.getElementById('wizard-modal').style.display = 'none';
 };
 
@@ -1620,12 +1630,17 @@ window.openTaskOptionsModal = function(quotaId, detailName, operationName, curre
         deleteQuota(quotaId);
     };
 
+    if (window.scrollX !== 0) {
+        try { window.scrollTo({ left: 0, top: window.scrollY, behavior: 'instant' }); } catch(e) { window.scrollTo(0, window.scrollY); }
+    }
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
     document.getElementById('task-options-modal').style.display = 'flex';
 };
 
 window.closeTaskOptionsModal = function() {
     document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
     document.getElementById('task-options-modal').style.display = 'none';
 };
 
@@ -1639,7 +1654,11 @@ window.openPoolModal = function() {
     } catch (err) {
         console.error("Грешка при зареждане на списъка със свободни задачи:", err);
     }
+    if (window.scrollX !== 0) {
+        try { window.scrollTo({ left: 0, top: window.scrollY, behavior: 'instant' }); } catch(e) { window.scrollTo(0, window.scrollY); }
+    }
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
     let modal = document.getElementById('task-pool-modal');
     if (modal) {
         modal.style.display = 'flex';
@@ -1650,6 +1669,7 @@ window.openPoolModal = function() {
 
 window.closePoolModal = function() {
     document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
     let modal = document.getElementById('task-pool-modal');
     if (modal) modal.style.display = 'none';
 };

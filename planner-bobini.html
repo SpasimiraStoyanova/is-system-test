@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=9">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="planner-bobini.js?v=17" defer></script>
+  <script src="planner-bobini.js?v=18" defer></script>
   <style>
     :root {
       --bg-dark: #0f172a;
@@ -22,13 +22,17 @@
       --text-muted: #94a3b8;
     }
     
-    body {
+    html, body {
       background: var(--bg-dark);
       color: var(--text-bright);
       font-family: 'Sofia Sans', sans-serif;
       margin: 0;
       padding: 0;
       -webkit-tap-highlight-color: transparent;
+      overflow-x: hidden !important;
+      width: 100% !important;
+      max-width: 100vw !important;
+      position: relative;
     }
 
     .layout-wrapper {
@@ -37,8 +41,12 @@
       gap: 12px;
       padding: 16px;
       min-height: 100vh;
+      min-width: 0 !important;
+      max-width: 100vw !important;
+      width: 100% !important;
       box-sizing: border-box;
-      overflow: hidden;
+      overflow-x: hidden !important;
+      overflow-y: visible;
     }
 
     /* View Switcher Tabs */
@@ -449,15 +457,25 @@
     /* Modals */
     .modal {
       display: none;
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.75);
+      position: fixed !important;
+      inset: 0 !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100vw !important;
+      width: 100% !important;
+      height: 100vh !important;
+      height: 100dvh !important;
+      background: rgba(0,0,0,0.8) !important;
       backdrop-filter: blur(2px);
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      padding: 15px;
+      align-items: center !important;
+      justify-content: center !important;
+      z-index: 99999 !important;
+      padding: 16px;
       box-sizing: border-box;
+      margin: 0 !important;
+      overflow: hidden;
     }
     .modal-content {
       background: #1e293b;
@@ -468,6 +486,7 @@
       border: 1px solid var(--border-light);
       box-shadow: 0 10px 25px rgba(0,0,0,0.6);
       box-sizing: border-box;
+      margin: auto;
     }
     .pool-modal-content {
       max-width: 740px;
@@ -478,6 +497,7 @@
       flex-direction: column;
       padding: 16px;
       box-sizing: border-box;
+      margin: auto;
     }
     .wizard-modal-content {
       max-width: 680px;
@@ -487,6 +507,7 @@
       flex-direction: column;
       padding: 16px;
       box-sizing: border-box;
+      margin: auto;
     }
     .modal-header {
       flex-shrink: 0;
@@ -617,7 +638,9 @@
         inset: 0 !important;
         top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
         width: 100vw !important;
+        width: 100% !important;
         height: 100dvh !important;
+        height: 100% !important;
         padding: 0 !important;
         margin: 0 !important;
         align-items: stretch !important;
@@ -625,13 +648,19 @@
         z-index: 99999 !important;
         background: #0f172a !important;
         box-sizing: border-box !important;
+        overflow: hidden !important;
       }
       .pool-modal-content,
       .wizard-modal-content {
+        position: fixed !important;
+        inset: 0 !important;
+        top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
         width: 100vw !important;
         max-width: 100vw !important;
+        width: 100% !important;
         height: 100dvh !important;
         max-height: 100dvh !important;
+        height: 100% !important;
         border-radius: 0 !important;
         border: none !important;
         box-shadow: none !important;
@@ -970,10 +999,11 @@
         <div id="full-month-matrix-body" style="display:none; overflow-x:auto;"></div>
       </div>
     </div>
+  </div> <!-- Closes .layout-wrapper #main-layout -->
 
-    <!-- MODALS -->
+  <!-- MODALS (Direct children of body for true viewport centering and overlay) -->
 
-    <!-- 1. Modal for Quick Cell Assign -->
+  <!-- 1. Modal for Quick Cell Assign -->
     <div id="quick-cell-modal" class="modal" onclick="if(event.target===this) closeQuickCellModal()">
       <div class="modal-content">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-dark); padding-bottom:10px; margin-bottom:12px;">
@@ -1142,8 +1172,6 @@
         </div>
       </div>
     </div>
-
-  </div>
 
 </body>
 </html>
