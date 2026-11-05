@@ -1097,6 +1097,56 @@ function drop(e, operatorName, dateStr) {
     }
 }
 
+// Next Work Day Helper (Mon - Fri)
+function getNextWorkDay(dateStr) {
+    if (!dateStr) return formatDateISO(new Date());
+    let d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    while (d.getDay() === 0 || d.getDay() === 6) { // 0 Sun, 6 Sat
+        d.setDate(d.getDate() + 1);
+    }
+    return formatDateISO(d);
+}
+
+// Modal Viewport Synchronization (Mobile Zoom & Pan Friendly)
+function openModalCentered(modalId) {
+    let modal = document.getElementById(modalId);
+    if (!modal) return;
+
+    let syncViewport = () => {
+        if (modal.style.display !== 'flex') return;
+        if (window.visualViewport) {
+            let vv = window.visualViewport;
+            modal.style.position = 'fixed';
+            modal.style.left = `${vv.offsetLeft}px`;
+            modal.style.top = `${vv.offsetTop}px`;
+            modal.style.width = `${vv.width}px`;
+            modal.style.height = `${vv.height}px`;
+        }
+    };
+
+    modal._vvSync = syncViewport;
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', syncViewport);
+        window.visualViewport.addEventListener('scroll', syncViewport);
+    }
+    modal.style.display = 'flex';
+    syncViewport();
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModalCentered(modalId) {
+    let modal = document.getElementById(modalId);
+    if (!modal) return;
+    modal.style.display = 'none';
+    if (modal._vvSync && window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', modal._vvSync);
+        window.visualViewport.removeEventListener('scroll', modal._vvSync);
+        modal._vvSync = null;
+    }
+    document.body.style.overflow = '';
+}
+
 // Quick Cell Modal Logic
 let currentQcOp = null;
 let currentQcDate = null;
@@ -1121,18 +1171,11 @@ window.openQuickCellModal = function(operatorName, dateStr, preDetail, preOp) {
     });
 
     document.getElementById('qc-qty-input').value = '10';
-    if (window.scrollX !== 0) {
-        try { window.scrollTo({ left: 0, top: window.scrollY, behavior: 'instant' }); } catch(e) { window.scrollTo(0, window.scrollY); }
-    }
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.getElementById('quick-cell-modal').style.display = 'flex';
+    openModalCentered('quick-cell-modal');
 };
 
 window.closeQuickCellModal = function() {
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.getElementById('quick-cell-modal').style.display = 'none';
+    closeModalCentered('quick-cell-modal');
 };
 
 window.setQcQty = function(num) {
@@ -1284,42 +1327,21 @@ window.openWizardModal = function(preselectedDetail, preselectedOp) {
         opsCont.appendChild(label);
     });
 
-    // Default start date: today or first working day of selected month
-    let startDateInput = document.getElementById('wz-start-date');
-    if (startDateInput) {
-        let today = new Date();
-        let selectedMonth = document.getElementById('month-picker')?.value || getMonthString();
-        let [y, m] = selectedMonth.split('-').map(Number);
-        if (today.getFullYear() === y && (today.getMonth() + 1) === m) {
-            startDateInput.value = formatDateISO(today);
-        } else {
-            let d1 = new Date(y, m - 1, 1);
-            while (d1.getDay() === 0 || d1.getDay() === 6) {
-                d1.setDate(d1.getDate() + 1);
-            }
-            startDateInput.value = formatDateISO(d1);
-        }
-    }
-
     // Default daily norm
     let normInput = document.getElementById('wz-daily-norm');
     if (normInput && (!normInput.value || parseInt(normInput.value) <= 0)) {
         normInput.value = 6;
     }
 
+    let overwriteCb = document.getElementById('wz-overwrite-checkbox');
+    if (overwriteCb) overwriteCb.checked = false;
+
     onWizardDetailChange();
-    if (window.scrollX !== 0) {
-        try { window.scrollTo({ left: 0, top: window.scrollY, behavior: 'instant' }); } catch(e) { window.scrollTo(0, window.scrollY); }
-    }
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.getElementById('wizard-modal').style.display = 'flex';
+    openModalCentered('wizard-modal');
 };
 
 window.closeWizardModal = function() {
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.getElementById('wizard-modal').style.display = 'none';
+    closeModalCentered('wizard-modal');
 };
 
 window.onWizardChipChange = function(input) {
@@ -1339,23 +1361,59 @@ window.onWizardDetailChange = function() {
 
     let targetItem = globalState.targetItems.find(t => t.detailName === detail && t.operationName === op);
     let totalAssigned = 0;
+    let existingQuotasForDetail = [];
     globalState.quotas.forEach(q => {
         if (q.detail_name === detail && q.operation_name === op && q.detail_name !== 'OFF') {
             totalAssigned += q.qty;
+            existingQuotasForDetail.push(q);
         }
     });
 
     let planQty = targetItem ? targetItem.planQty : 0;
     let remaining = Math.max(0, planQty - totalAssigned);
+
+    let latestScheduledDateStr = null;
+    if (existingQuotasForDetail.length > 0) {
+        let sortedDates = existingQuotasForDetail.map(q => q.date).sort();
+        latestScheduledDateStr = sortedDates[sortedDates.length - 1];
+    }
+
     let info = document.getElementById('wz-detail-info');
     if (info) {
-        info.innerHTML = `План: <strong>${planQty} бр.</strong> | Заложени досега: <strong>${totalAssigned} бр.</strong> | Остава за залагане: <strong style="color:#10b981;">${remaining} бр.</strong>`;
+        let dateBadge = '';
+        if (latestScheduledDateStr && totalAssigned > 0) {
+            let [ly, lm, ld] = latestScheduledDateStr.split('-');
+            dateBadge = ` <span style="color:#94a3b8; font-weight:normal;">(заложени до ${ld}.${lm})</span>`;
+        }
+        info.innerHTML = `План: <strong>${planQty} бр.</strong> | Вече заложени: <strong>${totalAssigned} бр.</strong>${dateBadge} | Остава за залагане: <strong style="color:${remaining > 0 ? '#10b981' : '#38bdf8'};">${remaining} бр.</strong>`;
     }
 
     let qtyInput = document.getElementById('wz-qty-input');
     if (qtyInput) {
         qtyInput.value = remaining > 0 ? remaining : (planQty > 0 ? planQty : 50);
     }
+
+    // Smart start date:
+    // If detail already has scheduled tasks and there are remaining pieces,
+    // continue right after the latest scheduled day!
+    let startDateInput = document.getElementById('wz-start-date');
+    if (startDateInput) {
+        if (latestScheduledDateStr && remaining > 0 && totalAssigned > 0) {
+            startDateInput.value = getNextWorkDay(latestScheduledDateStr);
+        } else {
+            let today = new Date();
+            let selectedMonth = document.getElementById('month-picker')?.value || getMonthString();
+            let [y, m] = selectedMonth.split('-').map(Number);
+            if (today.getFullYear() === y && (today.getMonth() + 1) === m) {
+                startDateInput.value = formatDateISO(today);
+            } else {
+                let d1 = new Date(y, m - 1, 1);
+                while (d1.getDay() === 0 || d1.getDay() === 6) d1.setDate(d1.getDate() + 1);
+                startDateInput.value = formatDateISO(d1);
+            }
+        }
+    }
+
     updateWizardCalc();
 };
 
@@ -1553,18 +1611,32 @@ window.confirmWizardAssign = async function() {
     loader.style.display = 'flex';
 
     try {
-        let scheduledDates = Array.from(new Set(result.schedule.map(s => s.date)));
-        
-        let existingIdsToDelete = [];
-        globalState.quotas.forEach(q => {
-            if (q.detail_name === detail && q.operation_name === op && scheduledDates.includes(q.date)) {
-                existingIdsToDelete.push(q.id);
-            }
-        });
+        let isOverwrite = document.getElementById('wz-overwrite-checkbox')?.checked || false;
 
-        if (existingIdsToDelete.length > 0) {
-            await client.from('planner_bobini').delete().in('id', existingIdsToDelete);
-            globalState.quotas = globalState.quotas.filter(q => !existingIdsToDelete.includes(q.id));
+        if (isOverwrite) {
+            let scheduledDates = Array.from(new Set(result.schedule.map(s => s.date)));
+            
+            let existingIdsToDelete = [];
+            globalState.quotas.forEach(q => {
+                if (q.detail_name === detail && q.operation_name === op && scheduledDates.includes(q.date)) {
+                    // Safety: Never delete quotas with terminal reports!
+                    let hasReport = (globalState.otcheti || []).some(r =>
+                        r['Дата'] && r['Дата'].split('T')[0] === q.date &&
+                        String(r['Оператор'] || '').trim().toLowerCase() === String(q.operator_name || '').trim().toLowerCase() &&
+                        normalizeStr(r['ID Детайл']) === normalizeStr(q.detail_name) &&
+                        normalizeStr(r['Операция']) === normalizeStr(q.operation_name) &&
+                        (parseFloat(r['Количество']) || 0) > 0
+                    );
+                    if (!hasReport) {
+                        existingIdsToDelete.push(q.id);
+                    }
+                }
+            });
+
+            if (existingIdsToDelete.length > 0) {
+                await client.from('planner_bobini').delete().in('id', existingIdsToDelete);
+                globalState.quotas = globalState.quotas.filter(q => !existingIdsToDelete.includes(q.id));
+            }
         }
 
         const { data, error } = await client.from('planner_bobini').insert(result.schedule).select();
@@ -1582,7 +1654,8 @@ window.confirmWizardAssign = async function() {
 
         let endD = new Date(result.endDateStr + 'T00:00:00');
         let dayNames = ['Неделя', 'Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота'];
-        alert(`✅ Успешно разпределени ${inputQty} бр. за ${result.workDaysCount} работни дни!\n\n🏁 Очаквано завършване (ETA): ${String(endD.getDate()).padStart(2,'0')}.${String(endD.getMonth()+1).padStart(2,'0')}.${endD.getFullYear()} г. (${dayNames[endD.getDay()]})\n\nКалендарът е обновен с новия график.`);
+        let actionMsg = isOverwrite ? 'презаписани' : 'добавени';
+        alert(`✅ Успешно ${actionMsg} ${inputQty} бр. в графика за ${result.workDaysCount} работни дни!\n\n🏁 Очаквано завършване (ETA): ${String(endD.getDate()).padStart(2,'0')}.${String(endD.getMonth()+1).padStart(2,'0')}.${endD.getFullYear()} г. (${dayNames[endD.getDay()]})\n\nКалендарът е обновен.`);
     } catch (err) {
         alert("Грешка при запис: " + err.message);
         loader.style.display = 'none';
@@ -1630,18 +1703,11 @@ window.openTaskOptionsModal = function(quotaId, detailName, operationName, curre
         deleteQuota(quotaId);
     };
 
-    if (window.scrollX !== 0) {
-        try { window.scrollTo({ left: 0, top: window.scrollY, behavior: 'instant' }); } catch(e) { window.scrollTo(0, window.scrollY); }
-    }
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.getElementById('task-options-modal').style.display = 'flex';
+    openModalCentered('task-options-modal');
 };
 
 window.closeTaskOptionsModal = function() {
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.getElementById('task-options-modal').style.display = 'none';
+    closeModalCentered('task-options-modal');
 };
 
 window.openPoolModal = function() {
@@ -1654,24 +1720,13 @@ window.openPoolModal = function() {
     } catch (err) {
         console.error("Грешка при зареждане на списъка със свободни задачи:", err);
     }
-    if (window.scrollX !== 0) {
-        try { window.scrollTo({ left: 0, top: window.scrollY, behavior: 'instant' }); } catch(e) { window.scrollTo(0, window.scrollY); }
-    }
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    let modal = document.getElementById('task-pool-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-        let list = document.getElementById('w-task-pool-modal-list');
-        if (list) list.scrollTop = 0;
-    }
+    openModalCentered('task-pool-modal');
+    let list = document.getElementById('w-task-pool-modal-list');
+    if (list) list.scrollTop = 0;
 };
 
 window.closePoolModal = function() {
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    let modal = document.getElementById('task-pool-modal');
-    if (modal) modal.style.display = 'none';
+    closeModalCentered('task-pool-modal');
 };
 
 window.clearPoolSearch = function() {
