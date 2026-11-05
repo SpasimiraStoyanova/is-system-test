@@ -548,19 +548,26 @@
     function populateAuditorDropdown() {
       const select = document.getElementById('auditorSelect');
       select.innerHTML = '<option value="" disabled selected>Изберете проверяващ...</option>';
+
+      // Deduplicate by sector so each sector has exactly one auditor in the dropdown
+      let sectorMap = new Map();
       state.auditors.forEach(a => {
         let name = a.auditor_name ? a.auditor_name.trim() : '';
         if (!name || name === 'Не е зададен') return;
+        sectorMap.set(a.sector, a);
+      });
+
+      sectorMap.forEach(a => {
         let opt = document.createElement('option');
         opt.value = a.id;
-        opt.textContent = `${name} (${a.sector})`;
+        opt.textContent = `${a.auditor_name.trim()} (${a.sector})`;
         select.appendChild(opt);
       });
 
-      // Auto-select Vasil Asenov if only 1 active valid auditor
-      let vasil = state.auditors.find(a => a.auditor_name && a.auditor_name.includes('Васил'));
-      if (vasil) {
-        select.value = vasil.id;
+      // If only 1 auditor exists, auto-select it; otherwise let the auditor choose their name
+      if (sectorMap.size === 1) {
+        let onlyAuditor = Array.from(sectorMap.values())[0];
+        select.value = onlyAuditor.id;
         onAuditorChange();
       }
     }

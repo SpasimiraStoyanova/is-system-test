@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS public.audit_3s_auditors (
     id serial PRIMARY KEY,
     auditor_name text NOT NULL,
-    sector text NOT NULL,
+    sector text NOT NULL UNIQUE,
     email text,
     is_active boolean DEFAULT true,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now())
@@ -96,7 +96,7 @@ VALUES
     ('Васил Асенов', 'Измерване и монтаж', 'amcirazlog@gmail.com', true),
     ('Не е зададен', 'Бобиньорки', '', true),
     ('Не е зададен', 'Машини', '', true)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (sector) DO NOTHING;
 
 -- 8. Първоначален примерен въпрос (за Измерване и монтаж)
 INSERT INTO public.audit_3s_templates (sector, category, question_code, question_title, question_desc, criteria, order_index)
