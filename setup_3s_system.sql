@@ -7,11 +7,12 @@
 CREATE TABLE IF NOT EXISTS public.audit_3s_auditors (
     id serial PRIMARY KEY,
     auditor_name text NOT NULL,
-    sector text NOT NULL UNIQUE,
+    sector text NOT NULL,
     email text,
     is_active boolean DEFAULT true,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now())
 );
+CREATE UNIQUE INDEX IF NOT EXISTS audit_3s_auditors_sector_idx ON public.audit_3s_auditors (sector);
 
 -- 2. Таблица за Шаблони на Въпроси & Оценъчни рубрики (0 до 4 точки)
 CREATE TABLE IF NOT EXISTS public.audit_3s_templates (

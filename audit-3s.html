@@ -1,12 +1,14 @@
 <!DOCTYPE html>
 <html lang="bg">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ИС-СИСТЕМС | 3S Мобилен Одит</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;700;800;900&display=swap"
+    rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <style>
@@ -24,7 +26,10 @@
       --text-muted: #94a3b8;
     }
 
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
 
     body {
       margin: 0;
@@ -48,8 +53,9 @@
       position: sticky;
       top: 0;
       z-index: 100;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
     }
+
     .brand-title {
       font-size: 1.2em;
       font-weight: 900;
@@ -58,6 +64,7 @@
       gap: 8px;
       color: #38bdf8;
     }
+
     .date-badge {
       font-size: 0.82em;
       font-weight: 700;
@@ -78,7 +85,8 @@
       flex-direction: column;
       gap: 16px;
       box-sizing: border-box;
-      padding-bottom: 120px; /* Space for sticky footer bar */
+      padding-bottom: 120px;
+      /* Space for sticky footer bar */
     }
 
     .card {
@@ -86,7 +94,7 @@
       border: 1px solid var(--border-dark);
       border-radius: 12px;
       padding: 16px;
-      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
     }
 
     .card-title {
@@ -107,9 +115,11 @@
       gap: 6px;
       margin-bottom: 14px;
     }
+
     .form-group:last-child {
       margin-bottom: 0;
     }
+
     .form-label {
       font-size: 0.88em;
       font-weight: 700;
@@ -117,7 +127,9 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    .form-select, .form-input {
+
+    .form-select,
+    .form-input {
       width: 100%;
       padding: 12px 14px;
       background: #0f172a;
@@ -130,7 +142,9 @@
       box-sizing: border-box;
       transition: border-color 0.15s;
     }
-    .form-select:focus, .form-input:focus {
+
+    .form-select:focus,
+    .form-input:focus {
       border-color: var(--accent-blue);
     }
 
@@ -143,6 +157,7 @@
       border-radius: 8px;
       border: 1px solid var(--border-dark);
     }
+
     .type-btn {
       flex: 1;
       background: transparent;
@@ -160,6 +175,7 @@
       gap: 6px;
       transition: all 0.2s;
     }
+
     .type-btn.active {
       background: var(--accent-blue);
       color: #ffffff;
@@ -192,18 +208,21 @@
       flex-direction: column;
       gap: 10px;
     }
+
     .q-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       gap: 8px;
     }
+
     .q-title {
       font-size: 1.02em;
       font-weight: 800;
       color: #f8fafc;
       line-height: 1.3;
     }
+
     .q-badge {
       background: #334155;
       color: #94a3b8;
@@ -213,10 +232,12 @@
       border-radius: 6px;
       white-space: nowrap;
     }
+
     .q-badge.answered {
       background: var(--accent-green);
       color: #ffffff;
     }
+
     .q-desc {
       font-size: 0.88em;
       color: var(--text-muted);
@@ -234,6 +255,7 @@
       gap: 6px;
       margin-top: 4px;
     }
+
     .rubric-opt {
       display: flex;
       align-items: flex-start;
@@ -246,14 +268,17 @@
       user-select: none;
       transition: all 0.15s ease;
     }
+
     .rubric-opt:hover {
       border-color: #64748b;
     }
+
     .rubric-opt.selected {
       border-color: var(--accent-green);
       background: rgba(16, 185, 129, 0.15);
       box-shadow: 0 0 0 1px var(--accent-green);
     }
+
     .opt-pts {
       flex-shrink: 0;
       width: 28px;
@@ -267,10 +292,12 @@
       background: #334155;
       color: #cbd5e1;
     }
+
     .rubric-opt.selected .opt-pts {
       background: var(--accent-green);
       color: #fff;
     }
+
     .opt-text {
       font-size: 0.9em;
       line-height: 1.35;
@@ -290,6 +317,7 @@
       background: #0f172a;
       text-align: center;
     }
+
     .photo-preview {
       width: 100%;
       max-height: 220px;
@@ -298,6 +326,7 @@
       display: none;
       border: 1px solid var(--border-dark);
     }
+
     .btn-camera {
       background: #334155;
       color: #fff;
@@ -314,6 +343,7 @@
       width: 100%;
       justify-content: center;
     }
+
     .btn-camera:hover {
       background: #475569;
     }
@@ -332,12 +362,14 @@
       justify-content: space-between;
       gap: 12px;
       z-index: 99;
-      box-shadow: 0 -4px 15px rgba(0,0,0,0.4);
+      box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.4);
     }
+
     .score-summary {
       display: flex;
       flex-direction: column;
     }
+
     .score-val {
       font-size: 1.25em;
       font-weight: 900;
@@ -346,11 +378,13 @@
       align-items: baseline;
       gap: 4px;
     }
+
     .score-percent {
       font-size: 0.85em;
       color: var(--accent-green);
       font-weight: 800;
     }
+
     .btn-save-audit {
       background: var(--accent-green);
       color: #ffffff;
@@ -367,6 +401,7 @@
       box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
       transition: all 0.15s ease;
     }
+
     .btn-save-audit:disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -386,6 +421,7 @@
     }
   </style>
 </head>
+
 <body>
 
   <!-- Top App Bar -->
@@ -461,18 +497,21 @@
 
       <div class="form-group">
         <label class="form-label" for="auditNotesInput">Коментар / Препоръка към служителя:</label>
-        <textarea id="auditNotesInput" class="form-input" rows="3" placeholder="Опишете накратко забележки или похвали..."></textarea>
+        <textarea id="auditNotesInput" class="form-input" rows="3"
+          placeholder="Опишете накратко забележки или похвали..."></textarea>
       </div>
 
       <div class="form-group">
         <label class="form-label">Снимка от камерата (по избор):</label>
         <div class="photo-area">
           <img id="photoPreviewImg" class="photo-preview" alt="Преглед на снимка">
-          <input type="file" id="cameraFileInput" accept="image/*" capture="environment" style="display:none;" onchange="onPhotoSelected(event)">
+          <input type="file" id="cameraFileInput" accept="image/*" capture="environment" style="display:none;"
+            onchange="onPhotoSelected(event)">
           <button type="button" class="btn-camera" onclick="document.getElementById('cameraFileInput').click()">
             <span id="cameraBtnText">📷 Направи / Прикачи снимка</span>
           </button>
-          <button type="button" id="btnRemovePhoto" onclick="removePhoto()" style="display:none; background:transparent; border:none; color:#ef4444; font-weight:700; cursor:pointer; font-size:0.9em; padding:4px;">
+          <button type="button" id="btnRemovePhoto" onclick="removePhoto()"
+            style="display:none; background:transparent; border:none; color:#ef4444; font-weight:700; cursor:pointer; font-size:0.9em; padding:4px;">
             🗑️ Премахни снимката
           </button>
         </div>
@@ -513,7 +552,7 @@
 
     window.onload = async () => {
       let today = new Date();
-      document.getElementById('currentDateDisplay').innerText = `📅 ${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()} г.`;
+      document.getElementById('currentDateDisplay').innerText = `📅 ${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()} г.`;
       await loadInitialData();
     };
 
@@ -537,7 +576,7 @@
           .eq('Статус', 'Активен');
 
         if (!wErr && workersData) {
-          state.workers = workersData.filter(w => w['Име']).sort((a,b) => a['Име'].localeCompare(b['Име']));
+          state.workers = workersData.filter(w => w['Име']).sort((a, b) => a['Име'].localeCompare(b['Име']));
           populateWorkersDropdown();
         }
       } catch (err) {
@@ -632,7 +671,7 @@
         if (!error && data && data.length > 0) {
           let assignedNames = data.map(d => d.worker_name);
           select.innerHTML = '<option value="" disabled selected>Изберете служител...</option>';
-          assignedNames.sort((a,b) => a.localeCompare(b)).forEach(name => {
+          assignedNames.sort((a, b) => a.localeCompare(b)).forEach(name => {
             let opt = document.createElement('option');
             opt.value = name;
             let found = state.workers.find(w => w['Име'] === name);
@@ -933,8 +972,8 @@
     }
 
     async function saveAudit() {
-      let targetName = state.targetType === 'worker' 
-        ? document.getElementById('targetWorkerSelect').value 
+      let targetName = state.targetType === 'worker'
+        ? document.getElementById('targetWorkerSelect').value
         : document.getElementById('targetAreaSelect').value;
 
       if (!targetName) {
@@ -960,7 +999,7 @@
       try {
         // Upload photo if present
         if (state.photoFile) {
-          let cleanFileName = `3s_${Date.now()}_${Math.random().toString(36).substring(2,7)}.jpg`;
+          let cleanFileName = `3s_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
           let filePath = `audit_3s/${cleanFileName}`;
 
           const { error: uploadError } = await client.storage
@@ -1041,5 +1080,5 @@
     }
   </script>
 </body>
-</html>
 
+</html>
