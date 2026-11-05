@@ -36,7 +36,16 @@ CREATE TABLE IF NOT EXISTS public.audit_3s_areas (
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now())
 );
 
--- 4. Таблица за Записани Одити (Резултати)
+-- 4. Таблица за Зачислени Служители към Звено (за бърз избор при одит)
+CREATE TABLE IF NOT EXISTS public.audit_3s_workers (
+    id serial PRIMARY KEY,
+    sector text NOT NULL,
+    worker_name text NOT NULL,
+    is_active boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now())
+);
+
+-- 5. Таблица за Записани Одити (Резултати)
 CREATE TABLE IF NOT EXISTS public.audit_3s_logs (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()),
@@ -53,7 +62,7 @@ CREATE TABLE IF NOT EXISTS public.audit_3s_logs (
     photo_url text
 );
 
--- 5. Задаване на RLS права за достъп
+-- 6. Задаване на RLS права за достъп
 ALTER TABLE public.audit_3s_auditors ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all on audit_3s_auditors" ON public.audit_3s_auditors;
 CREATE POLICY "Allow all on audit_3s_auditors" ON public.audit_3s_auditors FOR ALL USING (true) WITH CHECK (true);
@@ -66,6 +75,10 @@ ALTER TABLE public.audit_3s_areas ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all on audit_3s_areas" ON public.audit_3s_areas;
 CREATE POLICY "Allow all on audit_3s_areas" ON public.audit_3s_areas FOR ALL USING (true) WITH CHECK (true);
 
+ALTER TABLE public.audit_3s_workers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on audit_3s_workers" ON public.audit_3s_workers;
+CREATE POLICY "Allow all on audit_3s_workers" ON public.audit_3s_workers FOR ALL USING (true) WITH CHECK (true);
+
 ALTER TABLE public.audit_3s_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all on audit_3s_logs" ON public.audit_3s_logs;
 CREATE POLICY "Allow all on audit_3s_logs" ON public.audit_3s_logs FOR ALL USING (true) WITH CHECK (true);
@@ -73,10 +86,11 @@ CREATE POLICY "Allow all on audit_3s_logs" ON public.audit_3s_logs FOR ALL USING
 GRANT ALL ON public.audit_3s_auditors TO anon, authenticated;
 GRANT ALL ON public.audit_3s_templates TO anon, authenticated;
 GRANT ALL ON public.audit_3s_areas TO anon, authenticated;
+GRANT ALL ON public.audit_3s_workers TO anon, authenticated;
 GRANT ALL ON public.audit_3s_logs TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
--- 6. Първоначални данни за Проверяващите
+-- 7. Първоначални данни за Проверяващите
 INSERT INTO public.audit_3s_auditors (auditor_name, sector, email, is_active)
 VALUES 
     ('Васил Асенов', 'Измерване и монтаж', 'amcirazlog@gmail.com', true),
@@ -84,7 +98,7 @@ VALUES
     ('Не е зададен', 'Машини', '', true)
 ON CONFLICT DO NOTHING;
 
--- 7. Първоначален примерен въпрос (за Измерване и монтаж)
+-- 8. Първоначален примерен въпрос (за Измерване и монтаж)
 INSERT INTO public.audit_3s_templates (sector, category, question_code, question_title, question_desc, criteria, order_index)
 VALUES (
     'Измерване и монтаж',

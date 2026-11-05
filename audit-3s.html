@@ -603,9 +603,43 @@
       // Load specific areas for this sector
       await loadSectorAreas(state.selectedAuditor.sector);
 
+      // Load assigned workers for this sector
+      await loadSectorWorkers(state.selectedAuditor.sector);
+
       document.getElementById('notesPhotoCard').style.display = 'block';
       document.getElementById('stickyFooter').style.display = 'flex';
       checkFormValidity();
+    }
+
+    async function loadSectorWorkers(sector) {
+      const select = document.getElementById('targetWorkerSelect');
+      const label = document.querySelector('label[for="targetWorkerSelect"]');
+
+      try {
+        const { data, error } = await client
+          .from('audit_3s_workers')
+          .select('worker_name')
+          .eq('sector', sector)
+          .eq('is_active', true);
+
+        if (!error && data && data.length > 0) {
+          let assignedNames = data.map(d => d.worker_name);
+          select.innerHTML = '<option value="" disabled selected>Изберете служител...</option>';
+          assignedNames.sort((a,b) => a.localeCompare(b)).forEach(name => {
+            let opt = document.createElement('option');
+            opt.value = name;
+            let found = state.workers.find(w => w['Име'] === name);
+            opt.textContent = `${name}${found && found['Длъжност'] ? ' (' + found['Длъжност'] + ')' : ''}`;
+            select.appendChild(opt);
+          });
+          if (label) label.innerText = `Избор на служител (${data.length} зачислени за "${sector}"):`;
+        } else {
+          populateWorkersDropdown();
+          if (label) label.innerText = 'Избор на служител (целия персонал):';
+        }
+      } catch (err) {
+        populateWorkersDropdown();
+      }
     }
 
     async function loadSectorQuestions(sector) {
@@ -805,20 +839,80 @@
       }
     }
 
-    function onPhotoSelected(e) {
+    async function onPhotoSelected(e) {
       let file = e.target.files[0];
       if (!file) return;
 
-      state.photoFile = file;
-      let reader = new FileReader();
-      reader.onload = (event) => {
-        let img = document.getElementById('photoPreviewImg');
-        img.src = event.target.result;
-        img.style.display = 'block';
-        document.getElementById('cameraBtnText').innerText = '🔄 Смени снимката';
-        document.getElementById('btnRemovePhoto').style.display = 'inline-block';
-      };
-      reader.readAsDataURL(file);
+      let origSizeKb = Math.round(file.size / 1024);
+      let btnText = document.getElementById('cameraBtnText');
+      btnText.innerText = '⏳ Компресиране на снимката...';
+
+      try {
+        let compressedBlob = await compressImage(file, 1200, 1200, 0.8);
+        state.photoFile = compressedBlob;
+        let newSizeKb = Math.round(compressedBlob.size / 1024);
+        let savedPct = origSizeKb > 0 ? Math.round(((origSizeKb - newSizeKb) / origSizeKb) * 100) : 0;
+
+        let reader = new FileReader();
+        reader.onload = (event) => {
+          let img = document.getElementById('photoPreviewImg');
+          img.src = event.target.result;
+          img.style.display = 'block';
+          btnText.innerText = `🔄 Смени (${newSizeKb} KB, -${savedPct}%)`;
+          document.getElementById('btnRemovePhoto').style.display = 'inline-block';
+        };
+        reader.readAsDataURL(compressedBlob);
+      } catch (err) {
+        console.warn("Грешка при компресия:", err);
+        state.photoFile = file;
+        let reader = new FileReader();
+        reader.onload = (event) => {
+          let img = document.getElementById('photoPreviewImg');
+          img.src = event.target.result;
+          img.style.display = 'block';
+          btnText.innerText = '🔄 Смени снимката';
+          document.getElementById('btnRemovePhoto').style.display = 'inline-block';
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function compressImage(file, maxWidth = 1200, maxHeight = 1200, quality = 0.8) {
+      return new Promise((resolve, reject) => {
+        let reader = new FileReader();
+        reader.onload = (ev) => {
+          let img = new Image();
+          img.onload = () => {
+            let w = img.width;
+            let h = img.height;
+            if (w > maxWidth || h > maxHeight) {
+              if (w > h) {
+                h = Math.round((h * maxWidth) / w);
+                w = maxWidth;
+              } else {
+                w = Math.round((w * maxHeight) / h);
+                h = maxHeight;
+              }
+            }
+            let canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            let ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            canvas.toBlob((blob) => {
+              if (blob) {
+                resolve(blob);
+              } else {
+                resolve(file);
+              }
+            }, 'image/jpeg', quality);
+          };
+          img.onerror = reject;
+          img.src = ev.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
     }
 
     function removePhoto() {
@@ -859,13 +953,12 @@
       try {
         // Upload photo if present
         if (state.photoFile) {
-          let ext = state.photoFile.name.split('.').pop() || 'jpg';
-          let cleanFileName = `3s_${Date.now()}_${Math.random().toString(36).substring(2,7)}.${ext}`;
+          let cleanFileName = `3s_${Date.now()}_${Math.random().toString(36).substring(2,7)}.jpg`;
           let filePath = `audit_3s/${cleanFileName}`;
 
           const { error: uploadError } = await client.storage
             .from('dosieta')
-            .upload(filePath, state.photoFile, { contentType: state.photoFile.type });
+            .upload(filePath, state.photoFile, { contentType: 'image/jpeg' });
 
           if (!uploadError) {
             const { data: pubData } = client.storage.from('dosieta').getPublicUrl(filePath);
@@ -942,3 +1035,4 @@
   </script>
 </body>
 </html>
+

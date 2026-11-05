@@ -9,6 +9,8 @@ let audit3sAuditorsCache = [];
 let audit3sTemplatesCache = [];
 let audit3sAreasCache = [];
 let audit3sLogsCache = [];
+let audit3sSectorWorkersCache = [];
+let allPersonnelListCache = [];
 let editingQuestionId = null;
 
 async function render3sTab(forceRefresh = false) {
@@ -37,17 +39,21 @@ async function render3sTab(forceRefresh = false) {
 
 async function loadAll3sData() {
     try {
-        const [auditorsRes, templatesRes, areasRes, logsRes] = await Promise.all([
+        const [auditorsRes, templatesRes, areasRes, logsRes, sectorWorkersRes, personalRes] = await Promise.all([
             client.from('audit_3s_auditors').select('*').order('id', { ascending: true }),
             client.from('audit_3s_templates').select('*').eq('is_active', true).order('order_index', { ascending: true }).order('id', { ascending: true }),
             client.from('audit_3s_areas').select('*').eq('is_active', true).order('id', { ascending: true }),
-            client.from('audit_3s_logs').select('*').order('created_at', { ascending: false }).limit(200)
+            client.from('audit_3s_logs').select('*').order('created_at', { ascending: false }).limit(200),
+            client.from('audit_3s_workers').select('*').eq('is_active', true).order('id', { ascending: true }),
+            client.from('personal').select('Име, Длъжност, Статус').eq('Статус', 'Активен')
         ]);
 
         audit3sAuditorsCache = auditorsRes.data || [];
         audit3sTemplatesCache = templatesRes.data || [];
         audit3sAreasCache = areasRes.data || [];
         audit3sLogsCache = logsRes.data || [];
+        audit3sSectorWorkersCache = sectorWorkersRes.data || [];
+        allPersonnelListCache = (personalRes.data || []).filter(p => p['Име']).sort((a,b) => a['Име'].localeCompare(b['Име']));
     } catch (err) {
         console.error("Грешка при зареждане на 3S данни:", err);
     }
@@ -193,6 +199,11 @@ function render3sSettingsSubTab() {
     // Find areas for this sector
     let sectorAreas = audit3sAreasCache.filter(a => a.sector === current3sSector);
 
+    // Find workers for this sector
+    let sectorWorkers = audit3sSectorWorkersCache.filter(w => w.sector === current3sSector);
+    let assignedWorkerNames = new Set(sectorWorkers.map(w => w.worker_name));
+    let unassignedWorkers = allPersonnelListCache.filter(p => !assignedWorkerNames.has(p['Име']));
+
     let sectorButtonsHtml = sectors.map(s => `
         <button type="button" onclick="select3sSector('${s}')" style="background:${current3sSector===s?'#1e293b':'#f1f5f9'}; color:${current3sSector===s?'#ffffff':'#334155'}; border:1.5px solid ${current3sSector===s?'#1e293b':'#cbd5e1'}; padding:8px 18px; border-radius:20px; font-weight:800; cursor:pointer; font-size:0.92em; display:inline-flex; align-items:center; gap:6px;">
             <span>${s==='Измерване и монтаж'?'🔧':(s==='Бобиньорки'?'🧵':'⚙️')}</span> ${s}
@@ -271,6 +282,39 @@ function render3sSettingsSubTab() {
                     </div>
                 </div>
 
+                <!-- Sector Workers Box -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px;">
+                    <h4 style="margin:0 0 10px 0; font-size:1em; font-weight:900; color:#1e293b; display:flex; align-items:center; gap:6px;">
+                        <span>👥</span> Служители в "${current3sSector}" (${sectorWorkers.length})
+                    </h4>
+                    <div style="font-size:0.85em; color:#64748b; margin-bottom:10px;">
+                        Проверяващият ще избира <strong>само</strong> между зачислените тук служители.
+                    </div>
+
+                    <!-- Add new worker to sector -->
+                    <div style="display:flex; gap:6px; margin-bottom:12px;">
+                        <select id="newSectorWorkerSelect" style="flex:1; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.88em;">
+                            <option value="" disabled selected>Изберете служител за добавяне...</option>
+                            ${unassignedWorkers.map(w => `<option value="${escapeHtml(w['Име'])}">${escapeHtml(w['Име'])}${w['Длъжност'] ? ' (' + escapeHtml(w['Длъжност']) + ')' : ''}</option>`).join('')}
+                        </select>
+                        <button type="button" class="btn-primary" onclick="addSectorWorker()" style="padding:7px 12px; font-size:0.85em;">➕</button>
+                    </div>
+
+                    <!-- Sector Workers list -->
+                    <div style="display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto;">
+                        ${sectorWorkers.length === 0 ? `
+                            <div style="font-size:0.85em; color:#94a3b8; text-align:center; padding:12px; line-height:1.4;">
+                                ⚠️ Няма зачислени конкретни служители. Проверяващият ще вижда целия персонал (25 души).
+                            </div>
+                        ` : sectorWorkers.map(w => `
+                            <div style="display:flex; justify-content:space-between; align-items:center; background:#ffffff; border:1px solid #e2e8f0; padding:7px 10px; border-radius:6px; font-size:0.9em;">
+                                <span style="font-weight:700; color:#334155;">👤 ${escapeHtml(w.worker_name)}</span>
+                                <button type="button" onclick="deleteSectorWorker(${w.id})" style="background:transparent; border:none; color:#ef4444; cursor:pointer; font-size:1.1em; line-height:1;" title="Премахни от звеното">&times;</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
                 <!-- Common Areas Box -->
                 <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px;">
                     <h4 style="margin:0 0 10px 0; font-size:1em; font-weight:900; color:#1e293b; display:flex; align-items:center; gap:6px;">
@@ -330,6 +374,41 @@ async function saveSectorAuditor() {
             if (data && data[0]) audit3sAuditorsCache.push(data[0]);
         }
         Swal.fire({ icon: 'success', title: 'Запазено!', timer: 1200, showConfirmButton: false });
+    } catch (err) {
+        Swal.fire('Грешка', err.message, 'error');
+    }
+}
+
+// Sector Workers Add / Delete
+async function addSectorWorker() {
+    const select = document.getElementById('newSectorWorkerSelect');
+    const workerName = select ? select.value : '';
+    if (!workerName) return;
+
+    try {
+        const { data, error } = await client
+            .from('audit_3s_workers')
+            .insert([{ sector: current3sSector, worker_name: workerName, is_active: true }])
+            .select();
+
+        if (error) throw error;
+        if (data && data[0]) audit3sSectorWorkersCache.push(data[0]);
+        render3sSettingsSubTab();
+    } catch (err) {
+        Swal.fire('Грешка', err.message, 'error');
+    }
+}
+
+async function deleteSectorWorker(workerId) {
+    try {
+        const { error } = await client
+            .from('audit_3s_workers')
+            .delete()
+            .eq('id', workerId);
+
+        if (error) throw error;
+        audit3sSectorWorkersCache = audit3sSectorWorkersCache.filter(w => w.id !== workerId);
+        render3sSettingsSubTab();
     } catch (err) {
         Swal.fire('Грешка', err.message, 'error');
     }
@@ -701,3 +780,4 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }
+
