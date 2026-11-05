@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="bg">
 <head>
   <meta charset="UTF-8">
@@ -426,6 +426,23 @@
         </div>
       </div>
 
+      <!-- 3S Rating Banner Card -->
+      <div id="user3sBanner" style="display:none; background:#ffffff; border:1.5px solid #e2e8f0; border-radius:14px; padding:16px 20px; margin-bottom:18px; box-shadow:0 2px 5px rgba(0,0,0,0.03);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div style="font-size:0.82em; font-weight:800; text-transform:uppercase; color:#64748b; letter-spacing:0.5px;">🧹 3S Оценка на работното място</div>
+            <div style="font-size:1.4em; font-weight:900; color:#1e293b; display:flex; align-items:center; gap:8px; margin-top:2px;">
+              <span id="user3sRatingStars">⭐️ --</span>
+              <span id="user3sRatingPercent" style="font-size:0.7em; background:#dcfce7; color:#15803d; padding:2px 8px; border-radius:6px; font-weight:900;">--%</span>
+            </div>
+            <div style="font-size:0.85em; color:#64748b; margin-top:2px;" id="user3sLastAuditDate">Последна проверка: --</div>
+          </div>
+          <button type="button" onclick="showUser3sModal()" style="background:#e0e7ff; color:#4338ca; border:none; padding:10px 18px; border-radius:8px; font-weight:800; font-size:0.9em; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+            <span>🔍</span> Преглед на детайлите
+          </button>
+        </div>
+      </div>
+
       <!-- KPI Summary -->
       <div class="kpi-row">
         <div class="kpi-card">
@@ -611,6 +628,103 @@
       document.getElementById('userFullName').innerText = `Здравейте, ${currentUser.name}!`;
       document.getElementById('userEmailBadge').innerText = `📧 ${currentUser.email}`;
       loadUserDocuments();
+      loadUser3sAudit();
+    }
+
+    let user3sAudits = [];
+
+    async function loadUser3sAudit() {
+      const banner = document.getElementById('user3sBanner');
+      if (!banner || !currentUser) return;
+
+      try {
+        let query = portalClient.from('audit_3s_logs').select('*');
+        if (currentUser.name && currentUser.name !== currentUser.email) {
+          query = query.or(`target_name.eq."${currentUser.name}",target_name.eq."${currentUser.email}"`);
+        } else {
+          query = query.eq('target_name', currentUser.email);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false }).limit(20);
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          user3sAudits = data;
+          let latest = data[0];
+          let pct = latest.percentage || 0;
+          let stars = pct >= 95 ? '⭐️⭐️⭐️⭐️⭐️' : (pct >= 85 ? '⭐️⭐️⭐️⭐️' : (pct >= 70 ? '⭐️⭐️⭐️' : '⭐️⭐️'));
+          let dateStr = latest.audit_date || (latest.created_at ? latest.created_at.split('T')[0] : '--');
+
+          document.getElementById('user3sRatingStars').innerText = `${stars} ${pct}%`;
+          let badge = document.getElementById('user3sRatingPercent');
+          badge.innerText = `${latest.total_points} / ${latest.max_points} т.`;
+          badge.style.background = pct >= 85 ? '#dcfce7' : (pct >= 65 ? '#fef3c7' : '#fee2e2');
+          badge.style.color = pct >= 85 ? '#15803d' : (pct >= 65 ? '#b45309' : '#dc2626');
+
+          document.getElementById('user3sLastAuditDate').innerText = `Последна проверка: ${dateStr} г. от ${latest.auditor_name || '--'}`;
+          banner.style.display = 'block';
+        } else {
+          banner.style.display = 'none';
+        }
+      } catch (err) {
+        console.warn("Could not load 3S audit for user:", err);
+      }
+    }
+
+    function showUser3sModal() {
+      if (user3sAudits.length === 0) return;
+      let latest = user3sAudits[0];
+      let dateStr = latest.audit_date || (latest.created_at ? latest.created_at.split('T')[0] : '--');
+      let answers = latest.answers || {};
+
+      let answersHtml = Object.keys(answers).map(qId => {
+        let ans = answers[qId];
+        return `
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px; text-align:left;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+              <span style="font-weight:700; color:#1e293b;">Въпрос #${qId}</span>
+              <strong style="color:${ans.points===4?'#10b981':'#f59e0b'};">${ans.points} / 4 т.</strong>
+            </div>
+            <div style="font-size:0.88em; color:#475569;">${ans.text || ''}</div>
+          </div>
+        `;
+      }).join('');
+
+      let priorAuditsHtml = '';
+      if (user3sAudits.length > 1) {
+        priorAuditsHtml = `
+          <div style="margin-top:16px; border-top:1px solid #e2e8f0; padding-top:12px; text-align:left;">
+            <div style="font-size:0.85em; font-weight:800; color:#475569; margin-bottom:8px; text-transform:uppercase;">Хронология на предишни проверки:</div>
+            ${user3sAudits.slice(1).map(a => {
+              let d = a.audit_date || (a.created_at ? a.created_at.split('T')[0] : '--');
+              return `<div style="font-size:0.88em; color:#64748b; padding:4px 0; border-bottom:1px dashed #e2e8f0; display:flex; justify-content:space-between;">
+                <span>📅 ${d} (${a.auditor_name || '--'})</span>
+                <strong>${a.percentage || 0}% (${a.total_points}/${a.max_points} т.)</strong>
+              </div>`;
+            }).join('')}
+          </div>
+        `;
+      }
+
+      Swal.fire({
+        title: '🧹 Резултат от 3S Одит',
+        html: `
+          <div style="font-size:0.95em; color:#334155; margin-bottom:14px; text-align:left; background:#f1f5f9; padding:12px; border-radius:8px;">
+            📅 <strong>Дата:</strong> ${dateStr} г.<br>
+            👤 <strong>Проверяващ:</strong> ${latest.auditor_name || '--'} (${latest.sector || '--'})<br>
+            ⭐ <strong>Резултат:</strong> ${latest.total_points} / ${latest.max_points} т. (${latest.percentage || 0}%)<br>
+            ${latest.notes ? `<div style="margin-top:6px; font-size:0.92em; color:#0f172a;">📝 <strong>Забележка / Препоръка:</strong><br><em>"${latest.notes}"</em></div>` : ''}
+          </div>
+          <div style="max-height:280px; overflow-y:auto; border-top:1px solid #e2e8f0; padding-top:10px;">
+            ${answersHtml || '<p style="color:#94a3b8;">Няма разбивка на отговорите.</p>'}
+          </div>
+          ${latest.photo_url ? `<div style="margin-top:12px;"><a href="${latest.photo_url}" target="_blank" style="color:#4338ca; font-weight:800; font-size:0.9em; text-decoration:none;">📷 Виж прикачената снимка в пълен размер ➔</a></div>` : ''}
+          ${priorAuditsHtml}
+        `,
+        width: 650,
+        confirmButtonColor: '#4338ca',
+        confirmButtonText: 'Затвори'
+      });
     }
 
     function logout() {

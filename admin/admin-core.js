@@ -178,6 +178,8 @@ function switchTab(tabKey, force = false) {
   if (tabKey === 'personal') { sidebar.style.display = 'block'; loadPersonnelSidebar(); } else { sidebar.style.display = 'none'; }
   const probiContainer = document.getElementById('probiContainer');
   if (probiContainer) { probiContainer.style.display = (tabKey === 'probi') ? 'block' : 'none'; }
+  const audit3sContainer = document.getElementById('audit3sContainer');
+  if (audit3sContainer) { audit3sContainer.style.display = (tabKey === 'audit_3s') ? 'block' : 'none'; }
   if (tabKey === 'probi') {
       addBtn.style.display = 'flex';
       addBtn.innerText = '➕ Нова Проба';
@@ -236,8 +238,19 @@ async function loadCurrentTableData(forceRefresh = false) {
           if (typeof renderProbiTab === 'function') renderProbiTab(forceRefresh);
           return;
       }
+      if (currentTab === 'audit_3s') {
+          document.getElementById('mainTable').style.display = 'none';
+          document.getElementById('tableHead').innerHTML = '';
+          document.getElementById('loadingLayout').style.display = 'none';
+          const audit3sContainer = document.getElementById('audit3sContainer');
+          if (audit3sContainer) audit3sContainer.style.display = 'block';
+          if (typeof render3sTab === 'function') render3sTab(forceRefresh);
+          return;
+      }
       const probiContainer = document.getElementById('probiContainer');
       if (probiContainer) probiContainer.style.display = 'none';
+      const audit3sContainer = document.getElementById('audit3sContainer');
+      if (audit3sContainer) audit3sContainer.style.display = 'none';
       const archiveToolbar = document.getElementById('archiveToolbar');
       if (archiveToolbar) archiveToolbar.style.display = (currentTab === 'archives') ? 'flex' : 'none';
 
@@ -522,6 +535,11 @@ function filterTable() {
     if (currentTab === 'probi') {
         const q = String(document.getElementById('searchInput')?.value || '').trim();
         if (typeof onProbiSearchFromGlobal === 'function') onProbiSearchFromGlobal(q);
+        return;
+    }
+    if (currentTab === 'audit_3s') {
+        const q = String(document.getElementById('searchInput')?.value || '').trim();
+        if (typeof on3sSearchFromGlobal === 'function') on3sSearchFromGlobal(q);
         return;
     }
     const normalizeStr = (str) => String(str || '').replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();

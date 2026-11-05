@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ИС-СИСТЕМС | 3S Мобилен Одит</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-dark: #1e293b;
+      --border-dark: #334155;
+      --border-light: #475569;
+      --accent-blue: #3b82f6;
+      --accent-indigo: #6366f1;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --text-bright: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-dark);
+      color: var(--text-bright);
+      font-family: 'Sofia Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top App Bar */
+    .app-header {
+      background: #1e293b;
+      border-bottom: 2px solid var(--border-dark);
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    .brand-title {
+      font-size: 1.2em;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #38bdf8;
+    }
+    .date-badge {
+      font-size: 0.82em;
+      font-weight: 700;
+      color: var(--text-muted);
+      background: #0f172a;
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-dark);
+    }
+
+    .main-wrap {
+      flex: 1;
+      max-width: 680px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-sizing: border-box;
+      padding-bottom: 120px; /* Space for sticky footer bar */
+    }
+
+    .card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-dark);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);
+    }
+
+    .card-title {
+      font-size: 1.1em;
+      font-weight: 800;
+      margin: 0 0 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #f1f5f9;
+      border-bottom: 1px solid var(--border-dark);
+      padding-bottom: 8px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+    .form-label {
+      font-size: 0.88em;
+      font-weight: 700;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-select, .form-input {
+      width: 100%;
+      padding: 12px 14px;
+      background: #0f172a;
+      border: 1.5px solid var(--border-light);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1.05em;
+      font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+      transition: border-color 0.15s;
+    }
+    .form-select:focus, .form-input:focus {
+      border-color: var(--accent-blue);
+    }
+
+    /* Target Type Switcher */
+    .type-switcher {
+      display: flex;
+      gap: 8px;
+      background: #0f172a;
+      padding: 4px;
+      border-radius: 8px;
+      border: 1px solid var(--border-dark);
+    }
+    .type-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 10px 12px;
+      font-size: 0.95em;
+      font-weight: 800;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .type-btn.active {
+      background: var(--accent-blue);
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+    }
+
+    /* Category Headers */
+    .category-banner {
+      background: linear-gradient(90deg, #1e293b, #334155);
+      border-left: 4px solid var(--accent-blue);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-weight: 800;
+      font-size: 1.05em;
+      color: #38bdf8;
+      margin: 18px 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Question Item */
+    .q-card {
+      background: #1e293b;
+      border: 1px solid var(--border-dark);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .q-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .q-title {
+      font-size: 1.02em;
+      font-weight: 800;
+      color: #f8fafc;
+      line-height: 1.3;
+    }
+    .q-badge {
+      background: #334155;
+      color: #94a3b8;
+      font-size: 0.8em;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+    .q-badge.answered {
+      background: var(--accent-green);
+      color: #ffffff;
+    }
+    .q-desc {
+      font-size: 0.88em;
+      color: var(--text-muted);
+      line-height: 1.4;
+      background: rgba(15, 23, 42, 0.5);
+      padding: 8px 10px;
+      border-radius: 6px;
+      border-left: 2px solid var(--border-light);
+    }
+
+    /* Rubric Options (0..4 points) */
+    .rubric-options {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .rubric-opt {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #0f172a;
+      border: 1.5px solid var(--border-dark);
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s ease;
+    }
+    .rubric-opt:hover {
+      border-color: #64748b;
+    }
+    .rubric-opt.selected {
+      border-color: var(--accent-green);
+      background: rgba(16, 185, 129, 0.15);
+      box-shadow: 0 0 0 1px var(--accent-green);
+    }
+    .opt-pts {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.88em;
+      font-weight: 900;
+      background: #334155;
+      color: #cbd5e1;
+    }
+    .rubric-opt.selected .opt-pts {
+      background: var(--accent-green);
+      color: #fff;
+    }
+    .opt-text {
+      font-size: 0.9em;
+      line-height: 1.35;
+      color: #e2e8f0;
+      flex: 1;
+    }
+
+    /* Photo Upload Area */
+    .photo-area {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: center;
+      padding: 16px;
+      border: 2px dashed var(--border-light);
+      border-radius: 10px;
+      background: #0f172a;
+      text-align: center;
+    }
+    .photo-preview {
+      width: 100%;
+      max-height: 220px;
+      object-fit: cover;
+      border-radius: 8px;
+      display: none;
+      border: 1px solid var(--border-dark);
+    }
+    .btn-camera {
+      background: #334155;
+      color: #fff;
+      border: 1px solid var(--border-light);
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 1.05em;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      width: 100%;
+      justify-content: center;
+    }
+    .btn-camera:hover {
+      background: #475569;
+    }
+
+    /* Sticky Bottom Action Bar */
+    .sticky-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #1e293b;
+      border-top: 2px solid var(--border-dark);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      z-index: 99;
+      box-shadow: 0 -4px 15px rgba(0,0,0,0.4);
+    }
+    .score-summary {
+      display: flex;
+      flex-direction: column;
+    }
+    .score-val {
+      font-size: 1.25em;
+      font-weight: 900;
+      color: #38bdf8;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+    .score-percent {
+      font-size: 0.85em;
+      color: var(--accent-green);
+      font-weight: 800;
+    }
+    .btn-save-audit {
+      background: var(--accent-green);
+      color: #ffffff;
+      border: none;
+      padding: 14px 24px;
+      border-radius: 10px;
+      font-size: 1.1em;
+      font-weight: 900;
+      cursor: pointer;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+      transition: all 0.15s ease;
+    }
+    .btn-save-audit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .sector-badge {
+      display: inline-block;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid #38bdf8;
+      color: #38bdf8;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 800;
+      font-size: 0.9em;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top App Bar -->
+  <header class="app-header">
+    <div class="brand-title">
+      <span>🧹</span> 3S Мобилен Одит
+    </div>
+    <div class="date-badge" id="currentDateDisplay">
+      📅 Днес
+    </div>
+  </header>
+
+  <main class="main-wrap">
+
+    <!-- Card 1: Auditor & Target Selection -->
+    <div class="card">
+      <div class="card-title">
+        <span>👤</span> Данни за проверката
+      </div>
+
+      <!-- Auditor Selection -->
+      <div class="form-group">
+        <label class="form-label" for="auditorSelect">Проверяващ:</label>
+        <select id="auditorSelect" class="form-select" onchange="onAuditorChange()">
+          <option value="" disabled selected>Изберете проверяващ...</option>
+        </select>
+        <div id="auditorSectorDisplay" style="display:none;">
+          <span class="sector-badge" id="sectorBadgeText">Звено: --</span>
+        </div>
+      </div>
+
+      <!-- Target Type Switcher -->
+      <div class="form-group" style="margin-top: 8px;">
+        <label class="form-label">Обект на проверката:</label>
+        <div class="type-switcher">
+          <button type="button" class="type-btn active" id="btnTypeWorker" onclick="setTargetType('worker')">
+            <span>👤</span> Служител
+          </button>
+          <button type="button" class="type-btn" id="btnTypeArea" onclick="setTargetType('area')">
+            <span>🏢</span> Обща част
+          </button>
+        </div>
+      </div>
+
+      <!-- Target Dropdown (Worker or Area) -->
+      <div class="form-group" id="workerSelectGroup">
+        <label class="form-label" for="targetWorkerSelect">Избор на служител:</label>
+        <select id="targetWorkerSelect" class="form-select" onchange="checkFormValidity()">
+          <option value="" disabled selected>Изберете служител...</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="areaSelectGroup" style="display: none;">
+        <label class="form-label" for="targetAreaSelect">Избор на обща част / зона:</label>
+        <select id="targetAreaSelect" class="form-select" onchange="checkFormValidity()">
+          <option value="" disabled selected>Изберете обща част...</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Card 2: Question Rubrics -->
+    <div id="questionsContainer">
+      <div class="card" style="text-align: center; color: var(--text-muted); padding: 24px;">
+        Моля, изберете проверяващ, за да се заредят въпросите за вашето звено.
+      </div>
+    </div>
+
+    <!-- Card 3: Notes & Photo -->
+    <div class="card" id="notesPhotoCard" style="display: none;">
+      <div class="card-title">
+        <span>📸</span> Забележка &amp; Снимка на нередност
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="auditNotesInput">Коментар / Препоръка към служителя:</label>
+        <textarea id="auditNotesInput" class="form-input" rows="3" placeholder="Опишете накратко забележки или похвали..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Снимка от камерата (по избор):</label>
+        <div class="photo-area">
+          <img id="photoPreviewImg" class="photo-preview" alt="Преглед на снимка">
+          <input type="file" id="cameraFileInput" accept="image/*" capture="environment" style="display:none;" onchange="onPhotoSelected(event)">
+          <button type="button" class="btn-camera" onclick="document.getElementById('cameraFileInput').click()">
+            <span id="cameraBtnText">📷 Направи / Прикачи снимка</span>
+          </button>
+          <button type="button" id="btnRemovePhoto" onclick="removePhoto()" style="display:none; background:transparent; border:none; color:#ef4444; font-weight:700; cursor:pointer; font-size:0.9em; padding:4px;">
+            🗑️ Премахни снимката
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Sticky Bottom Summary & Save -->
+  <footer class="sticky-footer" id="stickyFooter" style="display: none;">
+    <div class="score-summary">
+      <div class="score-val">
+        <span id="totalPointsDisplay">0</span>
+        <span style="font-size:0.7em; color:var(--text-muted);" id="maxPointsDisplay">/ 0 т.</span>
+      </div>
+      <div class="score-percent" id="scorePercentDisplay">0% успеваемост</div>
+    </div>
+    <button type="button" class="btn-save-audit" id="btnSaveAudit" onclick="saveAudit()" disabled>
+      <span>💾</span> Запиши Одит
+    </button>
+  </footer>
+
+  <script>
+    const SUPABASE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkeXRoemNnY2p4d2J4dWZ1bnVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MTcxNTMsImV4cCI6MjA5NjE5MzE1M30.XGZX5DHhJCGz9X5s__3iuSghukjanyJmGKv8MLig_jE';
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let state = {
+      auditors: [],
+      selectedAuditor: null,
+      targetType: 'worker', // 'worker' or 'area'
+      workers: [],
+      areas: [],
+      questions: [],
+      answers: {}, // questionId -> { points: number, text: string }
+      photoFile: null
+    };
+
+    window.onload = async () => {
+      let today = new Date();
+      document.getElementById('currentDateDisplay').innerText = `📅 ${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()} г.`;
+      await loadInitialData();
+    };
+
+    async function loadInitialData() {
+      try {
+        // Load auditors
+        const { data: auditorsData, error: audErr } = await client
+          .from('audit_3s_auditors')
+          .select('*')
+          .eq('is_active', true);
+
+        if (!audErr && auditorsData) {
+          state.auditors = auditorsData;
+          populateAuditorDropdown();
+        }
+
+        // Load workers from personal table
+        const { data: workersData, error: wErr } = await client
+          .from('personal')
+          .select('Име, Длъжност, Статус')
+          .eq('Статус', 'Активен');
+
+        if (!wErr && workersData) {
+          state.workers = workersData.filter(w => w['Име']).sort((a,b) => a['Име'].localeCompare(b['Име']));
+          populateWorkersDropdown();
+        }
+      } catch (err) {
+        console.error("Грешка при зареждане на начални данни:", err);
+      }
+    }
+
+    function populateAuditorDropdown() {
+      const select = document.getElementById('auditorSelect');
+      select.innerHTML = '<option value="" disabled selected>Изберете проверяващ...</option>';
+      state.auditors.forEach(a => {
+        let name = a.auditor_name ? a.auditor_name.trim() : '';
+        if (!name || name === 'Не е зададен') return;
+        let opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = `${name} (${a.sector})`;
+        select.appendChild(opt);
+      });
+
+      // Auto-select Vasil Asenov if only 1 active valid auditor
+      let vasil = state.auditors.find(a => a.auditor_name && a.auditor_name.includes('Васил'));
+      if (vasil) {
+        select.value = vasil.id;
+        onAuditorChange();
+      }
+    }
+
+    function populateWorkersDropdown() {
+      const select = document.getElementById('targetWorkerSelect');
+      select.innerHTML = '<option value="" disabled selected>Изберете служител...</option>';
+      state.workers.forEach(w => {
+        let opt = document.createElement('option');
+        opt.value = w['Име'];
+        opt.textContent = `${w['Име']}${w['Длъжност'] ? ' (' + w['Длъжност'] + ')' : ''}`;
+        select.appendChild(opt);
+      });
+    }
+
+    function populateAreasDropdown() {
+      const select = document.getElementById('targetAreaSelect');
+      select.innerHTML = '<option value="" disabled selected>Изберете обща част...</option>';
+      state.areas.forEach(a => {
+        let opt = document.createElement('option');
+        opt.value = a.area_name;
+        opt.textContent = a.area_name;
+        select.appendChild(opt);
+      });
+    }
+
+    async function onAuditorChange() {
+      const select = document.getElementById('auditorSelect');
+      const auditorId = parseInt(select.value);
+      state.selectedAuditor = state.auditors.find(a => a.id === auditorId);
+      if (!state.selectedAuditor) return;
+
+      // Show sector badge
+      document.getElementById('auditorSectorDisplay').style.display = 'block';
+      document.getElementById('sectorBadgeText').innerText = `Звено: ${state.selectedAuditor.sector}`;
+
+      // Load specific questions for this sector
+      await loadSectorQuestions(state.selectedAuditor.sector);
+
+      // Load specific areas for this sector
+      await loadSectorAreas(state.selectedAuditor.sector);
+
+      document.getElementById('notesPhotoCard').style.display = 'block';
+      document.getElementById('stickyFooter').style.display = 'flex';
+      checkFormValidity();
+    }
+
+    async function loadSectorQuestions(sector) {
+      const container = document.getElementById('questionsContainer');
+      container.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">Зареждане на въпросите...</div>';
+
+      try {
+        const { data, error } = await client
+          .from('audit_3s_templates')
+          .select('*')
+          .eq('sector', sector)
+          .eq('is_active', true)
+          .order('order_index', { ascending: true })
+          .order('id', { ascending: true });
+
+        if (error) throw error;
+        state.questions = data || [];
+        state.answers = {};
+        renderQuestions();
+      } catch (err) {
+        container.innerHTML = `<div style="color:#ef4444; padding:15px; text-align:center;">Грешка при зареждане на въпросите: ${err.message}</div>`;
+      }
+    }
+
+    async function loadSectorAreas(sector) {
+      try {
+        const { data, error } = await client
+          .from('audit_3s_areas')
+          .select('*')
+          .eq('sector', sector)
+          .eq('is_active', true);
+
+        if (!error && data) {
+          state.areas = data;
+          populateAreasDropdown();
+        }
+      } catch (err) {
+        console.error("Грешка при зареждане на общи части:", err);
+      }
+    }
+
+    function setTargetType(type) {
+      state.targetType = type;
+      document.getElementById('btnTypeWorker').classList.toggle('active', type === 'worker');
+      document.getElementById('btnTypeArea').classList.toggle('active', type === 'area');
+
+      document.getElementById('workerSelectGroup').style.display = type === 'worker' ? 'flex' : 'none';
+      document.getElementById('areaSelectGroup').style.display = type === 'area' ? 'flex' : 'none';
+
+      checkFormValidity();
+    }
+
+    function renderQuestions() {
+      const container = document.getElementById('questionsContainer');
+      container.innerHTML = '';
+
+      if (state.questions.length === 0) {
+        container.innerHTML = `
+          <div class="card" style="text-align:center; color:#f59e0b; padding:24px;">
+            ⚠️ Все още няма въведени въпроси за звено <strong>"${state.selectedAuditor ? state.selectedAuditor.sector : ''}"</strong>.<br>
+            <span style="font-size:0.9em; color:#94a3b8; display:block; margin-top:8px;">
+              Можете да ги въведете през Администраторския панел &gt; "3S Одити &amp; Настройки".
+            </span>
+          </div>`;
+        return;
+      }
+
+      // Group by category
+      let grouped = {};
+      state.questions.forEach(q => {
+        let cat = q.category || 'Общи въпроси';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(q);
+      });
+
+      Object.keys(grouped).forEach(cat => {
+        let banner = document.createElement('div');
+        banner.className = 'category-banner';
+        banner.innerHTML = `<span>📌</span> ${cat}`;
+        container.appendChild(banner);
+
+        grouped[cat].forEach(q => {
+          let card = document.createElement('div');
+          card.className = 'q-card';
+          card.id = `q-card-${q.id}`;
+
+          let criteriaList = Array.isArray(q.criteria) ? q.criteria : [];
+          // If criteria is empty, provide default 0..4
+          if (criteriaList.length === 0) {
+            criteriaList = [
+              { points: 0, text: '0 т.: Не е изпълнено' },
+              { points: 1, text: '1 т.: Много слабо изпълнение' },
+              { points: 2, text: '2 т.: Частично изпълнено със забележки' },
+              { points: 3, text: '3 т.: Добро изпълнение' },
+              { points: 4, text: '4 т. (Макс): Отлично стандартизирано състояние' }
+            ];
+          }
+
+          let optionsHtml = criteriaList.map(opt => `
+            <div class="rubric-opt" onclick="selectAnswer(${q.id}, ${opt.points}, '${escapeHtml(opt.text)}')">
+              <div class="opt-pts">${opt.points}</div>
+              <div class="opt-text">${escapeHtml(opt.text)}</div>
+            </div>
+          `).join('');
+
+          card.innerHTML = `
+            <div class="q-header">
+              <div class="q-title">${q.question_code ? q.question_code + ' ' : ''}${escapeHtml(q.question_title)}</div>
+              <div class="q-badge" id="q-badge-${q.id}">⏳ Очаква</div>
+            </div>
+            ${q.question_desc ? `<div class="q-desc">${escapeHtml(q.question_desc)}</div>` : ''}
+            <div class="rubric-options" id="rubric-opts-${q.id}">
+              ${optionsHtml}
+            </div>
+          `;
+          container.appendChild(card);
+        });
+      });
+
+      updateScoreDisplay();
+    }
+
+    function selectAnswer(questionId, points, text) {
+      state.answers[questionId] = { points, text };
+
+      // Update badge
+      let badge = document.getElementById(`q-badge-${questionId}`);
+      if (badge) {
+        badge.innerText = `✅ ${points} т.`;
+        badge.className = 'q-badge answered';
+      }
+
+      // Update active styling on options
+      let container = document.getElementById(`rubric-opts-${questionId}`);
+      if (container) {
+        let opts = container.querySelectorAll('.rubric-opt');
+        opts.forEach(opt => {
+          let ptsElem = opt.querySelector('.opt-pts');
+          if (ptsElem && parseInt(ptsElem.innerText) === points) {
+            opt.classList.add('selected');
+          } else {
+            opt.classList.remove('selected');
+          }
+        });
+      }
+
+      updateScoreDisplay();
+      checkFormValidity();
+    }
+
+    function updateScoreDisplay() {
+      let totalPts = 0;
+      let maxPts = state.questions.length * 4;
+
+      Object.values(state.answers).forEach(ans => {
+        totalPts += (ans.points || 0);
+      });
+
+      let pct = maxPts > 0 ? Math.round((totalPts / maxPts) * 100) : 0;
+
+      document.getElementById('totalPointsDisplay').innerText = totalPts;
+      document.getElementById('maxPointsDisplay').innerText = `/ ${maxPts} т.`;
+      document.getElementById('scorePercentDisplay').innerText = `${pct}% успеваемост`;
+
+      let scoreElem = document.getElementById('scorePercentDisplay');
+      if (pct >= 85) {
+        scoreElem.style.color = '#10b981'; // Green
+      } else if (pct >= 65) {
+        scoreElem.style.color = '#f59e0b'; // Amber
+      } else {
+        scoreElem.style.color = '#ef4444'; // Red
+      }
+    }
+
+    function checkFormValidity() {
+      let isAuditorValid = !!state.selectedAuditor;
+      let isTargetValid = false;
+
+      if (state.targetType === 'worker') {
+        let wSelect = document.getElementById('targetWorkerSelect');
+        isTargetValid = !!(wSelect && wSelect.value);
+      } else {
+        let aSelect = document.getElementById('targetAreaSelect');
+        isTargetValid = !!(aSelect && aSelect.value);
+      }
+
+      let answeredCount = Object.keys(state.answers).length;
+      let isAllQuestionsAnswered = (state.questions.length > 0 && answeredCount === state.questions.length);
+
+      let btn = document.getElementById('btnSaveAudit');
+      btn.disabled = !(isAuditorValid && isTargetValid && isAllQuestionsAnswered);
+
+      if (!isAllQuestionsAnswered && state.questions.length > 0) {
+        btn.innerHTML = `<span>⏳</span> Оценете всички (${answeredCount}/${state.questions.length})`;
+      } else {
+        btn.innerHTML = `<span>💾</span> Запиши Одит`;
+      }
+    }
+
+    function onPhotoSelected(e) {
+      let file = e.target.files[0];
+      if (!file) return;
+
+      state.photoFile = file;
+      let reader = new FileReader();
+      reader.onload = (event) => {
+        let img = document.getElementById('photoPreviewImg');
+        img.src = event.target.result;
+        img.style.display = 'block';
+        document.getElementById('cameraBtnText').innerText = '🔄 Смени снимката';
+        document.getElementById('btnRemovePhoto').style.display = 'inline-block';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function removePhoto() {
+      state.photoFile = null;
+      let img = document.getElementById('photoPreviewImg');
+      img.src = '';
+      img.style.display = 'none';
+      document.getElementById('cameraFileInput').value = '';
+      document.getElementById('cameraBtnText').innerText = '📷 Направи / Прикачи снимка';
+      document.getElementById('btnRemovePhoto').style.display = 'none';
+    }
+
+    async function saveAudit() {
+      let targetName = state.targetType === 'worker' 
+        ? document.getElementById('targetWorkerSelect').value 
+        : document.getElementById('targetAreaSelect').value;
+
+      if (!targetName) {
+        Swal.fire('Внимание', 'Моля, изберете обект на одита.', 'warning');
+        return;
+      }
+
+      let totalPts = 0;
+      let maxPts = state.questions.length * 4;
+      Object.values(state.answers).forEach(ans => totalPts += (ans.points || 0));
+      let pct = maxPts > 0 ? Math.round((totalPts / maxPts) * 100) : 0;
+      let notes = document.getElementById('auditNotesInput').value.trim();
+
+      Swal.fire({
+        title: 'Запис на 3S одит...',
+        html: 'Моля, изчакайте качването на данните.',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      let photoUrl = null;
+
+      try {
+        // Upload photo if present
+        if (state.photoFile) {
+          let ext = state.photoFile.name.split('.').pop() || 'jpg';
+          let cleanFileName = `3s_${Date.now()}_${Math.random().toString(36).substring(2,7)}.${ext}`;
+          let filePath = `audit_3s/${cleanFileName}`;
+
+          const { error: uploadError } = await client.storage
+            .from('dosieta')
+            .upload(filePath, state.photoFile, { contentType: state.photoFile.type });
+
+          if (!uploadError) {
+            const { data: pubData } = client.storage.from('dosieta').getPublicUrl(filePath);
+            photoUrl = pubData.publicUrl;
+          } else {
+            console.warn("Предупреждение при качване на снимка:", uploadError);
+          }
+        }
+
+        // Prepare audit payload
+        let auditPayload = {
+          sector: state.selectedAuditor.sector,
+          auditor_name: state.selectedAuditor.auditor_name,
+          target_type: state.targetType,
+          target_name: targetName,
+          total_points: totalPts,
+          max_points: maxPts,
+          percentage: pct,
+          answers: state.answers,
+          notes: notes || null,
+          photo_url: photoUrl
+        };
+
+        const { data, error } = await client
+          .from('audit_3s_logs')
+          .insert([auditPayload])
+          .select();
+
+        if (error) throw error;
+
+        Swal.fire({
+          icon: 'success',
+          title: '✅ Одитът е записан успешно!',
+          html: `
+            <div style="font-size:1.1em; margin-top:10px; text-align:center;">
+              <strong>Обект:</strong> ${escapeHtml(targetName)}<br>
+              <strong>Резултат:</strong> ${totalPts} / ${maxPts} т. (${pct}%)<br>
+              ${notes ? `<p style="font-size:0.9em; color:#64748b; margin-top:8px;"><em>"${escapeHtml(notes)}"</em></p>` : ''}
+            </div>`,
+          confirmButtonText: 'Нов Одит'
+        }).then(() => {
+          resetAuditForm();
+        });
+
+      } catch (err) {
+        Swal.fire('Грешка при запис', err.message, 'error');
+      }
+    }
+
+    function resetAuditForm() {
+      state.answers = {};
+      state.photoFile = null;
+      removePhoto();
+      document.getElementById('auditNotesInput').value = '';
+      if (state.targetType === 'worker') {
+        document.getElementById('targetWorkerSelect').value = '';
+      } else {
+        document.getElementById('targetAreaSelect').value = '';
+      }
+      renderQuestions();
+      checkFormValidity();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  </script>
+</body>
+</html>

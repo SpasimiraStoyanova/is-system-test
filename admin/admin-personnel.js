@@ -1,4 +1,4 @@
-﻿const DOSIETA_STORAGE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
+const DOSIETA_STORAGE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
 const DOSIETA_STORAGE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkeXRoemNnY2p4d2J4dWZ1bnVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MTcxNTMsImV4cCI6MjA5NjE5MzE1M30.XGZX5DHhJCGz9X5s__3iuSghukjanyJmGKv8MLig_jE';
 
 // Dedicated client for file storage (dosieta bucket)
@@ -177,15 +177,73 @@ function closeFolderModal() {
 }
 
 function switchFolderTab(tabId) { 
-    ['att', 'work', 'docs'].forEach(id => { 
-        document.getElementById('tab' + id.charAt(0).toUpperCase() + id.slice(1) + 'Btn').classList.remove('active'); 
-        document.getElementById('f-' + id).classList.remove('active'); 
+    ['att', 'work', 'docs', '3s'].forEach(id => { 
+        const btn = document.getElementById('tab' + id.charAt(0).toUpperCase() + id.slice(1) + 'Btn');
+        const cont = document.getElementById('f-' + id);
+        if (btn) btn.classList.remove('active'); 
+        if (cont) cont.classList.remove('active'); 
     }); 
-    document.getElementById('tab' + tabId.charAt(0).toUpperCase() + tabId.slice(1) + 'Btn').classList.add('active'); 
-    document.getElementById('f-' + tabId).classList.add('active'); 
+    const activeBtn = document.getElementById('tab' + tabId.charAt(0).toUpperCase() + tabId.slice(1) + 'Btn');
+    const activeCont = document.getElementById('f-' + tabId);
+    if (activeBtn) activeBtn.classList.add('active'); 
+    if (activeCont) activeCont.classList.add('active'); 
     if (tabId === 'att') loadWorkerAttendance(); 
     if (tabId === 'work') loadWorkerWork(); 
     if (tabId === 'docs') loadWorkerDocs(); 
+    if (tabId === '3s') loadWorker3sAudits(); 
+}
+
+async function loadWorker3sAudits() {
+    const list = document.getElementById('worker3sList');
+    if (!list) return;
+    list.innerHTML = '<div style="padding:20px; text-align:center; color:#64748b;">Зареждане на 3S одити... 🧹</div>';
+
+    try {
+        let workerName = '';
+        const { data: pData } = await client.from('personal').select('Име').eq('Имейл', currentFolderEmail).limit(1);
+        if (pData && pData.length > 0 && pData[0]['Име']) {
+            workerName = pData[0]['Име'];
+        }
+
+        let query = client.from('audit_3s_logs').select('*');
+        if (workerName) {
+            query = query.or(`target_name.eq."${workerName}",target_name.eq."${currentFolderEmail}"`);
+        } else {
+            query = query.eq('target_name', currentFolderEmail);
+        }
+
+        const { data: audits, error } = await query.order('created_at', { ascending: false });
+        if (error) throw error;
+
+        if (!audits || audits.length === 0) {
+            list.innerHTML = '<div style="padding:30px; text-align:center; color:#94a3b8;">Няма записани 3S одити за този служител.</div>';
+            return;
+        }
+
+        let html = audits.map(a => {
+            let pct = a.percentage || 0;
+            let badgeBg = pct >= 85 ? '#dcfce7' : (pct >= 65 ? '#fef3c7' : '#fee2e2');
+            let badgeColor = pct >= 85 ? '#15803d' : (pct >= 65 ? '#b45309' : '#dc2626');
+            let dateStr = a.audit_date || (a.created_at ? a.created_at.split('T')[0] : '--');
+
+            return `
+                <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-weight:800; color:#1e293b; font-size:0.95em;">📅 ${dateStr} &nbsp;|&nbsp; Проверяващ: ${a.auditor_name || '--'} (${a.sector || '--'})</span>
+                        <span style="background:${badgeBg}; color:${badgeColor}; font-weight:900; padding:2px 8px; border-radius:6px; font-size:0.9em;">
+                            ${a.total_points} / ${a.max_points} т. (${pct}%)
+                        </span>
+                    </div>
+                    ${a.notes ? `<div style="font-size:0.86em; color:#475569; margin-top:6px; background:#f8fafc; padding:6px 10px; border-radius:6px;">📝 <em>"${a.notes}"</em></div>` : ''}
+                    ${a.photo_url ? `<div style="margin-top:6px;"><button type="button" class="btn-secondary" onclick="preview3sPhoto('${a.photo_url}')" style="padding:3px 8px; font-size:0.8em;">📷 Виж снимката</button></div>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        list.innerHTML = html;
+    } catch (err) {
+        list.innerHTML = `<div style="color:#ef4444; padding:15px;">Грешка при зареждане на одитите: ${err.message}</div>`;
+    }
 }
 
 async function loadWorkerAttendance() {
