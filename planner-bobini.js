@@ -246,6 +246,8 @@ async function loadData() {
         globalState.targetItems = Object.values(filteredTargetNodes);
         globalState.targetItems.sort((a,b) => a.detailName.localeCompare(b.detailName));
         
+        await reconcileScheduleSurplus();
+
         renderCalendarUI();
 
         if (firstLoad) {
@@ -1646,32 +1648,221 @@ async function deleteQuota(id) {
     }
 }
 
-async function clearMonth() {
-    const selectedMonth = document.getElementById('month-picker').value; 
-    if(!confirm(`ВНИМАНИЕ!\n\nСигурни ли сте, че искате да ИЗТРИЕТЕ абсолютно всички задачи и почивки за целия месец ${selectedMonth}?\n\nТова действие е необратимо!`)) return;
+// Reconcile schedule surplus:
+// When actual reported units exceed the quota or when extra work is reported,
+// reduce/remove the un-reported quotas from the latest days (the tail of the schedule)
+// so the ETA completion date pulls forward in time.
+let isReconciling = false;
 
+async function reconcileScheduleSurplus() {
+    if (isReconciling) return;
+    isReconciling = true;
+
+    try {
+        const selectedMonth = document.getElementById('month-picker')?.value || getMonthString();
+        let parts = selectedMonth.split('-');
+        let year = parseInt(parts[0]);
+        let month = parseInt(parts[1]);
+        let daysInMonth = new Date(year, month, 0).getDate();
+
+        let startOfMonth = `${year}-${String(month).padStart(2, '0')}-01`;
+        let endOfMonth = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+        // Get actual reported pieces for this month
+        let monthOtcheti = (globalState.otcheti || []).filter(r => {
+            if (!r['Дата'] || r['Статус'] !== 'Отчетено') return false;
+            let d = r['Дата'].split('T')[0];
+            return d >= startOfMonth && d <= endOfMonth;
+        });
+
+        let idsToDelete = [];
+        let updates = []; // { id, newQty }
+
+        // Process each target item
+        globalState.targetItems.forEach(item => {
+            let planQty = item.planQty || 0;
+            if (planQty <= 0) return;
+
+            // Total produced so far this month for this detail and operation
+            let doneAllMonth = 0;
+            monthOtcheti.forEach(r => {
+                if (normalizeStr(r['ID Детайл']) === normalizeStr(item.detailName) &&
+                    normalizeStr(r['Операция']) === normalizeStr(item.operationName)) {
+                    doneAllMonth += (parseFloat(r['Количество']) || 0);
+                }
+            });
+
+            // How many pieces still remain needed according to the monthly plan target
+            let remainingNeeded = Math.max(0, planQty - doneAllMonth);
+
+            // Filter all quotas in this month for this detail (excluding OFF)
+            let itemQuotas = globalState.quotas.filter(q =>
+                q.date >= startOfMonth && q.date <= endOfMonth &&
+                q.detail_name === item.detailName &&
+                q.operation_name === item.operationName &&
+                q.detail_name !== 'OFF'
+            );
+
+            // Find which quotas are pending (have 0 reported pieces so far)
+            let pendingQuotas = [];
+            itemQuotas.forEach(q => {
+                let reportedForQ = 0;
+                monthOtcheti.forEach(r => {
+                    let rDate = r['Дата'].split('T')[0];
+                    if (rDate === q.date &&
+                        String(r['Оператор'] || '').trim().toLowerCase() === String(q.operator_name || '').trim().toLowerCase() &&
+                        normalizeStr(r['ID Детайл']) === normalizeStr(q.detail_name) &&
+                        normalizeStr(r['Операция']) === normalizeStr(q.operation_name)) {
+                        reportedForQ += (parseFloat(r['Количество']) || 0);
+                    }
+                });
+
+                if (reportedForQ === 0) {
+                    pendingQuotas.push(q);
+                }
+            });
+
+            let sumPending = pendingQuotas.reduce((sum, q) => sum + (q.qty || 0), 0);
+            let excess = sumPending - remainingNeeded;
+
+            if (excess > 0) {
+                // Sort pending quotas by date descending (tail/latest days first)
+                pendingQuotas.sort((a, b) => b.date.localeCompare(a.date));
+
+                for (let q of pendingQuotas) {
+                    if (excess <= 0) break;
+
+                    if (q.qty <= excess) {
+                        excess -= q.qty;
+                        idsToDelete.push(q.id);
+                        q._toDelete = true;
+                    } else {
+                        let newQty = q.qty - excess;
+                        excess = 0;
+                        updates.push({ id: q.id, newQty: newQty });
+                        q.qty = newQty;
+                    }
+                }
+            }
+        });
+
+        // Delete excess quotas from DB in batches
+        if (idsToDelete.length > 0) {
+            const chunkSize = 100;
+            for (let i = 0; i < idsToDelete.length; i += chunkSize) {
+                let chunk = idsToDelete.slice(i, i + chunkSize);
+                await client.from('planner_bobini').delete().in('id', chunk);
+            }
+            let delSet = new Set(idsToDelete);
+            globalState.quotas = globalState.quotas.filter(q => !delSet.has(q.id));
+        }
+
+        // Update partially trimmed quotas in DB
+        if (updates.length > 0) {
+            await Promise.all(updates.map(u =>
+                client.from('planner_bobini').update({ qty: u.newQty }).eq('id', u.id)
+            ));
+        }
+    } catch (err) {
+        console.error("Грешка при динамично преизчисляване на графика:", err);
+    } finally {
+        isReconciling = false;
+    }
+}
+
+window.triggerManualReconcile = async function() {
+    const loader = document.getElementById('loading');
+    if (loader) loader.style.display = 'flex';
+    try {
+        await reconcileScheduleSurplus();
+        renderCalendarUI();
+    } catch(err) {
+        alert("Грешка при преизчисляване: " + err.message);
+    } finally {
+        if (loader) loader.style.display = 'none';
+    }
+};
+
+async function clearMonth() {
+    const selectedMonth = document.getElementById('month-picker')?.value || getMonthString();
+    
     let year = parseInt(selectedMonth.split('-')[0]);
     let month = parseInt(selectedMonth.split('-')[1]);
     let daysInMonth = new Date(year, month, 0).getDate();
     
     let startOfMonth = `${year}-${String(month).padStart(2,'0')}-01`;
     let endOfMonth = `${year}-${String(month).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+
+    // Get actual reports for this month
+    let monthOtcheti = (globalState.otcheti || []).filter(r => {
+        if (!r['Дата'] || r['Статус'] !== 'Отчетено') return false;
+        let d = r['Дата'].split('T')[0];
+        return d >= startOfMonth && d <= endOfMonth;
+    });
+
+    let monthQuotas = globalState.quotas.filter(q => q.date >= startOfMonth && q.date <= endOfMonth);
     
-    document.getElementById('loading').style.display = 'flex';
-    
+    let idsToDelete = [];
+    let countKeptWithReports = 0;
+    let countKeptOffDays = 0;
+
+    monthQuotas.forEach(q => {
+        if (q.detail_name === 'OFF') {
+            // Keep manually marked days off (X)
+            countKeptOffDays++;
+            return;
+        }
+
+        // Check if there is at least 1 reported piece for this quota
+        let hasReports = monthOtcheti.some(r => {
+            let rDate = r['Дата'].split('T')[0];
+            return rDate === q.date &&
+                   String(r['Оператор'] || '').trim().toLowerCase() === String(q.operator_name || '').trim().toLowerCase() &&
+                   normalizeStr(r['ID Детайл']) === normalizeStr(q.detail_name) &&
+                   normalizeStr(r['Операция']) === normalizeStr(q.operation_name) &&
+                   (parseFloat(r['Количество']) || 0) > 0;
+        });
+
+        if (hasReports) {
+            countKeptWithReports++;
+        } else {
+            idsToDelete.push(q.id);
+        }
+    });
+
+    if (idsToDelete.length === 0) {
+        alert(`Няма норми за изчистване за ${selectedMonth}.\n\nВсички съществуващи задачи вече имат отчетени бройки или са почивни дни.`);
+        return;
+    }
+
+    let confirmMsg = `ВНИМАНИЕ!\n\nИскате ли да изчистите зададените норми без отчети за месец ${selectedMonth}?\n\n` +
+                     `• Ще бъдат изтрити: ${idsToDelete.length} планирани норми (без отчети)\n` +
+                     `• Ще бъдат запазени: ${countKeptWithReports} задачи с вече отчетени бройки\n` +
+                     `• Ще бъдат запазени: ${countKeptOffDays} маркирани почивни дни (Х)`;
+
+    if (!confirm(confirmMsg)) return;
+
+    const loader = document.getElementById('loading');
+    if (loader) loader.style.display = 'flex';
+
     try {
-        const { error } = await client.from('planner_bobini')
-                                      .delete()
-                                      .gte('date', startOfMonth)
-                                      .lte('date', endOfMonth);
-        if(error) throw error;
-        
-        globalState.quotas = globalState.quotas.filter(q => q.date < startOfMonth || q.date > endOfMonth);
+        const chunkSize = 100;
+        for (let i = 0; i < idsToDelete.length; i += chunkSize) {
+            let chunk = idsToDelete.slice(i, i + chunkSize);
+            const { error } = await client.from('planner_bobini').delete().in('id', chunk);
+            if (error) throw error;
+        }
+
+        let delSet = new Set(idsToDelete);
+        globalState.quotas = globalState.quotas.filter(q => !delSet.has(q.id));
+
         renderCalendarUI();
-        document.getElementById('loading').style.display = 'none';
-    } catch(err) {
-        alert("Грешка при нулиране: " + err.message);
-        document.getElementById('loading').style.display = 'none';
+        if (loader) loader.style.display = 'none';
+
+        alert(`✅ Успешно изчистени ${idsToDelete.length} норми!\nЗапазени са задачите с отчети (${countKeptWithReports}) и почивните дни (${countKeptOffDays}).`);
+    } catch (err) {
+        alert("Грешка при изчистване: " + err.message);
+        if (loader) loader.style.display = 'none';
     }
 }
 

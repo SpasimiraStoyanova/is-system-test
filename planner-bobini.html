@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=9">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="planner-bobini.js?v=14" defer></script>
+  <script src="planner-bobini.js?v=15" defer></script>
   <style>
     :root {
       --bg-dark: #0f172a;
@@ -630,11 +630,14 @@
         <button class="mode-toggle" id="btn-open-wizard" onclick="openWizardModal()" style="border-color:#10b981; color:#10b981; background: rgba(16, 185, 129, 0.15);" title="Бързо залагане на детайл за няколко оператора и дни">
           ⚡ Бърз разпределител
         </button>
+        <button class="mode-toggle" id="btn-reconcile-schedule" onclick="triggerManualReconcile()" style="border-color:#38bdf8; color:#38bdf8; background: rgba(56, 189, 248, 0.15);" title="Преизчислява графика спрямо реално отчетените бройки и съкращава последните дни (изтегля крайния срок)">
+          🔄 Преизчисли график
+        </button>
         <input type="month" id="month-picker" style="padding: 6px 10px; font-size: 15px; border-radius: 6px; border: 1px solid var(--border-light); background: #334155; color: #f8fafc; font-family: 'Sofia Sans', sans-serif; cursor: pointer; outline: none;">
         <div class="mode-toggle" id="off-mode-toggle" onclick="toggleOffMode()" title="Ако е включено, цъкането върху клетка в календара я маркира като почивен ден (Х)">
           🛑 Почивки: ИЗКЛ
         </div>
-        <div class="mode-toggle" id="clear-month-btn" onclick="clearMonth()" style="border-color:#ef4444; color:#ef4444; background: rgba(239, 68, 68, 0.1);" title="Изтрива всички задачи и почивки за избрания месец">
+        <div class="mode-toggle" id="clear-month-btn" onclick="clearMonth()" style="border-color:#ef4444; color:#ef4444; background: rgba(239, 68, 68, 0.1);" title="Изчиства само нормите без отчети за месеца (запазва отчетените бройки и почивните дни)">
           🗑️ Изчисти Месеца
         </div>
       </div>
