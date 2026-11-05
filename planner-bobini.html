@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=9">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="planner-bobini.js?v=16" defer></script>
+  <script src="planner-bobini.js?v=17" defer></script>
   <style>
     :root {
       --bg-dark: #0f172a;
@@ -643,6 +643,13 @@
         box-sizing: border-box !important;
         overflow: hidden !important;
       }
+      #w-task-pool-modal-list,
+      .wizard-modal-body {
+        flex: 1 1 0 !important;
+        min-height: 0 !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+      }
       .modal-header {
         background: #1e293b !important;
         padding: 14px 16px !important;
@@ -787,16 +794,22 @@
       .task-pool {
         display: none !important; /* Hide inline box from taking up top half of screen on phone! */
       }
+      #mobile-pool-btn-wrapper {
+        width: 100% !important;
+        display: flex !important;
+      }
       #mobile-toggle-pool-btn {
         display: inline-flex !important;
-        width: 100%;
-        justify-content: center;
-        padding: 10px 14px;
-        font-size: 1em;
-        margin-top: 4px;
-        border-color: #38bdf8;
-        color: #38bdf8;
-        background: #1e293b;
+        width: 100% !important;
+        justify-content: center !important;
+        padding: 12px 14px !important;
+        font-size: 1.05em !important;
+        margin-top: 4px !important;
+        border-color: #38bdf8 !important;
+        color: #38bdf8 !important;
+        background: #1e293b !important;
+        touch-action: manipulation !important;
+        cursor: pointer !important;
       }
       .calendar-board {
         width: 100%;
@@ -843,6 +856,9 @@
       </div>
       
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <button class="mode-toggle" id="btn-open-pool" onclick="openPoolModal()" style="border-color:#38bdf8; color:#38bdf8; background: rgba(56, 189, 248, 0.15);" title="Преглед и търсене на свободните задачи за залагане">
+          📥 Свободни задачи
+        </button>
         <button class="mode-toggle" id="btn-open-wizard" onclick="openWizardModal()" style="border-color:#10b981; color:#10b981; background: rgba(16, 185, 129, 0.15);" title="Бързо залагане на детайл за няколко оператора и дни">
           ⚡ Бърз разпределител
         </button>
@@ -874,7 +890,7 @@
           Седмица -- (Пн - Пт)
         </div>
         
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div id="mobile-pool-btn-wrapper" style="display:flex; align-items:center; gap:8px;">
           <button id="mobile-toggle-pool-btn" class="btn-nav-week" onclick="openPoolModal()" style="display:none; background:#1e293b; border-color:#38bdf8; color:#38bdf8;">
             📥 Свободни задачи: <span id="mobile-pool-count">0</span> ▾
           </button>
@@ -1015,7 +1031,7 @@
 
     <!-- 3. Modal: Wizard for Schedule & Capacity Planning -->
     <div id="wizard-modal" class="modal" onclick="if(event.target===this) closeWizardModal()">
-      <div class="modal-content wizard-modal-content">
+      <div class="modal-content wizard-modal-content" onclick="event.stopPropagation()">
         <div class="modal-header">
           <h3 style="margin:0; font-size:1.25em; color:#f8fafc; display:flex; align-items:center; gap:8px;">
             ⚡ Планиране на Изработка & Прогноза (ETA)
@@ -1093,7 +1109,7 @@
 
     <!-- 4. Modal: Mobile Task Pool List -->
     <div id="task-pool-modal" class="modal" onclick="if(event.target===this) closePoolModal()">
-      <div class="modal-content pool-modal-content">
+      <div class="modal-content pool-modal-content" onclick="event.stopPropagation()">
         <div class="modal-header">
           <h3 style="margin:0; font-size:1.25em; color:#fff; display:flex; align-items:center; gap:8px;">
             📥 Свободни задачи за месеца

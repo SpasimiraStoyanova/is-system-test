@@ -319,11 +319,12 @@ function renderCalendarUI() {
 
 // Render Task Pool (Compact, clear tracking, color-coded badges)
 function renderTaskPool() {
+    try {
     let allCount = 0;
     let pendingCount = 0;
     let doneCount = 0;
 
-    let itemsWithMeta = globalState.targetItems.map(item => {
+    let itemsWithMeta = (globalState.targetItems || []).map(item => {
         let planQty = item.planQty || 0;
         let totalAssignedMonth = 0;
         globalState.quotas.forEach(q => {
@@ -357,7 +358,7 @@ function renderTaskPool() {
     let doneEl = document.getElementById('pool-filter-done-count');
     if (doneEl) doneEl.innerText = doneCount;
 
-    // Update mobile toggle button text
+    // Update mobile toggle button text and header button text
     let poolBtn = document.getElementById('mobile-toggle-pool-btn');
     if (poolBtn) {
         if (pendingCount > 0) {
@@ -366,12 +367,22 @@ function renderTaskPool() {
             poolBtn.innerHTML = `📥 Свободни задачи: <strong style="color:#10b981;">Всички са заложени ✅</strong> ▾`;
         }
     }
+    let topPoolBtn = document.getElementById('btn-open-pool');
+    if (topPoolBtn) {
+        if (pendingCount > 0) {
+            topPoolBtn.innerHTML = `📥 Свободни задачи (${pendingCount})`;
+        } else {
+            topPoolBtn.innerHTML = `📥 Свободни задачи ✅`;
+        }
+    }
 
     // Generate HTML for card
     let makeCardHtml = (data, isModal = false) => {
         let { item, planQty, totalAssignedMonth, remaining, isDone, isPartial } = data;
-        let safeDetail = item.detailName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
-        let safeOp = item.operationName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+        let detailNameStr = String(item.detailName || '');
+        let opNameStr = String(item.operationName || '');
+        let safeDetail = detailNameStr.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;").replace(/\r?\n/g, ' ');
+        let safeOp = opNameStr.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;").replace(/\r?\n/g, ' ');
 
         let badgeHtml = '';
         let borderStyle = '';
@@ -471,6 +482,9 @@ function renderTaskPool() {
     let countLabel = document.getElementById('pool-shown-count-label');
     if (countLabel) {
         countLabel.innerText = `Показани: ${filteredItems.length} от ${allCount} задачи`;
+    }
+    } catch(err) {
+        console.error("Грешка в renderTaskPool:", err);
     }
 }
 
@@ -1616,18 +1630,28 @@ window.closeTaskOptionsModal = function() {
 };
 
 window.openPoolModal = function() {
-    let searchInput = document.getElementById('pool-search-input');
-    if (searchInput) {
-        searchInput.value = globalState.poolSearchQuery || '';
+    try {
+        let searchInput = document.getElementById('pool-search-input');
+        if (searchInput) {
+            searchInput.value = globalState.poolSearchQuery || '';
+        }
+        renderTaskPool();
+    } catch (err) {
+        console.error("Грешка при зареждане на списъка със свободни задачи:", err);
     }
-    renderTaskPool();
     document.body.style.overflow = 'hidden';
-    document.getElementById('task-pool-modal').style.display = 'flex';
+    let modal = document.getElementById('task-pool-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        let list = document.getElementById('w-task-pool-modal-list');
+        if (list) list.scrollTop = 0;
+    }
 };
 
 window.closePoolModal = function() {
     document.body.style.overflow = '';
-    document.getElementById('task-pool-modal').style.display = 'none';
+    let modal = document.getElementById('task-pool-modal');
+    if (modal) modal.style.display = 'none';
 };
 
 window.clearPoolSearch = function() {
