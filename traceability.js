@@ -591,11 +591,11 @@ async function renderVSM(dateKey) {
         let consumedDisplay = isLastOp ? totalConsumed : 0;
         let cConsumedDisplay = isLastOp ? cumTotalConsumed : 0;
         
-        let balance = prodHere - movedForward - scrapHere - consumedDisplay;
+        let balance = prodHere - movedForward - consumedDisplay;
         let balanceColor = balance < 0 ? 'var(--danger)' : (balance > 0 ? 'var(--success)' : 'var(--text-main)');
         let balanceSign = balance > 0 ? '+' : '';
         
-        let cBalance = cProdHere - cMovedForward - cScrapHere - cConsumedDisplay;
+        let cBalance = cProdHere - cMovedForward - cConsumedDisplay;
         let cBalanceColor = cBalance < 0 ? 'var(--danger)' : (cBalance > 0 ? 'var(--success)' : 'var(--text-main)');
         let cBalanceSign = cBalance > 0 ? '+' : '';
         
@@ -606,14 +606,40 @@ async function renderVSM(dateKey) {
             let diffColor = diff === 0 ? '#94a3b8' : (diff > 0 ? '#10b981' : '#ef4444');
             
             let auditLinesHtml = '';
-            let periodAudit = (globalAllData.auditHistory || []).filter(l => {
+            let allTimelineEvents = [];
+
+            // 1. Складови промени (audit_logs)
+            (globalAllData.auditHistory || []).forEach(l => {
                 let lTs = parseSafeTs(l.changed_at);
-                return lTs >= curFromTs && lTs < curToTs;
+                if (lTs >= curFromTs && lTs < curToTs) {
+                    allTimelineEvents.push({ type: 'audit', ts: lTs, data: l });
+                }
             });
 
-            let logsToShow = periodAudit.length > 0 ? periodAudit.slice(0, 5) : [];
+            // 2. Отчетени бракове (otcheti със статус 'брак')
+            (globalAllData.rawOtcheti || []).forEach(r => {
+                let st = String(r['Статус'] || '').trim().toLowerCase();
+                let rTs = parseSafeTs(r['Дата']);
+                if (st === 'брак' && rTs >= curFromTs && rTs < curToTs) {
+                    allTimelineEvents.push({ type: 'scrap', ts: rTs, data: r });
+                }
+            });
+
+            allTimelineEvents.sort((a,b) => b.ts - a.ts);
+
+            let logsToShow = allTimelineEvents.slice(0, 6);
             if (logsToShow.length > 0) {
-                let items = logsToShow.map(log => {
+                let items = logsToShow.map(ev => {
+                    if (ev.type === 'scrap') {
+                        let r = ev.data;
+                        let dStr = parseSafeDate(r['Дата']).toLocaleString('bg-BG');
+                        let q = parseFloat(r['Количество']) || 1;
+                        let opText = r['Операция'] ? ` (${r['Операция']})` : '';
+                        let opWorker = r['Оператор'] || 'Неизвестен';
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🔴 <b style="color:#ef4444;">Отчетен БРАК</b>: <b>${q} бр.</b>${opText} [Оператор: <b>${opWorker}</b>]</li>`;
+                    }
+
+                    let log = ev.data;
                     let dStr = parseSafeDate(log.changed_at).toLocaleString('bg-BG');
                     let logTs = parseSafeTs(log.changed_at);
                     let o = log.old_data || {};
@@ -703,7 +729,7 @@ async function renderVSM(dateKey) {
                 });
                 auditLinesHtml = `
                     <div style="margin-top:10px; text-align:left; font-size:0.8rem; background:rgba(15,23,42,0.8); padding:8px 12px; border-radius:6px; border:1px solid #334155;">
-                        <div style="color:#38bdf8; font-weight:bold; margin-bottom:5px; font-size:0.85rem;">🔍 История на складови промени:</div>
+                        <div style="color:#38bdf8; font-weight:bold; margin-bottom:5px; font-size:0.85rem;">🔍 История на движения и отчети:</div>
                         <ul style="margin:0; padding-left:16px; color:#cbd5e1; list-style-type:disc; line-height:1.4;">
                             ${items.join('')}
                         </ul>
@@ -758,7 +784,7 @@ async function renderVSM(dateKey) {
         let displayName = (globalAllData.targetName || globalAllData.targetId).toUpperCase();
         let displayCode = globalAllData.targetId && globalAllData.targetId !== globalAllData.targetName ? `(${globalAllData.targetId})` : '';
 
-        let wipLabel = dateKey === 'ALL' ? 'ОБЩО НАТРУПАНИ (WIP):' : 'НАТРУПАНИ ДО ТОЗИ ДЕН:';
+        let wipLabel = dateKey === 'ALL' ? 'ОБЩО НАТРУПАНИ (ГОДНИ):' : 'НАТРУПАНИ ДО ТОЗИ ДЕН (ГОДНИ):';
 
         // Check for recent spot-checks for this operation
         let opChecks = (globalAllData.recentChecks || []).filter(c => {
