@@ -606,8 +606,14 @@ async function renderVSM(dateKey) {
             let diffColor = diff === 0 ? '#94a3b8' : (diff > 0 ? '#10b981' : '#ef4444');
             
             let auditLinesHtml = '';
-            if (globalAllData.auditHistory && globalAllData.auditHistory.length > 0) {
-                let items = globalAllData.auditHistory.slice(0, 5).map(log => {
+            let periodAudit = (globalAllData.auditHistory || []).filter(l => {
+                let lTs = parseSafeTs(l.changed_at);
+                return lTs >= curFromTs && lTs < curToTs;
+            });
+
+            let logsToShow = periodAudit.length > 0 ? periodAudit.slice(0, 5) : [];
+            if (logsToShow.length > 0) {
+                let items = logsToShow.map(log => {
                     let dStr = parseSafeDate(log.changed_at).toLocaleString('bg-BG');
                     let logTs = parseSafeTs(log.changed_at);
                     let o = log.old_data || {};
