@@ -596,18 +596,78 @@ async function renderVSM(dateKey) {
             if (globalAllData.auditHistory && globalAllData.auditHistory.length > 0) {
                 let items = globalAllData.auditHistory.slice(0, 5).map(log => {
                     let dStr = new Date(log.changed_at).toLocaleString('bg-BG');
+                    let logTs = new Date(log.changed_at).getTime();
                     let o = log.old_data || {};
                     let n = log.new_data || {};
-                    let oq = o['Количество'] !== undefined ? o['Количество'] : (o['Общо'] !== undefined ? o['Общо'] : null);
-                    let nq = n['Количество'] !== undefined ? n['Количество'] : (n['Общо'] !== undefined ? n['Общо'] : null);
-                    
+                    let oq = o['Количество'] !== undefined ? parseFloat(o['Количество']) : (o['Общо'] !== undefined ? parseFloat(o['Общо']) : null);
+                    let nq = n['Количество'] !== undefined ? parseFloat(n['Количество']) : (n['Общо'] !== undefined ? parseFloat(n['Общо']) : null);
+                    if (nq === null && n['Ново Количество'] !== undefined) nq = parseFloat(n['Ново Количество']);
+                    let diffQty = (oq !== null && nq !== null) ? (nq - oq) : (nq || 0);
+                    let diffSign = diffQty > 0 ? '+' : '';
+
+                    // 1. Проверка за Ревизия (от бутона в Инвентарен детектив)
+                    let matchRev = null;
+                    if (log.action_type === 'REVISION') {
+                        matchRev = { checked_by: n['Проверил'], notes: n['Бележка'] };
+                    } else if (globalAllData.recentChecks && globalAllData.recentChecks.length > 0) {
+                        matchRev = globalAllData.recentChecks.find(c => {
+                            let cTs = new Date(c.created_at).getTime();
+                            let tDiff = Math.abs(cTs - logTs);
+                            let qtyMatch = (nq !== null && Math.abs((parseFloat(c.actual_qty) || 0) - nq) < 0.01) ||
+                                           (Math.abs((parseFloat(c.difference) || 0) - diffQty) < 0.01);
+                            return tDiff < 300000 && qtyMatch;
+                        });
+                    }
+
+                    if (matchRev) {
+                        let checker = matchRev.checked_by || 'Администратор';
+                        let noteText = matchRev.notes ? ` <span style="color:#94a3b8; font-style:italic;">("${matchRev.notes}")</span>` : '';
+                        let changeText = (oq !== null && nq !== null && oq !== nq)
+                            ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
+                            : `засечено на <span style="color:#10b981; font-weight:bold;">${nq || 0} бр.</span>`;
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: 📋 <b style="color:#38bdf8;">Ревизия (Засичане)</b>: ${changeText} [Проверил: <b>${checker}</b>]${noteText}</li>`;
+                    }
+
+                    // 2. Проверка за отчет от терминал или служебна корекция от админ
+                    let matchOtchet = null;
+                    if (globalAllData.rawOtcheti && globalAllData.rawOtcheti.length > 0) {
+                        let targetQty = (oq !== null && nq !== null) ? Math.abs(diffQty) : (nq || 0);
+                        matchOtchet = globalAllData.rawOtcheti.find(r => {
+                            let rTs = new Date(r['Дата']).getTime();
+                            let tDiff = Math.abs(rTs - logTs);
+                            let q = Math.abs(parseFloat(r['Количество']) || 0);
+                            return tDiff < 180000 && Math.abs(q - targetQty) < 0.01;
+                        });
+                    }
+
+                    let opWorker = matchOtchet ? String(matchOtchet['Оператор'] || '').trim() : '';
+                    let isSysManual = opWorker.includes('СИСТЕМА') || opWorker.includes('Корекция');
+
+                    // Ако е отчет от терминал (има реален оператор, а не системата)
+                    if (matchOtchet && !isSysManual) {
+                        if (log.action_type === 'INSERT') {
+                            return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🟢 <b style="color:#10b981;">Отчетено от терминал</b>: добавени първоначални <b>${nq || 0} бр.</b> [Оператор: <b>${opWorker}</b>]</li>`;
+                        } else {
+                            return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🟢 <b style="color:#10b981;">Отчетено от терминал</b>: <span style="color:#10b981; font-weight:bold;">+${diffQty} бр.</span> (от ${oq} на <b>${nq} бр.</b>) [Оператор: <b>${opWorker}</b>]</li>`;
+                        }
+                    }
+
+                    // 3. Ръчна корекция през Админ панела
+                    if (log.action_type === 'MANUAL_ADJUSTMENT' || isSysManual) {
+                        let changeText = (oq !== null && nq !== null && oq !== nq)
+                            ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
+                            : `променено на <span style="color:#10b981; font-weight:bold;">${nq || 0} бр.</span>`;
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция (Админ панел)</b>: ${changeText}</li>`;
+                    }
+
+                    // 4. Обикновени INSERT / UPDATE / DELETE от склад
                     if (log.action_type === 'INSERT') {
-                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: <b style="color:#10b981;">Добавен в склад</b> с <b>${nq || 0} бр.</b></li>`;
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: 📦 <b style="color:#10b981;">Добавен в склад</b> с <b>${nq || 0} бр.</b></li>`;
                     } else if (log.action_type === 'UPDATE') {
                         let changeText = (oq !== null && nq !== null && oq !== nq) 
-                            ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${(nq - oq) > 0 ? '+' : ''}${nq - oq} бр.)`
+                            ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
                             : `редакция на запис в склад`;
-                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: <b>Ръчна корекция</b>: ${changeText}</li>`;
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция в склад</b>: ${changeText}</li>`;
                     } else if (log.action_type === 'DELETE') {
                         return `<li style="margin-bottom:4px;">🕒 ${dStr}: <b style="color:#ef4444;">Изтрит от склад</b> (беше ${oq || 0} бр.)</li>`;
                     }
@@ -866,21 +926,24 @@ window.openRevisionModal = async function(opName, cBalance, currentStock) {
                 let now = new Date().toISOString();
 
                 // 1. Запис в inventory_checks (ако таблицата съществува)
+                let revRecord = {
+                    part_id: targetId,
+                    part_name: targetName,
+                    operation: opName,
+                    system_qty: baseQty,
+                    actual_qty: actualQty,
+                    difference: diff,
+                    checked_by: user,
+                    notes: notes,
+                    created_at: now
+                };
                 try {
-                    await client.from('inventory_checks').insert([{
-                        part_id: targetId,
-                        part_name: targetName,
-                        operation: opName,
-                        system_qty: baseQty,
-                        actual_qty: actualQty,
-                        difference: diff,
-                        checked_by: user,
-                        notes: notes,
-                        created_at: now
-                    }]);
+                    await client.from('inventory_checks').insert([revRecord]);
                 } catch(e) {
                     console.warn('inventory_checks не е налична:', e);
                 }
+                globalAllData.recentChecks = globalAllData.recentChecks || [];
+                globalAllData.recentChecks.unshift(revRecord);
 
                 // 2. Актуализация на склада в inventory
                 if (updateInv) {
@@ -931,6 +994,19 @@ window.openRevisionModal = async function(opName, cBalance, currentStock) {
                             'Количество': actualQty
                         }]);
                         if (insErr) throw insErr;
+                    }
+
+                    // Записваме и одит за ревизия
+                    try {
+                        await client.from('audit_logs').insert([{
+                            table_name: 'inventory',
+                            action_type: 'REVISION',
+                            old_data: { 'ID Детайл': targetId, 'Операция': opName, 'Количество': baseQty },
+                            new_data: { 'ID Детайл': targetId, 'Операция': opName, 'Количество': actualQty, 'Разлика': diff, 'Проверил': user, 'Бележка': notes },
+                            changed_at: now
+                        }]);
+                    } catch(e) {
+                        console.warn('Не можа да се запише REVISION в audit_logs:', e);
                     }
                 }
 
