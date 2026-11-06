@@ -42,19 +42,25 @@ function isProbaOtchet(r) {
            w.includes('ПРОБА') || pId !== '';
 }
 
-// 0. Зареждане на Номенклатура за автоматично допълване и намиране по код/име
+// 0. Зареждане на Номенклатура, BOM и Склад Материали
 let nomList = [];
 let nomMap = {}; // normCode -> nom, normName -> nom
+let bomCache = [];
+let skladMap = {}; // upperCode / normCode -> { code, stock, unit }
 
-async function loadNomenclature() {
+async function loadStaticData() {
     try {
-        const { data, error } = await client.from('Номенклатура').select('*').limit(10000);
-        if (error) throw error;
-        if (data) {
-            nomList = data;
+        const [nomRes, bomRes, skladRes] = await Promise.all([
+            client.from('Номенклатура').select('*').limit(10000),
+            client.from('bom').select('*').limit(50000),
+            client.from('sklad').select('*').limit(10000)
+        ]);
+
+        if (nomRes.data) {
+            nomList = nomRes.data;
             const dl = document.getElementById('dl_trace_parts');
             let optHtml = '';
-            data.forEach(n => {
+            nomRes.data.forEach(n => {
                 let code = String(n['ID Детайл'] || '').trim();
                 let name = String(n['Вътрешно име'] || '').trim();
                 let normC = code.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
@@ -70,11 +76,30 @@ async function loadNomenclature() {
             });
             if (dl) dl.innerHTML = optHtml;
         }
+
+        if (bomRes.data) {
+            bomCache = bomRes.data;
+        }
+
+        if (skladRes.data) {
+            skladRes.data.forEach(s => {
+                let code = String(s['ID Детайл'] || '').trim();
+                if (!code) return;
+                let cNorm = code.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                let entry = {
+                    code: code,
+                    stock: parseFloat(s['Остатък']) || 0,
+                    unit: s['Мерна единица'] || 'бр.'
+                };
+                skladMap[code.toUpperCase()] = entry;
+                if (cNorm) skladMap[cNorm] = entry;
+            });
+        }
     } catch (e) {
-        console.warn('Номенклатура: не можа да се зареди автодовършването:', e);
+        console.warn('Номенклатура/BOM/Склад: грешка при начално зареждане:', e);
     }
 }
-loadNomenclature();
+loadStaticData();
 
 async function fetchRobustRows(table, select, searchCol, searchStr) {
     let allData = [];
@@ -157,6 +182,10 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
         searchCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase(),
         searchName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()
     ]);
+    // Добавяме и варианти без съкращението "ст" (статор / стандарт), за да се покриват изписвания като МПР Ст. Вар.25 и МПР Вар. 25
+    Array.from(normCodes).forEach(nc => {
+        if (nc.includes('ст')) normCodes.add(nc.replace('ст', ''));
+    });
     normCodes.delete('');
 
     globalAllData.targetId = searchCode || cleanInput;
@@ -212,60 +241,97 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
         globalAllData.fallbackOpChain = Array.from(fChainSet);
     }
 
-    // 3. Fetch BOM Children
-    let { data: childrenRaw } = await fetchRobustRows('bom', '*', 'ID Родител', searchCode);
-    if ((!childrenRaw || childrenRaw.length === 0) && searchName !== searchCode) {
-        let { data: c2 } = await fetchRobustRows('bom', '*', 'ID Родител', searchName);
-        if (c2 && c2.length > 0) childrenRaw = c2;
+    // 3. Fetch BOM Children & Raw Materials (Детайли, полуфабрикати и изходни суровини)
+    if (bomCache.length === 0) {
+        try {
+            let { data: bData } = await client.from('bom').select('*').limit(50000);
+            if (bData) bomCache = bData;
+        } catch(e) { console.warn('BOM fetch error:', e); }
     }
 
-    globalAllData.childrenBOM = childrenRaw ? childrenRaw.filter(b => {
-        let dbId = String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        return normCodes.has(dbId);
-    }) : [];
+    let childrenRaw = [];
+    let seenChildNorms = new Set();
 
-    // 3.5 Check if children are raw materials
-    if (globalAllData.childrenBOM.length > 0) {
-        let childCodes = [...new Set(globalAllData.childrenBOM.map(b => String(b['ID Компонент']).trim()))];
-        let rSet = new Set(), bSet = new Set(), oSet = new Set();
-        let cChunks = [];
-        for(let i=0; i<childCodes.length; i+=100) cChunks.push(childCodes.slice(i, i+100));
-        for (let chunk of cChunks) {
-            let [{data:rDataSub}, {data:bData}, {data:oData}] = await Promise.all([
-                client.from('marshruti').select('"Код на детайла"').in('Код на детайла', chunk),
-                client.from('bom').select('"ID Родител"').in('ID Родител', chunk),
-                client.from('otcheti').select('"ID Детайл"').in('ID Детайл', chunk)
-            ]);
-            if (rDataSub) rDataSub.forEach(x => rSet.add(String(x['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
-            if (bData) bData.forEach(x => bSet.add(String(x['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
-            if (oData) oData.forEach(x => oSet.add(String(x['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
+    // 3.1 Търсене в BOM таблицата (детайли и материали, вложени в детайла)
+    (bomCache || []).forEach(b => {
+        let pNorm = String(b['ID Родител'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let pNormNoSt = pNorm.replace('ст', '');
+        let matchesParent = normCodes.has(pNorm) || normCodes.has(pNormNoSt);
+        if (matchesParent) {
+            let cCode = String(b['ID Компонент'] || '').trim();
+            let cNorm = cCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            if (cCode && !seenChildNorms.has(cNorm) && !normCodes.has(cNorm)) {
+                seenChildNorms.add(cNorm);
+                childrenRaw.push({
+                    'ID Родител': b['ID Родител'],
+                    'ID Компонент': cCode,
+                    'Количество': b['Количество'] || 1,
+                    'Влага се на Оп. №': b['Влага се на Оп. №'],
+                    'source': 'bom'
+                });
+            }
         }
-        let finalChildren = [];
-        for (let b of globalAllData.childrenBOM) {
-             let cName = String(b['ID Компонент']);
-             let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-             let isRaw = true;
-             if (cNorm.includes('статоренпак') || cNorm.includes('статор')) {
-                 isRaw = false;
-             } else if (rSet.has(cNorm) || bSet.has(cNorm) || oSet.has(cNorm)) {
-                 isRaw = false;
-             }
-             if (!isRaw) finalChildren.push(b);
+    });
+
+    // 3.2 Търсене в Номенклатура (детайли, чийто ID Родител сочи към текущия детайл)
+    (nomList || []).forEach(n => {
+        let pNorm = String(n['ID Родител'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let pNormNoSt = pNorm.replace('ст', '');
+        let matchesParent = normCodes.has(pNorm) || normCodes.has(pNormNoSt);
+        if (matchesParent) {
+            let cCode = String(n['ID Детайл'] || '').trim();
+            let cNorm = cCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            if (cCode && !seenChildNorms.has(cNorm) && !normCodes.has(cNorm)) {
+                seenChildNorms.add(cNorm);
+                childrenRaw.push({
+                    'ID Родител': globalAllData.targetName,
+                    'ID Компонент': cCode,
+                    'Количество': n['Разходна норма'] || 1,
+                    'Единици': n['Единици'] || 'бр.',
+                    'source': 'nomenklatura'
+                });
+            }
         }
-        globalAllData.childrenBOM = finalChildren;
+    });
+
+    // 3.3 Изходен материал / Заготовка / Суровина на самия детайл (от Номенклатура)
+    if (matchedNom) {
+        let originMat = String(matchedNom['ID Родител'] || '').trim();
+        let oNorm = originMat.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        if (originMat && !seenChildNorms.has(oNorm) && !normCodes.has(oNorm)) {
+            seenChildNorms.add(oNorm);
+            childrenRaw.push({
+                'ID Родител': globalAllData.targetName,
+                'ID Компонент': originMat,
+                'Количество': matchedNom['Разходна норма'] || 1,
+                'Единици': matchedNom['Единици'] || 'бр.',
+                'isMaterial': true,
+                'source': 'nom_parent'
+            });
+        }
     }
 
-    // 4. Fetch BOM Parents & Parent Otcheti
-    let { data: parentsRaw } = await fetchRobustRows('bom', '*', 'ID Компонент', searchCode);
-    if ((!parentsRaw || parentsRaw.length === 0) && searchName !== searchCode) {
-        let { data: p2 } = await fetchRobustRows('bom', '*', 'ID Компонент', searchName);
-        if (p2 && p2.length > 0) parentsRaw = p2;
-    }
+    globalAllData.childrenBOM = childrenRaw;
 
-    globalAllData.parentsBOM = parentsRaw ? parentsRaw.filter(b => {
-        let dbId = String(b['ID Компонент']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        return normCodes.has(dbId);
-    }) : [];
+    // 4. Fetch BOM Parents (Родители - изделия, в които се влага детайлът)
+    let parentsRaw = [];
+    let seenParentNorms = new Set();
+
+    (bomCache || []).forEach(b => {
+        let cNorm = String(b['ID Компонент'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let cNormNoSt = cNorm.replace('ст', '');
+        let matchesComp = normCodes.has(cNorm) || normCodes.has(cNormNoSt);
+        if (matchesComp) {
+            let pCode = String(b['ID Родител'] || '').trim();
+            let pNorm = pCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            if (pCode && !seenParentNorms.has(pNorm) && !normCodes.has(pNorm)) {
+                seenParentNorms.add(pNorm);
+                parentsRaw.push(b);
+            }
+        }
+    });
+
+    globalAllData.parentsBOM = parentsRaw;
     
     globalAllData.parentOtcheti = [];
     if (globalAllData.parentsBOM.length > 0) {
@@ -537,8 +603,12 @@ async function renderVSM(dateKey) {
             let cName = String(b['ID Компонент']).toUpperCase();
             let normStr = String(b['Количество'] || '1').replace(',', '.');
             let norm = parseFloat(normStr) || 1;
-            let consumedChild = targetProduced * norm;
-            let consumedProbaChild = targetProba * norm;
+            let consumedChild = Math.round((targetProduced * norm) * 100) / 100;
+            let consumedProbaChild = Math.round((targetProba * norm) * 100) / 100;
+            let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            let sklEntry = skladMap[cName] || skladMap[cNorm] || null;
+            let nomEntry = nomMap[cNorm] || null;
+            let unit = (b['Единици'] || (sklEntry ? sklEntry.unit : (nomEntry ? nomEntry['Единици'] : 'бр.'))) || 'бр.';
             let safeCName = cName.replace(/'/g, "\\'");
             
             let isProbaConsumed = targetProba > 0;
@@ -547,24 +617,30 @@ async function renderVSM(dateKey) {
                 if (targetProba === targetProduced && targetProduced > 0) {
                     probaBadge = `<span style="background:rgba(124, 58, 237, 0.25); color:#c084fc; border:1px solid #a855f7; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:800; display:inline-flex; align-items:center; gap:4px; box-shadow:0 0 8px rgba(168,85,247,0.3);">🧪 Проба</span>`;
                 } else if (consumedProbaChild > 0) {
-                    probaBadge = `<span style="background:rgba(124, 58, 237, 0.25); color:#c084fc; border:1px solid #a855f7; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:800; display:inline-flex; align-items:center; gap:4px; box-shadow:0 0 8px rgba(168,85,247,0.3);">🧪 Проба (${consumedProbaChild} бр.)</span>`;
+                    probaBadge = `<span style="background:rgba(124, 58, 237, 0.25); color:#c084fc; border:1px solid #a855f7; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:800; display:inline-flex; align-items:center; gap:4px; box-shadow:0 0 8px rgba(168,85,247,0.3);">🧪 Проба (${consumedProbaChild} ${unit})</span>`;
                 }
             }
 
+            let isManufactured = (nomEntry && (nomEntry['Тип'] || '').toLowerCase().includes('детайл')) ||
+                                 (bomCache.some(x => String(x['ID Родител'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase() === cNorm));
+            let icon = isManufactured ? '🔍' : '📦';
+            let skladInfoHtml = sklEntry ? `<span style="color:#64748b; font-size:0.85rem;" title="Наличност в Склад материали">(Склад: <b style="color:#94a3b8;">${sklEntry.stock} ${unit}</b>)</span>` : '';
+
             cNodes.push(`
-              <div class="vsm-node vsm-node-clickable" style="justify-content: flex-end; ${isProbaConsumed ? 'border-color: #8b5cf6; background: rgba(124, 58, 237, 0.08);' : ''}" onclick="jumpToPart('${safeCName}')" title="Кликнете за отваряне на ${safeCName} в Детектива">
-                <span class="vsm-stat consumed" style="color:var(--text-muted); font-size:1rem;">(Норма: ${norm})</span>
-                <span class="vsm-stat consumed" style="color:var(--warning)">Изразходвани: ${consumedChild} бр.</span>
+              <div class="vsm-node vsm-node-clickable" style="justify-content: flex-end; ${isProbaConsumed ? 'border-color: #8b5cf6; background: rgba(124, 58, 237, 0.08);' : ''}" onclick="jumpToPart('${safeCName}')" title="Кликнете за анализ на ${safeCName} в Детектива">
+                <span class="vsm-stat consumed" style="color:var(--text-muted); font-size:0.95rem;">(Норма: ${norm} ${unit})</span>
+                <span class="vsm-stat consumed" style="color:var(--warning)">Изразходвани: ${consumedChild} ${unit}</span>
+                ${skladInfoHtml}
                 ${probaBadge ? `<span class="vsm-divider">|</span>${probaBadge}` : ''}
                 <span class="vsm-divider">|</span>
-                <span class="vsm-name">🔍 ${cName}</span>
+                <span class="vsm-name">${icon} ${cName}</span>
               </div>
             `);
         });
         
-        childrenFlowHtml = cNodes.length > 0 ? `<div class="col-layout">${cNodes.join('')}</div>` : `<div class="vsm-node" style="opacity:0.5"><span class="vsm-name">САМО СУРОВИНИ (СКРИТИ)</span></div>`;
+        childrenFlowHtml = cNodes.length > 0 ? `<div class="col-layout">${cNodes.join('')}</div>` : `<div class="vsm-node" style="opacity:0.6"><span class="vsm-name" style="color:#94a3b8;">⚠️ Няма компоненти в състава</span></div>`;
     } else {
-         childrenFlowHtml = `<div class="vsm-node" style="opacity:0.5"><span class="vsm-name">ЧИСТА СУРОВИНА</span></div>`;
+         childrenFlowHtml = `<div class="vsm-node" style="opacity:0.6"><span class="vsm-name" style="color:#94a3b8;">⚠️ Няма въведен състав / суровина</span></div>`;
     }
 
     // Parents (Влагане в по-горни изделия)
