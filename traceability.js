@@ -27,6 +27,21 @@ function parseSafeTs(dStr) {
     return parseSafeDate(dStr).getTime() || 0;
 }
 
+// Проверка за отчет от Лилава карта (Проба / Серия за проба)
+function isProbaOtchet(r) {
+    if (!r) return false;
+    let p = String(r['ID План'] || '').trim().toUpperCase();
+    let st = String(r['Статус'] || '').trim().toUpperCase();
+    let note = String(r['Бележка'] || r['Забележка'] || '').trim().toUpperCase();
+    let op = String(r['Операция'] || '').trim().toUpperCase();
+    let w = String(r['Оператор'] || '').trim().toUpperCase();
+    let pId = (r['proba_id'] !== undefined && r['proba_id'] !== null) ? String(r['proba_id']).trim() : '';
+
+    return p.startsWith('PROBA') || p.includes('PROBA') || p.includes('ПРОБА') ||
+           st.includes('ПРОБА') || note.includes('ПРОБА') || op.includes('ПРОБА') ||
+           w.includes('ПРОБА') || pId !== '';
+}
+
 // 0. Зареждане на Номенклатура за автоматично допълване и намиране по код/име
 let nomList = [];
 let nomMap = {}; // normCode -> nom, normName -> nom
@@ -405,10 +420,19 @@ function renderTimeline() {
     dates.forEach(d => {
         let displayD = d.split('-').reverse().join('.');
         let isActive = (currentSelectedDateKey === d);
+        let hasProba = false;
+        if (globalTimeline[d]) {
+            hasProba = (globalTimeline[d].rawOtcheti || []).some(isProbaOtchet) ||
+                       (globalTimeline[d].parentOtcheti || []).some(isProbaOtchet);
+        }
+        let dotColor = isActive ? 'var(--primary)' : (hasProba ? '#a855f7' : '#94a3b8');
+        let dotShadow = isActive ? '0 0 10px var(--primary)' : (hasProba ? '0 0 10px #a855f7' : 'none');
         html += `
-        <div style="cursor:pointer; display:flex; flex-direction:column; align-items:center; opacity:${isActive ? '1' : '0.8'}; transition:0.2s;" onclick="renderVSM('${d}')" id="tl_node_${d}">
-            <div style="width:${isActive ? '12px' : '10px'}; height:${isActive ? '12px' : '10px'}; background:${isActive ? 'var(--primary)' : '#94a3b8'}; border-radius:50%; margin-bottom:5px; box-shadow:${isActive ? '0 0 10px var(--primary)' : 'none'};"></div>
-            <div style="color:${isActive ? '#38bdf8' : '#cbd5e1'}; font-weight:${isActive ? 'bold' : 'normal'}; font-size:0.75rem;">${displayD}</div>
+        <div style="cursor:pointer; display:flex; flex-direction:column; align-items:center; opacity:${isActive ? '1' : '0.85'}; transition:0.2s;" onclick="renderVSM('${d}')" id="tl_node_${d}">
+            <div style="width:${isActive ? '13px' : '10px'}; height:${isActive ? '13px' : '10px'}; background:${dotColor}; border-radius:50%; margin-bottom:5px; box-shadow:${dotShadow};"></div>
+            <div style="color:${isActive ? '#38bdf8' : (hasProba ? '#c084fc' : '#cbd5e1')}; font-weight:${isActive || hasProba ? 'bold' : 'normal'}; font-size:0.75rem; display:flex; align-items:center; gap:2px;">
+                ${hasProba ? '<span>🧪</span>' : ''}<span>${displayD}</span>
+            </div>
         </div>
         <div style="height:1px; width:30px; background:#334155;"></div>
         `;
@@ -441,22 +465,44 @@ async function renderVSM(dateKey) {
     let cumProduced = {};   // Общо до края на текущия интервал
     let cumScrap = {};      // Общо брак до края на текущия интервал
 
+    let opsProba = {};      // 🧪 Произведени от Проба (Лилава карта) в текущия интервал
+    let opsPriorProba = {}; // 🧪 Натрупани ПРЕДИ текущия интервал от Проба
+    let cumProba = {};      // 🧪 Общо от Проба до края на текущия интервал
+    let probaPlans = {};    // op -> Set of plan names (e.g. PROBA_1)
+
     (globalAllData.rawOtcheti || []).forEach(r => {
         let dTs = parseSafeTs(r['Дата']);
         let st = String(r['Статус'] || '').trim().toLowerCase();
         let q = parseFloat(r['Количество']) || 0;
         let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
+        let isPr = isProbaOtchet(r);
+        let pPlan = String(r['ID План'] || '').trim();
 
         if (dTs >= curFromTs && dTs < curToTs) {
-            if (st === 'отчетено' || st === 'завършено') opsProduced[op] = (opsProduced[op] || 0) + q;
-            else if (st === 'брак') opsScrap[op] = (opsScrap[op] || 0) + Math.abs(q);
+            if (st === 'отчетено' || st === 'завършено') {
+                opsProduced[op] = (opsProduced[op] || 0) + q;
+                if (isPr) {
+                    opsProba[op] = (opsProba[op] || 0) + q;
+                    if (!probaPlans[op]) probaPlans[op] = new Set();
+                    if (pPlan) probaPlans[op].add(pPlan);
+                }
+            } else if (st === 'брак') {
+                opsScrap[op] = (opsScrap[op] || 0) + Math.abs(q);
+            }
         } else if (dTs < curFromTs) {
-            if (st === 'отчетено' || st === 'завършено') opsPrior[op] = (opsPrior[op] || 0) + q;
+            if (st === 'отчетено' || st === 'завършено') {
+                opsPrior[op] = (opsPrior[op] || 0) + q;
+                if (isPr) opsPriorProba[op] = (opsPriorProba[op] || 0) + q;
+            }
         }
 
         if (dTs < targetTs) {
-            if (st === 'отчетено' || st === 'завършено') cumProduced[op] = (cumProduced[op] || 0) + q;
-            else if (st === 'брак') cumScrap[op] = (cumScrap[op] || 0) + Math.abs(q);
+            if (st === 'отчетено' || st === 'завършено') {
+                cumProduced[op] = (cumProduced[op] || 0) + q;
+                if (isPr) cumProba[op] = (cumProba[op] || 0) + q;
+            } else if (st === 'брак') {
+                cumScrap[op] = (cumScrap[op] || 0) + Math.abs(q);
+            }
         }
     });
 
@@ -470,10 +516,15 @@ async function renderVSM(dateKey) {
     }
     
     let targetProduced = 0; 
+    let targetProba = 0;
     if (opChain.length > 0) {
         let firstOp = opChain[0];
         targetProduced = opsProduced[firstOp] || 0; 
-        if (targetProduced === 0) targetProduced = Math.max(0, ...Object.values(opsProduced));
+        targetProba = opsProba[firstOp] || 0;
+        if (targetProduced === 0) {
+            targetProduced = Math.max(0, ...Object.values(opsProduced));
+            targetProba = Math.max(0, ...Object.values(opsProba));
+        }
     }
 
     // Children (Суровини и компоненти)
@@ -487,12 +538,24 @@ async function renderVSM(dateKey) {
             let normStr = String(b['Количество'] || '1').replace(',', '.');
             let norm = parseFloat(normStr) || 1;
             let consumedChild = targetProduced * norm;
+            let consumedProbaChild = targetProba * norm;
             let safeCName = cName.replace(/'/g, "\\'");
             
+            let isProbaConsumed = targetProba > 0;
+            let probaBadge = '';
+            if (isProbaConsumed) {
+                if (targetProba === targetProduced && targetProduced > 0) {
+                    probaBadge = `<span style="background:rgba(124, 58, 237, 0.25); color:#c084fc; border:1px solid #a855f7; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:800; display:inline-flex; align-items:center; gap:4px; box-shadow:0 0 8px rgba(168,85,247,0.3);">🧪 Проба</span>`;
+                } else if (consumedProbaChild > 0) {
+                    probaBadge = `<span style="background:rgba(124, 58, 237, 0.25); color:#c084fc; border:1px solid #a855f7; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:800; display:inline-flex; align-items:center; gap:4px; box-shadow:0 0 8px rgba(168,85,247,0.3);">🧪 Проба (${consumedProbaChild} бр.)</span>`;
+                }
+            }
+
             cNodes.push(`
-              <div class="vsm-node vsm-node-clickable" style="justify-content: flex-end;" onclick="jumpToPart('${safeCName}')" title="Кликнете за отваряне на ${safeCName} в Детектива">
+              <div class="vsm-node vsm-node-clickable" style="justify-content: flex-end; ${isProbaConsumed ? 'border-color: #8b5cf6; background: rgba(124, 58, 237, 0.08);' : ''}" onclick="jumpToPart('${safeCName}')" title="Кликнете за отваряне на ${safeCName} в Детектива">
                 <span class="vsm-stat consumed" style="color:var(--text-muted); font-size:1rem;">(Норма: ${norm})</span>
                 <span class="vsm-stat consumed" style="color:var(--warning)">Изразходвани: ${consumedChild} бр.</span>
+                ${probaBadge ? `<span class="vsm-divider">|</span>${probaBadge}` : ''}
                 <span class="vsm-divider">|</span>
                 <span class="vsm-name">🔍 ${cName}</span>
               </div>
@@ -512,6 +575,9 @@ async function renderVSM(dateKey) {
     if (globalAllData.parentsBOM.length > 0) {
         let parentOpStats = {}; 
         let cumParentOpStats = {};
+        let parentOpProba = {};
+        let cumParentOpProba = {};
+        let parentProbaPlans = {}; // pName -> Set
 
         (globalAllData.parentOtcheti || []).forEach(r => {
             let dTs = parseSafeTs(r['Дата']);
@@ -520,14 +586,28 @@ async function renderVSM(dateKey) {
                 let pName = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
                 let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
                 let q = parseFloat(r['Количество']) || 0;
+                let isPr = isProbaOtchet(r);
+                let pPlan = String(r['ID План'] || '').trim();
 
                 if (dTs >= curFromTs && dTs < curToTs) {
                     if (!parentOpStats[pName]) parentOpStats[pName] = {};
                     parentOpStats[pName][op] = (parentOpStats[pName][op] || 0) + q;
+
+                    if (isPr) {
+                        if (!parentOpProba[pName]) parentOpProba[pName] = {};
+                        parentOpProba[pName][op] = (parentOpProba[pName][op] || 0) + q;
+                        if (!parentProbaPlans[pName]) parentProbaPlans[pName] = new Set();
+                        if (pPlan) parentProbaPlans[pName].add(pPlan);
+                    }
                 }
                 if (dTs < targetTs) {
                     if (!cumParentOpStats[pName]) cumParentOpStats[pName] = {};
                     cumParentOpStats[pName][op] = (cumParentOpStats[pName][op] || 0) + q;
+
+                    if (isPr) {
+                        if (!cumParentOpProba[pName]) cumParentOpProba[pName] = {};
+                        cumParentOpProba[pName][op] = (cumParentOpProba[pName][op] || 0) + q;
+                    }
                 }
             }
         });
@@ -542,11 +622,18 @@ async function renderVSM(dateKey) {
             let targetOpName = b.targetOpNameCache;
             let pProduced = 0;
             let cumPProduced = 0;
+            let pProba = 0;
             
             if (targetOpName && parentOpStats[pName] && parentOpStats[pName][targetOpName]) {
                 pProduced = parentOpStats[pName][targetOpName];
             } else if (!targetOpName && parentOpStats[pName]) {
                 pProduced = Math.max(0, ...Object.values(parentOpStats[pName]));
+            }
+
+            if (targetOpName && parentOpProba[pName] && parentOpProba[pName][targetOpName]) {
+                pProba = parentOpProba[pName][targetOpName];
+            } else if (!targetOpName && parentOpProba[pName]) {
+                pProba = Math.max(0, ...Object.values(parentOpProba[pName]));
             }
             
             if (targetOpName && cumParentOpStats[pName] && cumParentOpStats[pName][targetOpName]) {
@@ -557,18 +644,33 @@ async function renderVSM(dateKey) {
             
             let consumedHere = pProduced * norm;
             let cumConsumedHere = cumPProduced * norm;
+            let consumedProbaHere = pProba * norm;
             totalConsumed += consumedHere;
             cumTotalConsumed += cumConsumedHere;
             
             // 🌟 Показваме родителя САМО когато реално са вложени бройки (> 0) в избрания период
             if (consumedHere > 0) {
                 let safePName = originalName.replace(/'/g, "\\'");
+                let isProbaParent = consumedProbaHere > 0;
+                let probaPlanNames = parentProbaPlans[pName] ? Array.from(parentProbaPlans[pName]).join(', ') : '';
+
+                let parentProbaBadge = '';
+                if (isProbaParent) {
+                    let pLabel = probaPlanNames ? `Лилава карта (${probaPlanNames})` : 'Лилава карта (Проба)';
+                    if (consumedProbaHere === consumedHere) {
+                        parentProbaBadge = `<span style="background:rgba(124, 58, 237, 0.25); color:#c084fc; border:1px solid #a855f7; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:800; display:inline-flex; align-items:center; gap:4px; box-shadow:0 0 8px rgba(168,85,247,0.3);">🧪 ${pLabel}</span>`;
+                    } else {
+                        parentProbaBadge = `<span style="background:rgba(124, 58, 237, 0.25); color:#c084fc; border:1px solid #a855f7; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:800; display:inline-flex; align-items:center; gap:4px; box-shadow:0 0 8px rgba(168,85,247,0.3);">🧪 Проба: ${consumedProbaHere} бр.</span>`;
+                    }
+                }
+
                 pNodes.push(`
-                  <div class="vsm-node vsm-node-clickable" style="display:flex; flex-direction:column; align-items:flex-start;" onclick="jumpToPart('${safePName}')" title="Кликнете за анализ на ${safePName}">
-                    <div style="display:flex; gap: 8px; align-items:center;">
+                  <div class="vsm-node vsm-node-clickable" style="display:flex; flex-direction:column; align-items:flex-start; ${isProbaParent ? 'border-color: #8b5cf6; background: rgba(124, 58, 237, 0.08);' : ''}" onclick="jumpToPart('${safePName}')" title="Кликнете за анализ на ${safePName}">
+                    <div style="display:flex; gap: 8px; align-items:center; flex-wrap:wrap;">
                         <span class="vsm-name">🔍 ${originalName}</span>
                         <span class="vsm-divider">|</span>
                         <span class="vsm-stat consumed">Вложени: ${consumedHere} бр.</span>
+                        ${parentProbaBadge}
                     </div>
                     ${targetOpName ? `<div style="font-size:0.85rem; color:#94a3b8; margin-top: -3px;">(на оп. ${targetOpName})</div>` : ''}
                   </div>
@@ -591,12 +693,25 @@ async function renderVSM(dateKey) {
         let cProdHere = 0;
         let cScrapHere = 0;
         
+        let probaHere = 0;
+        let priorProbaHere = 0;
+        let cProbaHere = 0;
+        let opPlans = new Set();
+
         for (let k in opsProduced) if (k.includes(opName) || opName.includes(k)) prodHere += opsProduced[k];
         for (let k in opsScrap) if (k.includes(opName) || opName.includes(k)) scrapHere += opsScrap[k];
         for (let k in opsPrior) if (k.includes(opName) || opName.includes(k)) priorHere += opsPrior[k];
+        for (let k in opsProba) if (k.includes(opName) || opName.includes(k)) probaHere += opsProba[k];
+        for (let k in opsPriorProba) if (k.includes(opName) || opName.includes(k)) priorProbaHere += opsPriorProba[k];
         
         for (let k in cumProduced) if (k.includes(opName) || opName.includes(k)) cProdHere += cumProduced[k];
         for (let k in cumScrap) if (k.includes(opName) || opName.includes(k)) cScrapHere += cumScrap[k];
+        for (let k in cumProba) if (k.includes(opName) || opName.includes(k)) cProbaHere += cumProba[k];
+        for (let k in probaPlans) {
+            if (k.includes(opName) || opName.includes(k)) {
+                probaPlans[k].forEach(p => opPlans.add(p));
+            }
+        }
         
         let movedForward = 0;
         let cMovedForward = 0;
@@ -630,143 +745,172 @@ async function renderVSM(dateKey) {
             }
         }
 
+        // История на събития за тази конкретна операция
+        let auditLinesHtml = '';
+        let allTimelineEvents = [];
+
+        // 1. Складови промени (audit_logs)
+        (globalAllData.auditHistory || []).forEach(l => {
+            let lTs = parseSafeTs(l.changed_at);
+            if (lTs >= curFromTs && lTs < curToTs) {
+                let n = l.new_data || {};
+                let o = l.old_data || {};
+                let lOp = String(n['Операция'] || o['Операция'] || '').trim().toUpperCase();
+                let matchesOp = !lOp || lOp.includes(opName) || opName.includes(lOp) || (isLastOp && (lOp === 'ГОТОВ ПРОДУКТ' || lOp.includes('ГОТОВ')));
+                if (matchesOp) {
+                    allTimelineEvents.push({ type: 'audit', ts: lTs, data: l });
+                }
+            }
+        });
+
+        // 2. Отчети (otcheti) за тази операция (бракове и проби)
+        (globalAllData.rawOtcheti || []).forEach(r => {
+            let st = String(r['Статус'] || '').trim().toLowerCase();
+            let rTs = parseSafeTs(r['Дата']);
+            let rOp = String(r['Операция'] || '').trim().toUpperCase();
+            let matchesOp = rOp.includes(opName) || opName.includes(rOp);
+
+            if (matchesOp && rTs >= curFromTs && rTs < curToTs) {
+                if (st === 'брак') {
+                    allTimelineEvents.push({ type: 'scrap', ts: rTs, data: r });
+                } else if (isProbaOtchet(r)) {
+                    allTimelineEvents.push({ type: 'proba', ts: rTs, data: r });
+                }
+            }
+        });
+
+        allTimelineEvents.sort((a,b) => b.ts - a.ts);
+
+        let logsToShow = allTimelineEvents.slice(0, 6);
+        if (logsToShow.length > 0) {
+            let items = logsToShow.map(ev => {
+                if (ev.type === 'scrap') {
+                    let r = ev.data;
+                    let dStr = parseSafeDate(r['Дата']).toLocaleString('bg-BG');
+                    let q = parseFloat(r['Количество']) || 1;
+                    let opText = r['Операция'] ? ` (${r['Операция']})` : '';
+                    let opWorker = r['Оператор'] || 'Неизвестен';
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🔴 <b style="color:#ef4444;">Отчетен БРАК</b>: <b>${q} бр.</b>${opText} [Оператор: <b>${opWorker}</b>]</li>`;
+                }
+
+                if (ev.type === 'proba') {
+                    let r = ev.data;
+                    let dStr = parseSafeDate(r['Дата']).toLocaleString('bg-BG');
+                    let q = parseFloat(r['Количество']) || 0;
+                    let pPlan = String(r['ID План'] || '').trim();
+                    let opWorker = r['Оператор'] || 'Неизвестен';
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🟣 <b style="color:#c084fc;">Отчетено по ЛИЛАВА КАРТА (🧪 ${pPlan || 'ПРОБА'})</b>: <b style="color:#e9d5ff;">+${q} бр.</b> [Оператор: <b>${opWorker}</b>]</li>`;
+                }
+
+                let log = ev.data;
+                let dStr = parseSafeDate(log.changed_at).toLocaleString('bg-BG');
+                let logTs = parseSafeTs(log.changed_at);
+                let o = log.old_data || {};
+                let n = log.new_data || {};
+                let oq = o['Количество'] !== undefined ? parseFloat(o['Количество']) : (o['Общо'] !== undefined ? parseFloat(o['Общо']) : null);
+                let nq = n['Количество'] !== undefined ? parseFloat(n['Количество']) : (n['Общо'] !== undefined ? parseFloat(n['Общо']) : null);
+                if (nq === null && n['Ново Количество'] !== undefined) nq = parseFloat(n['Ново Количество']);
+                let diffQty = (oq !== null && nq !== null) ? (nq - oq) : (nq || 0);
+                let diffSign = diffQty > 0 ? '+' : '';
+
+                // 1. Проверка за Ревизия (от бутона в Инвентарен детектив)
+                let matchRev = null;
+                if (log.action_type === 'REVISION') {
+                    matchRev = { checked_by: n['Проверил'], notes: n['Бележка'] };
+                } else if (globalAllData.recentChecks && globalAllData.recentChecks.length > 0) {
+                    matchRev = globalAllData.recentChecks.find(c => {
+                        let cTs = parseSafeTs(c.created_at);
+                        let tDiff = Math.abs(cTs - logTs);
+                        let qtyMatch = (nq !== null && Math.abs((parseFloat(c.actual_qty) || 0) - nq) < 0.01) ||
+                                       (Math.abs((parseFloat(c.difference) || 0) - diffQty) < 0.01);
+                        return tDiff < 300000 && qtyMatch;
+                    });
+                }
+
+                if (matchRev) {
+                    let checker = matchRev.checked_by || 'Администратор';
+                    let noteText = matchRev.notes ? ` <span style="color:#94a3b8; font-style:italic;">("${matchRev.notes}")</span>` : '';
+                    let changeText = (oq !== null && nq !== null && oq !== nq)
+                        ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
+                        : `засечено на <span style="color:#10b981; font-weight:bold;">${nq || 0} бр.</span>`;
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: 📋 <b style="color:#38bdf8;">Ревизия (Засичане)</b>: ${changeText} [Проверил: <b>${checker}</b>]${noteText}</li>`;
+                }
+
+                // 2. Проверка за отчет през карта / терминал или служебна корекция от админ
+                let matchOtchet = null;
+                if (globalAllData.rawOtcheti && globalAllData.rawOtcheti.length > 0) {
+                    let targetQty = (oq !== null && nq !== null) ? Math.abs(diffQty) : (nq || 0);
+                    matchOtchet = globalAllData.rawOtcheti.find(r => {
+                        let rTs = parseSafeTs(r['Дата']);
+                        let tDiff = Math.abs(rTs - logTs);
+                        let q = Math.abs(parseFloat(r['Количество']) || 0);
+                        let qtyMatch = Math.abs(q - targetQty) < 0.01;
+                        
+                        // Съвпадение по време (до 10 минути разлика)
+                        if (qtyMatch && tDiff < 600000) return true;
+
+                        // Съвпадение по форматирана дата/час (до минута)
+                        let rLocStr = parseSafeDate(r['Дата']).toLocaleString('bg-BG');
+                        if (qtyMatch && (rLocStr === dStr || rLocStr.slice(0, 16) === dStr.slice(0, 16))) return true;
+
+                        return false;
+                    });
+                }
+
+                let opWorker = matchOtchet ? String(matchOtchet['Оператор'] || '').trim() : '';
+                let isSysManual = opWorker.includes('СИСТЕМА') || opWorker.includes('Корекция');
+
+                // Ако е отчет от карта / терминал
+                if (matchOtchet && !isSysManual) {
+                    let isPr = isProbaOtchet(matchOtchet);
+                    let pPlan = String(matchOtchet['ID План'] || '').trim();
+                    let badgeTitle = isPr ? `🟣 <b style="color:#c084fc;">Отчетено по ЛИЛАВА КАРТА (🧪 ${pPlan || 'ПРОБА'})</b>` : `🟢 <b style="color:#10b981;">Отчетено през карта / терминал</b>`;
+                    let valColor = isPr ? `color:#c084fc; font-weight:bold;` : `color:#10b981; font-weight:bold;`;
+                    if (log.action_type === 'INSERT') {
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: ${badgeTitle}: добавени първоначални <b>${nq || 0} бр.</b> [Оператор: <b>${opWorker}</b>]</li>`;
+                    } else {
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: ${badgeTitle}: <span style="${valColor}">+${diffQty} бр.</span> (от ${oq} на <b>${nq} бр.</b>) [Оператор: <b>${opWorker}</b>]</li>`;
+                    }
+                }
+
+                // 3. Ръчна корекция през Админ панела
+                if (log.action_type === 'MANUAL_ADJUSTMENT' || isSysManual) {
+                    let changeText = (oq !== null && nq !== null && oq !== nq)
+                        ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
+                        : `променено на <span style="color:#10b981; font-weight:bold;">${nq || 0} бр.</span>`;
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция (Админ панел)</b>: ${changeText}</li>`;
+                }
+
+                // 4. Обикновени INSERT / UPDATE / DELETE от склад
+                if (log.action_type === 'INSERT') {
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: 📦 <b style="color:#10b981;">Добавен в склад</b> с <b>${nq || 0} бр.</b></li>`;
+                } else if (log.action_type === 'UPDATE') {
+                    let changeText = (oq !== null && nq !== null && oq !== nq) 
+                        ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
+                        : `редакция на запис в склад`;
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция в склад</b>: ${changeText}</li>`;
+                } else if (log.action_type === 'DELETE') {
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: <b style="color:#ef4444;">Изтрит от склад</b> (беше ${oq || 0} бр.)</li>`;
+                }
+                return `<li style="margin-bottom:4px;">🕒 ${dStr}: Действие ${log.action_type}</li>`;
+            });
+            auditLinesHtml = `
+                <div style="margin-top:10px; text-align:left; font-size:0.8rem; background:rgba(15,23,42,0.8); padding:8px 12px; border-radius:6px; border:1px solid #334155;">
+                    <div style="color:#38bdf8; font-weight:bold; margin-bottom:5px; font-size:0.85rem;">🔍 История на движения и отчети:</div>
+                    <ul style="margin:0; padding-left:16px; color:#cbd5e1; list-style-type:disc; line-height:1.4;">
+                        ${items.join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
         let physicalStockHtml = '';
         if (isLastOp) {
             let diff = stockHere - cBalance;
             let diffSign = diff > 0 ? '+' : '';
             let diffColor = diff === 0 ? '#94a3b8' : (diff > 0 ? '#10b981' : '#ef4444');
             
-            let auditLinesHtml = '';
-            let allTimelineEvents = [];
-
-            // 1. Складови промени (audit_logs)
-            (globalAllData.auditHistory || []).forEach(l => {
-                let lTs = parseSafeTs(l.changed_at);
-                if (lTs >= curFromTs && lTs < curToTs) {
-                    allTimelineEvents.push({ type: 'audit', ts: lTs, data: l });
-                }
-            });
-
-            // 2. Отчетени бракове (otcheti със статус 'брак')
-            (globalAllData.rawOtcheti || []).forEach(r => {
-                let st = String(r['Статус'] || '').trim().toLowerCase();
-                let rTs = parseSafeTs(r['Дата']);
-                if (st === 'брак' && rTs >= curFromTs && rTs < curToTs) {
-                    allTimelineEvents.push({ type: 'scrap', ts: rTs, data: r });
-                }
-            });
-
-            allTimelineEvents.sort((a,b) => b.ts - a.ts);
-
-            let logsToShow = allTimelineEvents.slice(0, 6);
-            if (logsToShow.length > 0) {
-                let items = logsToShow.map(ev => {
-                    if (ev.type === 'scrap') {
-                        let r = ev.data;
-                        let dStr = parseSafeDate(r['Дата']).toLocaleString('bg-BG');
-                        let q = parseFloat(r['Количество']) || 1;
-                        let opText = r['Операция'] ? ` (${r['Операция']})` : '';
-                        let opWorker = r['Оператор'] || 'Неизвестен';
-                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🔴 <b style="color:#ef4444;">Отчетен БРАК</b>: <b>${q} бр.</b>${opText} [Оператор: <b>${opWorker}</b>]</li>`;
-                    }
-
-                    let log = ev.data;
-                    let dStr = parseSafeDate(log.changed_at).toLocaleString('bg-BG');
-                    let logTs = parseSafeTs(log.changed_at);
-                    let o = log.old_data || {};
-                    let n = log.new_data || {};
-                    let oq = o['Количество'] !== undefined ? parseFloat(o['Количество']) : (o['Общо'] !== undefined ? parseFloat(o['Общо']) : null);
-                    let nq = n['Количество'] !== undefined ? parseFloat(n['Количество']) : (n['Общо'] !== undefined ? parseFloat(n['Общо']) : null);
-                    if (nq === null && n['Ново Количество'] !== undefined) nq = parseFloat(n['Ново Количество']);
-                    let diffQty = (oq !== null && nq !== null) ? (nq - oq) : (nq || 0);
-                    let diffSign = diffQty > 0 ? '+' : '';
-
-                    // 1. Проверка за Ревизия (от бутона в Инвентарен детектив)
-                    let matchRev = null;
-                    if (log.action_type === 'REVISION') {
-                        matchRev = { checked_by: n['Проверил'], notes: n['Бележка'] };
-                    } else if (globalAllData.recentChecks && globalAllData.recentChecks.length > 0) {
-                        matchRev = globalAllData.recentChecks.find(c => {
-                            let cTs = parseSafeTs(c.created_at);
-                            let tDiff = Math.abs(cTs - logTs);
-                            let qtyMatch = (nq !== null && Math.abs((parseFloat(c.actual_qty) || 0) - nq) < 0.01) ||
-                                           (Math.abs((parseFloat(c.difference) || 0) - diffQty) < 0.01);
-                            return tDiff < 300000 && qtyMatch;
-                        });
-                    }
-
-                    if (matchRev) {
-                        let checker = matchRev.checked_by || 'Администратор';
-                        let noteText = matchRev.notes ? ` <span style="color:#94a3b8; font-style:italic;">("${matchRev.notes}")</span>` : '';
-                        let changeText = (oq !== null && nq !== null && oq !== nq)
-                            ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
-                            : `засечено на <span style="color:#10b981; font-weight:bold;">${nq || 0} бр.</span>`;
-                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: 📋 <b style="color:#38bdf8;">Ревизия (Засичане)</b>: ${changeText} [Проверил: <b>${checker}</b>]${noteText}</li>`;
-                    }
-
-                    // 2. Проверка за отчет през карта / терминал или служебна корекция от админ
-                    let matchOtchet = null;
-                    if (globalAllData.rawOtcheti && globalAllData.rawOtcheti.length > 0) {
-                        let targetQty = (oq !== null && nq !== null) ? Math.abs(diffQty) : (nq || 0);
-                        matchOtchet = globalAllData.rawOtcheti.find(r => {
-                            let rTs = parseSafeTs(r['Дата']);
-                            let tDiff = Math.abs(rTs - logTs);
-                            let q = Math.abs(parseFloat(r['Количество']) || 0);
-                            let qtyMatch = Math.abs(q - targetQty) < 0.01;
-                            
-                            // Съвпадение по време (до 10 минути разлика)
-                            if (qtyMatch && tDiff < 600000) return true;
-
-                            // Съвпадение по форматирана дата/час (до минута)
-                            let rLocStr = parseSafeDate(r['Дата']).toLocaleString('bg-BG');
-                            if (qtyMatch && (rLocStr === dStr || rLocStr.slice(0, 16) === dStr.slice(0, 16))) return true;
-
-                            return false;
-                        });
-                    }
-
-                    let opWorker = matchOtchet ? String(matchOtchet['Оператор'] || '').trim() : '';
-                    let isSysManual = opWorker.includes('СИСТЕМА') || opWorker.includes('Корекция');
-
-                    // Ако е отчет от карта / терминал (има реален оператор, а не системата)
-                    if (matchOtchet && !isSysManual) {
-                        if (log.action_type === 'INSERT') {
-                            return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🟢 <b style="color:#10b981;">Отчетено през карта / терминал</b>: добавени първоначални <b>${nq || 0} бр.</b> [Оператор: <b>${opWorker}</b>]</li>`;
-                        } else {
-                            return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🟢 <b style="color:#10b981;">Отчетено през карта / терминал</b>: <span style="color:#10b981; font-weight:bold;">+${diffQty} бр.</span> (от ${oq} на <b>${nq} бр.</b>) [Оператор: <b>${opWorker}</b>]</li>`;
-                        }
-                    }
-
-                    // 3. Ръчна корекция през Админ панела
-                    if (log.action_type === 'MANUAL_ADJUSTMENT' || isSysManual) {
-                        let changeText = (oq !== null && nq !== null && oq !== nq)
-                            ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
-                            : `променено на <span style="color:#10b981; font-weight:bold;">${nq || 0} бр.</span>`;
-                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция (Админ панел)</b>: ${changeText}</li>`;
-                    }
-
-                    // 4. Обикновени INSERT / UPDATE / DELETE от склад
-                    if (log.action_type === 'INSERT') {
-                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: 📦 <b style="color:#10b981;">Добавен в склад</b> с <b>${nq || 0} бр.</b></li>`;
-                    } else if (log.action_type === 'UPDATE') {
-                        let changeText = (oq !== null && nq !== null && oq !== nq) 
-                            ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
-                            : `редакция на запис в склад`;
-                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция в склад</b>: ${changeText}</li>`;
-                    } else if (log.action_type === 'DELETE') {
-                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: <b style="color:#ef4444;">Изтрит от склад</b> (беше ${oq || 0} бр.)</li>`;
-                    }
-                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: Действие ${log.action_type}</li>`;
-                });
-                auditLinesHtml = `
-                    <div style="margin-top:10px; text-align:left; font-size:0.8rem; background:rgba(15,23,42,0.8); padding:8px 12px; border-radius:6px; border:1px solid #334155;">
-                        <div style="color:#38bdf8; font-weight:bold; margin-bottom:5px; font-size:0.85rem;">🔍 История на движения и отчети:</div>
-                        <ul style="margin:0; padding-left:16px; color:#cbd5e1; list-style-type:disc; line-height:1.4;">
-                            ${items.join('')}
-                        </ul>
-                    </div>
-                `;
-            } else if (diff !== 0) {
+            if (!auditLinesHtml && diff !== 0) {
                 auditLinesHtml = `
                     <div style="margin-top:8px; font-size:0.75rem; color:#94a3b8; text-align:center; background:rgba(0,0,0,0.2); padding:6px; border-radius:4px;">
                         ℹ️ Разликата от ${diffSign}${diff} бр. идва от заварено начално салдо в склада, доставка като суровина или ръчна корекция.
@@ -807,6 +951,7 @@ async function renderVSM(dateKey) {
                      <span style="color:#94a3b8;">Склад спрямо натрупани (WIP):</span>
                      <b style="color:${diffColor}; font-weight:bold;">${diffSign}${diff} бр.</b>
                  </div>` : ''}
+                 ${auditLinesHtml}
                </div>`;
         }
         
@@ -870,18 +1015,62 @@ async function renderVSM(dateKey) {
             </button>
         `;
 
-        let windowHtml = `
-         <div class="vsm-target-node" style="${!isLastOp ? 'border-color:#475569;' : ''}">
-            <div class="target-title" style="font-size:1.3rem;">
-               ${displayName} 
-               ${displayCode ? `<br><span style="font-size:0.9rem; color:#94a3b8; font-weight:600;">${displayCode}</span>` : ''}
-               <br><span style="font-size:1rem; color:var(--primary)">(${opName})</span>
-            </div>
-            <div class="target-stats">
+        // 🧪 Оповестяване за Лилава карта (Проба) на самата операция
+        let isProbaOperation = probaHere > 0;
+        let probaBadgeHtml = '';
+        if (isProbaOperation) {
+            let planText = opPlans.size > 0 ? ` (${Array.from(opPlans).join(', ')})` : '';
+            probaBadgeHtml = `
+               <div style="display:flex; justify-content:center; margin-top:6px;">
+                  <span style="background:linear-gradient(135deg, rgba(124,58,237,0.3) 0%, rgba(168,85,247,0.2) 100%); color:#e9d5ff; border:1px solid #a855f7; padding:4px 12px; border-radius:20px; font-size:0.85rem; font-weight:800; display:inline-flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(168,85,247,0.35);">
+                     🧪 ЛИЛАВА КАРТА (ПРОБА: ${probaHere} бр.${planText})
+                  </span>
+               </div>
+            `;
+        }
+
+        let cardStyle = isProbaOperation
+            ? 'border: 2px solid #a855f7; background: linear-gradient(180deg, rgba(124, 58, 237, 0.18) 0%, rgba(15, 23, 42, 0.95) 100%); box-shadow: 0 0 25px rgba(124, 58, 237, 0.25);'
+            : (!isLastOp ? 'border-color:#475569;' : '');
+
+        let prodRowHtml = '';
+        if (isProbaOperation && probaHere === prodHere && prodHere > 0) {
+            prodRowHtml = `
+               <div class="target-row">
+                 <span style="color:#cbd5e1">${periodLabel}</span>
+                 <span class="vsm-stat" style="color:#c084fc; font-weight:800;">+${prodHere} бр. <span style="font-size:0.82rem; background:rgba(124,58,237,0.25); border:1px solid #a855f7; padding:2px 7px; border-radius:8px;">🧪 Проба</span></span>
+               </div>
+            `;
+        } else if (isProbaOperation && probaHere > 0) {
+            prodRowHtml = `
                <div class="target-row">
                  <span style="color:#cbd5e1">${periodLabel}</span>
                  <span class="vsm-stat prod">+${prodHere} бр.</span>
                </div>
+               <div class="target-row" style="margin-top:-4px; font-size:0.85rem; color:#c084fc;">
+                 <span>↳ от Лилава карта (Проба):</span>
+                 <b style="color:#e9d5ff; font-weight:800;">🧪 +${probaHere} бр.</b>
+               </div>
+            `;
+        } else {
+            prodRowHtml = `
+               <div class="target-row">
+                 <span style="color:#cbd5e1">${periodLabel}</span>
+                 <span class="vsm-stat prod">+${prodHere} бр.</span>
+               </div>
+            `;
+        }
+
+        let windowHtml = `
+         <div class="vsm-target-node" style="${cardStyle}">
+            <div class="target-title" style="font-size:1.3rem;">
+               ${displayName} 
+               ${displayCode ? `<br><span style="font-size:0.9rem; color:#94a3b8; font-weight:600;">${displayCode}</span>` : ''}
+               <br><span style="font-size:1rem; color:var(--primary)">(${opName})</span>
+               ${probaBadgeHtml}
+            </div>
+            <div class="target-stats">
+               ${prodRowHtml}
                ${priorInfoHtml}
                ${i < opChain.length - 1 ? `
                <div class="target-row">
@@ -902,6 +1091,10 @@ async function renderVSM(dateKey) {
                  <span style="color:#cbd5e1; font-weight:900; font-size:0.90rem;">${wipLabel}</span>
                  <span class="vsm-stat" style="color:${cBalanceColor}; font-weight:900; font-size: 1.4rem;">${cBalanceSign}${cBalance} бр.</span>
                </div>
+               ${cProbaHere > 0 ? `
+               <div style="font-size:0.80rem; color:#c084fc; text-align:right; margin-top:-3px; font-weight:700;">
+                  (вкл. 🧪 ${cProbaHere} бр. от Лилава карта)
+               </div>` : ''}
                ${physicalStockHtml}
                ${checkButtonHtml}
             </div>
