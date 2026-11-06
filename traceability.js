@@ -182,10 +182,6 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
         searchCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase(),
         searchName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()
     ]);
-    // Добавяме и варианти без съкращението "ст" (статор / стандарт), за да се покриват изписвания като МПР Ст. Вар.25 и МПР Вар. 25
-    Array.from(normCodes).forEach(nc => {
-        if (nc.includes('ст')) normCodes.add(nc.replace('ст', ''));
-    });
     normCodes.delete('');
 
     globalAllData.targetId = searchCode || cleanInput;
@@ -255,17 +251,20 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     // 3.1 Търсене в BOM таблицата (детайли и материали, вложени в детайла)
     (bomCache || []).forEach(b => {
         let pNorm = String(b['ID Родител'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        let pNormNoSt = pNorm.replace('ст', '');
-        let matchesParent = normCodes.has(pNorm) || normCodes.has(pNormNoSt);
+        let matchesParent = normCodes.has(pNorm);
         if (matchesParent) {
             let cCode = String(b['ID Компонент'] || '').trim();
             let cNorm = cCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
             if (cCode && !seenChildNorms.has(cNorm) && !normCodes.has(cNorm)) {
                 seenChildNorms.add(cNorm);
+                let cNom = nomMap[cNorm] || null;
+                let cSkl = skladMap[cCode.toUpperCase()] || skladMap[cNorm] || null;
+                let cUnit = (cNom && cNom['Единици']) || (cSkl && cSkl.unit) || b['Единици'] || 'бр.';
                 childrenRaw.push({
                     'ID Родител': b['ID Родител'],
                     'ID Компонент': cCode,
                     'Количество': b['Количество'] || 1,
+                    'Единици': cUnit,
                     'Влага се на Оп. №': b['Влага се на Оп. №'],
                     'source': 'bom'
                 });
@@ -276,18 +275,20 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     // 3.2 Търсене в Номенклатура (детайли, чийто ID Родител сочи към текущия детайл)
     (nomList || []).forEach(n => {
         let pNorm = String(n['ID Родител'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        let pNormNoSt = pNorm.replace('ст', '');
-        let matchesParent = normCodes.has(pNorm) || normCodes.has(pNormNoSt);
+        let matchesParent = normCodes.has(pNorm);
         if (matchesParent) {
             let cCode = String(n['ID Детайл'] || '').trim();
             let cNorm = cCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
             if (cCode && !seenChildNorms.has(cNorm) && !normCodes.has(cNorm)) {
                 seenChildNorms.add(cNorm);
+                let cNom = nomMap[cNorm] || null;
+                let cSkl = skladMap[cCode.toUpperCase()] || skladMap[cNorm] || null;
+                let cUnit = (cNom && cNom['Единици']) || (cSkl && cSkl.unit) || n['Единици'] || 'бр.';
                 childrenRaw.push({
                     'ID Родител': globalAllData.targetName,
                     'ID Компонент': cCode,
                     'Количество': n['Разходна норма'] || 1,
-                    'Единици': n['Единици'] || 'бр.',
+                    'Единици': cUnit,
                     'source': 'nomenklatura'
                 });
             }
@@ -300,11 +301,14 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
         let oNorm = originMat.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
         if (originMat && !seenChildNorms.has(oNorm) && !normCodes.has(oNorm)) {
             seenChildNorms.add(oNorm);
+            let oNom = nomMap[oNorm] || null;
+            let oSkl = skladMap[originMat.toUpperCase()] || skladMap[oNorm] || null;
+            let originUnit = (oNom && oNom['Единици']) || (oSkl && oSkl.unit) || 'бр.';
             childrenRaw.push({
                 'ID Родител': globalAllData.targetName,
                 'ID Компонент': originMat,
                 'Количество': matchedNom['Разходна норма'] || 1,
-                'Единици': matchedNom['Единици'] || 'бр.',
+                'Единици': originUnit,
                 'isMaterial': true,
                 'source': 'nom_parent'
             });
@@ -319,8 +323,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
 
     (bomCache || []).forEach(b => {
         let cNorm = String(b['ID Компонент'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        let cNormNoSt = cNorm.replace('ст', '');
-        let matchesComp = normCodes.has(cNorm) || normCodes.has(cNormNoSt);
+        let matchesComp = normCodes.has(cNorm);
         if (matchesComp) {
             let pCode = String(b['ID Родител'] || '').trim();
             let pNorm = pCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
@@ -608,7 +611,7 @@ async function renderVSM(dateKey) {
             let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
             let sklEntry = skladMap[cName] || skladMap[cNorm] || null;
             let nomEntry = nomMap[cNorm] || null;
-            let unit = (b['Единици'] || (sklEntry ? sklEntry.unit : (nomEntry ? nomEntry['Единици'] : 'бр.'))) || 'бр.';
+            let unit = (nomEntry ? nomEntry['Единици'] : (sklEntry ? sklEntry.unit : b['Единици'])) || 'бр.';
             let safeCName = cName.replace(/'/g, "\\'");
             
             let isProbaConsumed = targetProba > 0;
