@@ -681,7 +681,6 @@ async function renderVSM(dateKey) {
                             : `променено на <span style="color:#10b981; font-weight:bold;">${nq || 0} бр.</span>`;
                         return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция (Админ панел)</b>: ${changeText}</li>`;
                     }
-                    }
 
                     // 4. Обикновени INSERT / UPDATE / DELETE от склад
                     if (log.action_type === 'INSERT') {
