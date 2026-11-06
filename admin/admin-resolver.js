@@ -329,13 +329,14 @@ function resolveStockForPart(partCode, requiredQty = 1, skladMap = {}, invMap = 
     } else if (hasInv) {
         const free = inv.totalFree;
         const total = inv.totalStock;
+        const subBreakdown = formatStockOpBreakdownInline(inv);
         if (free >= requiredQty) {
-            badgeHtml = `<span class="resolver-stock-ok">🟢 Свободни: <b>${free.toLocaleString('bg-BG')} бр.</b> (Общо: ${total.toLocaleString('bg-BG')})</span>`;
+            badgeHtml = `<span class="resolver-stock-ok">🟢 Свободни: <b>${free.toLocaleString('bg-BG')} бр.</b> (Общо: ${total.toLocaleString('bg-BG')})${subBreakdown}</span>`;
             isOk = true;
         } else if (free > 0) {
-            badgeHtml = `<span class="resolver-stock-deficit">🟡 Свободни: <b>${free.toLocaleString('bg-BG')} бр.</b> (Общо: ${total.toLocaleString('bg-BG')})</span>`;
+            badgeHtml = `<span class="resolver-stock-deficit">🟡 Свободни: <b>${free.toLocaleString('bg-BG')} бр.</b> (Общо: ${total.toLocaleString('bg-BG')})${subBreakdown}</span>`;
         } else if (total > 0) {
-            badgeHtml = `<span class="resolver-stock-deficit">🟡 Всички ${total.toLocaleString('bg-BG')} бр. са запазени (0 свободни)</span>`;
+            badgeHtml = `<span class="resolver-stock-deficit">🟡 Всички ${total.toLocaleString('bg-BG')} бр. са запазени (0 свободни)${subBreakdown}</span>`;
         } else {
             badgeHtml = `<span class="resolver-stock-none">⚪ 0 бр. свободни (в Склад Детайли)</span>`;
         }
@@ -364,6 +365,78 @@ function resolveStockForPart(partCode, requiredQty = 1, skladMap = {}, invMap = 
         badgeHtml,
         isOk
     };
+}
+
+function formatStockOpBreakdown(inv, routes = []) {
+    if (!inv || !inv.items || inv.items.length === 0) return '';
+    let byOp = {};
+    inv.items.forEach(it => {
+        let op = String(it['Операция'] || it['Оригинална Операция'] || it['Локация'] || 'Готов продукт').trim();
+        if (!op || op === '-' || op.toLowerCase() === 'null') op = 'Готов продукт';
+        let q = it['Количество'] != null && !isNaN(parseFloat(it['Количество']))
+            ? parseFloat(it['Количество'])
+            : ((it['Общо'] != null && !isNaN(parseFloat(it['Общо']))) ? parseFloat(it['Общо']) : (parseFloat(it['Свободни']) || 0));
+        byOp[op] = (byOp[op] || 0) + q;
+    });
+
+    let entries = Object.entries(byOp).filter(([op, qty]) => qty > 0);
+    if (entries.length === 0) return '';
+
+    if (entries.length === 1 && (entries[0][0].toLowerCase() === 'готов продукт' || entries[0][0].toLowerCase() === 'склад')) {
+        return '';
+    }
+
+    let lastRouteOpName = '';
+    if (routes && routes.length > 0) {
+        lastRouteOpName = String(routes[routes.length - 1]['Име на операция'] || '').trim();
+    }
+
+    entries.sort((a, b) => {
+        let aIsGp = a[0].toLowerCase().includes('готов') || a[0].toLowerCase().includes('склад');
+        let bIsGp = b[0].toLowerCase().includes('готов') || b[0].toLowerCase().includes('склад');
+        if (aIsGp && !bIsGp) return 1;
+        if (!aIsGp && bIsGp) return -1;
+        return b[1] - a[1];
+    });
+
+    let badges = entries.map(([op, qty]) => {
+        let isGp = op.toLowerCase().includes('готов') || op.toLowerCase().includes('склад');
+        let displayOp = op;
+        if (isGp && lastRouteOpName && !op.toLowerCase().includes(lastRouteOpName.toLowerCase())) {
+            displayOp = `${op} (${lastRouteOpName})`;
+        }
+        let bg = isGp ? '#dcfce7' : '#e0f2fe';
+        let text = isGp ? '#166534' : '#0369a1';
+        let border = isGp ? '#86efac' : '#7dd3fc';
+        let icon = isGp ? '🏁' : '⚙️';
+        return `<span style="display:inline-flex; align-items:center; gap:5px; background:${bg}; color:${text}; border:1.5px solid ${border}; padding:4px 10px; border-radius:6px; font-weight:800; font-size:0.92em; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,0.04);" title="Наличност на операция ${op}">
+            <span>${icon}</span> <span>${displayOp}:</span> <b>${qty.toLocaleString('bg-BG')} бр.</b>
+        </span>`;
+    });
+
+    return `
+        <div style="margin-top:10px; background:#ffffff; border:1px solid #cbd5e1; border-radius:8px; padding:8px 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            <span style="font-size:0.85em; font-weight:800; color:#334155; text-transform:uppercase; letter-spacing:0.03em;">📍 Наличност по операции:</span>
+            ${badges.join(' ')}
+        </div>
+    `;
+}
+
+function formatStockOpBreakdownInline(inv) {
+    if (!inv || !inv.items || inv.items.length <= 1) return '';
+    let byOp = {};
+    inv.items.forEach(it => {
+        let op = String(it['Операция'] || it['Локация'] || 'Готов').trim();
+        if (!op) op = 'Готов';
+        let q = it['Количество'] != null && !isNaN(parseFloat(it['Количество']))
+            ? parseFloat(it['Количество'])
+            : ((it['Общо'] != null && !isNaN(parseFloat(it['Общо']))) ? parseFloat(it['Общо']) : (parseFloat(it['Свободни']) || 0));
+        byOp[op] = (byOp[op] || 0) + q;
+    });
+    let entries = Object.entries(byOp).filter(([op, qty]) => qty > 0);
+    if (entries.length <= 1) return '';
+    let texts = entries.map(([op, qty]) => `${qty} на ${op}`);
+    return `<div style="font-size:0.8em; color:#475569; margin-top:2px; font-weight:normal;">(${texts.join(', ')})</div>`;
 }
 
 function renderResolverView() {
@@ -530,6 +603,8 @@ function renderResolverView() {
     let heroStockCardHtml = '';
     if (currentStock) {
         let stockDetailsHtml = '';
+        const opBreakdownHtml = currentStock.hasInv ? formatStockOpBreakdown(currentStock.inv, rootRoutes) : '';
+
         if (currentStock.hasInv && currentStock.hasSklad) {
             stockDetailsHtml = `
                 <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
@@ -540,12 +615,14 @@ function renderResolverView() {
                         📦 Склад Материали: <b>${currentStock.sklad.stock.toLocaleString('bg-BG')} ${currentStock.sklad.unit}</b>
                     </span>
                 </div>
+                ${opBreakdownHtml}
             `;
         } else if (currentStock.hasInv) {
             stockDetailsHtml = `
                 <span class="${currentStock.inv.totalFree > 0 ? 'resolver-stock-ok' : 'resolver-stock-none'}" style="font-size:0.95em; padding:6px 14px;">
                     🏭 Склад Детайли: <b>${currentStock.inv.totalFree.toLocaleString('bg-BG')} бр. свободни</b> (общо: ${currentStock.inv.totalStock.toLocaleString('bg-BG')} бр.)
                 </span>
+                ${opBreakdownHtml}
             `;
         } else if (currentStock.hasSklad) {
             stockDetailsHtml = `
