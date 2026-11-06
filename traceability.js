@@ -110,15 +110,6 @@ async function startSearch() {
   }
 }
 
-window.jumpToPart = function(partName) {
-  if (!partName) return;
-  const sInput = document.getElementById('searchInput');
-  if (sInput) {
-      sInput.value = partName;
-      startSearch();
-  }
-};
-
 async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     let cleanInput = rawInput.trim();
     let inputNorm = cleanInput.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
@@ -310,8 +301,6 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
 
     // 5. Fetch Inventory from the unified 'inventory' table
     globalAllData.currentStock = 0;
-    globalAllData.stockByOp = {};
-    globalAllData.invRows = [];
     
     let { data: invData } = await client
         .from('inventory')
@@ -326,13 +315,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
             let qty = (i['Общо'] !== undefined && i['Общо'] !== null) 
                 ? i['Общо'] 
                 : ((i['Количество'] !== undefined && i['Количество'] !== null) ? i['Количество'] : i['Свободни']);
-            let numQty = (parseFloat(String(qty || '0').replace(',', '.')) || 0);
-            globalAllData.currentStock += numQty;
-
-            let op = String(i['Операция'] || '').trim().toLowerCase();
-            if (!globalAllData.stockByOp[op]) globalAllData.stockByOp[op] = 0;
-            globalAllData.stockByOp[op] += numQty;
-            globalAllData.invRows.push(i);
+            globalAllData.currentStock += (parseFloat(String(qty || '0').replace(',', '.')) || 0);
         }
     });
 
@@ -487,14 +470,13 @@ async function renderVSM(dateKey) {
             let normStr = String(b['Количество'] || '1').replace(',', '.');
             let norm = parseFloat(normStr) || 1;
             let consumedChild = targetProduced * norm;
-            let safeCName = cName.replace(/'/g, "\\'");
             
             cNodes.push(`
-              <div class="vsm-node vsm-node-clickable" style="justify-content: flex-end;" onclick="jumpToPart('${safeCName}')" title="Кликнете за отваряне на ${safeCName} в Детектива">
+              <div class="vsm-node" style="justify-content: flex-end;">
                 <span class="vsm-stat consumed" style="color:var(--text-muted); font-size:1rem;">(Норма: ${norm})</span>
                 <span class="vsm-stat consumed" style="color:var(--warning)">Изразходвани: ${consumedChild} бр.</span>
                 <span class="vsm-divider">|</span>
-                <span class="vsm-name">🔍 ${cName}</span>
+                <span class="vsm-name">${cName}</span>
               </div>
             `);
         });
@@ -560,18 +542,19 @@ async function renderVSM(dateKey) {
             totalConsumed += consumedHere;
             cumTotalConsumed += cumConsumedHere;
             
-            let safePName = originalName.replace(/'/g, "\\'");
-            let displayConsumed = consumedHere > 0 ? consumedHere : 0;
-            pNodes.push(`
-              <div class="vsm-node vsm-node-clickable" style="display:flex; flex-direction:column; align-items:flex-start;" onclick="jumpToPart('${safePName}')" title="Кликнете за отваряне на ${safePName} в Детектива">
-                <div style="display:flex; gap: 8px; align-items:center;">
-                    <span class="vsm-name">🔍 ${originalName}</span>
-                    <span class="vsm-divider">|</span>
-                    <span class="vsm-stat consumed" style="${displayConsumed === 0 ? 'color:var(--text-muted);' : ''}">Вложени: ${displayConsumed} бр.</span>
-                </div>
-                ${targetOpName ? `<div style="font-size:0.85rem; color:#94a3b8; margin-top: -3px;">(на оп. ${targetOpName})</div>` : ''}
-              </div>
-            `);
+            if (consumedHere > 0 || cumConsumedHere > 0) {
+                let displayConsumed = consumedHere > 0 ? consumedHere : 0;
+                pNodes.push(`
+                  <div class="vsm-node" style="display:flex; flex-direction:column; align-items:flex-start;">
+                    <div style="display:flex; gap: 8px; align-items:center;">
+                        <span class="vsm-name">${originalName}</span>
+                        <span class="vsm-divider">|</span>
+                        <span class="vsm-stat consumed">Вложени: ${displayConsumed} бр.</span>
+                    </div>
+                    ${targetOpName ? `<div style="font-size:0.85rem; color:#94a3b8; margin-top: -3px;">(на оп. ${targetOpName})</div>` : ''}
+                  </div>
+                `);
+            }
         });
         
         parentsFlowHtml = pNodes.length > 0 ? `<div class="col-layout">${pNodes.join('')}</div>` : `<div class="vsm-node"><span class="vsm-stat" style="color:var(--text-muted)">Няма изразходвани</span></div>`;
@@ -616,21 +599,9 @@ async function renderVSM(dateKey) {
         let cBalanceColor = cBalance < 0 ? 'var(--danger)' : (cBalance > 0 ? 'var(--success)' : 'var(--text-main)');
         let cBalanceSign = cBalance > 0 ? '+' : '';
         
-        let normOp = opName.toLowerCase().trim();
-        let stockHere = 0;
-        for (let sOp in (globalAllData.stockByOp || {})) {
-            if (!sOp) continue;
-            let sNorm = sOp.toLowerCase().trim();
-            if (sNorm.includes(normOp) || normOp.includes(sNorm)) {
-                stockHere += globalAllData.stockByOp[sOp];
-            } else if (isLastOp && (sNorm === 'готов продукт' || sNorm.includes('готов') || sNorm.includes('склад'))) {
-                stockHere += globalAllData.stockByOp[sOp];
-            }
-        }
-
         let physicalStockHtml = '';
         if (isLastOp) {
-            let diff = stockHere - cBalance;
+            let diff = globalAllData.currentStock - cBalance;
             let diffSign = diff > 0 ? '+' : '';
             let diffColor = diff === 0 ? '#94a3b8' : (diff > 0 ? '#10b981' : '#ef4444');
             
@@ -775,36 +746,15 @@ async function renderVSM(dateKey) {
             physicalStockHtml = `
                <div style="margin-top:15px; font-size: 0.95rem; text-align:center; color:var(--text-muted); background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border:1px solid #334155;">
                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                     <span>Склад (готов продукт / тази оп.):</span>
-                     <b style="color:#10b981; font-size: 1.15rem;">${stockHere} бр.</b>
-                 </div>
-                 <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; border-top:1px dashed #475569; padding-top:4px;">
-                     <span style="color:#94a3b8;">Общо в склад (всички фази):</span>
-                     <b style="color:white; font-size: 1rem;">${globalAllData.currentStock} бр.</b>
+                     <span>Склад (текущо):</span>
+                     <b style="color:white; font-size: 1.15rem;">${globalAllData.currentStock} бр.</b>
                  </div>
                  ${diff !== 0 ? `
-                 <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; border-top:1px dashed #475569; padding-top:4px; margin-top:4px;">
-                     <span style="color:#94a3b8;">Разлика готов склад спрямо WIP:</span>
+                 <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; border-top:1px dashed #475569; padding-top:4px;">
+                     <span style="color:#94a3b8;">Разлика спрямо отчетено (WIP):</span>
                      <b style="color:${diffColor}; font-weight:bold;">${diffSign}${diff} бр.</b>
                  </div>` : ''}
                  ${auditLinesHtml}
-               </div>`;
-        } else {
-            let diff = stockHere - cBalance;
-            let diffSign = diff > 0 ? '+' : '';
-            let diffColor = diff === 0 ? '#94a3b8' : (diff > 0 ? '#38bdf8' : '#f59e0b');
-
-            physicalStockHtml = `
-               <div style="margin-top:15px; font-size: 0.95rem; text-align:center; color:var(--text-muted); background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border:1px solid #334155;">
-                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                     <span>Склад (полуфабрикат на тази оп.):</span>
-                     <b style="color:#38bdf8; font-size: 1.15rem;">${stockHere} бр.</b>
-                 </div>
-                 ${diff !== 0 && stockHere > 0 ? `
-                 <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; border-top:1px dashed #475569; padding-top:4px; margin-top:4px;">
-                     <span style="color:#94a3b8;">Склад спрямо натрупани (WIP):</span>
-                     <b style="color:${diffColor}; font-weight:bold;">${diffSign}${diff} бр.</b>
-                 </div>` : ''}
                </div>`;
         }
         
@@ -863,7 +813,7 @@ async function renderVSM(dateKey) {
 
         let checkButtonHtml = `
             ${lastCheckHtml}
-            <button type="button" onclick="openRevisionModal('${opName.replace(/'/g, "\\'")}', ${cBalance}, ${stockHere})" style="margin-top: 10px; width: 100%; background: #1e293b; border: 1px dashed #38bdf8; color: #38bdf8; padding: 7px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;" onmouseover="this.style.background='#0284c7'; this.style.color='#ffffff';" onmouseout="this.style.background='#1e293b'; this.style.color='#38bdf8';">
+            <button type="button" onclick="openRevisionModal('${opName.replace(/'/g, "\\'")}', ${cBalance}, ${isLastOp ? globalAllData.currentStock : 'null'})" style="margin-top: 10px; width: 100%; background: #1e293b; border: 1px dashed #38bdf8; color: #38bdf8; padding: 7px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;" onmouseover="this.style.background='#0284c7'; this.style.color='#ffffff';" onmouseout="this.style.background='#1e293b'; this.style.color='#38bdf8';">
                <span>📋</span> <span>Засечи наличност (Ревизия)</span>
             </button>
         `;
