@@ -110,6 +110,15 @@ async function startSearch() {
   }
 }
 
+window.jumpToPart = function(partName) {
+  if (!partName) return;
+  const sInput = document.getElementById('searchInput');
+  if (sInput) {
+      sInput.value = partName;
+      startSearch();
+  }
+};
+
 async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     let cleanInput = rawInput.trim();
     let inputNorm = cleanInput.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
@@ -470,13 +479,14 @@ async function renderVSM(dateKey) {
             let normStr = String(b['Количество'] || '1').replace(',', '.');
             let norm = parseFloat(normStr) || 1;
             let consumedChild = targetProduced * norm;
+            let safeCName = cName.replace(/'/g, "\\'");
             
             cNodes.push(`
-              <div class="vsm-node" style="justify-content: flex-end;">
+              <div class="vsm-node vsm-node-clickable" style="justify-content: flex-end;" onclick="jumpToPart('${safeCName}')" title="Кликнете за отваряне на ${safeCName} в Детектива">
                 <span class="vsm-stat consumed" style="color:var(--text-muted); font-size:1rem;">(Норма: ${norm})</span>
                 <span class="vsm-stat consumed" style="color:var(--warning)">Изразходвани: ${consumedChild} бр.</span>
                 <span class="vsm-divider">|</span>
-                <span class="vsm-name">${cName}</span>
+                <span class="vsm-name">🔍 ${cName}</span>
               </div>
             `);
         });
@@ -542,19 +552,18 @@ async function renderVSM(dateKey) {
             totalConsumed += consumedHere;
             cumTotalConsumed += cumConsumedHere;
             
-            if (consumedHere > 0 || cumConsumedHere > 0) {
-                let displayConsumed = consumedHere > 0 ? consumedHere : 0;
-                pNodes.push(`
-                  <div class="vsm-node" style="display:flex; flex-direction:column; align-items:flex-start;">
-                    <div style="display:flex; gap: 8px; align-items:center;">
-                        <span class="vsm-name">${originalName}</span>
-                        <span class="vsm-divider">|</span>
-                        <span class="vsm-stat consumed">Вложени: ${displayConsumed} бр.</span>
-                    </div>
-                    ${targetOpName ? `<div style="font-size:0.85rem; color:#94a3b8; margin-top: -3px;">(на оп. ${targetOpName})</div>` : ''}
-                  </div>
-                `);
-            }
+            let safePName = originalName.replace(/'/g, "\\'");
+            let displayConsumed = consumedHere > 0 ? consumedHere : 0;
+            pNodes.push(`
+              <div class="vsm-node vsm-node-clickable" style="display:flex; flex-direction:column; align-items:flex-start;" onclick="jumpToPart('${safePName}')" title="Кликнете за отваряне на ${safePName} в Детектива">
+                <div style="display:flex; gap: 8px; align-items:center;">
+                    <span class="vsm-name">🔍 ${originalName}</span>
+                    <span class="vsm-divider">|</span>
+                    <span class="vsm-stat consumed" style="${displayConsumed === 0 ? 'color:var(--text-muted);' : ''}">Вложени: ${displayConsumed} бр.</span>
+                </div>
+                ${targetOpName ? `<div style="font-size:0.85rem; color:#94a3b8; margin-top: -3px;">(на оп. ${targetOpName})</div>` : ''}
+              </div>
+            `);
         });
         
         parentsFlowHtml = pNodes.length > 0 ? `<div class="col-layout">${pNodes.join('')}</div>` : `<div class="vsm-node"><span class="vsm-stat" style="color:var(--text-muted)">Няма изразходвани</span></div>`;
