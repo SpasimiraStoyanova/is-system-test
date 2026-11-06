@@ -65,12 +65,12 @@ async function loadAndRenderExecutiveReport(startDate, endDate) {
 
         // Fetch data in parallel
         const [otchetiRes, skladRes, invRes, eventsRes, persRes, reqsRes] = await Promise.all([
-            client.from('otcheti').select('*').gte('Дата', startIso).lte('Дата', endIso).order('Дата', { ascending: false }).limit(20000),
-            client.from('sklad').select('*').limit(20000),
-            client.from('inventory').select('*').limit(20000),
-            client.from('factory_events').select('*').limit(20000),
-            client.from('personal').select('Имейл, Име, Длъжност').limit(500),
-            client.from('material_requests').select('*').limit(200).catch(() => ({ data: [] }))
+            client.from('otcheti').select('*').gte('Дата', startIso).lte('Дата', endIso).order('Дата', { ascending: false }).limit(20000).then(res => res, () => ({ data: [] })),
+            client.from('sklad').select('*').limit(20000).then(res => res, () => ({ data: [] })),
+            client.from('inventory').select('*').limit(20000).then(res => res, () => ({ data: [] })),
+            client.from('factory_events').select('*').limit(20000).then(res => res, () => ({ data: [] })),
+            client.from('personal').select('Имейл, Име, Длъжност').limit(500).then(res => res, () => ({ data: [] })),
+            client.from('material_requests').select('*').limit(200).then(res => res, () => ({ data: [] }))
         ]);
 
         const otcheti = otchetiRes.data || [];
