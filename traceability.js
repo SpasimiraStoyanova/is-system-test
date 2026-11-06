@@ -14,6 +14,19 @@ document.getElementById('dateFrom').value = thirtyDaysAgo.toISOString().split('T
 
 window.fetchUserCheckInStatus = async function() { return true; };
 
+function parseSafeDate(dStr) {
+    if (!dStr) return new Date();
+    let s = String(dStr).trim();
+    if (s.includes('T') && !s.endsWith('Z') && !s.includes('+') && !s.slice(-6).includes('-')) {
+        s += 'Z';
+    }
+    return new Date(s);
+}
+
+function parseSafeTs(dStr) {
+    return parseSafeDate(dStr).getTime() || 0;
+}
+
 // 0. Зареждане на Номенклатура за автоматично допълване и намиране по код/име
 let nomList = [];
 let nomMap = {}; // normCode -> nom, normName -> nom
@@ -158,15 +171,15 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
             let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
             if (!normCodes.has(dbId)) return;
             globalAllData.rawOtcheti.push(r);
-            let dTs = new Date(r['Дата']).getTime();
+            let dTs = parseSafeTs(r['Дата']);
             if (dTs >= filterFromTs && dTs < filterToTs) {
-                let dateStr = r['Дата'].split('T')[0];
+                let dateStr = parseSafeDate(r['Дата']).toISOString().split('T')[0];
                 if (!globalTimeline[dateStr]) globalTimeline[dateStr] = { rawOtcheti: [], parentOtcheti: [] };
                 globalTimeline[dateStr].rawOtcheti.push(r);
             }
         });
         
-        globalAllData.rawOtcheti.sort((a,b) => new Date(a['Дата']).getTime() - new Date(b['Дата']).getTime());
+        globalAllData.rawOtcheti.sort((a,b) => parseSafeTs(a['Дата']) - parseSafeTs(b['Дата']));
         let fChainSet = new Set();
         globalAllData.rawOtcheti.forEach(r => {
             let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
@@ -274,9 +287,9 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
                     let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
                     if (pNorms.includes(dbId)) {
                         globalAllData.parentOtcheti.push(r);
-                        let dTs = new Date(r['Дата']).getTime();
+                        let dTs = parseSafeTs(r['Дата']);
                         if (dTs >= filterFromTs && dTs < filterToTs) {
-                            let dateStr = r['Дата'].split('T')[0];
+                            let dateStr = parseSafeDate(r['Дата']).toISOString().split('T')[0];
                             if (!globalTimeline[dateStr]) globalTimeline[dateStr] = { rawOtcheti: [], parentOtcheti: [] };
                             globalTimeline[dateStr].parentOtcheti.push(r);
                         }
@@ -412,7 +425,7 @@ async function renderVSM(dateKey) {
     let cumScrap = {};      // Общо брак до края на текущия интервал
 
     (globalAllData.rawOtcheti || []).forEach(r => {
-        let dTs = new Date(r['Дата']).getTime();
+        let dTs = parseSafeTs(r['Дата']);
         let st = String(r['Статус'] || '').trim().toLowerCase();
         let q = parseFloat(r['Количество']) || 0;
         let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
@@ -483,7 +496,7 @@ async function renderVSM(dateKey) {
         let cumParentOpStats = {};
 
         (globalAllData.parentOtcheti || []).forEach(r => {
-            let dTs = new Date(r['Дата']).getTime();
+            let dTs = parseSafeTs(r['Дата']);
             let st = String(r['Статус'] || '').trim().toLowerCase();
             if (st === 'отчетено' || st === 'завършено') {
                 let pName = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
@@ -595,8 +608,8 @@ async function renderVSM(dateKey) {
             let auditLinesHtml = '';
             if (globalAllData.auditHistory && globalAllData.auditHistory.length > 0) {
                 let items = globalAllData.auditHistory.slice(0, 5).map(log => {
-                    let dStr = new Date(log.changed_at).toLocaleString('bg-BG');
-                    let logTs = new Date(log.changed_at).getTime();
+                    let dStr = parseSafeDate(log.changed_at).toLocaleString('bg-BG');
+                    let logTs = parseSafeTs(log.changed_at);
                     let o = log.old_data || {};
                     let n = log.new_data || {};
                     let oq = o['Количество'] !== undefined ? parseFloat(o['Количество']) : (o['Общо'] !== undefined ? parseFloat(o['Общо']) : null);
@@ -611,7 +624,7 @@ async function renderVSM(dateKey) {
                         matchRev = { checked_by: n['Проверил'], notes: n['Бележка'] };
                     } else if (globalAllData.recentChecks && globalAllData.recentChecks.length > 0) {
                         matchRev = globalAllData.recentChecks.find(c => {
-                            let cTs = new Date(c.created_at).getTime();
+                            let cTs = parseSafeTs(c.created_at);
                             let tDiff = Math.abs(cTs - logTs);
                             let qtyMatch = (nq !== null && Math.abs((parseFloat(c.actual_qty) || 0) - nq) < 0.01) ||
                                            (Math.abs((parseFloat(c.difference) || 0) - diffQty) < 0.01);
@@ -628,27 +641,36 @@ async function renderVSM(dateKey) {
                         return `<li style="margin-bottom:4px;">🕒 ${dStr}: 📋 <b style="color:#38bdf8;">Ревизия (Засичане)</b>: ${changeText} [Проверил: <b>${checker}</b>]${noteText}</li>`;
                     }
 
-                    // 2. Проверка за отчет от терминал или служебна корекция от админ
+                    // 2. Проверка за отчет през карта / терминал или служебна корекция от админ
                     let matchOtchet = null;
                     if (globalAllData.rawOtcheti && globalAllData.rawOtcheti.length > 0) {
                         let targetQty = (oq !== null && nq !== null) ? Math.abs(diffQty) : (nq || 0);
                         matchOtchet = globalAllData.rawOtcheti.find(r => {
-                            let rTs = new Date(r['Дата']).getTime();
+                            let rTs = parseSafeTs(r['Дата']);
                             let tDiff = Math.abs(rTs - logTs);
                             let q = Math.abs(parseFloat(r['Количество']) || 0);
-                            return tDiff < 180000 && Math.abs(q - targetQty) < 0.01;
+                            let qtyMatch = Math.abs(q - targetQty) < 0.01;
+                            
+                            // Съвпадение по време (до 10 минути разлика)
+                            if (qtyMatch && tDiff < 600000) return true;
+
+                            // Съвпадение по форматирана дата/час (до минута)
+                            let rLocStr = parseSafeDate(r['Дата']).toLocaleString('bg-BG');
+                            if (qtyMatch && (rLocStr === dStr || rLocStr.slice(0, 16) === dStr.slice(0, 16))) return true;
+
+                            return false;
                         });
                     }
 
                     let opWorker = matchOtchet ? String(matchOtchet['Оператор'] || '').trim() : '';
                     let isSysManual = opWorker.includes('СИСТЕМА') || opWorker.includes('Корекция');
 
-                    // Ако е отчет от терминал (има реален оператор, а не системата)
+                    // Ако е отчет от карта / терминал (има реален оператор, а не системата)
                     if (matchOtchet && !isSysManual) {
                         if (log.action_type === 'INSERT') {
-                            return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🟢 <b style="color:#10b981;">Отчетено от терминал</b>: добавени първоначални <b>${nq || 0} бр.</b> [Оператор: <b>${opWorker}</b>]</li>`;
+                            return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🟢 <b style="color:#10b981;">Отчетено през карта / терминал</b>: добавени първоначални <b>${nq || 0} бр.</b> [Оператор: <b>${opWorker}</b>]</li>`;
                         } else {
-                            return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🟢 <b style="color:#10b981;">Отчетено от терминал</b>: <span style="color:#10b981; font-weight:bold;">+${diffQty} бр.</span> (от ${oq} на <b>${nq} бр.</b>) [Оператор: <b>${opWorker}</b>]</li>`;
+                            return `<li style="margin-bottom:4px;">🕒 ${dStr}: 🟢 <b style="color:#10b981;">Отчетено през карта / терминал</b>: <span style="color:#10b981; font-weight:bold;">+${diffQty} бр.</span> (от ${oq} на <b>${nq} бр.</b>) [Оператор: <b>${opWorker}</b>]</li>`;
                         }
                     }
 
@@ -658,6 +680,7 @@ async function renderVSM(dateKey) {
                             ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
                             : `променено на <span style="color:#10b981; font-weight:bold;">${nq || 0} бр.</span>`;
                         return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция (Админ панел)</b>: ${changeText}</li>`;
+                    }
                     }
 
                     // 4. Обикновени INSERT / UPDATE / DELETE от склад
