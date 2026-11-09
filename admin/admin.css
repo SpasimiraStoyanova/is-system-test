@@ -102,11 +102,10 @@ body {
 
 .controls-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 18px;
-  gap: 14px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  margin-bottom: 16px;
+  gap: 12px;
 }
 
 .search-box {
