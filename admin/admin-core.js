@@ -1410,6 +1410,16 @@ window.massLogisticsAction = async function(month, year) {
     }
 };
 
+function escapeHtml(str) {
+    if (str === undefined || str === null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 window.openMrpModal = async function() {
     try {
         Swal.fire({title: 'Анализ на нуждите...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
@@ -1489,6 +1499,8 @@ window.openMrpModal = async function() {
         if (deficits.length === 0) {
             html = `<div style="text-align:center; padding: 40px; font-size:1.2em; color:#059669; font-weight:bold;">✅ Няма критични липси! Всички материали са над минимума.</div>`;
         } else {
+            deficits.sort((a,b) => b.missing - a.missing);
+            window.__mrpDeficits = deficits;
             html = `<table class="minimal-table" style="width:100%; text-align:left; border-collapse:collapse;">
                 <thead><tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">
                     <th style="padding:10px;">Материал</th>
@@ -1499,15 +1511,15 @@ window.openMrpModal = async function() {
                     <th style="padding:10px; text-align:center;">Действие</th>
                 </tr></thead>
                 <tbody>`;
-            deficits.sort((a,b) => b.missing - a.missing).forEach(d => {
+            deficits.forEach((d, idx) => {
                 html += `<tr style="border-bottom:1px solid #e2e8f0;">
-                    <td style="padding:10px; font-weight:bold; color:#0f172a;">${d.item}</td>
+                    <td style="padding:10px; font-weight:bold; color:#0f172a;">${escapeHtml(d.item)}</td>
                     <td style="padding:10px; text-align:center;">${d.stock}</td>
                     <td style="padding:10px; text-align:center; color:#d97706;">${d.demand}</td>
                     <td style="padding:10px; text-align:center; color:#ef4444; font-weight:bold;">${d.free}</td>
                     <td style="padding:10px; text-align:center;">${d.min}</td>
                     <td style="padding:10px; text-align:center;">
-                        <button class="btn-primary" onclick="window.createOrderForDeficit('${d.item}', ${d.missing})" style="background:#3b82f6; padding: 4px 10px; font-size: 0.85em;">➕ Поръчай</button>
+                        <button type="button" class="btn-primary" onclick="window.createOrderForDeficitByIndex(${idx})" style="background:#3b82f6; padding: 4px 10px; font-size: 0.85em; cursor:pointer;">➕ Поръчай</button>
                     </td>
                 </tr>`;
             });
@@ -1523,22 +1535,34 @@ window.openMrpModal = async function() {
     }
 };
 
+window.createOrderForDeficitByIndex = function(index) {
+    const d = window.__mrpDeficits && window.__mrpDeficits[index];
+    if (!d) return;
+    window.createOrderForDeficit(d.item, d.missing);
+};
+
 window.createOrderForDeficit = function(item, recommendedQty) {
-    document.getElementById('mrpModalBackdrop').style.display = 'none';
+    const mrpModal = document.getElementById('mrpModalBackdrop');
+    if (mrpModal) mrpModal.style.display = 'none';
     
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        if(btn.innerText.includes('Поръчки')) btn.click();
-    });
+    if (typeof switchTab === 'function' && currentTab !== 'porachki') {
+        switchTab('porachki');
+    }
     
-    setTimeout(() => {
+    if (typeof openAddModal === 'function') {
         openAddModal();
-        setTimeout(() => {
-            let itemInput = document.getElementById('inp_Материал');
-            let qtyInput = document.getElementById('inp_Количество');
-            if(itemInput) itemInput.value = item;
-            if(qtyInput) qtyInput.value = recommendedQty;
-        }, 300);
-    }, 100);
+    }
+    
+    const fillInputs = () => {
+        const itemInput = document.getElementById('inp_Материал');
+        const qtyInput = document.getElementById('inp_Количество');
+        if (itemInput) itemInput.value = item || '';
+        if (qtyInput) qtyInput.value = (recommendedQty !== undefined && recommendedQty !== null) ? recommendedQty : '';
+    };
+    
+    fillInputs();
+    setTimeout(fillInputs, 50);
+    setTimeout(fillInputs, 200);
 };
 
 function openAuditModal() {
