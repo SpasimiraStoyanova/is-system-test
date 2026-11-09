@@ -1048,35 +1048,25 @@ function calculateOperationStates(node, children, allNodesMap) {
                     let allPackets = [];
                     let addedIds = new Set();
 
-                    if (variant === '25') {
+                    if (variant === '25' || !variant) {
                         Object.values(allNodesMap).forEach(n => {
                             if (isPacketNode(n) && !addedIds.has(n.id)) {
                                 addedIds.add(n.id);
-                                allPackets.push(n);
+                                let pNode = Object.assign({}, n);
+                                if (pNode.operations) {
+                                    pNode.operations = [...pNode.operations];
+                                    let nodeName = (pNode.displayName || pNode.code || '').toLowerCase();
+                                    // За детайла "Роторен пак. вар. 25 напудрен" на този монитор се показва САМО оп. 10 Пудрене 1
+                                    if (nodeName.includes('напудрен')) {
+                                        pNode.operations = pNode.operations.filter(o => {
+                                            let opName = (o.name || '').toLowerCase();
+                                            return opName.includes('пудрене');
+                                        });
+                                    }
+                                }
+                                allPackets.push(pNode);
                             }
                         });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Standalone items stay in resolvers lane
                     } else if (variant === '11') {
                         // For Montaj 1: standalone plan items without subassemblies
