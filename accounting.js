@@ -229,11 +229,102 @@ const hotInvoice = new Handsontable(document.getElementById('grid-invoice'), {
             setTimeout(() => {
                 let total = hotInvoice.getData().reduce((sum, r) => sum + (parseFloat(r[6]) || 0), 0);
                 document.getElementById('invoice-total').innerText = total.toFixed(2);
-            }, 50);
+                saveActiveInvoiceDraft();
+            }, 60);
+        } else {
+            saveActiveInvoiceDraft();
         }
     },
     licenseKey: 'non-commercial-and-evaluation'
 });
+
+// ==========================================
+// 💾 АКТИВНА РАБОТНА ФАКТУРА (DRAFT PERSISTENCE)
+// ==========================================
+function saveActiveInvoiceDraft() {
+    if (!hotInvoice) return;
+    try {
+        const rawData = hotInvoice.getSourceData();
+        const validRows = (rawData || []).filter(r => r && (r.item_no || r.description) && (parseFloat(r.qty) > 0 || parseFloat(r.amount) > 0 || r.unit_cost !== undefined));
+        
+        if (validRows.length === 0) {
+            return;
+        }
+
+        const draft = {
+            invoice_number: document.getElementById('invoice-number')?.value || '',
+            invoice_date: document.getElementById('invoice-date')?.value || '',
+            invoice_header_date: document.getElementById('invoice-header-date')?.value || '',
+            rate: document.getElementById('invoice-rate')?.value || '',
+            total: document.getElementById('invoice-total')?.innerText || '0.00',
+            rows: validRows,
+            saved_at: new Date().toISOString()
+        };
+
+        localStorage.setItem('acc_active_invoice_draft', JSON.stringify(draft));
+    } catch (e) {
+        console.warn('Error saving invoice draft:', e);
+    }
+}
+
+function restoreActiveInvoiceDraft() {
+    if (!hotInvoice) return false;
+    try {
+        const saved = localStorage.getItem('acc_active_invoice_draft');
+        if (!saved) return false;
+        const draft = JSON.parse(saved);
+        if (!draft || !draft.rows || draft.rows.length === 0) return false;
+
+        if (draft.invoice_number && document.getElementById('invoice-number')) {
+            document.getElementById('invoice-number').value = draft.invoice_number;
+        }
+        if (draft.invoice_date && document.getElementById('invoice-date')) {
+            document.getElementById('invoice-date').value = draft.invoice_date;
+        }
+        if (draft.invoice_header_date && document.getElementById('invoice-header-date')) {
+            document.getElementById('invoice-header-date').value = draft.invoice_header_date;
+        }
+        if (draft.rate && document.getElementById('invoice-rate')) {
+            document.getElementById('invoice-rate').value = draft.rate;
+        }
+        if (draft.total && document.getElementById('invoice-total')) {
+            document.getElementById('invoice-total').innerText = draft.total;
+        }
+
+        hotInvoice.loadData(draft.rows);
+        setTimeout(() => hotInvoice.render(), 150);
+        return true;
+    } catch (e) {
+        console.warn('Error restoring invoice draft:', e);
+        return false;
+    }
+}
+
+window.clearActiveInvoiceDraft = function() {
+    Swal.fire({
+        title: 'Изчистване на фактурата?',
+        text: 'Искате ли да изчистите текущата генерирана фактура от екрана?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc2626',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: '🗑️ Да, изчисти',
+        cancelButtonText: 'Отказ'
+    }).then(result => {
+        if (result.isConfirmed) {
+            localStorage.removeItem('acc_active_invoice_draft');
+            hotInvoice.loadData(Handsontable.helper.createEmptySpreadsheetData(30, 20));
+            document.getElementById('invoice-total').innerText = '0.00';
+            Swal.fire({
+                icon: 'success',
+                title: 'Изчистено',
+                text: 'Фактурата беше изчистена. Можете да генерирате нова.',
+                timer: 1500,
+                showConfirmButton: false
+            });
+        }
+    });
+};
 
 async function loadData(tableName, hotInstance) {
     try {
@@ -318,9 +409,22 @@ window.addEventListener('load', () => {
     loadData('acc_data', hotData);
     loadData('acc_plan', hotPlan);
     loadData('acc_materials', hotMaterials);
-    
-    // Fetch rate for today (silent on page load)
-    fetchExchangeRate(true);
+
+    // Auto-save listeners on header fields
+    ['invoice-number', 'invoice-header-date', 'invoice-date', 'invoice-rate'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', () => saveActiveInvoiceDraft());
+            el.addEventListener('change', () => saveActiveInvoiceDraft());
+        }
+    });
+
+    // Restore active generated invoice if previously generated
+    const hasDraft = restoreActiveInvoiceDraft();
+    if (!hasDraft) {
+        // Fetch rate for today only if there's no active draft
+        fetchExchangeRate(true);
+    }
 
     // Preload archive
     if (typeof loadInvoiceArchive === 'function') {
@@ -574,7 +678,8 @@ function generateInvoice() {
 
     hotInvoice.loadData(invoiceRows);
     document.getElementById('invoice-total').innerText = totalUSD.toFixed(2);
-    Swal.fire('Успех', 'INVOICE е генериран успешно!', 'success');
+    saveActiveInvoiceDraft();
+    Swal.fire('Успех', 'INVOICE е генериран успешно и остава запазен на екрана!', 'success');
 }
 
 async function fetchExchangeRate(isSilent = false) {

@@ -169,6 +169,7 @@
                 <button class="btn btn-secondary ml-2" onclick="printInvoice()"><i class="fas fa-print"></i> Печат / PDF</button>
                 <button class="btn btn-success ml-2 hide-on-print" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> Изтегли Excel</button>
                 <button class="btn btn-warning ml-2 hide-on-print font-weight-bold" onclick="saveInvoiceToArchive()" style="background-color: #d97706; border-color: #b45309; color: white;"><i class="fas fa-archive"></i> 💾 Запази в Архив</button>
+                <button class="btn btn-outline-danger ml-2 hide-on-print" onclick="clearActiveInvoiceDraft()"><i class="fas fa-trash-alt"></i> Изчисти</button>
             </div>
             
             <div id="invoice-print-area" style="background: white; padding: 20px; border: 1px solid #ccc;">
@@ -263,7 +264,7 @@
     </div>
 
     <!-- Init script -->
-    <script src="accounting.js?v=2"></script>
+    <script src="accounting.js?v=3"></script>
 
 </body>
 </html>
