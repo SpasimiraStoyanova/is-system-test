@@ -653,7 +653,7 @@ function buildForm(data = null) {
                     <button type="button" id="btnSkladActionSub" style="flex: 1; padding: 10px; background: #f1f5f9; color: #475569; border: 2px solid #cbd5e1; border-radius: 8px; font-weight: 800; cursor: pointer; transition: all 0.15s ease;" onclick="setSkladQtyMode('sub')">➖ Извади (-)</button>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="number" id="inp_skladQty" class="form-input" step="any" value="0" required 
+                    <input type="text" id="inp_skladQty" class="form-input" value="0" required 
                         oninput="if(this.value && this.value != '0') { document.getElementById('inp_skladDefects').disabled = true; } else { document.getElementById('inp_skladDefects').disabled = false; }"
                         style="font-size: 1.15em; font-weight: bold; flex: 1;">
                     <button type="button" onclick="toggleSkladQtySign()" style="padding: 10px 16px; font-size: 1.25em; font-weight: 900; background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; color: #1e293b;" title="Обърни знака (+ / -)">±</button>
@@ -664,7 +664,7 @@ function buildForm(data = null) {
             <div class="form-group">
                 <label>Количество (буфер):</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="number" id="inp_skladQtyBuffer" class="form-input" step="any" value="0" required style="flex: 1;">
+                    <input type="text" id="inp_skladQtyBuffer" class="form-input" value="0" required style="flex: 1;">
                     <button type="button" onclick="let b = document.getElementById('inp_skladQtyBuffer'); if(b) { let v = parseFloat(b.value)||0; b.value = v !== 0 ? -v : -1; }" style="padding: 10px 16px; font-size: 1.25em; font-weight: 900; background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; color: #1e293b;" title="Обърни знака (+ / -)">±</button>
                 </div>
             </div>
