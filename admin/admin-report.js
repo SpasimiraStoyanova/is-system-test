@@ -185,6 +185,7 @@ async function loadAndRenderExecutiveReport(startDate, endDate) {
         reportCachedData = {
             startDate,
             endDate,
+            todayStr,
             totalProducedQty,
             totalScrapQty,
             scrapPercentage,
@@ -216,6 +217,7 @@ function renderReportUI(data) {
     const contentEl = document.getElementById('reportModalContent');
     if (!contentEl) return;
 
+    const todayStr = data.todayStr || new Date().toISOString().split('T')[0];
     const startFormatted = data.startDate.toLocaleDateString('bg-BG');
     const endFormatted = data.endDate.toLocaleDateString('bg-BG');
 
@@ -467,13 +469,14 @@ function renderReportUI(data) {
     `;
 }
 
-function toggleCustomReportDates() {
+function toggleCustomReportDates(e) {
+    const evt = e || window.event;
     currentReportPeriod = 'custom';
     const row = document.getElementById('reportCustomDatesRow');
     if (row) row.style.display = row.style.display === 'none' ? 'flex' : 'none';
     const pills = document.querySelectorAll('.report-pill-btn');
     pills.forEach(p => p.classList.remove('active'));
-    event.target.classList.add('active');
+    if (evt && evt.target) evt.target.classList.add('active');
 }
 
 function generateReportTextSummary() {
@@ -614,6 +617,6 @@ function exportReportToExcel() {
     const wsCrit = XLSX.utils.json_to_sheet(critRows);
     XLSX.utils.book_append_sheet(wb, wsCrit, 'Критичен Склад');
 
-    const fileName = `IS_Systems_Svodka_${d.startDate.toISOString().split('T')[0]}_${d.endDate.toISOString().split('T')[0]}.xlsx`;
+    const fileName = `AMCI_Svodka_${d.startDate.toISOString().split('T')[0]}_${d.endDate.toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(wb, fileName);
 }
