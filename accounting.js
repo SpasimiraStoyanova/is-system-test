@@ -87,7 +87,17 @@ const hotNom = new Handsontable(document.getElementById('grid-nom'), {
     licenseKey: 'non-commercial-and-evaluation'
 });
 
+let searchNomDebounceTimer = null;
+
 window.searchNom = function(query) {
+    clearTimeout(searchNomDebounceTimer);
+    searchNomDebounceTimer = setTimeout(() => {
+        executeSearchNom(query);
+    }, 120);
+};
+
+function executeSearchNom(query) {
+    const searchInput = document.getElementById('search-nom');
     const q = (query || '').trim().toLowerCase();
     const countEl = document.getElementById('search-nom-count');
     const searchPlugin = hotNom.getPlugin('search');
@@ -102,14 +112,17 @@ window.searchNom = function(query) {
             hiddenRowsPlugin.showRows(allRows);
         }
         if (countEl) countEl.innerText = '';
+        hotNom.deselectCell();
         hotNom.render();
+        if (searchInput && document.activeElement !== searchInput) {
+            searchInput.focus();
+        }
         return;
     }
 
-    // 1. Highlight matching cells using search plugin
-    let searchResults = [];
+    // 1. Highlight matching cells using search plugin (visual only)
     if (searchPlugin) {
-        searchResults = searchPlugin.query(q) || [];
+        searchPlugin.query(q);
     }
 
     // 2. Filter rows using hiddenRows plugin
@@ -158,14 +171,20 @@ window.searchNom = function(query) {
         }
     }
 
+    // Explicitly deselect any cell so Handsontable NEVER captures keystrokes
+    hotNom.deselectCell();
     hotNom.render();
 
-    // 3. Scroll to first match
-    if (searchResults && searchResults.length > 0) {
-        hotNom.scrollViewportTo(searchResults[0].row, searchResults[0].col);
-        hotNom.selectCell(searchResults[0].row, searchResults[0].col);
+    // Ensure search input strictly keeps focus and cursor position
+    if (searchInput) {
+        const start = searchInput.selectionStart;
+        const end = searchInput.selectionEnd;
+        searchInput.focus();
+        if (start !== null && end !== null) {
+            try { searchInput.setSelectionRange(start, end); } catch (e) {}
+        }
     }
-};
+}
 
 const hotData = new Handsontable(document.getElementById('grid-data'), {
     data: [],
