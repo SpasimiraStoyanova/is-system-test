@@ -79,14 +79,92 @@ const hotNom = new Handsontable(document.getElementById('grid-nom'), {
     autoColumnSize: false,
     search: true,
     filters: true,
+    hiddenRows: {
+        rows: [],
+        indicators: false
+    },
     dropdownMenu: true,
     licenseKey: 'non-commercial-and-evaluation'
 });
 
 window.searchNom = function(query) {
+    const q = (query || '').trim().toLowerCase();
+    const countEl = document.getElementById('search-nom-count');
     const searchPlugin = hotNom.getPlugin('search');
-    searchPlugin.query(query);
+    const hiddenRowsPlugin = hotNom.getPlugin('hiddenRows');
+
+    if (!q) {
+        if (searchPlugin) searchPlugin.query('');
+        if (hiddenRowsPlugin) {
+            const allCount = hotNom.countSourceRows();
+            const allRows = [];
+            for (let i = 0; i < allCount; i++) allRows.push(i);
+            hiddenRowsPlugin.showRows(allRows);
+        }
+        if (countEl) countEl.innerText = '';
+        hotNom.render();
+        return;
+    }
+
+    // 1. Highlight matching cells using search plugin
+    let searchResults = [];
+    if (searchPlugin) {
+        searchResults = searchPlugin.query(q) || [];
+    }
+
+    // 2. Filter rows using hiddenRows plugin
+    if (hiddenRowsPlugin) {
+        const sourceData = hotNom.getSourceData();
+        const rowsToHide = [];
+        const rowsToShow = [];
+        let matchCount = 0;
+
+        sourceData.forEach((rowObj, rowIdx) => {
+            if (!rowObj) {
+                rowsToHide.push(rowIdx);
+                return;
+            }
+
+            let isMatch = false;
+            for (const key in rowObj) {
+                const val = rowObj[key];
+                if (val !== null && val !== undefined && val !== '') {
+                    if (String(val).toLowerCase().includes(q)) {
+                        isMatch = true;
+                        break;
+                    }
+                }
+            }
+
+            if (isMatch) {
+                rowsToShow.push(rowIdx);
+                matchCount++;
+            } else {
+                rowsToHide.push(rowIdx);
+            }
+        });
+
+        hiddenRowsPlugin.showRows(rowsToShow);
+        hiddenRowsPlugin.hideRows(rowsToHide);
+
+        if (countEl) {
+            if (matchCount > 0) {
+                countEl.style.color = '#15803d';
+                countEl.innerText = `🔍 ${matchCount} ${matchCount === 1 ? 'намерен' : 'намерени'}`;
+            } else {
+                countEl.style.color = '#dc2626';
+                countEl.innerText = '❌ Няма съвпадения';
+            }
+        }
+    }
+
     hotNom.render();
+
+    // 3. Scroll to first match
+    if (searchResults && searchResults.length > 0) {
+        hotNom.scrollViewportTo(searchResults[0].row, searchResults[0].col);
+        hotNom.selectCell(searchResults[0].row, searchResults[0].col);
+    }
 };
 
 const hotData = new Handsontable(document.getElementById('grid-data'), {
@@ -342,6 +420,23 @@ async function loadData(tableName, hotInstance) {
 
 async function saveData(tableName, hotInstance) {
     try {
+        // If saving hotNom while search is active, unhide all rows first so full nomenclature is saved
+        let searchValToRestore = '';
+        if (hotInstance === hotNom) {
+            const searchInput = document.getElementById('search-nom');
+            if (searchInput && searchInput.value) {
+                searchValToRestore = searchInput.value;
+            }
+            const hiddenRowsPlugin = hotNom.getPlugin('hiddenRows');
+            if (hiddenRowsPlugin) {
+                const allCount = hotNom.countSourceRows();
+                const allRows = [];
+                for (let i = 0; i < allCount; i++) allRows.push(i);
+                hiddenRowsPlugin.showRows(allRows);
+                hotNom.render();
+            }
+        }
+
         // Get all data, filter out empty rows
         let allData = hotInstance.getData();
         let colProps = hotInstance.getSettings().columns.map(c => c.data);
@@ -387,7 +482,10 @@ async function saveData(tableName, hotInstance) {
         if (insErr) throw insErr;
         
         Swal.fire('Успех', 'Данните са запазени!', 'success');
-        loadData(tableName, hotInstance);
+        await loadData(tableName, hotInstance);
+        if (searchValToRestore && typeof window.searchNom === 'function') {
+            window.searchNom(searchValToRestore);
+        }
     } catch (err) {
         Swal.fire('Грешка', 'Неуспешен запис: ' + err.message, 'error');
     }

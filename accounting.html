@@ -7,6 +7,8 @@
     
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <!-- Handsontable CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
@@ -49,6 +51,13 @@
         }
         .hot-container .handsontable .htDimmed { color: #000 !important; }
         #grid-nom .handsontable td { white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Handsontable search result highlight */
+        .handsontable td.htSearchResult {
+            background-color: #fef08a !important;
+            color: #0f172a !important;
+            font-weight: 800 !important;
+        }
         #invoice-print-area * { color: #000 !important; }
         #invoice-print-area input { outline: none; background: transparent; font-family: inherit; }
 
@@ -110,7 +119,10 @@
             <div class="action-bar">
                 <button class="btn btn-success" onclick="saveData('acc_nomenklatura', hotNom)"><i class="fas fa-save"></i> Запази промените</button>
                 <button class="btn btn-outline-secondary" onclick="loadData('acc_nomenklatura', hotNom)"><i class="fas fa-sync"></i> Презареди</button>
-                <input type="text" id="search-nom" placeholder="Търси детайл..." class="form-control" style="width: 250px; display: inline-block; margin-left: 15px;" onkeyup="if(window.searchNom) window.searchNom(this.value)">
+                <div style="display: inline-flex; align-items: center; margin-left: 15px;">
+                    <input type="text" id="search-nom" placeholder="🔍 Търси детайл..." class="form-control" style="width: 250px; display: inline-block;" oninput="if(window.searchNom) window.searchNom(this.value)">
+                    <span id="search-nom-count" style="margin-left: 10px; font-size: 13px; font-weight: 700; white-space: nowrap;"></span>
+                </div>
                 <small class="text-info ml-3"><i class="fas fa-info-circle"></i> Можеш да копираш (Ctrl+C) от Excel и да поставиш (Ctrl+V) директно тук!</small>
             </div>
             <div id="grid-nom" class="hot-container"></div>
@@ -264,7 +276,7 @@
     </div>
 
     <!-- Init script -->
-    <script src="accounting.js?v=3"></script>
+    <script src="accounting.js?v=4"></script>
 
 </body>
 </html>
