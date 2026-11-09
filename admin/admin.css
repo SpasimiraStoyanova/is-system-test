@@ -1296,4 +1296,121 @@ tbody tr:hover td {
     box-shadow: 0 0 0 2px rgba(67, 56, 202, 0.15);
 }
 
+/* ==============================================================
+   🔍 SPOTLIGHT & КАРТОТЕКА НА ДЕТАЙЛ СТИЛОВЕ
+   ============================================================== */
+.btn-spotlight {
+  background: linear-gradient(135deg, #4f46e5, #4338ca) !important;
+  color: white !important;
+  border: none !important;
+  padding: 8px 14px !important;
+  border-radius: 8px !important;
+  font-weight: 800 !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88em;
+  box-shadow: 0 2px 5px rgba(79, 70, 229, 0.28) !important;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-spotlight:hover {
+  background: linear-gradient(135deg, #4338ca, #3730a3) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.4) !important;
+}
+
+.btn-spotlight kbd {
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.78em;
+  font-family: monospace;
+}
+
+.spotlight-result-row:hover {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+}
+
+/* ==============================================================
+   ⚡ МАСОВИ ДЕЙСТВИЯ (BULK ACTIONS)
+   ============================================================== */
+.mass-action-bar {
+  display: none;
+  background-color: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  padding: 10px 16px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  animation: slideDown 0.2s ease-out;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mass-action-text {
+  color: #1e293b;
+  font-weight: 800;
+  font-size: 0.95em;
+}
+
+.btn-mass-action {
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.86em;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.btn-mass-accept {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+.btn-mass-accept:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-1px);
+}
+
+.btn-mass-status {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: white;
+}
+.btn-mass-status:hover {
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  transform: translateY(-1px);
+}
+
+.btn-mass-period {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  color: white;
+}
+.btn-mass-period:hover {
+  background: linear-gradient(135deg, #0369a1, #075985);
+  transform: translateY(-1px);
+}
+
+.btn-mass-machine {
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: white;
+}
+.btn-mass-machine:hover {
+  background: linear-gradient(135deg, #6d28d9, #5b21b6);
+  transform: translateY(-1px);
+}
+
+
 
