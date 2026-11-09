@@ -596,40 +596,6 @@ function filterSkladDetails(val) {
     dropdown.style.display = 'block';
 }
 
-window.setSkladQtyMode = function(mode) {
-    const input = document.getElementById('inp_skladQty');
-    const btnAdd = document.getElementById('btnSkladActionAdd');
-    const btnSub = document.getElementById('btnSkladActionSub');
-    if (!input) return;
-
-    let val = parseFloat(input.value) || 0;
-    if (mode === 'sub') {
-        if (btnAdd) { btnAdd.style.background = '#f1f5f9'; btnAdd.style.color = '#475569'; btnAdd.style.borderColor = '#cbd5e1'; }
-        if (btnSub) { btnSub.style.background = '#dc2626'; btnSub.style.color = '#ffffff'; btnSub.style.borderColor = '#dc2626'; }
-        input.dataset.mode = 'sub';
-        if (val > 0) input.value = -val;
-        else if (val === 0) input.value = -1;
-    } else {
-        if (btnAdd) { btnAdd.style.background = '#16a34a'; btnAdd.style.color = '#ffffff'; btnAdd.style.borderColor = '#16a34a'; }
-        if (btnSub) { btnSub.style.background = '#f1f5f9'; btnSub.style.color = '#475569'; btnSub.style.borderColor = '#cbd5e1'; }
-        input.dataset.mode = 'add';
-        if (val < 0) input.value = Math.abs(val);
-    }
-};
-
-window.toggleSkladQtySign = function() {
-    const input = document.getElementById('inp_skladQty');
-    if (!input) return;
-    let val = parseFloat(input.value) || 0;
-    if (val !== 0) {
-        input.value = -val;
-        window.setSkladQtyMode(input.value < 0 ? 'sub' : 'add');
-    } else {
-        let currentMode = input.dataset.mode || 'add';
-        window.setSkladQtyMode(currentMode === 'add' ? 'sub' : 'add');
-    }
-};
-
 function buildForm(data = null) {
   const area = document.getElementById('formFieldsArea'); area.innerHTML = ''; const fields = tableConfigs[currentTab].fields;
   
@@ -646,28 +612,9 @@ function buildForm(data = null) {
                 <div id="skladDetailDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; max-height:200px; overflow-y:auto; background:white; border:1px solid #cbd5e1; border-radius:4px; z-index:1000; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"></div>
             </div>
             <div class="form-group"><label>Операция:</label><select id="inp_skladOp" class="form-input" required><option value="">-- Въведете детайл първо --</option></select></div>
-            <div class="form-group">
-                <label>Физическо количество:</label>
-                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                    <button type="button" id="btnSkladActionAdd" style="flex: 1; padding: 10px; background: #16a34a; color: white; border: 2px solid #16a34a; border-radius: 8px; font-weight: 800; cursor: pointer; transition: all 0.15s ease;" onclick="setSkladQtyMode('add')">➕ Прибави (+)</button>
-                    <button type="button" id="btnSkladActionSub" style="flex: 1; padding: 10px; background: #f1f5f9; color: #475569; border: 2px solid #cbd5e1; border-radius: 8px; font-weight: 800; cursor: pointer; transition: all 0.15s ease;" onclick="setSkladQtyMode('sub')">➖ Извади (-)</button>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="text" id="inp_skladQty" class="form-input" value="0" required 
-                        oninput="if(this.value && this.value != '0') { document.getElementById('inp_skladDefects').disabled = true; } else { document.getElementById('inp_skladDefects').disabled = false; }"
-                        style="font-size: 1.15em; font-weight: bold; flex: 1;">
-                    <button type="button" onclick="toggleSkladQtySign()" style="padding: 10px 16px; font-size: 1.25em; font-weight: 900; background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; color: #1e293b;" title="Обърни знака (+ / -)">±</button>
-                </div>
-                <div style="font-size: 0.82em; color: #64748b; margin-top: 4px;">💡 На телефон: Натиснете <b>„Извади (-)“</b> или бутона <b>„±“</b> за отрицателно количество.</div>
-            </div>
+            <div class="form-group"><label>Количество (физическо):</label><input type="text" id="inp_skladQty" class="form-input" value="0" required oninput="if(this.value && this.value != '0') { document.getElementById('inp_skladDefects').disabled = true; } else { document.getElementById('inp_skladDefects').disabled = false; }"></div>
             <div class="form-group"><label>БРАК (Бройки):</label><input type="number" id="inp_skladDefects" class="form-input" step="any" min="0" placeholder="0" oninput="if(this.value && this.value != '0') { document.getElementById('inp_skladQty').disabled = true; document.getElementById('inp_skladQty').value = '0'; } else { document.getElementById('inp_skladQty').disabled = false; }"></div>
-            <div class="form-group">
-                <label>Количество (буфер):</label>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="text" id="inp_skladQtyBuffer" class="form-input" value="0" required style="flex: 1;">
-                    <button type="button" onclick="let b = document.getElementById('inp_skladQtyBuffer'); if(b) { let v = parseFloat(b.value)||0; b.value = v !== 0 ? -v : -1; }" style="padding: 10px 16px; font-size: 1.25em; font-weight: 900; background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; color: #1e293b;" title="Обърни знака (+ / -)">±</button>
-                </div>
-            </div>
+            <div class="form-group"><label>Количество (буфер):</label><input type="text" id="inp_skladQtyBuffer" class="form-input" value="0" required></div>
             <div class="form-group"><label>Процент Свръхпроизводство (%):</label><input type="number" id="inp_skladScrap" class="form-input" step="any" min="0" placeholder="Без промяна"></div>
           `;
           
@@ -917,11 +864,7 @@ async function saveForm(e) {
           if (!isEditMode) {
               const det = document.getElementById('inp_skladDetail').value.trim();
               const op = document.getElementById('inp_skladOp').value.trim();
-              const qtyEl = document.getElementById('inp_skladQty');
-              let qty = parseFloat(qtyEl?.value) || 0;
-              if (qtyEl && qtyEl.dataset.mode === 'sub' && qty > 0) {
-                  qty = -qty;
-              }
+              const qty = parseFloat(document.getElementById('inp_skladQty')?.value) || 0;
               const bufferQty = parseFloat(document.getElementById('inp_skladQtyBuffer')?.value) || 0;
               const scrapInput = document.getElementById('inp_skladScrap')?.value || "";
               const scrap = parseFloat(scrapInput) || 0;
