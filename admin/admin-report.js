@@ -482,7 +482,7 @@ function generateReportTextSummary() {
     const startStr = d.startDate.toLocaleDateString('bg-BG');
     const endStr = d.endDate.toLocaleDateString('bg-BG');
 
-    let text = `📊 *ИС-СИСТЕМС | ОПЕРАТИВНА СВОДКА*\n`;
+    let text = `📊 *AMCI | ОПЕРАТИВНА СВОДКА*\n`;
     text += `Период: ${startStr} – ${endStr}\n`;
     text += `----------------------------------------\n`;
     text += `🟢 Произведена продукция: ${d.totalProducedQty.toLocaleString('bg-BG')} бр.\n`;
@@ -513,7 +513,7 @@ function generateReportTextSummary() {
         });
     }
 
-    text += `\nГенерирано автоматично от IS-SYSTEMS Cloud.`;
+    text += `\nГенерирано автоматично от AMCI Cloud.`;
     return text;
 }
 

@@ -118,7 +118,7 @@
                 <!-- Footer Bar -->
                 <div style="padding:10px 18px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; font-size:0.82em; color:#64748b;">
                     <div>💡 <b>Подсказка:</b> Кликнете върху детайл за пълно досие или превключете директно в съответния таб.</div>
-                    <div style="font-family:monospace; color:#4338ca; font-weight:bold;">ИС-СИСТЕМС SPOTLIGHT</div>
+                    <div style="font-family:monospace; color:#4338ca; font-weight:bold;">AMCI SPOTLIGHT</div>
                 </div>
             </div>
         `;
