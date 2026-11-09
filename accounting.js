@@ -319,8 +319,8 @@ window.addEventListener('load', () => {
     loadData('acc_plan', hotPlan);
     loadData('acc_materials', hotMaterials);
     
-    // Fetch rate for today
-    fetchExchangeRate();
+    // Fetch rate for today (silent on page load)
+    fetchExchangeRate(true);
 
     // Preload archive
     if (typeof loadInvoiceArchive === 'function') {
@@ -577,7 +577,7 @@ function generateInvoice() {
     Swal.fire('Успех', 'INVOICE е генериран успешно!', 'success');
 }
 
-async function fetchExchangeRate() {
+async function fetchExchangeRate(isSilent = false) {
     const dateVal = document.getElementById('invoice-date').value;
     if (!dateVal) return;
 
@@ -588,26 +588,51 @@ async function fetchExchangeRate() {
     }
 
     try {
-        let response = await fetch(`https://api.frankfurter.app/${dateVal}?from=USD&to=BGN`);
-        if (!response.ok) {
-            // Fallback to latest if future date or weekend
-            response = await fetch(`https://api.frankfurter.app/latest?from=USD&to=BGN`);
+        let rate = null;
+
+        // 1. Primary: Frankfurter API for USD -> EUR
+        try {
+            let response = await fetch(`https://api.frankfurter.app/${dateVal}?from=USD&to=EUR`);
+            if (!response.ok) {
+                // Fallback to latest
+                response = await fetch(`https://api.frankfurter.app/latest?from=USD&to=EUR`);
+            }
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.rates && data.rates.EUR) {
+                    rate = data.rates.EUR;
+                }
+            }
+        } catch (e) {
+            console.warn('Frankfurter API fetch failed, trying secondary fallback...', e);
         }
-        if (!response.ok) throw new Error('Няма данни за тази дата.');
-        const data = await response.json();
-        if (data && data.rates) {
-            let rate = data.rates.BGN;
-            if (!rate && data.rates.EUR) {
-                // If BGN is missing (because it's pegged), use EUR rate (which matches the 0.8702 from the screenshot)
-                rate = data.rates.EUR;
+
+        // 2. Secondary fallback: open.er-api.com
+        if (!rate) {
+            try {
+                const response = await fetch('https://open.er-api.com/v6/latest/USD');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.rates && data.rates.EUR) {
+                        rate = data.rates.EUR;
+                    }
+                }
+            } catch (e) {
+                console.warn('Secondary rate API failed', e);
             }
-            if (rate) {
-                document.getElementById('invoice-rate').value = rate;
-            }
+        }
+
+        if (rate) {
+            const formattedRate = typeof rate === 'number' ? Number(rate.toFixed(4)) : rate;
+            document.getElementById('invoice-rate').value = formattedRate;
+        } else {
+            throw new Error('Няма данни за курса USD/EUR.');
         }
     } catch(err) {
         console.error('Exchange rate error:', err);
-        Swal.fire('Внимание', 'Не успях да изтегля курса автоматично. Въведи го ръчно.', 'warning');
+        if (!isSilent) {
+            Swal.fire('Внимание', 'Не успях да изтегля курса автоматично. Въведи го ръчно.', 'warning');
+        }
     }
 }
 
