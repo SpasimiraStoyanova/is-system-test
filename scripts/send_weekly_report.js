@@ -1,6 +1,6 @@
 /**
- * IS-SYSTEMS Automated Weekly Executive Report
- * Sends every Monday at 08:30 AM to sstoyanova.amci@gmail.com
+ * AMCI Automated Weekly Executive Report
+ * Sends every Monday at 10:00 AM to sstoyanova.amci@gmail.com
  */
 
 const SUPABASE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
@@ -24,7 +24,7 @@ async function fetchSupabase(table, query = '') {
 }
 
 async function run() {
-    console.log('Generating IS-SYSTEMS Weekly Executive Report...');
+    console.log('Generating AMCI Weekly Executive Report...');
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     sevenDaysAgo.setHours(0, 0, 0, 0);
@@ -128,7 +128,7 @@ async function run() {
 <html lang="bg">
 <head>
   <meta charset="UTF-8">
-  <title>Седмичен отчет IS-SYSTEMS</title>
+  <title>Седмичен отчет AMCI</title>
 </head>
 <body style="margin:0; padding:0; background-color:#f1f5f9; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#1e293b;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9; padding:24px 0;">
@@ -143,7 +143,7 @@ async function run() {
                 <tr>
                   <td>
                     <div style="font-size:22px; font-weight:800; color:#ffffff; letter-spacing:-0.5px;">
-                      🏭 ИС-СИСТЕМС | Седмична сводка
+                      🏭 AMCI | Седмична сводка
                     </div>
                     <div style="font-size:14px; color:#94a3b8; margin-top:4px;">
                       Период: <b style="color:#38bdf8;">${startBg} – ${endBg}</b>
@@ -151,7 +151,7 @@ async function run() {
                   </td>
                   <td align="right">
                     <span style="background:rgba(13, 148, 136, 0.2); color:#2dd4bf; border:1px solid #0d9488; padding:6px 14px; border-radius:20px; font-size:12px; font-weight:700;">
-                      Понеделник 08:30 ч.
+                      Понеделник 10:00 ч.
                     </span>
                   </td>
                 </tr>
@@ -296,8 +296,8 @@ async function run() {
           <!-- Footer -->
           <tr>
             <td style="background:#f8fafc; padding:20px 32px; border-top:1px solid #e2e8f0; font-size:12px; color:#94a3b8; text-align:center;">
-              Този имейл е генериран автоматично за <b>${RECIPIENT_EMAIL}</b> от облачната система IS-SYSTEMS MES/ERP.<br>
-              График на изпращане: Всеки понеделник в 08:30 ч.
+              Този имейл е генериран автоматично за <b>${RECIPIENT_EMAIL}</b> от облачната система AMCI MES/ERP.<br>
+              График на изпращане: Всеки понеделник в 10:00 ч.
             </td>
           </tr>
 
@@ -318,9 +318,9 @@ async function run() {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            from: 'IS-SYSTEMS <onboarding@resend.dev>',
+            from: 'AMCI <onboarding@resend.dev>',
             to: [RECIPIENT_EMAIL],
-            subject: `📊 IS-SYSTEMS Седмичен оперативен отчет (${startBg} – ${endBg})`,
+            subject: `📊 AMCI Седмичен оперативен отчет (${startBg} – ${endBg})`,
             html: html
         })
     });
