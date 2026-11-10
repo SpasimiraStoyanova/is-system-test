@@ -1173,13 +1173,25 @@ function drawArrows() {
     const svg = document.getElementById('svg-overlay');
     if (!svg) return;
     
-    svg.style.height = document.documentElement.scrollHeight + "px";
-    svg.style.width = document.documentElement.scrollWidth + "px";
+    const scrollH = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, window.innerHeight);
+    const scrollW = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth, window.innerWidth);
+    svg.style.height = scrollH + "px";
+    svg.style.width = scrollW + "px";
     
     let html = `<defs>
         <marker id="arrow" viewBox="0 0 14 14" refX="10" refY="7" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 14 7 L 0 14 z" fill="#64748b" /></marker>
         <marker id="arrow-spool" viewBox="0 0 14 14" refX="10" refY="7" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 14 7 L 0 14 z" fill="#f3f3f3" /></marker>
     </defs>`;
+
+    // Generate strict clip paths for each window body to lock arrows inside their window
+    const windowBodies = document.querySelectorAll('.window-body');
+    windowBodies.forEach((wb, i) => {
+        const rect = wb.getBoundingClientRect();
+        const clipX = rect.left + window.scrollX;
+        const clipY = rect.top + window.scrollY;
+        html += `<clipPath id="clip_win_${i}"><rect x="${clipX}" y="${clipY}" width="${rect.width}" height="${rect.height}" /></clipPath>`;
+        wb.dataset.clipId = `clip_win_${i}`;
+    });
     
     globalConnections.forEach(conn => {
         let childDId = domIdMap[conn.from];
@@ -1192,7 +1204,8 @@ function drawArrows() {
         if (cardChild && cardParent) {
             const winChild = cardChild.closest('.window-body');
             const winParent = cardParent.closest('.window-body');
-            if (winChild !== winParent) return;
+            // Strict check: both must exist and be in the EXACT same window body
+            if (!winChild || !winParent || winChild !== winParent) return;
 
             const sourceTitle = cardChild.querySelector('.vsm-title');
             const sourceQty = cardChild.querySelector('.vsm-qty');
@@ -1202,6 +1215,13 @@ function drawArrows() {
                 const rsTitle = sourceTitle.getBoundingClientRect();
                 const rsQty = sourceQty ? sourceQty.getBoundingClientRect() : rsTitle;
                 const rt = targetEl.getBoundingClientRect();
+                const winRect = winChild.getBoundingClientRect();
+
+                // If either node is scrolled out of view vertically, do not draw arrow outside window
+                if (rsTitle.bottom < winRect.top || rsTitle.top > winRect.bottom ||
+                    rt.bottom < winRect.top || rt.top > winRect.bottom) {
+                    return;
+                }
 
                 const startX = rsQty.right + window.scrollX + 4;
                 const startY = rsTitle.top + window.scrollY + (rsTitle.height / 2);
@@ -1210,51 +1230,65 @@ function drawArrows() {
                 
                 const cpX = startX + (endX - startX) * 0.4;
                 
-                let fromType = cardChild.getAttribute('data-part-type');
-                let toType = cardParent.getAttribute('data-part-type');
-                let isFromSpool = fromType && fromType.trim().toLowerCase() === "макарички";
-                let isToSpool = toType && toType.trim().toLowerCase() === "макарички";
-                let isFromRotorPacket = fromType && fromType.trim().toLowerCase().includes("роторен пакет");
-                let isToRotorPacket = toType && toType.trim().toLowerCase().includes("роторен пакет");
-                let isFromPin = fromType && fromType.trim().toLowerCase().includes("щифт");
-                let isToPin = toType && toType.trim().toLowerCase().includes("щифт");
+                let fromType = cardChild.getAttribute('data-part-type') || '';
+                let toType = cardParent.getAttribute('data-part-type') || '';
+                let fromCode = (sourceTitle.innerText || '').toLowerCase();
+                let toCode = (targetEl.innerText || '').toLowerCase();
+
+                let isFromSpool = fromType.trim().toLowerCase() === "макарички" || fromCode.includes("макара");
+                let isToSpool = toType.trim().toLowerCase() === "макарички" || toCode.includes("макара");
+                let isFromRotorPacket = fromType.toLowerCase().includes("роторен пакет") || fromCode.includes("роторен пак");
+                let isToRotorPacket = toType.toLowerCase().includes("роторен пакет") || toCode.includes("роторен пак");
+                let isFromPin = fromType.toLowerCase().includes("щифт") || fromCode.includes("щифт");
+                let isToPin = toType.toLowerCase().includes("щифт") || toCode.includes("щифт");
+
+                let fromLower = conn.from.toLowerCase();
+                let color = "#94a3b8"; // пастелно сиво (по подразбиране)
+                
+                if (fromLower.includes("отстъп")) color = "#60a5fa"; 
+                else if (fromLower.includes("процеп")) color = "#f87171"; 
+                else if (fromLower.includes("напудрена")) color = "#fb923c"; 
+                else if (fromLower.includes("едн. чел.")) color = "#4ade80"; 
+                else if (fromLower.includes("двуст")) color = "#c084fc"; 
+                else if (fromLower.includes("11")) color = "#facc15"; // жълто за вар 11
+                else if (fromLower.includes("25")) color = "#2dd4bf"; // тюркоаз за вар 25
+                else if (fromLower.includes("мулти")) color = "#f472b6"; // розово за мулти
+                else if (fromLower.includes("nr")) color = "#a3e635"; // светлозелено за NR
+                else color = "#818cf8"; // пастелно индиго
+                
+                let shape = 'circle';
+                if (isFromRotorPacket) shape = 'triangle';
+                if (isFromPin) shape = 'diamond';
+                
+                const renderShape = (cx, cy) => {
+                    if (shape === 'circle') return `<circle cx="${cx}" cy="${cy}" r="6" fill="${color}" />`;
+                    if (shape === 'triangle') return `<polygon points="${cx},${cy-7} ${cx-6},${cy+6} ${cx+6},${cy+6}" fill="${color}" />`;
+                    if (shape === 'diamond') return `<polygon points="${cx},${cy-7} ${cx-6},${cy} ${cx},${cy+7} ${cx+6},${cy}" fill="${color}" />`;
+                    return "";
+                };
+
+                const clipAttr = winChild.dataset.clipId ? `clip-path="url(#${winChild.dataset.clipId})"` : '';
 
                 if ((isFromSpool && !isToSpool) || (isFromRotorPacket && !isToRotorPacket) || (isFromPin && !isToPin)) {
-                    let fromLower = conn.from.toLowerCase();
-                    let color = "#94a3b8"; // пастелно сиво (по подразбиране)
-                    
-                    if (fromLower.includes("отстъп")) color = "#60a5fa"; 
-                    else if (fromLower.includes("процеп")) color = "#f87171"; 
-                    else if (fromLower.includes("напудрена")) color = "#fb923c"; 
-                    else if (fromLower.includes("едн. чел.")) color = "#4ade80"; 
-                    else if (fromLower.includes("двуст")) color = "#c084fc"; 
-                    else if (fromLower.includes("11")) color = "#facc15"; // жълто за вар 11
-                    else if (fromLower.includes("25")) color = "#2dd4bf"; // тюркоаз за вар 25
-                    else if (fromLower.includes("мулти")) color = "#f472b6"; // розово за мулти
-                    else if (fromLower.includes("nr")) color = "#a3e635"; // светлозелено за NR
-                    else color = "#818cf8"; // пастелно индиго
-                    
-                    let shape = 'circle';
-                    if (isFromRotorPacket) shape = 'triangle';
-                    if (isFromPin) shape = 'diamond';
-                    
-                    const renderShape = (cx, cy) => {
-                        if (shape === 'circle') return `<circle cx="${cx}" cy="${cy}" r="6" fill="${color}" />`;
-                        if (shape === 'triangle') return `<polygon points="${cx},${cy-7} ${cx-6},${cy+6} ${cx+6},${cy+6}" fill="${color}" />`;
-                        if (shape === 'diamond') return `<polygon points="${cx},${cy-7} ${cx-6},${cy} ${cx},${cy+7} ${cx+6},${cy}" fill="${color}" />`;
-                        return "";
-                    };
-                    
                     let targetOffsetY = -10;
                     if (shape === 'triangle') targetOffsetY = -22; // По-нагоре
                     if (shape === 'diamond') targetOffsetY = 2;   // По-надолу
                     
+                    html += `<g ${clipAttr}>`;
                     html += renderShape(startX + 8, startY);
                     html += renderShape(endX - 12, endY + targetOffsetY);
+                    html += `</g>`;
+                } else if (endX < startX - 15) {
+                    // Backwards connection (e.g. appended column on right consumed by part on left)
+                    // Render clean matching indicator shapes instead of drawing a backwards line that cuts across other items
+                    html += `<g ${clipAttr}>`;
+                    html += renderShape(startX + 8, startY);
+                    html += renderShape(endX - 12, endY - 10);
+                    html += `</g>`;
                 } else {
                     let strokeColor = "#64748b";
                     let markerId = "url(#arrow)";
-                    html += `<path d="M ${startX} ${startY} C ${cpX} ${startY}, ${cpX} ${endY}, ${endX} ${endY}" fill="none" stroke="${strokeColor}" stroke-width="2.5" stroke-dasharray="4,4" marker-end="${markerId}" />`;
+                    html += `<path ${clipAttr} d="M ${startX} ${startY} C ${cpX} ${startY}, ${cpX} ${endY}, ${endX} ${endY}" fill="none" stroke="${strokeColor}" stroke-width="2.5" stroke-dasharray="4,4" marker-end="${markerId}" />`;
                 }
             }
         }

@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Жив Монитор на Производството</title>
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=31" defer></script>
+  <script src="app.js?v=32" defer></script>
 </head>
 <body>
 
@@ -50,16 +50,12 @@
       </div>
     </div>
     
-    <!-- ДОЛЕН РЕД: 3 ПРОЗОРЕЦА (СТАТОРИ, РОТОРИ-ВАЛОВЕ-ЛАГЕРИ, РЕЗОЛВЕРИ) -->
+    <!-- ДОЛЕН РЕД: РОТОРИ ВЛЯВО (ШИРОК), СТАТОРИ И РЕЗОЛВЕРИ ВДЯСНО (ЕДИН НАД ДРУГ) -->
     <div class="row-section bottom-row">
-      <div class="window window-statori">
-        <div class="window-header header-statori">СТАТОРИ И ТРАНСФОРМАТОРИ</div>
-        <div class="window-body" id="w-statori"></div>
-      </div>
-      
+      <!-- ЛЯВА ЗОНА: РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ -->
       <div class="window window-rotors">
         <div class="window-header header-rotors">РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ</div>
-        <div class="window-body">
+        <div class="window-body" id="w-rotors-body">
           <div class="lane"><span class="lane-title">ВАР. 11</span><div id="w-var11"></div></div>
           <div class="lane"><span class="lane-title">ВАР. 25</span><div id="w-var25"></div></div>
           <div class="lane" style="margin-top: 14px;"><span class="lane-title">ЩИФТОВЕ</span><div id="w-small-pins"></div></div>
@@ -67,9 +63,17 @@
         </div>
       </div>
 
-      <div class="window window-assembly">
-        <div class="window-header header-assembly">РЕЗОЛВЕРИ</div>
-        <div class="window-body" id="w-assembly"></div>
+      <!-- ДЯСНА ЗОНА: СТАТОРИ И РЕЗОЛВЕРИ ЕДИН НАД ДРУГ -->
+      <div class="right-stack-zone">
+        <div class="window window-statori">
+          <div class="window-header header-statori">СТАТОРИ И ТРАНСФОРМАТОРИ</div>
+          <div class="window-body" id="w-statori"></div>
+        </div>
+        
+        <div class="window window-assembly">
+          <div class="window-header header-assembly">РЕЗОЛВЕРИ</div>
+          <div class="window-body" id="w-assembly"></div>
+        </div>
       </div>
     </div>
   </div>
