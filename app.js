@@ -23,10 +23,48 @@ window.onload = async function() {
         document.body.classList.add('machine-view');
     }
     
+    initTvControls();
     await initialFetch();
     loadData();
     setInterval(loadData, 15000); 
 };
+
+function initTvControls() {
+    let currentZoom = parseFloat(localStorage.getItem('tv_monitor_zoom')) || 1.0;
+    
+    function applyZoom(z) {
+        currentZoom = Math.min(Math.max(z, 0.7), 1.6);
+        currentZoom = Math.round(currentZoom * 10) / 10;
+        localStorage.setItem('tv_monitor_zoom', currentZoom.toFixed(1));
+        const valEl = document.getElementById('tv-zoom-val');
+        if (valEl) valEl.innerText = Math.round(currentZoom * 100) + '%';
+        
+        document.body.style.zoom = currentZoom;
+        setTimeout(() => {
+            if (typeof drawArrows === 'function') drawArrows();
+        }, 100);
+    }
+
+    const btnIn = document.getElementById('btn-zoom-in');
+    const btnOut = document.getElementById('btn-zoom-out');
+    const btnVal = document.getElementById('tv-zoom-val');
+    const btnFs = document.getElementById('btn-fullscreen');
+
+    if (btnIn) btnIn.onclick = () => applyZoom(currentZoom + 0.1);
+    if (btnOut) btnOut.onclick = () => applyZoom(currentZoom - 0.1);
+    if (btnVal) btnVal.onclick = () => applyZoom(1.0);
+    if (btnFs) btnFs.onclick = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+            document.exitFullscreen().catch(() => {});
+        }
+    };
+
+    if (currentZoom !== 1.0) {
+        applyZoom(currentZoom);
+    }
+}
 
 function getDomId(realId) {
     if (!domIdMap[realId]) {
@@ -180,6 +218,14 @@ async function loadData() {
         const masterData = categorizeParts(mergedNodes, dynamicData.reportsData, explicitPlanItems, connections, dynamicData.plansData, dynamicData.invGpData, dynamicData.invWipData);
 
         drawDashboard(JSON.stringify({ nodes: masterData, connections: connections }));
+
+        // Update TV status badge
+        const syncEl = document.getElementById('tv-last-sync');
+        if (syncEl) {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            syncEl.innerHTML = `<span style="color:#22c55e;">●</span> Обновено: ${timeStr}`;
+        }
 
         // Auto-complete logic for fully finished root plans
         let plansToComplete = [];
@@ -1131,8 +1177,8 @@ function drawArrows() {
     svg.style.width = document.documentElement.scrollWidth + "px";
     
     let html = `<defs>
-        <marker id="arrow" viewBox="0 0 14 14" refX="10" refY="7" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 14 7 L 0 14 z" fill="#475569" /></marker>
-        <marker id="arrow-spool" viewBox="0 0 14 14" refX="10" refY="7" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 14 7 L 0 14 z" fill="#f3f3f3" /></marker>
+        <marker id="arrow" viewBox="0 0 14 14" refX="10" refY="7" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 14 7 L 0 14 z" fill="#64748b" /></marker>
+        <marker id="arrow-spool" viewBox="0 0 14 14" refX="10" refY="7" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 14 7 L 0 14 z" fill="#f3f3f3" /></marker>
     </defs>`;
     
     globalConnections.forEach(conn => {
@@ -1193,9 +1239,9 @@ function drawArrows() {
                     if (isFromPin) shape = 'diamond';
                     
                     const renderShape = (cx, cy) => {
-                        if (shape === 'circle') return `<circle cx="${cx}" cy="${cy}" r="5" fill="${color}" />`;
-                        if (shape === 'triangle') return `<polygon points="${cx},${cy-6} ${cx-5},${cy+5} ${cx+5},${cy+5}" fill="${color}" />`;
-                        if (shape === 'diamond') return `<polygon points="${cx},${cy-6} ${cx-5},${cy} ${cx},${cy+6} ${cx+5},${cy}" fill="${color}" />`;
+                        if (shape === 'circle') return `<circle cx="${cx}" cy="${cy}" r="6" fill="${color}" />`;
+                        if (shape === 'triangle') return `<polygon points="${cx},${cy-7} ${cx-6},${cy+6} ${cx+6},${cy+6}" fill="${color}" />`;
+                        if (shape === 'diamond') return `<polygon points="${cx},${cy-7} ${cx-6},${cy} ${cx},${cy+7} ${cx+6},${cy}" fill="${color}" />`;
                         return "";
                     };
                     
@@ -1206,9 +1252,9 @@ function drawArrows() {
                     html += renderShape(startX + 8, startY);
                     html += renderShape(endX - 12, endY + targetOffsetY);
                 } else {
-                    let strokeColor = "#475569";
+                    let strokeColor = "#64748b";
                     let markerId = "url(#arrow)";
-                    html += `<path d="M ${startX} ${startY} C ${cpX} ${startY}, ${cpX} ${endY}, ${endX} ${endY}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-dasharray="3,3" marker-end="${markerId}" />`;
+                    html += `<path d="M ${startX} ${startY} C ${cpX} ${startY}, ${cpX} ${endY}, ${endX} ${endY}" fill="none" stroke="${strokeColor}" stroke-width="2.5" stroke-dasharray="4,4" marker-end="${markerId}" />`;
                 }
             }
         }
