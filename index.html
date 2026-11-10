@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Жив Монитор на Производството</title>
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=35" defer></script>
+  <script src="app.js?v=36" defer></script>
 </head>
 <body>
 
@@ -50,16 +50,16 @@
         </div>
       </div>
 
-      <!-- МПР (ШИРОК ПРОЗОРЕЦ, ЗА ДА НЕ СЕ ОТРЯЗВАТ ВЕРИГИТЕ) -->
+      <!-- МПР (ШИРОК ПРОЗОРЕЦ, 46%) -->
       <div class="window window-mpr">
         <div class="window-header header-mpr">МПР</div>
         <div class="window-body" id="w-mpr"></div>
       </div>
     </div>
     
-    <!-- ДОЛЕН РЕД: РОТОРИ ВЛЯВО (ШИРОК), СТАТОРИ И РЕЗОЛВЕРИ ВДЯСНО (ЕДИН НАД ДРУГ) -->
+    <!-- ДОЛЕН РЕД: 3 ПРОЗОРЕЦА С ПЪЛНА ВИСОЧИНА (РОТОРИ ВЛЯВО, СТАТОРИ В СРЕДАТА, РЕЗОЛВЕРИ ВДЯСНО) -->
     <div class="row-section bottom-row">
-      <!-- ЛЯВА ЗОНА: РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ -->
+      <!-- 1. РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ (ВЛЯВО - ~52% ШИРИНА) -->
       <div class="window window-rotors">
         <div class="window-header header-rotors">РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ</div>
         <div class="window-body" id="w-rotors-body">
@@ -70,17 +70,16 @@
         </div>
       </div>
 
-      <!-- ДЯСНА ЗОНА: СТАТОРИ И РЕЗОЛВЕРИ ЕДИН НАД ДРУГ -->
-      <div class="right-stack-zone">
-        <div class="window window-statori">
-          <div class="window-header header-statori">СТАТОРИ И ТРАНСФОРМАТОРИ</div>
-          <div class="window-body" id="w-statori"></div>
-        </div>
-        
-        <div class="window window-assembly">
-          <div class="window-header header-assembly">РЕЗОЛВЕРИ</div>
-          <div class="window-body" id="w-assembly"></div>
-        </div>
+      <!-- 2. СТАТОРИ И ТРАНСФОРМАТОРИ (В СРЕДАТА - ~26% ШИРИНА, ПЪЛНА ВИСОЧИНА) -->
+      <div class="window window-statori">
+        <div class="window-header header-statori">СТАТОРИ И ТРАНСФОРМАТОРИ</div>
+        <div class="window-body" id="w-statori"></div>
+      </div>
+      
+      <!-- 3. РЕЗОЛВЕРИ (ВДЯСНО - ~22% ШИРИНА, ПЪЛНА ВИСОЧИНА) -->
+      <div class="window window-assembly">
+        <div class="window-header header-assembly">РЕЗОЛВЕРИ</div>
+        <div class="window-body" id="w-assembly"></div>
       </div>
     </div>
   </div>

@@ -115,7 +115,7 @@ body {
   min-height: 0;
 }
 
-/* ДОЛЕН РЕД: РОТОРИ ВЛЯВО + СТАТОРИ/РЕЗОЛВЕРИ ВДЯСНО (~60% ОТ ВИСОЧИНАТА) */
+/* ДОЛЕН РЕД: РОТОРИ ВЛЯВО, СТАТОРИ В СРЕДАТА, РЕЗОЛВЕРИ ВДЯСНО (~60% ОТ ВИСОЧИНАТА) */
 .bottom-row { 
   flex: 1.45 1 60%; 
   min-height: 0;
@@ -142,7 +142,7 @@ body {
 
 /* 2. СРЕДНА КОЛОНА: ПРЕДНИ И ЗАДНИ КАПАЦИ ЕДИН НАД ДРУГ */
 .caps-stack-zone {
-  flex: 1.25 1 31%;
+  flex: 1.25 1 30%;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -160,43 +160,37 @@ body {
   min-height: 0;
 }
 
-/* 3. МПР (ВДЯСНО - ШИРОК 45%) */
+/* 3. МПР (ВДЯСНО - ШИРОК 46%) */
 .window-mpr { 
-  flex: 1.85 1 45%; 
+  flex: 1.9 1 46%; 
   min-width: 0;
 }
 
-/* ДОЛЕН РЕД: ЛЯВА ЗОНА (РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ) - МАКСИМАЛНО ШИРОК (~78%) */
+/* ДОЛЕН РЕД: 3 ПРОЗОРЕЦА ЕДИН ДО ДРУГ С ПЪЛНА ВИСОЧИНА */
+/* 1. РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ (ВЛЯВО - 52% ШИРИНА, БЕЗ ИЗЛИШНО ПРАЗНО МЯСТО) */
 .window-rotors { 
-  flex: 3.6 1 78%; 
+  flex: 2.1 1 52%; 
   min-width: 0;
 }
 
-/* ДОЛЕН РЕД: ДЯСНА ЗОНА (СТАТОРИ И РЕЗОЛВЕРИ ЕДИН НАД ДРУГ - КОМПАКТЕН, ~22%) */
-.right-stack-zone {
-  flex: 1 1 22%;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 340px;
-  max-width: 420px;
-  min-height: 0;
-}
-
+/* 2. СТАТОРИ И ТРАНСФОРМАТОРИ (В СРЕДАТА - 26% ШИРИНА, ПЪЛНА ВИСОЧИНА, 100% ВИДИМОСТ) */
 .window-statori { 
-  flex: 1 1 50%; 
+  flex: 1.05 1 26%; 
+  min-width: 420px;
   min-height: 0;
 }
 
+/* 3. РЕЗОЛВЕРИ (ВДЯСНО - 22% ШИРИНА, ПЪЛНА ВИСОЧИНА) */
 .window-assembly { 
-  flex: 1 1 50%; 
+  flex: 0.9 1 22%; 
+  min-width: 340px;
   min-height: 0;
 }
 
 .window-header { 
   color: #f8fafc; 
-  padding: 7px 12px; 
-  font-size: 14px; 
+  padding: 8px 12px; 
+  font-size: 15px; 
   font-weight: 900; 
   letter-spacing: 1.2px; 
   text-transform: uppercase; 
@@ -218,7 +212,7 @@ body {
   padding: 10px 14px; 
   display: flex; 
   flex-direction: column; 
-  gap: 10px; 
+  gap: 12px; 
   flex-grow: 1; 
   overflow-y: auto; 
   overflow-x: auto; 
@@ -244,14 +238,14 @@ body {
 
 .plan-group { 
   border-left: 3px solid #475569; 
-  padding-left: 10px; 
-  margin-bottom: 8px; 
+  padding-left: 12px; 
+  margin-bottom: 10px; 
   display: flex; 
   flex-direction: column; 
   gap: 4px;
 }
 .plan-label { 
-  font-size: 13px; 
+  font-size: 14px; 
   font-weight: 900; 
   color: #f8fafc; 
   text-transform: uppercase; 
@@ -261,7 +255,7 @@ body {
 .family-row { 
   display: flex; 
   flex-direction: row; 
-  gap: 16px; 
+  gap: 18px; 
   padding: 6px 0; 
   border-bottom: none; 
   align-items: center; 
@@ -270,7 +264,7 @@ body {
 .bom-column { 
   display: flex; 
   flex-direction: column; 
-  gap: 10px; 
+  gap: 12px; 
   justify-content: center; 
   position: relative; 
   z-index: 2;
@@ -281,42 +275,57 @@ body {
 .vsm-tooltip { display: none; position: absolute; left: 50%; bottom: 125%; transform: translateX(-50%); background: #020617; color: #fff; padding: 5px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; z-index: 110; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 1px solid #ef4444; }
 .vsm-tooltip::before { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border-width: 4px; border-style: solid; border-color: #020617 transparent transparent transparent; }
 
-/* ВИЗУАЛИЗАЦИЯ НА ДЕТАЙЛИТЕ (КОМПАКТНА И СЪБРАНА) */
-.vsm-node { display: flex; flex-direction: column; gap: 2px; padding: 0; width: max-content; background: transparent; border: none; }
-.vsm-header { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; border: none; padding-bottom: 1px; margin-bottom: 0px;}
+/* ВИЗУАЛИЗАЦИЯ НА ДЕТАЙЛИТЕ */
+.vsm-node { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 2px; 
+  padding: 0; 
+  width: max-content; 
+  max-width: 600px; 
+  background: transparent; 
+  border: none; 
+}
+.vsm-header { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; border: none; padding-bottom: 2px; margin-bottom: 0px;}
 
-.vsm-title { font-size: 16px; font-weight: 900; letter-spacing: 0.4px; }
+.vsm-title { font-size: 18px; font-weight: 900; letter-spacing: 0.4px; }
 .title-green { color: #22c55e !important; }      
 .title-blue { color: #60a5fa !important; }      
 .title-yellow { color: #facc15 !important; text-shadow: 0 0 8px rgba(250,204,21,0.35); } 
 .title-gray { color: #cbd5e1 !important; }      
 
-.vsm-qty { font-size: 13px; font-weight: 800; color: #94a3b8; }
+.vsm-qty { font-size: 14px; font-weight: 800; color: #94a3b8; }
 
-/* ОПЕРАЦИИ (КОМПАКТНИ, ЯСНИ И ПРЕГЛЕДНИ) */
-.vsm-ops { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+/* ОПЕРАЦИИ (КОМПАКТНИ, ЯСНИ И ПРЕГЛЕДНИ С ПЛАВНО ПРЕНАСЯНЕ) */
+.vsm-ops { 
+  display: flex; 
+  align-items: center; 
+  gap: 4px; 
+  flex-wrap: wrap; 
+  max-width: 580px; 
+}
 .op-text { 
   white-space: normal; 
   font-family: 'Sofia Sans', sans-serif; 
-  line-height: 1.2; 
+  line-height: 1.22; 
   word-wrap: break-word; 
-  max-width: 160px; 
+  max-width: 170px; 
   display: inline-block; 
 }
 
 /* Завършена операция (ясно зелена) */
-.op-past { font-size: 12px; font-weight: 700; color: #22c55e; opacity: 0.95; }
+.op-past { font-size: 13px; font-weight: 700; color: #22c55e; opacity: 0.95; }
 
 /* Текуща операция (контрастна за оператора) */
-.op-focus { font-size: 16px; font-weight: 900; letter-spacing: 0.3px; }
+.op-focus { font-size: 18px; font-weight: 900; letter-spacing: 0.3px; }
 .op-focus.active { color: #60a5fa; text-shadow: 0 0 8px rgba(59,130,246,0.5); } /* Започната (Синя) */
 .op-focus.waiting { color: #cbd5e1; } /* Още не е започната, но е готова за старт (Светлосива) */
 
 /* Следваща операция */
-.op-future { font-size: 11px; font-weight: 600; color: #64748b; opacity: 0.8; }
+.op-future { font-size: 12px; font-weight: 600; color: #64748b; opacity: 0.8; }
 
 /* Всички операции са приключили (голямо зелено) */
-.op-finished-all { font-size: 16px; font-weight: 900; color: #22c55e; text-shadow: 0 0 8px rgba(34,197,94,0.5); }
+.op-finished-all { font-size: 18px; font-weight: 900; color: #22c55e; text-shadow: 0 0 8px rgba(34,197,94,0.5); }
 
 /* БУТОНИ ЗА РАЗГЪВАНЕ */
 .harmony-toggle { 
@@ -327,5 +336,5 @@ body {
 .harmony-toggle:hover { color: #60a5fa; background: rgba(255,255,255,0.1); }
 .hidden-history { display: none !important; }
 
-.arr { color: #64748b; font-weight: bold; font-size: 12px; margin: 0 1px;}
+.arr { color: #64748b; font-weight: bold; font-size: 12px; margin: 0 2px;}
 .machine-view .hide-on-machine { display: none !important; }
