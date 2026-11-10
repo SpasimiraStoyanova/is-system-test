@@ -173,7 +173,7 @@ html, body {
 }
 
 /* ПРОПОРЦИИ НА ПРОЗОРЦИТЕ В ДОЛНИЯ РЕД */
-/* 1. РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ (ВЛЯВО - ЗАЕМА ЦЯЛАТА ОСТАНАЛА ШИРИНА ~72-74%) */
+/* 1. РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ (ВЛЯВО - ЗАЕМА ЦЯЛАТА ОСТАНАЛА ШИРИНА) */
 .window-rotors { 
   flex: 1 1 0; 
   min-width: 0;
@@ -181,24 +181,42 @@ html, body {
 
 /* 2. ДЯСНА КОЛОНА: СТАТОРИ (ГОРЕ) И РЕЗОЛВЕРИ (ДОЛУ) ЕДИН НАД ДРУГ */
 .right-stack-zone {
-  flex: 0 0 500px; /* Фиксирана широчина 500px - операциите на статорите никога не се отрязват! */
+  flex: 0 0 660px; /* 660px широчина - гарантира пълна видимост на всички операции на статорите без отрязване! */
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 480px;
+  min-width: 640px;
   min-height: 0;
 }
 
-/* СТАТОРИ (ГОРЕ В ДЯСНАТА КОЛОНА - 3 детайла, перфектни в 38% височина) */
+/* СТАТОРИ (ГОРЕ В ДЯСНАТА КОЛОНА - 54% височина, за да се виждат всички детайли + трансформатора) */
 .window-statori { 
-  flex: 0.9 1 38%; 
+  flex: 1.15 1 54%; 
   min-height: 0;
 }
 
-/* РЕЗОЛВЕРИ (ДОЛУ В ДЯСНАТА КОЛОНА - 10 детайла, комфортни в 62% височина) */
+.window-statori .bom-column {
+  gap: 6px;
+}
+.window-statori .family-row {
+  padding: 2px 0;
+  gap: 12px;
+}
+.window-statori .plan-group {
+  margin-bottom: 4px;
+}
+
+/* РЕЗОЛВЕРИ (ДОЛУ В ДЯСНАТА КОЛОНА - 46% височина) */
 .window-assembly { 
-  flex: 1.45 1 62%; 
+  flex: 0.85 1 46%; 
   min-height: 0;
+}
+
+.window-assembly .plan-group {
+  margin-bottom: 4px;
+}
+.window-assembly .family-row {
+  padding: 1px 0;
 }
 
 .window-header { 
