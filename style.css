@@ -114,15 +114,15 @@ html, body {
   min-height: 0;
 }
 
-/* ГОРЕН РЕД: ТЕЛА, КАПАЦИ (СТАК ЕДИН НАД ДРУГ), МПР (~42% ОТ ВИСОЧИНАТА) */
+/* ГОРЕН РЕД: ТЕЛА, КАПАЦИ (СТАК ЕДИН НАД ДРУГ), МПР (~47% ОТ ВИСОЧИНАТА) */
 .top-row { 
-  flex: 1 1 42%; 
+  flex: 1 1 47%; 
   min-height: 0;
 }
 
-/* ДОЛЕН РЕД: РОТОРИ ВЛЯВО, СТАК СТАТОРИ/РЕЗОЛВЕРИ ВДЯСНО (~58% ОТ ВИСОЧИНАТА) */
+/* ДОЛЕН РЕД: РОТОРИ ВЛЯВО, СТАК СТАТОРИ/РЕЗОЛВЕРИ ВДЯСНО (~53% ОТ ВИСОЧИНАТА) */
 .bottom-row { 
-  flex: 1.38 1 58%; 
+  flex: 1.12 1 53%; 
   min-height: 0;
 }
 
@@ -140,15 +140,15 @@ html, body {
 }
 
 /* ПРОПОРЦИИ НА ПРОЗОРЦИТЕ В ГОРНИЯ РЕД */
-/* 1. ТЕЛА (ВЛЯВО) ~24% */
+/* 1. ТЕЛА (ВЛЯВО) ~27% */
 .window-tiela { 
-  flex: 1 1 24%; 
+  flex: 1 1 27%; 
   min-width: 0;
 }
 
-/* 2. СРЕДНА КОЛОНА: ПРЕДНИ И ЗАДНИ КАПАЦИ ЕДИН НАД ДРУГ ~29% */
+/* 2. СРЕДНА КОЛОНА: ПРЕДНИ И ЗАДНИ КАПАЦИ ЕДИН НАД ДРУГ ~33% */
 .caps-stack-zone {
-  flex: 1.2 1 29%;
+  flex: 1.25 1 33%;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -157,18 +157,24 @@ html, body {
 }
 
 .window-predni { 
-  flex: 1 1 48%; 
+  flex: 0.8 1 40%; 
   min-height: 0;
+}
+.window-predni .family-row {
+  padding: 6px 0;
 }
 
 .window-zadni { 
-  flex: 1.1 1 52%; 
+  flex: 1.2 1 60%; 
   min-height: 0;
 }
+.window-zadni .family-row {
+  padding: 5px 0;
+}
 
-/* 3. МПР (ВДЯСНО - ШИРОК ~47%) */
+/* 3. МПР (ВДЯСНО - БАЛАНСИРАН ~40%, БЕЗ ИЗЛИШНА ПРАЗНА ПЛОЩ ВДЯСНО) */
 .window-mpr { 
-  flex: 1.95 1 47%; 
+  flex: 1.5 1 40%; 
   min-width: 0;
 }
 
@@ -178,10 +184,13 @@ html, body {
   flex: 1 1 0; 
   min-width: 0;
 }
+.window-rotors .lane {
+  margin-bottom: 10px;
+}
 
 /* 2. ДЯСНА КОЛОНА: СТАТОРИ (ГОРЕ) И РЕЗОЛВЕРИ (ДОЛУ) ЕДИН НАД ДРУГ */
 .right-stack-zone {
-  flex: 0 0 660px; /* 660px широчина - гарантира пълна видимост на всички операции на статорите без отрязване! */
+  flex: 0 0 670px; /* Оптимална ширина за пълно събиране на статорите и 2-колонен изглед на резолверите */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -189,40 +198,48 @@ html, body {
   min-height: 0;
 }
 
-/* СТАТОРИ (ГОРЕ В ДЯСНАТА КОЛОНА - 54% височина, за да се виждат всички детайли + трансформатора) */
+/* СТАТОРИ (ГОРЕ В ДЯСНАТА КОЛОНА - 52% височина, за да се виждат всички детайли + трансформатора) */
 .window-statori { 
-  flex: 1.15 1 54%; 
+  flex: 1.08 1 52%; 
   min-height: 0;
 }
 
 .window-statori .bom-column {
-  gap: 6px;
+  gap: 8px;
 }
 .window-statori .family-row {
-  padding: 2px 0;
-  gap: 12px;
+  padding: 4px 0;
+  gap: 14px;
 }
 .window-statori .plan-group {
   margin-bottom: 4px;
 }
 
-/* РЕЗОЛВЕРИ (ДОЛУ В ДЯСНАТА КОЛОНА - 46% височина) */
+/* РЕЗОЛВЕРИ (ДОЛУ В ДЯСНАТА КОЛОНА - 48% височина, 2 КОЛОНИ ЗА ПЪЛНО УПЛЪТНЯВАНЕ БЕЗ ДУПКИ) */
 .window-assembly { 
-  flex: 0.85 1 46%; 
+  flex: 0.92 1 48%; 
   min-height: 0;
 }
 
 .window-assembly .plan-group {
-  margin-bottom: 4px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 20px;
+  row-gap: 5px;
+  margin-bottom: 2px;
+}
+.window-assembly .plan-label {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
 }
 .window-assembly .family-row {
-  padding: 1px 0;
+  padding: 2px 0;
 }
 
 .window-header { 
   color: #f8fafc; 
-  padding: 6px 12px; 
-  font-size: 14px; 
+  padding: 7px 12px; 
+  font-size: 14.5px; 
   font-weight: 900; 
   letter-spacing: 1.2px; 
   text-transform: uppercase; 
@@ -335,19 +352,19 @@ html, body {
   margin-bottom: 0px;
 }
 
-.vsm-title { font-size: 17px; font-weight: 900; letter-spacing: 0.3px; }
+.vsm-title { font-size: 19px; font-weight: 900; letter-spacing: 0.3px; }
 .title-green { color: #22c55e !important; }      
 .title-blue { color: #60a5fa !important; }      
 .title-yellow { color: #facc15 !important; text-shadow: 0 0 8px rgba(250,204,21,0.35); } 
 .title-gray { color: #cbd5e1 !important; }      
 
-.vsm-qty { font-size: 13.5px; font-weight: 800; color: #94a3b8; }
+.vsm-qty { font-size: 15px; font-weight: 800; color: #94a3b8; }
 
 /* ОПЕРАЦИИ (КОМПАКТНИ, ЯСНИ И ПРЕГЛЕДНИ С ПЛАВНО ПРЕНАСЯНЕ) */
 .vsm-ops { 
   display: flex; 
   align-items: center; 
-  gap: 4px; 
+  gap: 5px; 
   flex-wrap: wrap; 
   max-width: 100%; 
 }
@@ -356,23 +373,23 @@ html, body {
   font-family: 'Sofia Sans', sans-serif; 
   line-height: 1.22; 
   word-wrap: break-word; 
-  max-width: 185px; 
+  max-width: 200px; 
   display: inline-block; 
 }
 
 /* Завършена операция (ясно зелена) */
-.op-past { font-size: 13px; font-weight: 700; color: #22c55e; opacity: 0.95; }
+.op-past { font-size: 14.5px; font-weight: 700; color: #22c55e; opacity: 0.95; }
 
 /* Текуща операция (контрастна за оператора) */
-.op-focus { font-size: 17px; font-weight: 900; letter-spacing: 0.3px; }
+.op-focus { font-size: 19px; font-weight: 900; letter-spacing: 0.3px; }
 .op-focus.active { color: #60a5fa; text-shadow: 0 0 8px rgba(59,130,246,0.5); } /* Започната (Синя) */
 .op-focus.waiting { color: #cbd5e1; } /* Още не е започната, но е готова за старт (Светлосива) */
 
 /* Следваща операция */
-.op-future { font-size: 11.5px; font-weight: 600; color: #64748b; opacity: 0.8; }
+.op-future { font-size: 13px; font-weight: 600; color: #64748b; opacity: 0.8; }
 
 /* Всички операции са приключили (голямо зелено) */
-.op-finished-all { font-size: 17px; font-weight: 900; color: #22c55e; text-shadow: 0 0 8px rgba(34,197,94,0.5); }
+.op-finished-all { font-size: 19px; font-weight: 900; color: #22c55e; text-shadow: 0 0 8px rgba(34,197,94,0.5); }
 
 /* БУТОНИ ЗА РАЗГЪВАНЕ */
 .harmony-toggle { 
