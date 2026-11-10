@@ -11,12 +11,15 @@
 ::-webkit-scrollbar { display: none; }
 * { scrollbar-width: none; box-sizing: border-box; }
 
-body { 
+html, body { 
   font-family: 'Sofia Sans', sans-serif; 
   background-color: var(--bg-color); 
-  margin: 6px; 
+  margin: 0; 
+  padding: 6px; 
   color: var(--text-main); 
-  overflow: auto; 
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden; /* Заключване на изгледа: заглавията никога не излизат от екрана на ТВ */
 }
 
 #loading { 
@@ -96,53 +99,56 @@ body {
   display: flex; 
   flex-direction: column; 
   gap: 8px; 
-  min-height: calc(100vh - 12px); 
+  height: calc(100vh - 12px); 
+  max-height: calc(100vh - 12px); 
+  width: 100%;
   position: relative; 
   z-index: 10; 
-  padding-bottom: 8px;
-  width: 100%;
+  overflow: hidden;
 }
 
 .row-section { 
   display: flex; 
   gap: 8px; 
   width: 100%; 
+  min-height: 0;
 }
 
-/* ГОРЕН РЕД: ТЕЛА, КАПАЦИ (СТАК ЕДИН НАД ДРУГ), МПР (~40% ОТ ВИСОЧИНАТА) */
+/* ГОРЕН РЕД: ТЕЛА, КАПАЦИ (СТАК ЕДИН НАД ДРУГ), МПР (~42% ОТ ВИСОЧИНАТА) */
 .top-row { 
-  flex: 1 1 40%; 
+  flex: 1 1 42%; 
   min-height: 0;
 }
 
-/* ДОЛЕН РЕД: РОТОРИ ВЛЯВО, СТАТОРИ В СРЕДАТА, РЕЗОЛВЕРИ ВДЯСНО (~60% ОТ ВИСОЧИНАТА) */
+/* ДОЛЕН РЕД: РОТОРИ ВЛЯВО, СТАК СТАТОРИ/РЕЗОЛВЕРИ ВДЯСНО (~58% ОТ ВИСОЧИНАТА) */
 .bottom-row { 
-  flex: 1.45 1 60%; 
+  flex: 1.38 1 58%; 
   min-height: 0;
 }
 
-/* ПРОЗОРЦИ */
+/* ОБЩ СТИЛ ЗА ПРОЗОРЦИ */
 .window { 
   background: var(--header-bg); 
   border: 1px solid var(--border-color); 
   border-radius: 6px; 
   display: flex; 
   flex-direction: column; 
-  box-shadow: 0 6px 18px rgba(0,0,0,0.4); 
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4); 
   overflow: hidden; 
   min-width: 0;
+  min-height: 0;
 }
 
 /* ПРОПОРЦИИ НА ПРОЗОРЦИТЕ В ГОРНИЯ РЕД */
-/* 1. ТЕЛА (ВЛЯВО) */
+/* 1. ТЕЛА (ВЛЯВО) ~24% */
 .window-tiela { 
   flex: 1 1 24%; 
   min-width: 0;
 }
 
-/* 2. СРЕДНА КОЛОНА: ПРЕДНИ И ЗАДНИ КАПАЦИ ЕДИН НАД ДРУГ */
+/* 2. СРЕДНА КОЛОНА: ПРЕДНИ И ЗАДНИ КАПАЦИ ЕДИН НАД ДРУГ ~29% */
 .caps-stack-zone {
-  flex: 1.25 1 30%;
+  flex: 1.2 1 29%;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -151,46 +157,54 @@ body {
 }
 
 .window-predni { 
-  flex: 1 1 50%; 
+  flex: 1 1 48%; 
   min-height: 0;
 }
 
 .window-zadni { 
-  flex: 1 1 50%; 
+  flex: 1.1 1 52%; 
   min-height: 0;
 }
 
-/* 3. МПР (ВДЯСНО - ШИРОК 46%) */
+/* 3. МПР (ВДЯСНО - ШИРОК ~47%) */
 .window-mpr { 
-  flex: 1.9 1 46%; 
+  flex: 1.95 1 47%; 
   min-width: 0;
 }
 
-/* ДОЛЕН РЕД: 3 ПРОЗОРЕЦА ЕДИН ДО ДРУГ С ПЪЛНА ВИСОЧИНА */
-/* 1. РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ (ВЛЯВО - 52% ШИРИНА, БЕЗ ИЗЛИШНО ПРАЗНО МЯСТО) */
+/* ПРОПОРЦИИ НА ПРОЗОРЦИТЕ В ДОЛНИЯ РЕД */
+/* 1. РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ (ВЛЯВО - ЗАЕМА ЦЯЛАТА ОСТАНАЛА ШИРИНА ~72-74%) */
 .window-rotors { 
-  flex: 2.1 1 52%; 
+  flex: 1 1 0; 
   min-width: 0;
 }
 
-/* 2. СТАТОРИ И ТРАНСФОРМАТОРИ (В СРЕДАТА - 26% ШИРИНА, ПЪЛНА ВИСОЧИНА, 100% ВИДИМОСТ) */
-.window-statori { 
-  flex: 1.05 1 26%; 
-  min-width: 420px;
+/* 2. ДЯСНА КОЛОНА: СТАТОРИ (ГОРЕ) И РЕЗОЛВЕРИ (ДОЛУ) ЕДИН НАД ДРУГ */
+.right-stack-zone {
+  flex: 0 0 500px; /* Фиксирана широчина 500px - операциите на статорите никога не се отрязват! */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 480px;
   min-height: 0;
 }
 
-/* 3. РЕЗОЛВЕРИ (ВДЯСНО - 22% ШИРИНА, ПЪЛНА ВИСОЧИНА) */
+/* СТАТОРИ (ГОРЕ В ДЯСНАТА КОЛОНА - 3 детайла, перфектни в 38% височина) */
+.window-statori { 
+  flex: 0.9 1 38%; 
+  min-height: 0;
+}
+
+/* РЕЗОЛВЕРИ (ДОЛУ В ДЯСНАТА КОЛОНА - 10 детайла, комфортни в 62% височина) */
 .window-assembly { 
-  flex: 0.9 1 22%; 
-  min-width: 340px;
+  flex: 1.45 1 62%; 
   min-height: 0;
 }
 
 .window-header { 
   color: #f8fafc; 
-  padding: 8px 12px; 
-  font-size: 15px; 
+  padding: 6px 12px; 
+  font-size: 14px; 
   font-weight: 900; 
   letter-spacing: 1.2px; 
   text-transform: uppercase; 
@@ -209,17 +223,24 @@ body {
 .header-assembly { border-top: 3px solid #38bdf8; background: linear-gradient(180deg, rgba(56,189,248,0.18) 0%, transparent 100%); }
 
 .window-body { 
-  padding: 10px 14px; 
+  padding: 8px 12px; 
   display: flex; 
   flex-direction: column; 
-  gap: 12px; 
+  gap: 8px; 
   flex-grow: 1; 
   overflow-y: auto; 
   overflow-x: auto; 
 }
 
 /* ЗОНИ И ЛЕНТИ */
-.lane { padding-bottom: 4px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px; border: none; }
+.lane { 
+  padding-bottom: 2px; 
+  margin-bottom: 6px; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 4px; 
+  border: none; 
+}
 .lane:last-child { margin-bottom: 0; padding-bottom: 0; }
 
 .columns-mode { flex-direction: row !important; gap: 16px; }
@@ -227,7 +248,7 @@ body {
 .col-lane:last-child { padding-right: 0; }
 
 .lane-title { 
-  font-size: 13px; 
+  font-size: 12.5px; 
   font-weight: 900; 
   color: #94a3b8; 
   text-transform: uppercase; 
@@ -238,25 +259,25 @@ body {
 
 .plan-group { 
   border-left: 3px solid #475569; 
-  padding-left: 12px; 
-  margin-bottom: 10px; 
+  padding-left: 10px; 
+  margin-bottom: 6px; 
   display: flex; 
   flex-direction: column; 
-  gap: 4px;
+  gap: 3px;
 }
 .plan-label { 
-  font-size: 14px; 
+  font-size: 13px; 
   font-weight: 900; 
   color: #f8fafc; 
   text-transform: uppercase; 
-  margin-bottom: 4px; 
+  margin-bottom: 3px; 
   letter-spacing: 0.8px;
 }
 .family-row { 
   display: flex; 
   flex-direction: row; 
-  gap: 18px; 
-  padding: 6px 0; 
+  gap: 16px; 
+  padding: 3px 0; 
   border-bottom: none; 
   align-items: center; 
 }
@@ -264,7 +285,7 @@ body {
 .bom-column { 
   display: flex; 
   flex-direction: column; 
-  gap: 12px; 
+  gap: 10px; 
   justify-content: center; 
   position: relative; 
   z-index: 2;
@@ -282,19 +303,27 @@ body {
   gap: 2px; 
   padding: 0; 
   width: max-content; 
-  max-width: 600px; 
+  max-width: 100%; 
   background: transparent; 
   border: none; 
 }
-.vsm-header { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; border: none; padding-bottom: 2px; margin-bottom: 0px;}
+.vsm-header { 
+  display: flex; 
+  align-items: baseline; 
+  gap: 6px; 
+  white-space: nowrap; 
+  border: none; 
+  padding-bottom: 2px; 
+  margin-bottom: 0px;
+}
 
-.vsm-title { font-size: 18px; font-weight: 900; letter-spacing: 0.4px; }
+.vsm-title { font-size: 17px; font-weight: 900; letter-spacing: 0.3px; }
 .title-green { color: #22c55e !important; }      
 .title-blue { color: #60a5fa !important; }      
 .title-yellow { color: #facc15 !important; text-shadow: 0 0 8px rgba(250,204,21,0.35); } 
 .title-gray { color: #cbd5e1 !important; }      
 
-.vsm-qty { font-size: 14px; font-weight: 800; color: #94a3b8; }
+.vsm-qty { font-size: 13.5px; font-weight: 800; color: #94a3b8; }
 
 /* ОПЕРАЦИИ (КОМПАКТНИ, ЯСНИ И ПРЕГЛЕДНИ С ПЛАВНО ПРЕНАСЯНЕ) */
 .vsm-ops { 
@@ -302,14 +331,14 @@ body {
   align-items: center; 
   gap: 4px; 
   flex-wrap: wrap; 
-  max-width: 580px; 
+  max-width: 100%; 
 }
 .op-text { 
   white-space: normal; 
   font-family: 'Sofia Sans', sans-serif; 
   line-height: 1.22; 
   word-wrap: break-word; 
-  max-width: 170px; 
+  max-width: 185px; 
   display: inline-block; 
 }
 
@@ -317,19 +346,19 @@ body {
 .op-past { font-size: 13px; font-weight: 700; color: #22c55e; opacity: 0.95; }
 
 /* Текуща операция (контрастна за оператора) */
-.op-focus { font-size: 18px; font-weight: 900; letter-spacing: 0.3px; }
+.op-focus { font-size: 17px; font-weight: 900; letter-spacing: 0.3px; }
 .op-focus.active { color: #60a5fa; text-shadow: 0 0 8px rgba(59,130,246,0.5); } /* Започната (Синя) */
 .op-focus.waiting { color: #cbd5e1; } /* Още не е започната, но е готова за старт (Светлосива) */
 
 /* Следваща операция */
-.op-future { font-size: 12px; font-weight: 600; color: #64748b; opacity: 0.8; }
+.op-future { font-size: 11.5px; font-weight: 600; color: #64748b; opacity: 0.8; }
 
 /* Всички операции са приключили (голямо зелено) */
-.op-finished-all { font-size: 18px; font-weight: 900; color: #22c55e; text-shadow: 0 0 8px rgba(34,197,94,0.5); }
+.op-finished-all { font-size: 17px; font-weight: 900; color: #22c55e; text-shadow: 0 0 8px rgba(34,197,94,0.5); }
 
 /* БУТОНИ ЗА РАЗГЪВАНЕ */
 .harmony-toggle { 
-    color: #64748b; font-weight: 900; font-size: 14px; cursor: pointer; 
+    color: #64748b; font-weight: 900; font-size: 13px; cursor: pointer; 
     user-select: none; transition: all 0.2s; padding: 0 5px; 
     background: rgba(255,255,255,0.05); border-radius: 4px; display: inline-block;
 }

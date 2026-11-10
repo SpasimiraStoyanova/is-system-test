@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Жив Монитор на Производството</title>
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=13">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=36" defer></script>
+  <script src="app.js?v=38" defer></script>
 </head>
 <body>
 
@@ -57,29 +57,30 @@
       </div>
     </div>
     
-    <!-- ДОЛЕН РЕД: 3 ПРОЗОРЕЦА С ПЪЛНА ВИСОЧИНА (РОТОРИ ВЛЯВО, СТАТОРИ В СРЕДАТА, РЕЗОЛВЕРИ ВДЯСНО) -->
+    <!-- ДОЛЕН РЕД: РОТОРИ ВЛЯВО (72%), СТАТОРИ НАД РЕЗОЛВЕРИ ВДЯСНО (28%) -->
     <div class="row-section bottom-row">
-      <!-- 1. РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ (ВЛЯВО - ~52% ШИРИНА) -->
+      <!-- 1. РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ (ВЛЯВО - ~72% ШИРИНА) -->
       <div class="window window-rotors">
         <div class="window-header header-rotors">РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ</div>
         <div class="window-body" id="w-rotors-body">
           <div class="lane"><span class="lane-title">ВАР. 11</span><div id="w-var11"></div></div>
           <div class="lane"><span class="lane-title">ВАР. 25</span><div id="w-var25"></div></div>
-          <div class="lane" style="margin-top: 14px;"><span class="lane-title">ЩИФТОВЕ</span><div id="w-small-pins"></div></div>
+          <div class="lane" style="margin-top: 10px;"><span class="lane-title">ЩИФТОВЕ</span><div id="w-small-pins"></div></div>
           <div class="lane"><span class="lane-title">ЛАГЕРНИ ВЪЗЛИ</span><div id="w-bearings"></div></div>
         </div>
       </div>
 
-      <!-- 2. СТАТОРИ И ТРАНСФОРМАТОРИ (В СРЕДАТА - ~26% ШИРИНА, ПЪЛНА ВИСОЧИНА) -->
-      <div class="window window-statori">
-        <div class="window-header header-statori">СТАТОРИ И ТРАНСФОРМАТОРИ</div>
-        <div class="window-body" id="w-statori"></div>
-      </div>
-      
-      <!-- 3. РЕЗОЛВЕРИ (ВДЯСНО - ~22% ШИРИНА, ПЪЛНА ВИСОЧИНА) -->
-      <div class="window window-assembly">
-        <div class="window-header header-assembly">РЕЗОЛВЕРИ</div>
-        <div class="window-body" id="w-assembly"></div>
+      <!-- 2. ДЯСНА КОЛОНА: СТАТОРИ (ГОРЕ) И РЕЗОЛВЕРИ (ДОЛУ) ЕДИН НАД ДРУГ (~28% ШИРИНА, 480-500px) -->
+      <div class="right-stack-zone">
+        <div class="window window-statori">
+          <div class="window-header header-statori">СТАТОРИ И ТРАНСФОРМАТОРИ</div>
+          <div class="window-body" id="w-statori"></div>
+        </div>
+        
+        <div class="window window-assembly">
+          <div class="window-header header-assembly">РЕЗОЛВЕРИ</div>
+          <div class="window-body" id="w-assembly"></div>
+        </div>
       </div>
     </div>
   </div>
