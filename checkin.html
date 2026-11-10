@@ -173,46 +173,42 @@
                         return;
                     }
 
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    const accuracy = Math.round(pos.coords.accuracy || 0);
-                    const dist = getDistanceInMeters(lat, lng, WORKSHOP_LAT, WORKSHOP_LNG);
+                    try {
+                        const lat = pos.coords.latitude;
+                        const lng = pos.coords.longitude;
+                        const accuracy = Math.round(pos.coords.accuracy || 0);
+                        const dist = getDistanceInMeters(lat, lng, WORKSHOP_LAT, WORKSHOP_LNG);
 
-                    const tolerance = accuracy > 0 ? Math.min(accuracy, 60) : 0;
-                    const effectiveDist = Math.max(0, dist - tolerance);
+                        const tolerance = accuracy > 0 ? Math.min(accuracy, 60) : 0;
+                        const effectiveDist = Math.max(0, dist - tolerance);
 
-                    let note = "";
-                    if (effectiveDist > WORKSHOP_RADIUS) {
-                        note = `⚠️ ИЗВЪН ОБЕКТА (${dist}м)`;
-                    } else if (dist > WORKSHOP_RADIUS && effectiveDist <= WORKSHOP_RADIUS) {
-                        note = `В обекта (~${dist}м, точност ±${accuracy}м)`;
+                        let note = "";
+                        if (effectiveDist > WORKSHOP_RADIUS) {
+                            note = `⚠️ ИЗВЪН ОБЕКТА (${dist}м)`;
+                        } else if (dist > WORKSHOP_RADIUS && effectiveDist <= WORKSHOP_RADIUS) {
+                            note = `В обекта (~${dist}м, точност ±${accuracy}м)`;
+                        }
+
+                        resolve({
+                            loc: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+                            note: note,
+                            dist: dist,
+                            accuracy: accuracy
+                        });
+                    } catch (calcErr) {
+                        resolve({ loc: "Грешка GPS", note: "⚠️ ГРЕШКА ЛОКАЦИЯ", dist: null, accuracy: null });
                     }
-
-                    resolve({
-                        loc: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-                        note: note,
-                        dist: dist,
-                        accuracy: accuracy
-                    });
                 };
 
-                // Таймер до 4.5 секунди за най-добър сателитен фикс
+                // Таймер до 4 секунди за най-добър сателитен фикс
                 timeoutTimer = setTimeout(() => {
-                    if (bestPos) {
-                        complete(bestPos);
-                    } else {
-                        navigator.geolocation.getCurrentPosition(
-                            (p) => complete(p),
-                            () => complete(null),
-                            { enableHighAccuracy: true, timeout: 3000, maximumAge: 0 }
-                        );
-                    }
-                }, 4500);
+                    complete(bestPos);
+                }, 4000);
 
                 try {
                     watchId = navigator.geolocation.watchPosition(
                         (pos) => {
-                            const acc = pos.coords.accuracy || 9999;
+                            const acc = (pos && pos.coords && pos.coords.accuracy) ? pos.coords.accuracy : 9999;
                             if (!bestPos || acc < (bestPos.coords.accuracy || 9999)) {
                                 bestPos = pos;
                             }
@@ -221,13 +217,11 @@
                             }
                         },
                         (err) => {
-                            if (err && err.code === err.PERMISSION_DENIED) {
-                                complete(null);
-                            }
+                            complete(bestPos);
                         },
                         {
                             enableHighAccuracy: true,
-                            timeout: 5000,
+                            timeout: 4000,
                             maximumAge: 0
                         }
                     );
@@ -269,16 +263,7 @@
                 // 2. ВЗИМАНЕ НА ЛОКАЦИЯ (тихо във фонов режим)
                 const geoInfo = await getUserLocation();
 
-                // 3. Име на работника от personal
-                let workerName = "";
-                try {
-                    const { data: pData } = await client.from('personal').select('Име').eq('Имейл', email).limit(1);
-                    if (pData && pData.length > 0 && pData[0]['Име']) {
-                        workerName = pData[0]['Име'];
-                    }
-                } catch (e) {}
-
-                // 4. ЗАПИСВАНЕ
+                // 3. ЗАПИСВАНЕ (само съществуващи колони в таблицата)
                 const insertPayload = {
                     "Имейл": email,
                     "Действие": actionText,
@@ -286,7 +271,6 @@
                     "Локация": geoInfo.loc,
                     "Бележка": geoInfo.note
                 };
-                if (workerName) insertPayload["Име"] = workerName;
 
                 const { error: insertErr } = await client
                     .from('chekiraniya')
@@ -314,8 +298,8 @@
                 });
 
             } catch (err) {
-                console.error(err);
-                Swal.fire('❌ Грешка при връзката', 'Моля, проверете интернета си и опитайте отново.', 'error');
+                console.error("Checkin error:", err);
+                Swal.fire('❌ Грешка при връзката', (err && err.message) ? err.message : 'Моля, проверете интернета си и опитайте отново.', 'error');
             }
         }
                 });

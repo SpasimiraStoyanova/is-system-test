@@ -186,48 +186,44 @@ function getUserLocation() {
                 return;
             }
 
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-            const accuracy = Math.round(pos.coords.accuracy || 0);
-            const dist = getDistanceInMeters(lat, lng, WORKSHOP_LAT, WORKSHOP_LNG);
+            try {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                const accuracy = Math.round(pos.coords.accuracy || 0);
+                const dist = getDistanceInMeters(lat, lng, WORKSHOP_LAT, WORKSHOP_LNG);
 
-            // Толеранс от точността на сигнала: ако точността е ±25м, а отчетеното разстояние е 215м,
-            // реалната позиция на устройството попада в границите на 200-метровата зона.
-            const tolerance = accuracy > 0 ? Math.min(accuracy, 60) : 0;
-            const effectiveDist = Math.max(0, dist - tolerance);
+                // Толеранс от точността на сигнала: ако точността е ±25м, а отчетеното разстояние е 215м,
+                // реалната позиция на устройството попада в границите на 200-метровата зона.
+                const tolerance = accuracy > 0 ? Math.min(accuracy, 60) : 0;
+                const effectiveDist = Math.max(0, dist - tolerance);
 
-            let note = "";
-            if (effectiveDist > WORKSHOP_RADIUS) {
-                note = `⚠️ ИЗВЪН ОБЕКТА (${dist}м)`;
-            } else if (dist > WORKSHOP_RADIUS && effectiveDist <= WORKSHOP_RADIUS) {
-                note = `В обекта (~${dist}м, точност ±${accuracy}м)`;
+                let note = "";
+                if (effectiveDist > WORKSHOP_RADIUS) {
+                    note = `⚠️ ИЗВЪН ОБЕКТА (${dist}м)`;
+                } else if (dist > WORKSHOP_RADIUS && effectiveDist <= WORKSHOP_RADIUS) {
+                    note = `В обекта (~${dist}м, точност ±${accuracy}м)`;
+                }
+
+                resolve({
+                    loc: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+                    note: note,
+                    dist: dist,
+                    accuracy: accuracy
+                });
+            } catch (calcErr) {
+                resolve({ loc: "Грешка GPS", note: "⚠️ ГРЕШКА ЛОКАЦИЯ", dist: null, accuracy: null });
             }
-
-            resolve({
-                loc: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-                note: note,
-                dist: dist,
-                accuracy: accuracy
-            });
         };
 
-        // Задаване на таймер за събиране на най-добър сателитен сигнал (до 4.5 секунди)
+        // Задаване на таймер за събиране на най-добър сателитен сигнал (до 4 секунди)
         timeoutTimer = setTimeout(() => {
-            if (bestPos) {
-                complete(bestPos);
-            } else {
-                navigator.geolocation.getCurrentPosition(
-                    (p) => complete(p),
-                    () => complete(null),
-                    { enableHighAccuracy: true, timeout: 3000, maximumAge: 0 }
-                );
-            }
-        }, 4500);
+            complete(bestPos);
+        }, 4000);
 
         try {
             watchId = navigator.geolocation.watchPosition(
                 (pos) => {
-                    const acc = pos.coords.accuracy || 9999;
+                    const acc = (pos && pos.coords && pos.coords.accuracy) ? pos.coords.accuracy : 9999;
                     if (!bestPos || acc < (bestPos.coords.accuracy || 9999)) {
                         bestPos = pos;
                     }
@@ -237,13 +233,12 @@ function getUserLocation() {
                     }
                 },
                 (err) => {
-                    if (err && err.code === err.PERMISSION_DENIED) {
-                        complete(null);
-                    }
+                    // При грешка (напр. отказ от потребителя или timeout)
+                    complete(bestPos);
                 },
                 {
                     enableHighAccuracy: true,
-                    timeout: 5000,
+                    timeout: 4000,
                     maximumAge: 0
                 }
             );
@@ -269,7 +264,7 @@ async function processCheckIn(actionType) {
             
             if (lastAction === 'Влизане' && lastTime.toDateString() !== now.toDateString()) {
                 let autoOutTime = new Date(lastTime); autoOutTime.setHours(17, 0, 0, 0);
-                await client.from('chekiraniya').insert([{ "Име": currentOperator || "", "Имейл": currentEmail, "Действие": 'Авто излизане', "Време": autoOutTime.toISOString(), "Локация": "Системно", "Бележка": "Авто корекция" }]);
+                await client.from('chekiraniya').insert([{ "Имейл": currentEmail, "Действие": 'Авто излизане', "Време": autoOutTime.toISOString(), "Локация": "Системно", "Бележка": "Авто корекция" }]);
                 await client.from('otcheti').delete().eq('Оператор', currentOperator).eq('Статус', 'Започната');
             } else {
                 if (actionType === 'Влизане' && lastAction === 'Влизане') { Swal.fire('Внимание!', 'Вече сте чекирани за Влизане днес.', 'info'); return; }
@@ -279,7 +274,6 @@ async function processCheckIn(actionType) {
         
         const geoInfo = await getUserLocation();
         const { error: insertErr } = await client.from('chekiraniya').insert([{ 
-            "Име": currentOperator || "", 
             "Имейл": currentEmail, 
             "Действие": actionType, 
             "Време": new Date().toISOString(), 
@@ -301,7 +295,10 @@ async function processCheckIn(actionType) {
         Swal.fire({ icon: actionType === 'Влизане' ? 'success' : 'info', title: 'Успешно!', text: `${actionType} е регистрирано.`, timer: 2000, showConfirmButton: false }).then(() => { 
             loadTasks(true); 
         });
-    } catch (err) { console.error(err); Swal.fire('❌ Грешка при връзката', 'Моля, проверете интернета си.', 'error'); }
+    } catch (err) { 
+        console.error("Check-in error:", err); 
+        Swal.fire('❌ Грешка при връзката', (err && err.message) ? err.message : 'Моля, проверете интернета си.', 'error'); 
+    }
 }
 
 async function fetchMessages() {
