@@ -55,11 +55,13 @@ function initTerminalCalendarUi() {
         const calBtn = document.createElement('button');
         calBtn.id = 'btnTerminalCalendar';
         calBtn.className = 'btn-check btn-terminal-calendar';
-        calBtn.style.cssText = 'background-color: #0891b2; display: flex; align-items: center; gap: 5px; position: relative; padding: 7px 10px; font-size: 0.82em;';
+        calBtn.title = 'Поддръжка и профилактика';
+        calBtn.style.cssText = 'background-color: #0891b2; display: inline-flex; align-items: center; justify-content: center; gap: 4px; position: relative; font-size: 0.82em; flex-shrink: 0;';
         calBtn.onclick = () => openTerminalCalendarModal();
         calBtn.innerHTML = `
-            <span>📅 ПОДДРЪЖКА</span>
-            <span id="terminalCalBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 6px; font-size: 0.85em; font-weight: 900; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">0</span>
+            <span style="font-size: 1.15em; line-height: 1;">🔧</span>
+            <span class="btn-text">ПОДДРЪЖКА</span>
+            <span id="terminalCalBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 5px; font-size: 0.8em; font-weight: 900; box-shadow: 0 1px 3px rgba(0,0,0,0.3); margin-left: 2px;">0</span>
         `;
         actionButtons.insertBefore(calBtn, actionButtons.firstChild);
     }

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="terminal/terminal.css?v=22">
+    <link rel="stylesheet" href="terminal/terminal.css?v=23">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
@@ -35,8 +35,8 @@
         </div>
       </div>
       <div class="action-buttons" style="flex-shrink: 0;">
-        <button class="btn-check btn-monitor" onclick="window.location.href='index.html'">📺 МОНИТОР</button>
-        <button class="btn-check btn-out" onclick="processCheckIn('Излизане')">🔴 ИЗХОД</button>
+        <button class="btn-check btn-monitor" onclick="window.location.href='index.html'" title="Монитор на цеха"><span style="font-size: 1.15em; line-height: 1;">📺</span><span class="btn-text"> МОНИТОР</span></button>
+        <button class="btn-check btn-out" onclick="processCheckIn('Излизане')" title="Край на смяна / Изход">🔴 ИЗХОД</button>
       </div>
     </div>
 
@@ -166,7 +166,7 @@
     <script src="terminal/terminal-core.js?v=10"></script>
     <script src="terminal/terminal-tasks.js?v=4.47"></script>
     <script src="terminal/terminal-actions.js?v=23"></script>
-    <script src="terminal/terminal-calendar.js?v=2" defer></script>
+    <script src="terminal/terminal-calendar.js?v=3" defer></script>
     <script src="terminal/terminal-dossier.js?v=5"></script>
   </body>
 </html>

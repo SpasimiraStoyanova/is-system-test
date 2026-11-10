@@ -1,4 +1,4 @@
-﻿/* ==========================================================
+/* ==========================================================
    MES TERMINAL - PREMIUM MODERN INDUSTRIAL DESIGN SYSTEM
    ========================================================== */
 
@@ -144,6 +144,27 @@ body {
   transform: scale(0.96);
 }
 
+.btn-terminal-calendar {
+  background: linear-gradient(135deg, #0891b2, #0e7490) !important;
+  box-shadow: 0 2px 6px rgba(8, 145, 178, 0.25);
+}
+
+.btn-terminal-calendar:active {
+  transform: scale(0.96);
+}
+
+@media (max-width: 640px) {
+  .btn-check .btn-text {
+    display: none !important;
+  }
+  .btn-terminal-calendar,
+  .btn-monitor {
+    padding: 7px 11px !important;
+    min-width: 38px;
+    justify-content: center;
+  }
+}
+
 @media (max-width: 480px) {
   .app-header {
     padding: 8px 10px;
@@ -172,6 +193,11 @@ body {
   .btn-check {
     padding: 6px 9px;
     font-size: 0.78em;
+  }
+  .btn-terminal-calendar,
+  .btn-monitor {
+    padding: 6px 9px !important;
+    min-width: 34px;
   }
   .btn-out {
     padding: 6px 11px;
