@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="terminal/terminal.css?v=21">
+    <link rel="stylesheet" href="terminal/terminal.css?v=22">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
@@ -29,12 +29,12 @@
     <div class="app-header">
       <div class="profile-area" onclick="setupProfile()" title="Настройки на профила">
         <img src="icon.png" style="height: 38px; width: 38px; border-radius: 8px; object-fit: cover; box-shadow: 0 2px 5px rgba(0,0,0,0.15); margin-right: 5px;" onerror="this.style.display='none'">
-        <div>
+        <div style="min-width: 0;">
           <div class="app-brand-title">AMCI (ТЕСТ)</div>
           <div class="operator-name" id="uiOperatorName">ОПЕРАТОР</div>
         </div>
       </div>
-      <div class="action-buttons">
+      <div class="action-buttons" style="flex-shrink: 0;">
         <button class="btn-check btn-monitor" onclick="window.location.href='index.html'">📺 МОНИТОР</button>
         <button class="btn-check btn-out" onclick="processCheckIn('Излизане')">🔴 ИЗХОД</button>
       </div>
