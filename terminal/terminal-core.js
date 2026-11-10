@@ -167,25 +167,7 @@ function getUserLocation() {
             return;
         }
 
-        let bestPos = null;
-        let watchId = null;
-        let isDone = false;
-        let timeoutTimer = null;
-
-        const complete = (pos) => {
-            if (isDone) return;
-            isDone = true;
-
-            if (timeoutTimer) clearTimeout(timeoutTimer);
-            if (watchId !== null) {
-                try { navigator.geolocation.clearWatch(watchId); } catch(e){}
-            }
-
-            if (!pos) {
-                resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА ЛОКАЦИЯ", dist: null, accuracy: null });
-                return;
-            }
-
+        const handleSuccess = (pos) => {
             try {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
@@ -215,36 +197,48 @@ function getUserLocation() {
             }
         };
 
-        // Задаване на таймер за събиране на най-добър сателитен сигнал (до 4 секунди)
-        timeoutTimer = setTimeout(() => {
-            complete(bestPos);
-        }, 4000);
-
-        try {
-            watchId = navigator.geolocation.watchPosition(
-                (pos) => {
-                    const acc = (pos && pos.coords && pos.coords.accuracy) ? pos.coords.accuracy : 9999;
-                    if (!bestPos || acc < (bestPos.coords.accuracy || 9999)) {
-                        bestPos = pos;
-                    }
-                    // Ако хванем прецизен сателитен фикс (точност <= 15 метра), приключваме веднага
-                    if (acc <= 15) {
-                        complete(bestPos);
-                    }
-                },
-                (err) => {
-                    // При грешка (напр. отказ от потребителя или timeout)
-                    complete(bestPos);
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 4000,
-                    maximumAge: 0
+        // 1. Опит за високоточна сателитна локация (до 10 сек, позволява кеширана позиция от последните 15 сек)
+        navigator.geolocation.getCurrentPosition(
+            handleSuccess,
+            (errHigh) => {
+                // Ако потребителят изрично е забранил достъп до GPS от браузъра (код 1 = PERMISSION_DENIED)
+                if (errHigh && errHigh.code === 1) {
+                    resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА РАЗРЕШЕНИЕ ЗА GPS", dist: null, accuracy: null });
+                    return;
                 }
-            );
-        } catch (e) {
-            complete(null);
-        }
+
+                // 2. Резервен опит: Ако сателитите нямат директна видимост през покрива на халето (код 2 или 3),
+                // взимаме клетъчна/Wi-Fi мрежова локация без highAccuracy, за да не се провали чекирането
+                navigator.geolocation.getCurrentPosition(
+                    handleSuccess,
+                    (errLow) => {
+                        let note = "⚠️ ЛИПСВА ЛОКАЦИЯ";
+                        let locText = "GPS Отказан";
+                        if (errLow && errLow.code === 1) {
+                            note = "⚠️ ЛИПСВА РАЗРЕШЕНИЕ ЗА GPS";
+                            locText = "GPS Отказан";
+                        } else if (errLow && errLow.code === 2) {
+                            note = "⚠️ СЛАБ GPS ОБХВАТ";
+                            locText = "Няма обхват";
+                        } else if (errLow && errLow.code === 3) {
+                            note = "⚠️ ВРЕМЕТО ЗА GPS ИЗТЕЧЕ";
+                            locText = "Таймаут GPS";
+                        }
+                        resolve({ loc: locText, note: note, dist: null, accuracy: null });
+                    },
+                    {
+                        enableHighAccuracy: false,
+                        timeout: 7000,
+                        maximumAge: 60000
+                    }
+                );
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 15000
+            }
+        );
     });
 }
 

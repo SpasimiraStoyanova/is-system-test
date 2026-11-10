@@ -146,7 +146,7 @@
             return Math.round(R * c);
         }
 
-        // Взимане на локация с висока сателитна точност
+        // Взимане на локация с висока сателитна точност и автоматичен мрежов резерв
         function getUserLocation() {
             return new Promise((resolve) => {
                 if (!navigator.geolocation) {
@@ -154,25 +154,7 @@
                     return;
                 }
 
-                let bestPos = null;
-                let watchId = null;
-                let isDone = false;
-                let timeoutTimer = null;
-
-                const complete = (pos) => {
-                    if (isDone) return;
-                    isDone = true;
-
-                    if (timeoutTimer) clearTimeout(timeoutTimer);
-                    if (watchId !== null) {
-                        try { navigator.geolocation.clearWatch(watchId); } catch(e){}
-                    }
-
-                    if (!pos) {
-                        resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА ЛОКАЦИЯ", dist: null, accuracy: null });
-                        return;
-                    }
-
+                const handleSuccess = (pos) => {
                     try {
                         const lat = pos.coords.latitude;
                         const lng = pos.coords.longitude;
@@ -200,34 +182,46 @@
                     }
                 };
 
-                // Таймер до 4 секунди за най-добър сателитен фикс
-                timeoutTimer = setTimeout(() => {
-                    complete(bestPos);
-                }, 4000);
-
-                try {
-                    watchId = navigator.geolocation.watchPosition(
-                        (pos) => {
-                            const acc = (pos && pos.coords && pos.coords.accuracy) ? pos.coords.accuracy : 9999;
-                            if (!bestPos || acc < (bestPos.coords.accuracy || 9999)) {
-                                bestPos = pos;
-                            }
-                            if (acc <= 15) {
-                                complete(bestPos);
-                            }
-                        },
-                        (err) => {
-                            complete(bestPos);
-                        },
-                        {
-                            enableHighAccuracy: true,
-                            timeout: 4000,
-                            maximumAge: 0
+                // 1. Опит за високоточна сателитна локация
+                navigator.geolocation.getCurrentPosition(
+                    handleSuccess,
+                    (errHigh) => {
+                        if (errHigh && errHigh.code === 1) {
+                            resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА РАЗРЕШЕНИЕ ЗА GPS", dist: null, accuracy: null });
+                            return;
                         }
-                    );
-                } catch (e) {
-                    complete(null);
-                }
+
+                        // 2. Резервен опит: мрежова локация без highAccuracy при слаб обхват в халето
+                        navigator.geolocation.getCurrentPosition(
+                            handleSuccess,
+                            (errLow) => {
+                                let note = "⚠️ ЛИПСВА ЛОКАЦИЯ";
+                                let locText = "GPS Отказан";
+                                if (errLow && errLow.code === 1) {
+                                    note = "⚠️ ЛИПСВА РАЗРЕШЕНИЕ ЗА GPS";
+                                    locText = "GPS Отказан";
+                                } else if (errLow && errLow.code === 2) {
+                                    note = "⚠️ СЛАБ GPS ОБХВАТ";
+                                    locText = "Няма обхват";
+                                } else if (errLow && errLow.code === 3) {
+                                    note = "⚠️ ВРЕМЕТО ЗА GPS ИЗТЕЧЕ";
+                                    locText = "Таймаут GPS";
+                                }
+                                resolve({ loc: locText, note: note, dist: null, accuracy: null });
+                            },
+                            {
+                                enableHighAccuracy: false,
+                                timeout: 7000,
+                                maximumAge: 60000
+                            }
+                        );
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 15000
+                    }
+                );
             });
         }
 
