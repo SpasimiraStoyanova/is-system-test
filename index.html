@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Жив Монитор на Производството</title>
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=32" defer></script>
+  <script src="app.js?v=33" defer></script>
 </head>
 <body>
 
@@ -30,20 +30,27 @@
   </div>
 
   <div class="layout-wrapper" id="dashboard-wrapper">
-    <!-- ГОРЕН РЕД: 4 ПРОЗОРЕЦА (ТЕЛА, ПРЕДНИ КАПАЦИ, ЗАДНИ КАПАЦИ, МПР) -->
+    <!-- ГОРЕН РЕД: ТЕЛА (ВЛЯВО), ПРЕДНИ И ЗАДНИ КАПАЦИ (В СРЕДАТА ЕДИН НАД ДРУГ), МПР (ВДЯСНО - ШИРОК) -->
     <div class="row-section top-row">
+      <!-- ТЕЛА -->
       <div class="window window-tiela">
         <div class="window-header header-tiela">ТЕЛА</div>
         <div class="window-body" id="w-tiela"></div>
       </div>
-      <div class="window window-predni">
-        <div class="window-header header-predni">ПРЕДНИ КАПАЦИ</div>
-        <div class="window-body" id="w-predni"></div>
+
+      <!-- СРЕДНА КОЛОНА: ПРЕДНИ И ЗАДНИ КАПАЦИ ЕДИН НАД ДРУГ -->
+      <div class="caps-stack-zone">
+        <div class="window window-predni">
+          <div class="window-header header-predni">ПРЕДНИ КАПАЦИ</div>
+          <div class="window-body" id="w-predni"></div>
+        </div>
+        <div class="window window-zadni">
+          <div class="window-header header-zadni">ЗАДНИ КАПАЦИ</div>
+          <div class="window-body" id="w-zadni"></div>
+        </div>
       </div>
-      <div class="window window-zadni">
-        <div class="window-header header-zadni">ЗАДНИ КАПАЦИ</div>
-        <div class="window-body" id="w-zadni"></div>
-      </div>
+
+      <!-- МПР (ШИРОК ПРОЗОРЕЦ, ЗА ДА НЕ СЕ ОТРЯЗВАТ ВЕРИГИТЕ) -->
       <div class="window window-mpr">
         <div class="window-header header-mpr">МПР</div>
         <div class="window-body" id="w-mpr"></div>
