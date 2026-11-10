@@ -1,4 +1,4 @@
-﻿// terminal-dossier.js - Достъп до лично досие, документи, отчетена работа и чекирания през терминала
+// terminal-dossier.js - Достъп до лично досие, документи, отчетена работа и чекирания през терминала
 // Защитено с индивидуален ПИН/парола за всеки оператор
 
 const DOSIETA_STORAGE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
@@ -9,8 +9,8 @@ const termDosietaClient = (typeof supabase !== 'undefined' && supabase.createCli
     : client;
 
 // Координати на цеха (за проверка на разстоянието при чекиране)
-// WORKSHOP_LAT from terminal-core.js
-// WORKSHOP_LNG from terminal-core.js
+const DOSSIER_WORKSHOP_LAT = 41.893865;
+const DOSSIER_WORKSHOP_LNG = 23.487354;
 
 const TERM_DOC_CATEGORIES = {
     'salary': {
@@ -121,11 +121,13 @@ function parseOrCalcDistance(item) {
     if (loc.includes(',')) {
         const parts = loc.split(',').map(s => parseFloat(s.trim()));
         if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+            const wLat = (typeof WORKSHOP_LAT !== 'undefined') ? WORKSHOP_LAT : DOSSIER_WORKSHOP_LAT;
+            const wLng = (typeof WORKSHOP_LNG !== 'undefined') ? WORKSHOP_LNG : DOSSIER_WORKSHOP_LNG;
             const R = 6371e3;
             const p1 = parts[0] * Math.PI / 180;
-            const p2 = WORKSHOP_LAT * Math.PI / 180;
-            const dp = (WORKSHOP_LAT - parts[0]) * Math.PI / 180;
-            const dl = (WORKSHOP_LNG - parts[1]) * Math.PI / 180;
+            const p2 = wLat * Math.PI / 180;
+            const dp = (wLat - parts[0]) * Math.PI / 180;
+            const dl = (wLng - parts[1]) * Math.PI / 180;
             const a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             return Math.round(R * c);

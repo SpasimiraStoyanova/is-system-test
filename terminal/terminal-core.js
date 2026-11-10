@@ -6,7 +6,7 @@ const client = supabase.createClient(
 let currentOperator = ""; let currentEmail = ""; let currentMachine = "";
 let globalTasks = []; let localHistoryData = []; let globalBomData = []; let globalRoutesByDetail = {};
 let currentTaskFilter = 'ready'; let activeTaskId = null; let isUserCheckedIn = false; 
-const WORKSHOP_LAT = 41.8937; const WORKSHOP_LNG = 23.4875;
+const WORKSHOP_LAT = 41.893865; const WORKSHOP_LNG = 23.487354; const WORKSHOP_RADIUS = 200;
 
 async function verifyUserAccess(email) {
     try {
@@ -162,19 +162,101 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
 
 function getUserLocation() {
     return new Promise((resolve) => {
-        if (!navigator.geolocation) { resolve({ loc: "Не се поддържа", note: "⚠️ GPS НЕ СЕ ПОДДЪРЖА" }); return; }
-        navigator.geolocation.getCurrentPosition((pos) => {
-                const lat = pos.coords.latitude; const lng = pos.coords.longitude; const dist = getDistanceInMeters(lat, lng, WORKSHOP_LAT, WORKSHOP_LNG);
-                resolve({ loc: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, note: dist > 200 ? `⚠️ ИЗВЪН ОБЕКТА (${dist}м)` : "" });
-            }, (err) => { resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА ЛОКАЦИЯ" }); }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
+        if (!navigator.geolocation) {
+            resolve({ loc: "Не се поддържа", note: "⚠️ GPS НЕ СЕ ПОДДЪРЖА", dist: null, accuracy: null });
+            return;
+        }
+
+        let bestPos = null;
+        let watchId = null;
+        let isDone = false;
+        let timeoutTimer = null;
+
+        const complete = (pos) => {
+            if (isDone) return;
+            isDone = true;
+
+            if (timeoutTimer) clearTimeout(timeoutTimer);
+            if (watchId !== null) {
+                try { navigator.geolocation.clearWatch(watchId); } catch(e){}
+            }
+
+            if (!pos) {
+                resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА ЛОКАЦИЯ", dist: null, accuracy: null });
+                return;
+            }
+
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const accuracy = Math.round(pos.coords.accuracy || 0);
+            const dist = getDistanceInMeters(lat, lng, WORKSHOP_LAT, WORKSHOP_LNG);
+
+            // Толеранс от точността на сигнала: ако точността е ±25м, а отчетеното разстояние е 215м,
+            // реалната позиция на устройството попада в границите на 200-метровата зона.
+            const tolerance = accuracy > 0 ? Math.min(accuracy, 60) : 0;
+            const effectiveDist = Math.max(0, dist - tolerance);
+
+            let note = "";
+            if (effectiveDist > WORKSHOP_RADIUS) {
+                note = `⚠️ ИЗВЪН ОБЕКТА (${dist}м)`;
+            } else if (dist > WORKSHOP_RADIUS && effectiveDist <= WORKSHOP_RADIUS) {
+                note = `В обекта (~${dist}м, точност ±${accuracy}м)`;
+            }
+
+            resolve({
+                loc: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+                note: note,
+                dist: dist,
+                accuracy: accuracy
+            });
+        };
+
+        // Задаване на таймер за събиране на най-добър сателитен сигнал (до 4.5 секунди)
+        timeoutTimer = setTimeout(() => {
+            if (bestPos) {
+                complete(bestPos);
+            } else {
+                navigator.geolocation.getCurrentPosition(
+                    (p) => complete(p),
+                    () => complete(null),
+                    { enableHighAccuracy: true, timeout: 3000, maximumAge: 0 }
+                );
+            }
+        }, 4500);
+
+        try {
+            watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    const acc = pos.coords.accuracy || 9999;
+                    if (!bestPos || acc < (bestPos.coords.accuracy || 9999)) {
+                        bestPos = pos;
+                    }
+                    // Ако хванем прецизен сателитен фикс (точност <= 15 метра), приключваме веднага
+                    if (acc <= 15) {
+                        complete(bestPos);
+                    }
+                },
+                (err) => {
+                    if (err && err.code === err.PERMISSION_DENIED) {
+                        complete(null);
+                    }
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 5000,
+                    maximumAge: 0
+                }
+            );
+        } catch (e) {
+            complete(null);
+        }
     });
 }
 
 async function processCheckIn(actionType) {
     if (!currentEmail) { Swal.fire('Внимание', 'Моля, въведете вашия имейл в настройките на профила (⚙️).', 'warning'); return; }
     try {
-        Swal.fire({ title: 'Проверка...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        Swal.fire({ title: 'Обработване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         const { data: lastRecord, error: fetchErr } = await client.from('chekiraniya')
             .select('Действие, Време')
             .eq('Имейл', currentEmail)
@@ -187,16 +269,23 @@ async function processCheckIn(actionType) {
             
             if (lastAction === 'Влизане' && lastTime.toDateString() !== now.toDateString()) {
                 let autoOutTime = new Date(lastTime); autoOutTime.setHours(17, 0, 0, 0);
-                await client.from('chekiraniya').insert([{ "Имейл": currentEmail, "Действие": 'Авто излизане', "Време": autoOutTime.toISOString(), "Локация": "Системно", "Бележка": "Авто корекция" }]);
+                await client.from('chekiraniya').insert([{ "Име": currentOperator || "", "Имейл": currentEmail, "Действие": 'Авто излизане', "Време": autoOutTime.toISOString(), "Локация": "Системно", "Бележка": "Авто корекция" }]);
                 await client.from('otcheti').delete().eq('Оператор', currentOperator).eq('Статус', 'Започната');
             } else {
                 if (actionType === 'Влизане' && lastAction === 'Влизане') { Swal.fire('Внимание!', 'Вече сте чекирани за Влизане днес.', 'info'); return; }
                 if (actionType === 'Излизане' && (lastAction === 'Излизане' || lastAction === 'Авто излизане')) { Swal.fire('Внимание!', 'Вече сте се изписали.', 'info'); return; }
             }
         }
-        Swal.fire({ title: 'Проверка на локация...', allowOutsideClick: false, didOpen: () => Swal.showLoading() }); const geoInfo = await getUserLocation();
-        Swal.fire({ title: 'Записване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-        const { error: insertErr } = await client.from('chekiraniya').insert([{ "Имейл": currentEmail, "Действие": actionType, "Време": new Date().toISOString(), "Локация": geoInfo.loc, "Бележка": geoInfo.note }]);
+        
+        const geoInfo = await getUserLocation();
+        const { error: insertErr } = await client.from('chekiraniya').insert([{ 
+            "Име": currentOperator || "", 
+            "Имейл": currentEmail, 
+            "Действие": actionType, 
+            "Време": new Date().toISOString(), 
+            "Локация": geoInfo.loc, 
+            "Бележка": geoInfo.note 
+        }]);
         if (insertErr) throw insertErr;
         
         if (actionType === 'Излизане') {

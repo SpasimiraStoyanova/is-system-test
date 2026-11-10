@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="bg">
 <head>
     <meta charset="UTF-8">
@@ -92,8 +92,9 @@
         );
 
         // Координати на цеха
-        const WORKSHOP_LAT = 41.8937;
-        const WORKSHOP_LNG = 23.4875;
+        const WORKSHOP_LAT = 41.893865;
+        const WORKSHOP_LNG = 23.487354;
+        const WORKSHOP_RADIUS = 200;
 
         // Четем параметъра от URL адреса (?action=in или ?action=out)
         const urlParams = new URLSearchParams(window.location.search);
@@ -145,26 +146,94 @@
             return Math.round(R * c);
         }
 
-        // Взимане на локация
+        // Взимане на локация с висока сателитна точност
         function getUserLocation() {
             return new Promise((resolve) => {
                 if (!navigator.geolocation) {
-                    resolve({ loc: "Не се поддържа", note: "⚠️ GPS НЕ СЕ ПОДДЪРЖА" });
+                    resolve({ loc: "Не се поддържа", note: "⚠️ GPS НЕ СЕ ПОДДЪРЖА", dist: null, accuracy: null });
                     return;
                 }
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
-                        const distance = getDistanceInMeters(lat, lng, WORKSHOP_LAT, WORKSHOP_LNG);
-                        let note = distance > 200 ? `⚠️ ИЗВЪН ОБЕКТА (${distance}м)` : "";
-                        resolve({ loc: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, note: note });
-                    },
-                    (error) => {
-                        resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА ЛОКАЦИЯ" });
-                    },
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                );
+
+                let bestPos = null;
+                let watchId = null;
+                let isDone = false;
+                let timeoutTimer = null;
+
+                const complete = (pos) => {
+                    if (isDone) return;
+                    isDone = true;
+
+                    if (timeoutTimer) clearTimeout(timeoutTimer);
+                    if (watchId !== null) {
+                        try { navigator.geolocation.clearWatch(watchId); } catch(e){}
+                    }
+
+                    if (!pos) {
+                        resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА ЛОКАЦИЯ", dist: null, accuracy: null });
+                        return;
+                    }
+
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    const accuracy = Math.round(pos.coords.accuracy || 0);
+                    const dist = getDistanceInMeters(lat, lng, WORKSHOP_LAT, WORKSHOP_LNG);
+
+                    const tolerance = accuracy > 0 ? Math.min(accuracy, 60) : 0;
+                    const effectiveDist = Math.max(0, dist - tolerance);
+
+                    let note = "";
+                    if (effectiveDist > WORKSHOP_RADIUS) {
+                        note = `⚠️ ИЗВЪН ОБЕКТА (${dist}м)`;
+                    } else if (dist > WORKSHOP_RADIUS && effectiveDist <= WORKSHOP_RADIUS) {
+                        note = `В обекта (~${dist}м, точност ±${accuracy}м)`;
+                    }
+
+                    resolve({
+                        loc: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+                        note: note,
+                        dist: dist,
+                        accuracy: accuracy
+                    });
+                };
+
+                // Таймер до 4.5 секунди за най-добър сателитен фикс
+                timeoutTimer = setTimeout(() => {
+                    if (bestPos) {
+                        complete(bestPos);
+                    } else {
+                        navigator.geolocation.getCurrentPosition(
+                            (p) => complete(p),
+                            () => complete(null),
+                            { enableHighAccuracy: true, timeout: 3000, maximumAge: 0 }
+                        );
+                    }
+                }, 4500);
+
+                try {
+                    watchId = navigator.geolocation.watchPosition(
+                        (pos) => {
+                            const acc = pos.coords.accuracy || 9999;
+                            if (!bestPos || acc < (bestPos.coords.accuracy || 9999)) {
+                                bestPos = pos;
+                            }
+                            if (acc <= 15) {
+                                complete(bestPos);
+                            }
+                        },
+                        (err) => {
+                            if (err && err.code === err.PERMISSION_DENIED) {
+                                complete(null);
+                            }
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            timeout: 5000,
+                            maximumAge: 0
+                        }
+                    );
+                } catch (e) {
+                    complete(null);
+                }
             });
         }
 
@@ -174,8 +243,7 @@
             if (!email) return;
 
             try {
-                // 1. ПРОВЕРКА ЗА ДУБЛИРАНЕ
-                Swal.fire({ title: 'Проверка...', text: 'Сверяване с базата данни', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                Swal.fire({ title: 'Обработване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
                 
                 const { data: lastRecord, error: fetchErr } = await client
                     .from('chekiraniya')
@@ -198,21 +266,31 @@
                     }
                 }
 
-                // 2. ВЗИМАНЕ НА ЛОКАЦИЯ
-                Swal.fire({ title: 'Проверка на локация...', text: 'Моля, разрешете достъп до GPS, ако бъдете попитани.', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                // 2. ВЗИМАНЕ НА ЛОКАЦИЯ (тихо във фонов режим)
                 const geoInfo = await getUserLocation();
 
-                // 3. ЗАПИСВАНЕ
-                Swal.fire({ title: 'Записване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                // 3. Име на работника от personal
+                let workerName = "";
+                try {
+                    const { data: pData } = await client.from('personal').select('Име').eq('Имейл', email).limit(1);
+                    if (pData && pData.length > 0 && pData[0]['Име']) {
+                        workerName = pData[0]['Име'];
+                    }
+                } catch (e) {}
+
+                // 4. ЗАПИСВАНЕ
+                const insertPayload = {
+                    "Имейл": email,
+                    "Действие": actionText,
+                    "Време": new Date().toISOString(),
+                    "Локация": geoInfo.loc,
+                    "Бележка": geoInfo.note
+                };
+                if (workerName) insertPayload["Име"] = workerName;
+
                 const { error: insertErr } = await client
                     .from('chekiraniya')
-                    .insert([{
-                        "Имейл": email,
-                        "Действие": actionText,
-                        "Време": new Date().toISOString(),
-                        "Локация": geoInfo.loc,
-                        "Бележка": geoInfo.note
-                    }]);
+                    .insert([insertPayload]);
 
                 if (insertErr) throw insertErr;
 
@@ -233,6 +311,13 @@
                             <p style="color: #475569; font-size:1.1em;">Вашият час е регистриран успешно.<br>Може да затворите този прозорец.</p>
                         </div>
                     `;
+                });
+
+            } catch (err) {
+                console.error(err);
+                Swal.fire('❌ Грешка при връзката', 'Моля, проверете интернета си и опитайте отново.', 'error');
+            }
+        }
                 });
 
             } catch (err) {

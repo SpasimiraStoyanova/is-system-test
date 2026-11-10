@@ -258,7 +258,11 @@ async function loadWorkerAttendance() {
             let timeStr = item['Време'] ? new Date(item['Време']).toLocaleString('bg-BG') : ''; let actionHtml = item['Действие'];
             if (actionHtml === 'Влизане') actionHtml = `<span style="color:#15803d; font-weight:800;">🟢 Влизане</span>`; if (actionHtml === 'Излизане') actionHtml = `<span style="color:#b91c1c; font-weight:800;">🔴 Излизане</span>`; if (actionHtml === 'Авто излизане') actionHtml = `<span style="color:#b45309; font-weight:800;">🕒 Авто излизане</span>`;
             let noteHtml = item['Бележка'] || ''; if (noteHtml.includes('ИЗВЪН ОБЕКТА')) noteHtml = `⚠️ <b style="color:#dc2626;">${noteHtml}</b>`; let locHtml = item['Локация'] || '';
-            if (locHtml.includes(',')) { let coords = locHtml.replace(/\s/g, ''); locHtml = `<a href="https://www.google.com/maps?q=${coords}" target="_blank" style="color:#2563eb; font-weight:bold; text-decoration:none;">📍 Карта</a>`; }
+            if (locHtml.includes(',')) { 
+                let m = locHtml.match(/([0-9]+\.[0-9]+)\s*,\s*([0-9]+\.[0-9]+)/);
+                let coords = m ? `${m[1]},${m[2]}` : locHtml.replace(/\s/g, ''); 
+                locHtml = `<a href="https://www.google.com/maps?q=${coords}" target="_blank" style="color:#2563eb; font-weight:bold; text-decoration:none;">📍 Карта</a>`; 
+            }
             html += `<tr style="${rowStyle}"><td><b>${timeStr}</b></td><td>${actionHtml}</td><td>${locHtml}</td><td>${noteHtml}</td></tr>`;
         });
         tbody.innerHTML = html;
