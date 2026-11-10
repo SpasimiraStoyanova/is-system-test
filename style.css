@@ -189,6 +189,41 @@ html, body {
   padding-bottom: 2px;
 }
 
+/* ДИНАМИЧЕН КОМПАКТЕН РЕЖИМ ПРИ НАТОВАРЕНИ ПЛАНОВЕ С МНОГО ВАЛОВЕ (ПРИМЕРНО НОЕМВРИ) */
+.dense-rotors .lane {
+  margin-bottom: 2px !important;
+  padding-bottom: 1px !important;
+}
+.dense-rotors .family-row {
+  padding: 1px 0 !important;
+}
+.dense-rotors .plan-group {
+  margin-bottom: 2px !important;
+  padding-left: 8px !important;
+}
+.dense-rotors .lane-title {
+  font-size: 11.5px !important;
+  margin-bottom: 1px !important;
+}
+.dense-rotors .vsm-title {
+  font-size: 15px !important;
+}
+.dense-rotors .vsm-qty {
+  font-size: 12px !important;
+}
+.dense-rotors .op-focus {
+  font-size: 15px !important;
+}
+.dense-rotors .op-past {
+  font-size: 12px !important;
+}
+.dense-rotors .op-future {
+  font-size: 11px !important;
+}
+.dense-rotors .op-text {
+  max-width: 165px !important;
+}
+
 /* 2. ДЯСНА КОЛОНА: СТАТОРИ (ГОРЕ) И РЕЗОЛВЕРИ (ДОЛУ) ЕДИН НАД ДРУГ */
 .right-stack-zone {
   flex: 0 0 600px; /* 600px широчина - достатъчна за веригите на статорите и единичната колона на резолверите */

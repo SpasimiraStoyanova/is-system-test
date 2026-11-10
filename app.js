@@ -793,6 +793,64 @@ function calculateOperationStates(node, children, allNodesMap) {
     return { allChildrenDone, stateMachine, hasActive };
 }
 
+// --- AUTO-ADAPTIVE DASHBOARD ENGINE (АВТОМАТИЧНО НАМЕСТВАНЕ СПРЯМО ПЛАНА) ---
+function autoAdjustDashboardToPlan(nodes) {
+    if (!nodes) return;
+
+    const rotors11 = (nodes.rotors_var11 || nodes.var11 || []);
+    const rotors25 = (nodes.rotors_var25 || nodes.var25 || []);
+    const bearings = (nodes.bearings || []);
+    const totalRotorsCount = rotors11.length + rotors25.length + bearings.length;
+
+    const statori = (nodes.statori || []);
+    const assembly = (nodes.assembly || []);
+
+    const topRowEl = document.querySelector('.top-row');
+    const bottomRowEl = document.querySelector('.bottom-row');
+    const winRotorsEl = document.querySelector('.window-rotors');
+    const winStatoriEl = document.querySelector('.window-statori');
+    const winAssemblyEl = document.querySelector('.window-assembly');
+
+    // 1. Динамичен баланс на височината между Горен и Долен ред
+    if (topRowEl && bottomRowEl) {
+        if (totalRotorsCount >= 11) {
+            // Тежък план за ротори (като Ноември с 14-15 детайла) -> повече височина за роторите
+            topRowEl.style.flex = '1 1 35%';
+            bottomRowEl.style.flex = '1.85 1 65%';
+        } else if (totalRotorsCount >= 8) {
+            topRowEl.style.flex = '1 1 38%';
+            bottomRowEl.style.flex = '1.6 1 62%';
+        } else {
+            // Нормален/по-лек план (като Септември с 5-7 детайла)
+            topRowEl.style.flex = '1 1 42%';
+            bottomRowEl.style.flex = '1.38 1 58%';
+        }
+    }
+
+    // 2. Динамична гъстота на Ротори при много детайли (за да се поберат 100% на екрана без скрол)
+    if (winRotorsEl) {
+        if (totalRotorsCount >= 10) {
+            winRotorsEl.classList.add('dense-rotors');
+        } else {
+            winRotorsEl.classList.remove('dense-rotors');
+        }
+    }
+
+    // 3. Динамично съотношение между Статори и Резолвери
+    if (winStatoriEl && winAssemblyEl) {
+        if (assembly.length >= 10 && statori.length <= 3) {
+            winStatoriEl.style.flex = '0.75 1 34%';
+            winAssemblyEl.style.flex = '1.45 1 66%';
+        } else if (statori.length > 4) {
+            winStatoriEl.style.flex = '1.1 1 50%';
+            winAssemblyEl.style.flex = '1.1 1 50%';
+        } else {
+            winStatoriEl.style.flex = '0.85 1 37%';
+            winAssemblyEl.style.flex = '1.45 1 63%';
+        }
+    }
+}
+
 // --- RENDERING ---
 function drawDashboard(jsonString) {
     if (!jsonString) return;
@@ -801,6 +859,9 @@ function drawDashboard(jsonString) {
 
     document.getElementById('loading').style.display = 'none';
     globalConnections = data.connections || [];
+    
+    // Автоматично наместване на таблото спрямо броя детайли в заредения план
+    autoAdjustDashboardToPlan(data.nodes);
     
     domIdMap = {};
     domIdCounter = 0;
@@ -1298,5 +1359,11 @@ function drawArrows() {
 }
 
 window.addEventListener('resize', () => requestAnimationFrame(drawArrows));
+
+// Моментално синхронизиране на стрелки, кръгчета и триъгълничета при скрол в който и да е прозорец
+document.addEventListener('scroll', () => {
+    requestAnimationFrame(drawArrows);
+}, { capture: true, passive: true });
+
 
 
