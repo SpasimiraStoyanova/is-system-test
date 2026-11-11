@@ -65,12 +65,83 @@ function renderNavAuthArea(user) {
     navAuth.innerHTML = `
         <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; background: #ffffff; border: 1px solid #e2e8f0; padding: 4px 10px; border-radius: 9999px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" title="Влезли сте като: ${userEmail}">
             <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e;" title="Активна защитена сесия"></span>
-            <span style="font-weight: 700; color: #334155; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${userEmail}</span>
+            <span style="font-weight: 700; color: #334155; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${userEmail}</span>
         </div>
+        <button type="button" onclick="promptChangeAdminPassword()" class="btn-admin-pass-change" title="Смяна на паролата за вход в системата">
+            <span>🔑</span> <span>Смени парола</span>
+        </button>
         <button type="button" onclick="adminLogout()" class="btn-admin-logout" title="Изход от административния панел">
             <span>🚪</span> <span>Изход</span>
         </button>
     `;
+}
+
+async function promptChangeAdminPassword() {
+    const { value: formValues } = await Swal.fire({
+        title: '🔑 Смяна на административна парола',
+        html: `
+            <div style="text-align: left; padding: 6px; font-family: inherit;">
+                <p style="color: #64748b; font-size: 0.88rem; margin-top: 0; margin-bottom: 14px; line-height: 1.4;">
+                    Въведете новата парола за вашия Supabase акаунт:
+                </p>
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Нова парола:</label>
+                    <input id="swalNewPass" type="password" placeholder="Минимум 6 символа" class="swal2-input" style="width: 100%; box-sizing: border-box; margin: 0; padding: 10px 12px; height: 42px; font-size: 0.95rem; border-radius: 8px;">
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Повторете новата парола:</label>
+                    <input id="swalConfirmPass" type="password" placeholder="Повторете паролата" class="swal2-input" style="width: 100%; box-sizing: border-box; margin: 0; padding: 10px 12px; height: 42px; font-size: 0.95rem; border-radius: 8px;">
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-top: 10px; font-size: 0.76rem; color: #64748b;">
+                    🛡️ Новата парола се записва незабавно в криптираната база на Supabase.
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '💾 Запази новата парола',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#4338ca',
+        showLoaderOnConfirm: true,
+        didOpen: () => {
+            const p1 = document.getElementById('swalNewPass');
+            if (p1) p1.focus();
+        },
+        preConfirm: async () => {
+            const p1 = document.getElementById('swalNewPass')?.value || '';
+            const p2 = document.getElementById('swalConfirmPass')?.value || '';
+
+            if (!p1 || p1.length < 6) {
+                Swal.showValidationMessage('Паролата трябва да бъде поне 6 символа.');
+                return false;
+            }
+            if (p1 !== p2) {
+                Swal.showValidationMessage('Двете пароли не съвпадат!');
+                return false;
+            }
+
+            try {
+                const { error } = await client.auth.updateUser({ password: p1 });
+                if (error) {
+                    Swal.showValidationMessage('Грешка от Supabase: ' + error.message);
+                    return false;
+                }
+                return true;
+            } catch (err) {
+                Swal.showValidationMessage('Грешка: ' + (err.message || err));
+                return false;
+            }
+        }
+    });
+
+    if (formValues) {
+        Swal.fire({
+            icon: 'success',
+            title: 'Паролата е сменена успешно!',
+            text: 'При следващ вход използвайте новата парола.',
+            confirmButtonColor: '#4338ca'
+        });
+    }
 }
 
 async function adminLogout() {
