@@ -337,6 +337,9 @@ window.calculateMonthlySalaries = async function () {
 // ==============================================================================
 // 3. Рендериране на интерфейса
 // ==============================================================================
+window.renderSalariesLayout = renderSalariesLayout;
+window.renderSalariesModule = renderSalariesLayout;
+
 function renderSalariesLayout() {
     const container = document.getElementById('salariesContainer');
     if (!container) return;
@@ -1072,7 +1075,7 @@ window.saveMonthlySalariesToDb = async function (targetStatus = 'Чернова'
         currentSalaryMonthStatus = targetStatus;
         salaryCalculations.forEach(c => { c.status = targetStatus; });
 
-        renderSalariesModule();
+        renderSalariesLayout();
 
         if (targetStatus === 'Одобрено') {
             Swal.fire({
