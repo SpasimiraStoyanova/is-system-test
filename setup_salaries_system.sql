@@ -67,19 +67,21 @@ GRANT ALL ON public.salary_monthly_logs TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
 -- 5. Първоначални правила по подразбиране (според примерите за Заповедта)
-INSERT INTO public.salary_bonus_rules (rule_code, rule_name, category, threshold, penalty_amount, bonus_amount, unit, description)
+INSERT INTO public.salary_bonus_rules (rule_code, rule_name, category, threshold, penalty_amount, bonus_amount, unit, description, is_active)
 VALUES 
-    ('LATE_ARRIVAL', 'Закъснения за смяна (след 08:05)', 'attendance', 3, 10.00, 0, 'пъти', 'При 3 или повече закъснения за смяна след 08:05 ч. се удържат 10 €'),
-    ('FAILED_3S', 'Неиздържан 3S одит (под 80%)', '3s', 1, 20.00, 0, 'одита', 'При неиздържан 3S одит на работното място се удържат 20 €'),
-    ('WRONG_REPORT', 'Грешно отчитане на детайл / Брак', 'reports', 3, 15.00, 0, 'отчета', 'При 3 или повече грешни отчитания или брак се удържат 15 €'),
-    ('PERFECT_ATTENDANCE', 'Поощрение: Без закъснения за месеца', 'bonus', 0, 0, 20.00, 'месец', 'Поощрителен бонус при 0 закъснения през целия календарен месец')
+    ('LATE_ARRIVAL', 'Закъснения за смяна (след 08:05)', 'attendance', 3, 10.00, 0, 'пъти', 'При 3 или повече закъснения за смяна след 08:05 ч. се удържат 10 €', true),
+    ('FAILED_3S', 'Неиздържан 3S одит (под 80%)', '3s', 1, 20.00, 0, 'одита', 'При неиздържан 3S одит на работното място се удържат 20 €', true),
+    ('WRONG_REPORT', 'Грешно отчитане на детайл / Брак', 'reports', 3, 15.00, 0, 'отчета', 'При 3 или повече грешни отчитания или брак (по подразбиране е изключено)', false),
+    ('PERFECT_ATTENDANCE', 'Поощрение: Без закъснения за месеца', 'bonus', 0, 0, 20.00, 'месец', 'Поощрителен бонус при 0 закъснения през целия календарен месец', true)
 ON CONFLICT (rule_code) DO UPDATE 
 SET rule_name = EXCLUDED.rule_name,
     category = EXCLUDED.category,
     threshold = EXCLUDED.threshold,
     penalty_amount = EXCLUDED.penalty_amount,
     bonus_amount = EXCLUDED.bonus_amount,
-    description = EXCLUDED.description;
+    description = EXCLUDED.description,
+    is_active = EXCLUDED.is_active;
 
 -- 6. Опресняване на API кеша
 NOTIFY pgrst, 'reload schema';
+

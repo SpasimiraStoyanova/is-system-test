@@ -154,6 +154,7 @@ window.invalidateAdminCache = function (tabKey = null) {
 function buildNavbar() {
     const container = document.getElementById('tabsContainer'); container.innerHTML = '';
     Object.keys(tableConfigs).forEach(key => {
+        if (tableConfigs[key].hiddenTab) return;
         const btn = document.createElement('button'); btn.className = `tab-btn ${key === currentTab ? 'active' : ''}`;
         btn.innerText = tableConfigs[key].label;
         btn.onclick = () => switchTab(key, key === currentTab);

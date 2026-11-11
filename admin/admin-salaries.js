@@ -55,8 +55,8 @@ const DEFAULT_BONUS_RULES = [
         penalty_amount: 15.00,
         bonus_amount: 0,
         unit: 'отчета',
-        description: 'При 3 или повече грешни отчитания или регистриран брак се удържат 15 €',
-        is_active: true
+        description: 'При 3 или повече грешни отчитания или брак (по подразбиране е изключено, може да се активира от правилата при нужда)',
+        is_active: false
     },
     {
         id: 4,
@@ -994,3 +994,4 @@ window.saveMonthlySalariesToDb = async function () {
         });
     }
 };
+
