@@ -1,5 +1,6 @@
 -- ==============================================================
 -- Скрипт за Система "Заплати, Бонуси & Мотивация" (AMCI MES)
+-- Включва: Създаване на таблици + Стриктна RLS Защита
 -- Тестова База Данни: zdythzcgcjxwbxufunuh
 -- ==============================================================
 
@@ -53,20 +54,7 @@ ON public.salary_monthly_logs (month, year, worker_email);
 ALTER TABLE public.personal ADD COLUMN IF NOT EXISTS "Основна заплата" numeric DEFAULT 0;
 ALTER TABLE public.personal ADD COLUMN IF NOT EXISTS "Базов бонус" numeric DEFAULT 0;
 
--- 4. RLS Политики за достъп
-ALTER TABLE public.salary_bonus_rules ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow all on salary_bonus_rules" ON public.salary_bonus_rules;
-CREATE POLICY "Allow all on salary_bonus_rules" ON public.salary_bonus_rules FOR ALL USING (true) WITH CHECK (true);
-
-ALTER TABLE public.salary_monthly_logs ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow all on salary_monthly_logs" ON public.salary_monthly_logs;
-CREATE POLICY "Allow all on salary_monthly_logs" ON public.salary_monthly_logs FOR ALL USING (true) WITH CHECK (true);
-
-GRANT ALL ON public.salary_bonus_rules TO anon, authenticated;
-GRANT ALL ON public.salary_monthly_logs TO anon, authenticated;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
-
--- 5. Първоначални правила по подразбиране (според примерите за Заповедта)
+-- 4. Първоначални правила по подразбиране (според примерите за Заповедта)
 INSERT INTO public.salary_bonus_rules (rule_code, rule_name, category, threshold, penalty_amount, bonus_amount, unit, description, is_active)
 VALUES 
     ('LATE_ARRIVAL', 'Закъснения за смяна (след 08:05)', 'attendance', 3, 10.00, 0, 'пъти', 'При 3 или повече закъснения за смяна след 08:05 ч. се удържат 10 €', true),
@@ -82,6 +70,59 @@ SET rule_name = EXCLUDED.rule_name,
     description = EXCLUDED.description,
     is_active = EXCLUDED.is_active;
 
--- 6. Опресняване на API кеша
-NOTIFY pgrst, 'reload schema';
+-- 5. СТРИКТНА RLS СИГУРНОСТ (Защита на ниво сървър)
 
+-- А) Заплати и Бонуси (САМО за логнат администратор)
+ALTER TABLE public.salary_monthly_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on salary_monthly_logs" ON public.salary_monthly_logs;
+DROP POLICY IF EXISTS "Admin full access on salary_monthly_logs" ON public.salary_monthly_logs;
+
+REVOKE ALL ON public.salary_monthly_logs FROM anon;
+GRANT ALL ON public.salary_monthly_logs TO authenticated;
+
+CREATE POLICY "Admin full access on salary_monthly_logs" 
+ON public.salary_monthly_logs 
+FOR ALL 
+TO authenticated 
+USING (true) 
+WITH CHECK (true);
+
+-- Б) Правила за Бонуси (САМО за логнат администратор)
+ALTER TABLE public.salary_bonus_rules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on salary_bonus_rules" ON public.salary_bonus_rules;
+DROP POLICY IF EXISTS "Admin full access on salary_bonus_rules" ON public.salary_bonus_rules;
+
+REVOKE ALL ON public.salary_bonus_rules FROM anon;
+GRANT ALL ON public.salary_bonus_rules TO authenticated;
+
+CREATE POLICY "Admin full access on salary_bonus_rules" 
+ON public.salary_bonus_rules 
+FOR ALL 
+TO authenticated 
+USING (true) 
+WITH CHECK (true);
+
+-- В) Персонал (Терминалите могат да четат Име и Статус за чекиране, но НЕ могат да редактират)
+ALTER TABLE public.personal ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on personal" ON public.personal;
+DROP POLICY IF EXISTS "Allow select for all on personal" ON public.personal;
+DROP POLICY IF EXISTS "Admin full access on personal" ON public.personal;
+
+REVOKE INSERT, UPDATE, DELETE ON public.personal FROM anon;
+GRANT SELECT ON public.personal TO anon;
+GRANT ALL ON public.personal TO authenticated;
+
+CREATE POLICY "Allow select for all on personal" 
+ON public.personal 
+FOR SELECT 
+USING (true);
+
+CREATE POLICY "Admin full access on personal" 
+ON public.personal 
+FOR ALL 
+TO authenticated 
+USING (true) 
+WITH CHECK (true);
+
+-- 6. Опресняване на кеша на API
+NOTIFY pgrst, 'reload schema';
