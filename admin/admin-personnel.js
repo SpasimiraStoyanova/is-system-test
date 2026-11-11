@@ -177,7 +177,7 @@ function closeFolderModal() {
 }
 
 function switchFolderTab(tabId) { 
-    ['att', 'work', 'docs', '3s'].forEach(id => { 
+    ['att', 'work', 'docs', '3s', 'bonuses'].forEach(id => { 
         const btn = document.getElementById('tab' + id.charAt(0).toUpperCase() + id.slice(1) + 'Btn');
         const cont = document.getElementById('f-' + id);
         if (btn) btn.classList.remove('active'); 
@@ -191,6 +191,7 @@ function switchFolderTab(tabId) {
     if (tabId === 'work') loadWorkerWork(); 
     if (tabId === 'docs') loadWorkerDocs(); 
     if (tabId === '3s') loadWorker3sAudits(); 
+    if (tabId === 'bonuses') loadWorkerBonuses(); 
 }
 
 async function loadWorker3sAudits() {
@@ -243,6 +244,139 @@ async function loadWorker3sAudits() {
         list.innerHTML = html;
     } catch (err) {
         list.innerHTML = `<div style="color:#ef4444; padding:15px;">Грешка при зареждане на одитите: ${err.message}</div>`;
+    }
+}
+
+async function loadWorkerBonuses() {
+    const list = document.getElementById('workerBonusesList');
+    if (!list) return;
+    list.innerHTML = '<div style="padding:25px; text-align:center; color:#64748b;">Изчисляване на показатели за бонуси & заплата... 💰</div>';
+
+    try {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+
+        // 1. Worker info from personal
+        const { data: pData } = await client.from('personal').select('*').eq('Имейл', currentFolderEmail).limit(1);
+        const worker = (pData && pData.length > 0) ? pData[0] : {};
+        const workerName = worker['Име'] || currentFolderEmail;
+        const baseBonus = parseFloat(worker['Базов бонус']) || 0;
+        const baseSalary = parseFloat(worker['Основна заплата']) || 0;
+
+        // 2. Attendance (Lates) this month
+        const { data: attData } = await client.from('chekiraniya')
+            .select('*')
+            .eq('Имейл', currentFolderEmail)
+            .gte('Време', startOfMonth)
+            .lte('Време', endOfMonth)
+            .order('Време', { ascending: false });
+
+        let lates = [];
+        (attData || []).forEach(item => {
+            if (item['Действие'] === 'Влизане' && item['Време']) {
+                let d = new Date(item['Време']);
+                // Shift starts at 08:00 with 5 min grace
+                if (d.getHours() > 8 || (d.getHours() === 8 && d.getMinutes() > 5)) {
+                    let minLate = (d.getHours() - 8) * 60 + d.getMinutes();
+                    lates.push({ time: d, minLate: minLate, raw: item });
+                }
+            }
+        });
+
+        // 3. 3S Audits this month
+        let auditQuery = client.from('audit_3s_logs').select('*').gte('created_at', startOfMonth).lte('created_at', endOfMonth);
+        if (workerName) {
+            auditQuery = auditQuery.or(`target_name.eq."${workerName}",target_name.eq."${currentFolderEmail}"`);
+        } else {
+            auditQuery = auditQuery.eq('target_name', currentFolderEmail);
+        }
+        const { data: audits } = await auditQuery;
+        let failedAudits = (audits || []).filter(a => (parseFloat(a.percentage) || 0) < 80);
+
+        // 4. Mistakes in reports (Brack) this month
+        const { data: otchetiData } = await client.from('otcheti')
+            .select('*')
+            .or(`Оператор.ilike."%${workerName}%",Оператор.ilike."%${currentFolderEmail}%"`)
+            .eq('Статус', 'Брак')
+            .gte('Дата', startOfMonth)
+            .lte('Дата', endOfMonth);
+        let defectMistakes = otchetiData || [];
+
+        // Check rules penalty estimation (defaults: 3 lates = 10 EUR, failed 3s = 20 EUR, 3 defects = 15 EUR)
+        let latePenalty = Math.floor(lates.length / 3) * 10;
+        let auditPenalty = failedAudits.length * 20;
+        let defectPenalty = Math.floor(defectMistakes.length / 3) * 15;
+        let totalDeductions = latePenalty + auditPenalty + defectPenalty;
+        let netBonus = Math.max(0, baseBonus - totalDeductions);
+
+        let html = `
+            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; border-bottom:1px solid #f1f5f9; padding-bottom:10px;">
+                    <div>
+                        <div style="font-weight:900; color:#1e293b; font-size:1.1em;">💰 Месечен Статус за Бонуси (Текущ месец)</div>
+                        <div style="font-size:0.82em; color:#64748b;">Служител: <b>${workerName}</b> (${worker['Длъжност'] || 'Служител'})</div>
+                    </div>
+                    <button type="button" class="btn-primary" onclick="switchTab('salaries')" style="padding:6px 12px; font-size:0.82em; background:#4338ca;">
+                        📊 Отвори цялата Ведомост ➔
+                    </button>
+                </div>
+
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-bottom:16px;">
+                    <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:10px; text-align:center;">
+                        <div style="font-size:0.75em; font-weight:700; color:#64748b;">БАЗОВ БОНУС</div>
+                        <div style="font-size:1.3em; font-weight:900; color:#1e293b; margin-top:2px;">${baseBonus > 0 ? baseBonus + ' €' : 'Не е зададен'}</div>
+                    </div>
+                    <div style="background:${lates.length >= 3 ? '#fee2e2' : '#f0fdf4'}; border:1px solid ${lates.length >= 3 ? '#fca5a5' : '#bbf7d0'}; border-radius:8px; padding:10px; text-align:center;">
+                        <div style="font-size:0.75em; font-weight:700; color:${lates.length >= 3 ? '#b91c1c' : '#15803d'};">ЗАКЪСНЕНИЯ (СЛЕД 08:05)</div>
+                        <div style="font-size:1.3em; font-weight:900; color:${lates.length >= 3 ? '#dc2626' : '#166534'}; margin-top:2px;">${lates.length} бр. ${latePenalty > 0 ? `(-${latePenalty} €)` : ''}</div>
+                    </div>
+                    <div style="background:${failedAudits.length > 0 ? '#fee2e2' : '#f0fdf4'}; border:1px solid ${failedAudits.length > 0 ? '#fca5a5' : '#bbf7d0'}; border-radius:8px; padding:10px; text-align:center;">
+                        <div style="font-size:0.75em; font-weight:700; color:${failedAudits.length > 0 ? '#b91c1c' : '#15803d'};">3S ОДИТИ (&lt;80%)</div>
+                        <div style="font-size:1.3em; font-weight:900; color:${failedAudits.length > 0 ? '#dc2626' : '#166534'}; margin-top:2px;">${failedAudits.length} бр. ${auditPenalty > 0 ? `(-${auditPenalty} €)` : ''}</div>
+                    </div>
+                    <div style="background:${defectMistakes.length >= 3 ? '#fee2e2' : '#f8fafc'}; border:1px solid ${defectMistakes.length >= 3 ? '#fca5a5' : '#cbd5e1'}; border-radius:8px; padding:10px; text-align:center;">
+                        <div style="font-size:0.75em; font-weight:700; color:#64748b;">БРАК / ГРЕШКИ</div>
+                        <div style="font-size:1.3em; font-weight:900; color:#1e293b; margin-top:2px;">${defectMistakes.length} бр. ${defectPenalty > 0 ? `(-${defectPenalty} €)` : ''}</div>
+                    </div>
+                </div>
+
+                <!-- Детайли за Закъсненията -->
+                <div style="margin-bottom:12px; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+                    <div style="background:#f8fafc; padding:8px 12px; font-weight:800; font-size:0.85em; color:#334155; display:flex; justify-content:space-between;">
+                        <span>⏱️ Засечени закъснения за смяна (${lates.length})</span>
+                        <span style="font-size:0.85em; color:${latePenalty > 0 ? '#dc2626' : '#16a34a'}; font-weight:800;">Удръжка: ${latePenalty > 0 ? '-' + latePenalty + ' €' : '0 €'}</span>
+                    </div>
+                    <div style="max-height:120px; overflow-y:auto; padding:6px 12px; font-size:0.85em;">
+                        ${lates.length > 0 ? `
+                            <ul style="margin:0; padding-left:18px;">
+                                ${lates.map(l => `<li><b>${l.time.toLocaleDateString('bg-BG')}</b> в <b>${l.time.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' })} ч.</b> (закъснение с ${l.minLate} мин.)</li>`).join('')}
+                            </ul>
+                        ` : '<div style="color:#16a34a; font-weight:bold;">🟢 Няма регистрирани закъснения през текущия месец!</div>'}
+                    </div>
+                </div>
+
+                <!-- Детайли за 3S одитите -->
+                <div style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+                    <div style="background:#f8fafc; padding:8px 12px; font-weight:800; font-size:0.85em; color:#334155; display:flex; justify-content:space-between;">
+                        <span>🧹 Неиздържани 3S одити (${failedAudits.length})</span>
+                        <span style="font-size:0.85em; color:${auditPenalty > 0 ? '#dc2626' : '#16a34a'}; font-weight:800;">Удръжка: ${auditPenalty > 0 ? '-' + auditPenalty + ' €' : '0 €'}</span>
+                    </div>
+                    <div style="max-height:120px; overflow-y:auto; padding:6px 12px; font-size:0.85em;">
+                        ${failedAudits.length > 0 ? `
+                            <ul style="margin:0; padding-left:18px;">
+                                ${failedAudits.map(a => `<li><b>${a.audit_date || a.created_at?.split('T')[0]}</b>: Оценка <b>${a.percentage}%</b> (Проверяващ: ${a.auditor_name || '--'})${a.notes ? ` - <i>${a.notes}</i>` : ''}</li>`).join('')}
+                            </ul>
+                        ` : '<div style="color:#16a34a; font-weight:bold;">🟢 Всички 3S одити за месеца са взети успешно!</div>'}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        list.innerHTML = html;
+    } catch (err) {
+        console.error("loadWorkerBonuses error:", err);
+        list.innerHTML = `<div style="color:#ef4444; padding:15px;">Грешка при зареждане на бонусите: ${err.message}</div>`;
     }
 }
 

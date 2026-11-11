@@ -14,13 +14,14 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="admin/admin-config.js?v=10" defer></script>
+    <script src="admin/admin-config.js?v=11" defer></script>
     <script src="admin/admin-pdf.js?v=2" defer></script>
     <script src="admin/admin-notif.js?v=2" defer></script>
-    <script src="admin/admin-personnel.js?v=9" defer></script>
+    <script src="admin/admin-personnel.js?v=10" defer></script>
     <script src="admin/admin-archives.js?v=4" defer></script>
-    <script src="admin/admin-core.js?v=28" defer></script>
+    <script src="admin/admin-core.js?v=29" defer></script>
     <script src="admin/admin-resolver.js?v=9" defer></script>
+    <script src="admin/admin-salaries.js?v=1" defer></script>
     <script src="admin/admin-transform.js?v=3" defer></script>
     <script src="admin/admin-calendar.js?v=8" defer></script>
     <script src="admin/admin-report.js?v=5" defer></script>
@@ -93,6 +94,7 @@
                         <span>📊 Справки &amp; Финанси</span> <span class="dropdown-caret">▼</span>
                     </button>
                     <div class="admin-dropdown-menu">
+                        <button type="button" class="admin-dropdown-item" onclick="switchTab('salaries')" style="font-weight: 800; color: #15803d;">💰 Заплати &amp; Бонуси</button>
                         <button type="button" class="admin-dropdown-item" onclick="window.open('accounting.html', '_blank')">💼 Счетоводство</button>
                         <button type="button" class="admin-dropdown-item" onclick="window.open('statistics.html', '_blank')">⏱️ Анализи на Нормовремена &amp; Гант</button>
                         <div class="admin-dropdown-divider"></div>
@@ -199,6 +201,7 @@
                 <button class="f-tab" id="tabWorkBtn" onclick="switchFolderTab('work')">🛠️ Свършена Работа</button>
                 <button class="f-tab" id="tabDocsBtn" onclick="switchFolderTab('docs')">📑 Документи</button>
                 <button class="f-tab" id="tab3sBtn" onclick="switchFolderTab('3s')">🧹 3S Одити</button>
+                <button class="f-tab" id="tabBonusesBtn" onclick="switchFolderTab('bonuses')">💰 Бонуси &amp; Заплата</button>
             </div>
             <div id="f-att" class="folder-content active"><table class="modal-table"><thead><tr><th>Дата и час</th><th>Действие</th><th>Локация</th><th>Бележка</th></tr></thead><tbody id="workerAttList"></tbody></table></div>
             <div id="f-work" class="folder-content"><table class="modal-table"><thead><tr><th>Дата</th><th>Детайл</th><th>Операция</th><th>К-во</th><th>Статус</th></tr></thead><tbody id="workerWorkList"></tbody></table></div>
@@ -248,6 +251,8 @@
               <div id="workerDocsList" style="min-height: 120px;">Зареждане на документи...</div>
             </div>
             <div id="f-3s" class="folder-content" style="padding: 10px 4px;"><div id="worker3sList"></div>
+            </div>
+            <div id="f-bonuses" class="folder-content" style="padding: 10px 4px;"><div id="workerBonusesList"></div>
             </div>
           </div>
         </div>
