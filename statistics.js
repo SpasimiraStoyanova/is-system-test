@@ -28,6 +28,12 @@ let isGlobalHistoryLoaded = false;
 let globalPartHistoryData = [];
 let searchDebounceTimer = null;
 
+function normRouteKey(detail, operation) {
+    const d = String(detail || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const op = String(operation || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return `${d}|${op}`;
+}
+
 function setViewMode(mode) {
     currentViewMode = mode;
     let btnDet = document.getElementById('btnViewDetail');
@@ -110,14 +116,20 @@ async function fetchAndRenderData() {
                   .order('Дата', {ascending: true}),
             client.from('marshruti')
                   .select('Код на детайла, Име на операция, "Норма (мин/бр)"')
+                  .limit(100000)
         ]);
         if (otchetiRes.error) throw otchetiRes.error;
 
         currentNormsMap = {};
         if (routesRes.data) {
             routesRes.data.forEach(r => {
-                const k = `${String(r['Код на детайла'] || '').trim()}|${String(r['Име на операция'] || '').trim()}`;
-                if (r['Норма (мин/бр)']) currentNormsMap[k] = parseFloat(r['Норма (мин/бр)']);
+                const norm = parseFloat(r['Норма (мин/бр)']);
+                if (!isNaN(norm) && norm > 0) {
+                    const rawCode = String(r['Код на детайла'] || '').trim();
+                    const rawOp = String(r['Име на операция'] || '').trim();
+                    currentNormsMap[`${rawCode}|${rawOp}`] = norm;
+                    currentNormsMap[normRouteKey(rawCode, rawOp)] = norm;
+                }
             });
         }
         
@@ -239,13 +251,19 @@ async function fetchPartAllHistory(query) {
                   .order('Дата', { ascending: true }),
             client.from('marshruti')
                   .select('Код на детайла, Име на операция, "Норма (мин/бр)"')
+                  .limit(100000)
         ]);
         if (otchetiRes.error) throw otchetiRes.error;
 
         if (routesRes.data) {
             routesRes.data.forEach(r => {
-                const k = `${String(r['Код на детайла'] || '').trim()}|${String(r['Име на операция'] || '').trim()}`;
-                if (r['Норма (мин/бр)']) currentNormsMap[k] = parseFloat(r['Норма (мин/бр)']);
+                const norm = parseFloat(r['Норма (мин/бр)']);
+                if (!isNaN(norm) && norm > 0) {
+                    const rawCode = String(r['Код на детайла'] || '').trim();
+                    const rawOp = String(r['Име на операция'] || '').trim();
+                    currentNormsMap[`${rawCode}|${rawOp}`] = norm;
+                    currentNormsMap[normRouteKey(rawCode, rawOp)] = norm;
+                }
             });
         }
 
@@ -393,6 +411,22 @@ function renderCurrentView() {
             let taskLabel = `${detail} (${operation})`;
             let dateFormatted = `${endTime.getDate().toString().padStart(2, '0')}.${(endTime.getMonth()+1).toString().padStart(2, '0')}.${endTime.getFullYear()}`;
             
+            let itemNormKey = normRouteKey(detail, operation);
+            let itemNormVal = currentNormsMap[`${detail}|${operation}`] || currentNormsMap[itemNormKey] || null;
+            let itemAvgNumber = (qty > 0 && durationMs > 0) ? (durationMs / 60000) / qty : null;
+            let normInfoHtml = '';
+            if (itemNormVal && itemAvgNumber !== null) {
+                if (itemAvgNumber < itemNormVal * 0.7) {
+                    normInfoHtml = `<br><span style="color:#facc15; font-weight:800;">⚡ Аномална скорост: ${itemAvgNumber.toFixed(1)} мин/бр (Норма: ${itemNormVal} мин)</span>`;
+                } else if (itemAvgNumber <= itemNormVal) {
+                    normInfoHtml = `<br><span style="color:#86efac;">✓ В нормата: ${itemAvgNumber.toFixed(1)} мин/бр (Норма: ${itemNormVal} мин)</span>`;
+                } else {
+                    normInfoHtml = `<br><span style="color:#fca5a5;">▲ По-бавно от нормата: ${itemAvgNumber.toFixed(1)} мин/бр (Норма: ${itemNormVal} мин)</span>`;
+                }
+            } else if (itemNormVal) {
+                normInfoHtml = `<br><span style="color:#94a3b8;">Норма: ${itemNormVal} мин/бр</span>`;
+            }
+
             // Custom HTML Tooltip for Timeline
             let tooltip = `
                 <div style="padding:10px; font-family:'Sofia Sans',sans-serif; background:#334155; color:#f8fafc; border:1px solid #475569; border-radius:4px;">
@@ -402,7 +436,7 @@ function renderCurrentView() {
                     <span style="color:#94a3b8;">Количество:</span> <strong style="color:#10b981;">${qty} бр.</strong><br>
                     <span style="color:#94a3b8;">Начало:</span> ${startTime.toLocaleTimeString()}<br>
                     <span style="color:#94a3b8;">Край:</span> ${endTime.toLocaleTimeString()}<br>
-                    <span style="color:#94a3b8;">Продължителност:</span> <strong style="color:#f59e0b;">${durationText}</strong>
+                    <span style="color:#94a3b8;">Продължителност:</span> <strong style="color:#f59e0b;">${durationText}</strong>${normInfoHtml}
                 </div>
             `;
             
@@ -488,19 +522,28 @@ function renderCurrentView() {
 
         let avgMinStr = '-';
         let avgNumber = null;
-        let normKey = `${stat.detail}|${stat.operation}`;
-        let normVal = currentNormsMap[normKey] || null;
+        let normKey = normRouteKey(stat.detail, stat.operation);
+        let normVal = currentNormsMap[`${stat.detail}|${stat.operation}`] 
+                   || currentNormsMap[normKey] 
+                   || null;
+        let isTooFast = false;
 
         if (stat.qty > 0 && stat.durationMs > 0) {
             avgNumber = (stat.durationMs / 60000) / stat.qty;
             avgMinStr = `${avgNumber.toFixed(1)} мин/бр`;
             if (normVal) {
-                if (avgNumber <= normVal) {
-                    avgMinStr += ` <span style="background:#14532d; color:#86efac; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; margin-left:4px;" title="Под нормата (${normVal} мин/бр)">✓ ${normVal}</span>`;
+                if (avgNumber < normVal * 0.7) {
+                    isTooFast = true;
+                    const speedRatio = Math.round((normVal / avgNumber) * 100);
+                    avgMinStr += ` <span style="background:#78350f; color:#fef08a; border:1px solid #eab308; padding:2px 7px; border-radius:5px; font-size:0.82em; font-weight:800; margin-left:6px; display:inline-block; vertical-align:middle; cursor:help;" title="⚠️ АНОМАЛНА СКОРОСТ (${speedRatio}% от нормата)! Изработено за ${avgNumber.toFixed(1)} мин/бр при норма ${normVal} мин/бр.">⚡ ${normVal} мин (Твърде бърз!)</span>`;
+                } else if (avgNumber <= normVal) {
+                    avgMinStr += ` <span style="background:#14532d; color:#86efac; border:1px solid #22c55e; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; margin-left:4px; display:inline-block; vertical-align:middle;" title="В нормата (${normVal} мин/бр)">✓ ${normVal} мин</span>`;
                 } else {
-                    avgMinStr += ` <span style="background:#7f1d1d; color:#fca5a5; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; margin-left:4px;" title="Над нормата (${normVal} мин/бр)">▲ ${normVal}</span>`;
+                    avgMinStr += ` <span style="background:#7f1d1d; color:#fca5a5; border:1px solid #ef4444; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; margin-left:4px; display:inline-block; vertical-align:middle;" title="По-бавно от нормата (${normVal} мин/бр)">▲ ${normVal} мин</span>`;
                 }
             }
+        } else if (normVal) {
+            avgMinStr = `<span style="color:#94a3b8; font-size:0.9em;" title="Няма засечено времетраене, зададена норма: ${normVal} мин/бр">- (Норма: ${normVal} мин)</span>`;
         }
 
         let exportRow = {};
@@ -513,11 +556,24 @@ function renderCurrentView() {
         exportRow['Общо време'] = timeStr;
         exportRow['Средно време (мин/бр)'] = avgNumber ? parseFloat(avgNumber.toFixed(2)) : '';
         exportRow['Норма (мин/бр)'] = normVal || '';
+        if (isTooFast) {
+            exportRow['Статус'] = `⚡ Твърде бърз (${Math.round((normVal / avgNumber) * 100)}%)`;
+        } else if (avgNumber && normVal && avgNumber <= normVal) {
+            exportRow['Статус'] = 'В нормата';
+        } else if (avgNumber && normVal) {
+            exportRow['Статус'] = 'По-бавно от нормата';
+        } else {
+            exportRow['Статус'] = '';
+        }
         lastComputedStats.push(exportRow);
         
         let tr = document.createElement('tr');
+        if (isTooFast) {
+            tr.style.background = 'rgba(234, 179, 8, 0.05)';
+        }
         let safeDet = stat.detail.replace(/'/g, "\\'");
         let detailHtml = `<strong style="cursor:pointer; color:#f8fafc; transition:color 0.15s;" onmouseover="this.style.color='#38bdf8'" onmouseout="this.style.color='#f8fafc'" onclick="quickFilterByDetail('${safeDet}')" title="Кликни за бързо филтриране по този детайл">${stat.detail}</strong>`;
+        let cellHighlight = isTooFast ? 'background:rgba(234, 179, 8, 0.12); border-left:3px solid #eab308; padding-left:8px;' : '';
 
         if (currentViewMode === 'operator') {
             tr.innerHTML = `
@@ -526,7 +582,7 @@ function renderCurrentView() {
                 <td>${stat.operation}</td>
                 <td style="color:#10b981; font-weight:900;">${stat.qty} бр.</td>
                 <td style="color:#f59e0b; font-weight:600;">${timeStr}</td>
-                <td style="font-weight:700;">${avgMinStr}</td>
+                <td style="font-weight:700; ${cellHighlight}">${avgMinStr}</td>
             `;
         } else {
             tr.innerHTML = `
@@ -534,7 +590,7 @@ function renderCurrentView() {
                 <td>${stat.operation}</td>
                 <td style="color:#10b981; font-weight:900;">${stat.qty} бр.</td>
                 <td style="color:#f59e0b; font-weight:600;">${timeStr}</td>
-                <td style="font-weight:700;">${avgMinStr}</td>
+                <td style="font-weight:700; ${cellHighlight}">${avgMinStr}</td>
             `;
         }
         tbody.appendChild(tr);
