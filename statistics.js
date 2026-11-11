@@ -28,6 +28,10 @@ let isGlobalHistoryLoaded = false;
 let globalPartHistoryData = [];
 let searchDebounceTimer = null;
 
+// Производствени толеранси за нормовремена
+const TOLERANCE_FAST_RATIO = 0.70; // под 70% от нормата -> аномално бърз (⚡)
+const TOLERANCE_SLOW_RATIO = 1.15; // до +15% над нормата -> в допустим толеранс (✓), над 115% -> забавяне (▲)
+
 function normRouteKey(detail, operation) {
     const d = String(detail || '').trim().toLowerCase().replace(/\s+/g, ' ');
     const op = String(operation || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -418,12 +422,12 @@ function renderCurrentView() {
             let itemAvgNumber = (qty > 0 && durationMs > 0) ? (durationMs / 60000) / qty : null;
             let normInfoHtml = '';
             if (itemNormVal && itemAvgNumber !== null) {
-                if (itemAvgNumber < itemNormVal * 0.7) {
+                if (itemAvgNumber < itemNormVal * TOLERANCE_FAST_RATIO) {
                     normInfoHtml = `<br><span style="color:#facc15; font-weight:800;">⚡ Аномална скорост: ${itemAvgNumber.toFixed(1)} мин/бр (Норма: ${itemNormVal} мин)</span>`;
-                } else if (itemAvgNumber <= itemNormVal) {
-                    normInfoHtml = `<br><span style="color:#86efac;">✓ В нормата: ${itemAvgNumber.toFixed(1)} мин/бр (Норма: ${itemNormVal} мин)</span>`;
+                } else if (itemAvgNumber <= itemNormVal * TOLERANCE_SLOW_RATIO) {
+                    normInfoHtml = `<br><span style="color:#86efac;">✓ В нормата (с толеранс): ${itemAvgNumber.toFixed(1)} мин/бр (Норма: ${itemNormVal} мин)</span>`;
                 } else {
-                    normInfoHtml = `<br><span style="color:#fca5a5;">▲ По-бавно от нормата: ${itemAvgNumber.toFixed(1)} мин/бр (Норма: ${itemNormVal} мин)</span>`;
+                    normInfoHtml = `<br><span style="color:#fca5a5;">▲ Забавяне над толеранса: ${itemAvgNumber.toFixed(1)} мин/бр (Норма: ${itemNormVal} мин)</span>`;
                 }
             } else if (itemNormVal) {
                 normInfoHtml = `<br><span style="color:#94a3b8;">Норма: ${itemNormVal} мин/бр</span>`;
@@ -534,14 +538,17 @@ function renderCurrentView() {
             avgNumber = (stat.durationMs / 60000) / stat.qty;
             avgMinStr = `${avgNumber.toFixed(1)} мин/бр`;
             if (normVal) {
-                if (avgNumber < normVal * 0.7) {
+                if (avgNumber < normVal * TOLERANCE_FAST_RATIO) {
                     isTooFast = true;
                     const speedRatio = Math.round((normVal / avgNumber) * 100);
-                    avgMinStr += ` <span style="background:#78350f; color:#fef08a; border:1px solid #eab308; padding:2px 7px; border-radius:5px; font-size:0.82em; font-weight:800; margin-left:6px; display:inline-block; vertical-align:middle; cursor:help;" title="⚠️ АНОМАЛНА СКОРОСТ (${speedRatio}% от нормата)! Изработено за ${avgNumber.toFixed(1)} мин/бр при норма ${normVal} мин/бр.">⚡ ${normVal} мин (Твърде бърз!)</span>`;
-                } else if (avgNumber <= normVal) {
-                    avgMinStr += ` <span style="background:#14532d; color:#86efac; border:1px solid #22c55e; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; margin-left:4px; display:inline-block; vertical-align:middle;" title="В нормата (${normVal} мин/бр)">✓ ${normVal} мин</span>`;
+                    avgMinStr += ` <span style="background:#78350f; color:#fef08a; border:1px solid #eab308; padding:2px 7px; border-radius:5px; font-size:0.82em; font-weight:800; margin-left:6px; display:inline-block; vertical-align:middle; cursor:help;" title="⚠️ АНОМАЛНА СКОРОСТ (${speedRatio}% от нормата)! Изработено за ${avgNumber.toFixed(1)} мин/бр при норма ${normVal} мин/бр (под ${Math.round(TOLERANCE_FAST_RATIO * 100)}%).">⚡ ${normVal} мин (Твърде бърз!)</span>`;
+                } else if (avgNumber <= normVal * TOLERANCE_SLOW_RATIO) {
+                    const maxAllowed = (normVal * TOLERANCE_SLOW_RATIO).toFixed(1);
+                    avgMinStr += ` <span style="background:#14532d; color:#86efac; border:1px solid #22c55e; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; margin-left:4px; display:inline-block; vertical-align:middle; cursor:help;" title="✓ В допустимия толеранс: ${avgNumber.toFixed(1)} мин/бр (Норма: ${normVal} мин, толеранс до ${maxAllowed} мин)">✓ ${normVal} мин</span>`;
                 } else {
-                    avgMinStr += ` <span style="background:#7f1d1d; color:#fca5a5; border:1px solid #ef4444; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; margin-left:4px; display:inline-block; vertical-align:middle;" title="По-бавно от нормата (${normVal} мин/бр)">▲ ${normVal} мин</span>`;
+                    const diffPct = Math.round(((avgNumber - normVal) / normVal) * 100);
+                    const maxAllowed = (normVal * TOLERANCE_SLOW_RATIO).toFixed(1);
+                    avgMinStr += ` <span style="background:#7f1d1d; color:#fca5a5; border:1px solid #ef4444; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; margin-left:4px; display:inline-block; vertical-align:middle; cursor:help;" title="▲ Забавяне над допустимия толеранс (+${diffPct}% над нормата! Норма: ${normVal} мин, допустимо до ${maxAllowed} мин)">▲ ${normVal} мин</span>`;
                 }
             }
         } else if (normVal) {
@@ -560,10 +567,10 @@ function renderCurrentView() {
         exportRow['Норма (мин/бр)'] = normVal || '';
         if (isTooFast) {
             exportRow['Статус'] = `⚡ Твърде бърз (${Math.round((normVal / avgNumber) * 100)}%)`;
-        } else if (avgNumber && normVal && avgNumber <= normVal) {
-            exportRow['Статус'] = 'В нормата';
+        } else if (avgNumber && normVal && avgNumber <= normVal * TOLERANCE_SLOW_RATIO) {
+            exportRow['Статус'] = 'В нормата (с толеранс)';
         } else if (avgNumber && normVal) {
-            exportRow['Статус'] = 'По-бавно от нормата';
+            exportRow['Статус'] = `Забавяне (+${Math.round(((avgNumber - normVal) / normVal) * 100)}%)`;
         } else {
             exportRow['Статус'] = '';
         }
