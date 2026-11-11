@@ -1,6 +1,6 @@
 -- ==============================================================
 -- Скрипт за Система "Заплати, Бонуси & Мотивация" (AMCI MES)
--- Включва: Създаване на таблици + Стриктна RLS Защита
+-- Включва: Създаване на таблици + Сигурност за достъп от Терминала и Админа
 -- Тестова База Данни: zdythzcgcjxwbxufunuh
 -- ==============================================================
 
@@ -70,15 +70,25 @@ SET rule_name = EXCLUDED.rule_name,
     description = EXCLUDED.description,
     is_active = EXCLUDED.is_active;
 
--- 5. СТРИКТНА RLS СИГУРНОСТ (Защита на ниво сървър)
+-- 5. RLS СИГУРНОСТ (Защита с право на четене на фиша от служителя)
 
--- А) Заплати и Бонуси (САМО за логнат администратор)
+-- А) Заплати и Бонуси
 ALTER TABLE public.salary_monthly_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all on salary_monthly_logs" ON public.salary_monthly_logs;
+DROP POLICY IF EXISTS "Allow select for all on salary_monthly_logs" ON public.salary_monthly_logs;
 DROP POLICY IF EXISTS "Admin full access on salary_monthly_logs" ON public.salary_monthly_logs;
 
-REVOKE ALL ON public.salary_monthly_logs FROM anon;
+-- Забраняваме вмъкване, промяна или триене от терминалите
+REVOKE INSERT, UPDATE, DELETE ON public.salary_monthly_logs FROM anon;
+-- Разрешаваме ЧЕТЕНЕ (за да може служителят да си вижда фиша в досието)
+GRANT SELECT ON public.salary_monthly_logs TO anon;
+-- Пълни права за логнатия администратор
 GRANT ALL ON public.salary_monthly_logs TO authenticated;
+
+CREATE POLICY "Allow select for all on salary_monthly_logs" 
+ON public.salary_monthly_logs 
+FOR SELECT 
+USING (true);
 
 CREATE POLICY "Admin full access on salary_monthly_logs" 
 ON public.salary_monthly_logs 
@@ -87,13 +97,20 @@ TO authenticated
 USING (true) 
 WITH CHECK (true);
 
--- Б) Правила за Бонуси (САМО за логнат администратор)
+-- Б) Правила за Бонуси
 ALTER TABLE public.salary_bonus_rules ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all on salary_bonus_rules" ON public.salary_bonus_rules;
+DROP POLICY IF EXISTS "Allow select for all on salary_bonus_rules" ON public.salary_bonus_rules;
 DROP POLICY IF EXISTS "Admin full access on salary_bonus_rules" ON public.salary_bonus_rules;
 
-REVOKE ALL ON public.salary_bonus_rules FROM anon;
+REVOKE INSERT, UPDATE, DELETE ON public.salary_bonus_rules FROM anon;
+GRANT SELECT ON public.salary_bonus_rules TO anon;
 GRANT ALL ON public.salary_bonus_rules TO authenticated;
+
+CREATE POLICY "Allow select for all on salary_bonus_rules" 
+ON public.salary_bonus_rules 
+FOR SELECT 
+USING (true);
 
 CREATE POLICY "Admin full access on salary_bonus_rules" 
 ON public.salary_bonus_rules 
@@ -102,7 +119,7 @@ TO authenticated
 USING (true) 
 WITH CHECK (true);
 
--- В) Персонал (Терминалите могат да четат Име и Статус за чекиране, но НЕ могат да редактират)
+-- В) Персонал
 ALTER TABLE public.personal ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all on personal" ON public.personal;
 DROP POLICY IF EXISTS "Allow select for all on personal" ON public.personal;
