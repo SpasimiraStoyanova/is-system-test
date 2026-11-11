@@ -1,8 +1,10 @@
 window.onload = () => {
     if (sessionStorage.getItem('is_admin_logged') !== 'true') {
-        Swal.fire({ title: '🔐 Системен достъп', text: 'Въведете административен PIN код', input: 'password', allowOutsideClick: false, allowEscapeKey: false, showCancelButton: false, confirmButtonText: 'ВХОД', confirmButtonColor: '#4338ca'
+        Swal.fire({
+            title: '🔐 Системен достъп', text: 'Въведете административен PIN код', input: 'password', allowOutsideClick: false, allowEscapeKey: false, showCancelButton: false, confirmButtonText: 'ВХОД', confirmButtonColor: '#4338ca'
         }).then((result) => {
-            if (result.value === ADMIN_PIN) { sessionStorage.setItem('is_admin_logged', 'true'); document.getElementById('appContent').style.display = 'block'; initializeApp(); 
+            if (result.value === ADMIN_PIN) {
+                sessionStorage.setItem('is_admin_logged', 'true'); document.getElementById('appContent').style.display = 'block'; initializeApp();
             } else { Swal.fire('Грешен код!', 'Опитайте отново.', 'error').then(() => location.reload()); }
         });
     } else { document.getElementById('appContent').style.display = 'block'; initializeApp(); }
@@ -11,7 +13,7 @@ window.onload = () => {
 let globalActivePlansForDropdown = [];
 let globalColumnFilters = {};
 
-function initializeApp() { 
+function initializeApp() {
     client.from('plan').select('id, "Вътрешно име"').in('Статус', ['Активен']).then(res => {
         if (res.data) globalActivePlansForDropdown = res.data;
     });
@@ -80,13 +82,13 @@ function loadFormDatalists() {
 function exportCurrentTableToExcel() {
     const config = tableConfigs[currentTab];
     if (!config) return;
-    
+
     const rowsToExport = (currentRenderedRows && currentRenderedRows.length > 0) ? currentRenderedRows : globalRows;
     if (!rowsToExport || rowsToExport.length === 0) {
         Swal.fire({ icon: 'info', title: 'Няма данни за експорт', text: 'Текущата таблица е празна.' });
         return;
     }
-    
+
     const exportData = rowsToExport.map(row => {
         const item = {};
         config.fields.forEach(f => {
@@ -98,27 +100,27 @@ function exportCurrentTableToExcel() {
                     let pVal = val;
                     if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z';
                     val = new Date(pVal).toLocaleString('bg-BG');
-                } catch(e) {}
+                } catch (e) { }
             }
             item[header] = (val !== undefined && val !== null) ? val : '';
         });
         return item;
     });
-    
+
     if (typeof XLSX === 'undefined') {
         Swal.fire('Грешка', 'Библиотеката SheetJS (XLSX) не е заредена.', 'error');
         return;
     }
-    
+
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     const sheetName = config.label.replace(/[^а-яА-Яa-zA-Z0-9 ]/g, '').trim().substring(0, 31) || 'Data';
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    
+
     const today = new Date().toISOString().split('T')[0];
     const fileName = `IS_SYSTEM_${currentTab}_${today}.xlsx`;
     XLSX.writeFile(wb, fileName);
-    
+
     const toast = Swal.mixin({
         toast: true,
         position: 'top-end',
@@ -139,7 +141,7 @@ const adminTabCache = {};
 const adminCacheTimestamps = {};
 const ADMIN_CACHE_TTL_MS = 2.5 * 60 * 1000; // 2.5 минути валидност
 
-window.invalidateAdminCache = function(tabKey = null) {
+window.invalidateAdminCache = function (tabKey = null) {
     if (tabKey) {
         delete adminTabCache[tabKey];
         delete adminCacheTimestamps[tabKey];
@@ -150,44 +152,44 @@ window.invalidateAdminCache = function(tabKey = null) {
 };
 
 function buildNavbar() {
-  const container = document.getElementById('tabsContainer'); container.innerHTML = '';
-  Object.keys(tableConfigs).forEach(key => {
-    const btn = document.createElement('button'); btn.className = `tab-btn ${key === currentTab ? 'active' : ''}`;
-    btn.innerText = tableConfigs[key].label; 
-    btn.onclick = () => switchTab(key, key === currentTab);
-    container.appendChild(btn);
-  });
+    const container = document.getElementById('tabsContainer'); container.innerHTML = '';
+    Object.keys(tableConfigs).forEach(key => {
+        const btn = document.createElement('button'); btn.className = `tab-btn ${key === currentTab ? 'active' : ''}`;
+        btn.innerText = tableConfigs[key].label;
+        btn.onclick = () => switchTab(key, key === currentTab);
+        container.appendChild(btn);
+    });
 }
 
 function switchTab(tabKey, force = false) {
-  const isSameTab = (currentTab === tabKey);
-  currentTab = tabKey; buildNavbar(); document.getElementById('searchInput').value = '';
-  selectedIndices.clear(); updateMassActionBar();
-  globalColumnFilters = {}; document.getElementById('tableHead').innerHTML = '';
-  
-  const config = tableConfigs[tabKey]; const addBtn = document.getElementById('addNewBtn');
-  const pdfBtn = document.getElementById('pdfBtn'); const mrpBtn = document.getElementById('mrpBtn'); const transBtn = document.getElementById('transformResolverBtn'); const sidebar = document.getElementById('personnelSidebar');
-  
-  addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`; 
-  addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_inventory') ? 'none' : 'flex';
-  if (pdfBtn) pdfBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
-  if (mrpBtn) mrpBtn.style.display = (tabKey === 'porachki') ? 'flex' : 'none';
-  if (transBtn) transBtn.style.display = (tabKey === 'sklad_inventory') ? 'flex' : 'none';
+    const isSameTab = (currentTab === tabKey);
+    currentTab = tabKey; buildNavbar(); document.getElementById('searchInput').value = '';
+    selectedIndices.clear(); updateMassActionBar();
+    globalColumnFilters = {}; document.getElementById('tableHead').innerHTML = '';
 
-  // Тук прехвърлихме показването на папките само когато сме в менюто Персонал
-  if (tabKey === 'personal') { sidebar.style.display = 'block'; loadPersonnelSidebar(); } else { sidebar.style.display = 'none'; }
-  const probiContainer = document.getElementById('probiContainer');
-  if (probiContainer) { probiContainer.style.display = (tabKey === 'probi') ? 'block' : 'none'; }
-  const audit3sContainer = document.getElementById('audit3sContainer');
-  if (audit3sContainer) { audit3sContainer.style.display = (tabKey === 'audit_3s') ? 'block' : 'none'; }
-  if (tabKey === 'probi') {
-      addBtn.style.display = 'flex';
-      addBtn.innerText = '➕ Нова Проба';
-      addBtn.onclick = () => { if (typeof openCreateProbaModal === 'function') openCreateProbaModal(); };
-  } else {
-      addBtn.onclick = () => openAddModal();
-  }
-  loadCurrentTableData(force || isSameTab);
+    const config = tableConfigs[tabKey]; const addBtn = document.getElementById('addNewBtn');
+    const pdfBtn = document.getElementById('pdfBtn'); const mrpBtn = document.getElementById('mrpBtn'); const transBtn = document.getElementById('transformResolverBtn'); const sidebar = document.getElementById('personnelSidebar');
+
+    addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`;
+    addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_inventory') ? 'none' : 'flex';
+    if (pdfBtn) pdfBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
+    if (mrpBtn) mrpBtn.style.display = (tabKey === 'porachki') ? 'flex' : 'none';
+    if (transBtn) transBtn.style.display = (tabKey === 'sklad_inventory') ? 'flex' : 'none';
+
+    // Тук прехвърлихме показването на папките само когато сме в менюто Персонал
+    if (tabKey === 'personal') { sidebar.style.display = 'block'; loadPersonnelSidebar(); } else { sidebar.style.display = 'none'; }
+    const probiContainer = document.getElementById('probiContainer');
+    if (probiContainer) { probiContainer.style.display = (tabKey === 'probi') ? 'block' : 'none'; }
+    const audit3sContainer = document.getElementById('audit3sContainer');
+    if (audit3sContainer) { audit3sContainer.style.display = (tabKey === 'audit_3s') ? 'block' : 'none'; }
+    if (tabKey === 'probi') {
+        addBtn.style.display = 'flex';
+        addBtn.innerText = '➕ Нова Проба';
+        addBtn.onclick = () => { if (typeof openCreateProbaModal === 'function') openCreateProbaModal(); };
+    } else {
+        addBtn.onclick = () => openAddModal();
+    }
+    loadCurrentTableData(force || isSameTab);
 }
 
 function toggleSelectAll(event) {
@@ -211,327 +213,327 @@ function updateMassActionBar() {
 async function deleteSelectedItems() {
     const config = tableConfigs[currentTab]; const count = selectedIndices.size;
     const res = await Swal.fire({ title: `Изтриване на ${count} записа?`, text: "Това действие е безвъзвратно!", icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Да, изтрий всички!', cancelButtonText: 'Отказ' });
-    if (res.isConfirmed) { 
-        try { 
-            Swal.fire({title: 'Изтриване...', allowOutsideClick: false, didOpen: () => Swal.showLoading()}); 
+    if (res.isConfirmed) {
+        try {
+            Swal.fire({ title: 'Изтриване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
             const keysToDelete = Array.from(selectedIndices).map(idx => globalRows[idx][config.key]);
-            const { error } = await client.from(config.table).delete().in(config.key, keysToDelete); 
-            if (error) throw error; 
+            const { error } = await client.from(config.table).delete().in(config.key, keysToDelete);
+            if (error) throw error;
             selectedIndices.clear(); updateMassActionBar();
             if (window.invalidateAdminCache) window.invalidateAdminCache();
-            Swal.fire({icon: 'success', title: 'Изтрити!', timer: 1500, showConfirmButton: false}); loadCurrentTableData(true); 
-        } catch(err) { Swal.fire('Грешка', err.message, 'error'); } 
+            Swal.fire({ icon: 'success', title: 'Изтрити!', timer: 1500, showConfirmButton: false }); loadCurrentTableData(true);
+        } catch (err) { Swal.fire('Грешка', err.message, 'error'); }
     }
 }
 
 async function loadCurrentTableData(forceRefresh = false) {
-  const config = tableConfigs[currentTab];
-  selectedIndices.clear(); updateMassActionBar();
-  const requestedTab = currentTab;
-  try {
-      if (currentTab === 'probi') {
-          document.getElementById('mainTable').style.display = 'none';
-          document.getElementById('tableHead').innerHTML = '';
-          document.getElementById('loadingLayout').style.display = 'none';
-          const probiContainer = document.getElementById('probiContainer');
-          if (probiContainer) probiContainer.style.display = 'block';
-          if (typeof renderProbiTab === 'function') renderProbiTab(forceRefresh);
-          return;
-      }
-      if (currentTab === 'audit_3s') {
-          document.getElementById('mainTable').style.display = 'none';
-          document.getElementById('tableHead').innerHTML = '';
-          document.getElementById('loadingLayout').style.display = 'none';
-          const audit3sContainer = document.getElementById('audit3sContainer');
-          if (audit3sContainer) audit3sContainer.style.display = 'block';
-          if (typeof render3sTab === 'function') render3sTab(forceRefresh);
-          return;
-      }
-      const probiContainer = document.getElementById('probiContainer');
-      if (probiContainer) probiContainer.style.display = 'none';
-      const audit3sContainer = document.getElementById('audit3sContainer');
-      if (audit3sContainer) audit3sContainer.style.display = 'none';
-      const archiveToolbar = document.getElementById('archiveToolbar');
-      if (archiveToolbar) archiveToolbar.style.display = (currentTab === 'archives') ? 'flex' : 'none';
+    const config = tableConfigs[currentTab];
+    selectedIndices.clear(); updateMassActionBar();
+    const requestedTab = currentTab;
+    try {
+        if (currentTab === 'probi') {
+            document.getElementById('mainTable').style.display = 'none';
+            document.getElementById('tableHead').innerHTML = '';
+            document.getElementById('loadingLayout').style.display = 'none';
+            const probiContainer = document.getElementById('probiContainer');
+            if (probiContainer) probiContainer.style.display = 'block';
+            if (typeof renderProbiTab === 'function') renderProbiTab(forceRefresh);
+            return;
+        }
+        if (currentTab === 'audit_3s') {
+            document.getElementById('mainTable').style.display = 'none';
+            document.getElementById('tableHead').innerHTML = '';
+            document.getElementById('loadingLayout').style.display = 'none';
+            const audit3sContainer = document.getElementById('audit3sContainer');
+            if (audit3sContainer) audit3sContainer.style.display = 'block';
+            if (typeof render3sTab === 'function') render3sTab(forceRefresh);
+            return;
+        }
+        const probiContainer = document.getElementById('probiContainer');
+        if (probiContainer) probiContainer.style.display = 'none';
+        const audit3sContainer = document.getElementById('audit3sContainer');
+        if (audit3sContainer) audit3sContainer.style.display = 'none';
+        const archiveToolbar = document.getElementById('archiveToolbar');
+        if (archiveToolbar) archiveToolbar.style.display = (currentTab === 'archives') ? 'flex' : 'none';
 
-      if (currentTab === 'archives') {
-          document.getElementById('mainTable').style.display = 'table';
-          document.getElementById('loadingLayout').style.display = 'none';
-          if (typeof renderArchivesTab === 'function') renderArchivesTab();
-          return;
-      }
+        if (currentTab === 'archives') {
+            document.getElementById('mainTable').style.display = 'table';
+            document.getElementById('loadingLayout').style.display = 'none';
+            if (typeof renderArchivesTab === 'function') renderArchivesTab();
+            return;
+        }
 
-      // ⚡ Бърз път: Проверка за валиден локален кеш (мигновено показване)
-      const now = Date.now();
-      if (!forceRefresh && adminTabCache[currentTab] && (now - (adminCacheTimestamps[currentTab] || 0) < ADMIN_CACHE_TTL_MS)) {
-          document.getElementById('loadingLayout').style.display = 'none';
-          document.getElementById('mainTable').style.display = 'table';
-          globalRows = adminTabCache[currentTab];
-          filterTable();
-          return;
-      }
+        // ⚡ Бърз път: Проверка за валиден локален кеш (мигновено показване)
+        const now = Date.now();
+        if (!forceRefresh && adminTabCache[currentTab] && (now - (adminCacheTimestamps[currentTab] || 0) < ADMIN_CACHE_TTL_MS)) {
+            document.getElementById('loadingLayout').style.display = 'none';
+            document.getElementById('mainTable').style.display = 'table';
+            globalRows = adminTabCache[currentTab];
+            filterTable();
+            return;
+        }
 
-      document.getElementById('loadingLayout').style.display = 'block'; 
-      document.getElementById('mainTable').style.display = 'none';
+        document.getElementById('loadingLayout').style.display = 'block';
+        document.getElementById('mainTable').style.display = 'none';
 
-      let query;
-      if (currentTab === 'sklad_inventory') {
-          query = client.from('plan').select('id').limit(1); // dummy query
-      } else {
-          query = client.from(config.table).select('*').limit(10000);
-          if (currentTab === 'otcheti') {
-              query = query.order('Дата', { ascending: false });
-          }
-          if (currentTab === 'brak') {
-              query = query.eq('Статус', 'Брак').order('Дата', { ascending: false });
-          }
-          if (currentTab === 'chekiraniya') query = query.order('Време', { ascending: false });
-      }
-      const { data, error } = await query; if (error) throw error;
-      let rows = data || [];
-      if (currentTab === 'plan') {
-          const nomRes = await client.from('Номенклатура').select('*');
-          if (!nomRes.error && nomRes.data) {
-              const nomMap = {};
-              nomRes.data.forEach(n => { 
-                  if (n['Вътрешно име']) nomMap[n['Вътрешно име']] = n['ID Детайл']; 
-                  if (n['ID Детайл']) nomMap[n['ID Детайл']] = n['ID Детайл'];
-              });
-              rows.forEach(r => { 
-                  r['ID Детайл'] = nomMap[r['Вътрешно име']] || r['Вътрешно име']; 
-              });
-          }
-          const packRes = await client.from('otcheti').select('*').ilike('Операция', 'Опаковане - Кашон №%').in('Статус', ['Отчетено', 'Изпратено']);
-          if (!packRes.error && packRes.data) {
-              const packMap = {};
-              packRes.data.forEach(p => {
-                  let pId = String(p['ID План'] || '').trim();
-                  let code = String(p['ID Детайл']).trim().toUpperCase();
-                  let key = pId + '_' + code;
-                  if (!packMap[key]) packMap[key] = {};
-                  let boxMatch = p['Операция'].match(/Опаковане - Кашон №\s*(.+)/i);
-                  let boxNum = boxMatch ? boxMatch[1] : '?';
-                  packMap[key][boxNum] = (packMap[key][boxNum] || 0) + (parseFloat(p['Количество']) || 0);
-              });
-              rows.forEach(r => {
-                  let key = String(r.id).trim() + '_' + String(r['ID Детайл']).trim().toUpperCase();
-                  if (packMap[key]) {
-                      let boxTexts = Object.keys(packMap[key]).map(b => `${packMap[key][b]} бр в кашон № ${b}`);
-                      r['__packaged_info'] = ` <span style="color:#d97706; font-size:0.85em; font-weight:bold;">(${boxTexts.join(', ')})</span>`;
-                    r['__total_packed'] = Object.values(packMap[key]).reduce((a, b) => a + b, 0);
-                  }
-              });
-          }
-          rows.sort((a, b) => {
-              const statusWeight = (status) => {
-                  let s = String(status || '').trim().toLowerCase();
-                  if (s === 'изпратен' || s === 'завършен') return 1;
-                  return 0;
-              };
-              let weightA = statusWeight(a['Статус']);
-              let weightB = statusWeight(b['Статус']);
-              if (weightA !== weightB) return weightA - weightB;
-              return parseInt(b.id || 0) - parseInt(a.id || 0);
-          });
+        let query;
+        if (currentTab === 'sklad_inventory') {
+            query = client.from('plan').select('id').limit(1); // dummy query
+        } else {
+            query = client.from(config.table).select('*').limit(10000);
+            if (currentTab === 'otcheti') {
+                query = query.order('Дата', { ascending: false });
+            }
+            if (currentTab === 'brak') {
+                query = query.eq('Статус', 'Брак').order('Дата', { ascending: false });
+            }
+            if (currentTab === 'chekiraniya') query = query.order('Време', { ascending: false });
+        }
+        const { data, error } = await query; if (error) throw error;
+        let rows = data || [];
+        if (currentTab === 'plan') {
+            const nomRes = await client.from('Номенклатура').select('*');
+            if (!nomRes.error && nomRes.data) {
+                const nomMap = {};
+                nomRes.data.forEach(n => {
+                    if (n['Вътрешно име']) nomMap[n['Вътрешно име']] = n['ID Детайл'];
+                    if (n['ID Детайл']) nomMap[n['ID Детайл']] = n['ID Детайл'];
+                });
+                rows.forEach(r => {
+                    r['ID Детайл'] = nomMap[r['Вътрешно име']] || r['Вътрешно име'];
+                });
+            }
+            const packRes = await client.from('otcheti').select('*').ilike('Операция', 'Опаковане - Кашон №%').in('Статус', ['Отчетено', 'Изпратено']);
+            if (!packRes.error && packRes.data) {
+                const packMap = {};
+                packRes.data.forEach(p => {
+                    let pId = String(p['ID План'] || '').trim();
+                    let code = String(p['ID Детайл']).trim().toUpperCase();
+                    let key = pId + '_' + code;
+                    if (!packMap[key]) packMap[key] = {};
+                    let boxMatch = p['Операция'].match(/Опаковане - Кашон №\s*(.+)/i);
+                    let boxNum = boxMatch ? boxMatch[1] : '?';
+                    packMap[key][boxNum] = (packMap[key][boxNum] || 0) + (parseFloat(p['Количество']) || 0);
+                });
+                rows.forEach(r => {
+                    let key = String(r.id).trim() + '_' + String(r['ID Детайл']).trim().toUpperCase();
+                    if (packMap[key]) {
+                        let boxTexts = Object.keys(packMap[key]).map(b => `${packMap[key][b]} бр в кашон № ${b}`);
+                        r['__packaged_info'] = ` <span style="color:#d97706; font-size:0.85em; font-weight:bold;">(${boxTexts.join(', ')})</span>`;
+                        r['__total_packed'] = Object.values(packMap[key]).reduce((a, b) => a + b, 0);
+                    }
+                });
+            }
+            rows.sort((a, b) => {
+                const statusWeight = (status) => {
+                    let s = String(status || '').trim().toLowerCase();
+                    if (s === 'изпратен' || s === 'завършен') return 1;
+                    return 0;
+                };
+                let weightA = statusWeight(a['Статус']);
+                let weightB = statusWeight(b['Статус']);
+                if (weightA !== weightB) return weightA - weightB;
+                return parseInt(b.id || 0) - parseInt(a.id || 0);
+            });
 
-      } else if (currentTab === 'otcheti') {
-          const planRes = await client.from('plan').select('id, "Вътрешно име", "Месец", "Година"');
-          if (!planRes.error && planRes.data) {
-              const planMap = {};
-              planRes.data.forEach(p => {
-                  let m = (p['Месец'] && p['Година']) ? `${p['Месец']} ${p['Година']}` : '';
-                  planMap[p.id] = m ? `${m} (${p['Вътрешно име']})` : p['Вътрешно име'];
-              });
-              rows.forEach(r => {
-                  if (r['ID План'] && planMap[r['ID План']]) {
-                      r['ID План'] = planMap[r['ID План']];
-                  }
-              });
-          }
-      } else if (currentTab === 'sklad_inventory') {
-          rows = await computeSkladData();
-      }
-      
-      if (currentTab === 'sklad') {
-          const nomRes = await client.from('Номенклатура').select('*');
-          if (!nomRes.error && nomRes.data) {
-              const nomMap = {};
-              nomRes.data.forEach(n => { nomMap[String(n['ID Детайл']).trim().toLowerCase()] = n['Мерна единица'] || n['Единици']; });
-              rows.forEach(r => {
-                  let code = String(r['ID Детайл']).trim().toLowerCase();
-                  if (nomMap[code]) r['Мерна единица'] = nomMap[code];
-              });
-          }
-      }
+        } else if (currentTab === 'otcheti') {
+            const planRes = await client.from('plan').select('id, "Вътрешно име", "Месец", "Година"');
+            if (!planRes.error && planRes.data) {
+                const planMap = {};
+                planRes.data.forEach(p => {
+                    let m = (p['Месец'] && p['Година']) ? `${p['Месец']} ${p['Година']}` : '';
+                    planMap[p.id] = m ? `${m} (${p['Вътрешно име']})` : p['Вътрешно име'];
+                });
+                rows.forEach(r => {
+                    if (r['ID План'] && planMap[r['ID План']]) {
+                        r['ID План'] = planMap[r['ID План']];
+                    }
+                });
+            }
+        } else if (currentTab === 'sklad_inventory') {
+            rows = await computeSkladData();
+        }
 
-      if (currentTab !== requestedTab) return;
-      // ⚡ Записваме в локалния кеш
-      adminTabCache[requestedTab] = rows;
-      adminCacheTimestamps[requestedTab] = Date.now();
-      globalRows = rows; filterTable();
-  } catch (err) { document.getElementById('loadingLayout').innerHTML = '❌ Грешка: ' + err.message; }
+        if (currentTab === 'sklad') {
+            const nomRes = await client.from('Номенклатура').select('*');
+            if (!nomRes.error && nomRes.data) {
+                const nomMap = {};
+                nomRes.data.forEach(n => { nomMap[String(n['ID Детайл']).trim().toLowerCase()] = n['Мерна единица'] || n['Единици']; });
+                rows.forEach(r => {
+                    let code = String(r['ID Детайл']).trim().toLowerCase();
+                    if (nomMap[code]) r['Мерна единица'] = nomMap[code];
+                });
+            }
+        }
+
+        if (currentTab !== requestedTab) return;
+        // ⚡ Записваме в локалния кеш
+        adminTabCache[requestedTab] = rows;
+        adminCacheTimestamps[requestedTab] = Date.now();
+        globalRows = rows; filterTable();
+    } catch (err) { document.getElementById('loadingLayout').innerHTML = '❌ Грешка: ' + err.message; }
 }
 
 function renderDynamicTable(itemsToRender = null) {
-  currentRenderedRows = itemsToRender || globalRows; const config = tableConfigs[currentTab]; document.getElementById('loadingLayout').style.display = 'none';
-  const table = document.getElementById('mainTable'); const thead = document.getElementById('tableHead'); const tbody = document.getElementById('tableBody');
-  if (thead.innerHTML === '') {
-      const headerRow = document.createElement('tr');
-      if (!config.readOnlyTab) {
-          const thCheck = document.createElement('th');
-          thCheck.style.width = '40px'; thCheck.style.textAlign = 'center';
-          thCheck.innerHTML = `<input type="checkbox" id="selectAllCb" class="row-checkbox" onchange="toggleSelectAll(event)">`;
-          headerRow.appendChild(thCheck);
-      }
-
-      config.fields.forEach(f => { 
-          if (f.hideOnAdd) return; 
-          const th = document.createElement('th'); 
-          
-          const labelDiv = document.createElement('div');
-          labelDiv.innerText = f.label || f.name;
-          th.appendChild(labelDiv);
-          
-          const filterInput = document.createElement('input');
-          filterInput.type = 'text';
-          filterInput.placeholder = '🔍 Филтър...';
-          filterInput.style.width = '100%';
-          filterInput.style.boxSizing = 'border-box';
-          filterInput.style.marginTop = '6px';
-          filterInput.style.padding = '4px 6px';
-          filterInput.style.fontSize = '12px';
-          filterInput.style.border = '1px solid #cbd5e1';
-          filterInput.style.borderRadius = '4px';
-          filterInput.style.fontWeight = 'normal';
-          
-          if (globalColumnFilters[f.name]) filterInput.value = globalColumnFilters[f.name];
-          
-          filterInput.oninput = (e) => {
-              globalColumnFilters[f.name] = e.target.value.toLowerCase().trim();
-              filterTable();
-          };
-          
-          th.appendChild(filterInput);
-          headerRow.appendChild(th); 
-      });
-      
-      if (!config.readOnlyTab && currentTab !== 'sklad') { 
-          const thActions = document.createElement('th'); thActions.innerText = 'Действие'; thActions.style.textAlign = 'center'; 
-          headerRow.appendChild(thActions); 
-      }
-      thead.appendChild(headerRow);
-  }
-
-  tbody.innerHTML = '';
-  
-  if (currentRenderedRows.length === 0) { tbody.innerHTML = `<tr><td colspan="${config.fields.length + (config.readOnlyTab || currentTab === 'sklad' ? 0 : 2)}" style="text-align:center; padding:40px;">Няма данни.</td></tr>`; table.style.display = 'table'; return; }
-
-  currentRenderedRows.forEach((item) => {
-    const row = document.createElement('tr'); const trueIndex = globalRows.indexOf(item);
-    if (currentTab === 'chekiraniya') {
-       let isLate = false; if (item['Действие'] === 'Влизане' && item['Време']) { let d = new Date(item['Време']); if (d.getHours() > 8 || (d.getHours() === 8 && d.getMinutes() > 0)) isLate = true; }
-       if (isLate || (item['Бележка'] && item['Бележка'].includes('ИЗВЪН ОБЕКТА'))) { row.style.backgroundColor = '#fef2f2'; row.style.borderLeft = '5px solid #ef4444'; }
-       else if (item['Действие'] === 'Авто излизане') { row.style.backgroundColor = '#fffbeb'; row.style.borderLeft = '5px solid #f59e0b'; }
-    }
-    if (currentTab === 'personal') {
-        if (item['Статус'] === 'Блокиран') { row.style.backgroundColor = '#fef2f2'; row.style.color = '#991b1b'; }
-    }
-    if (currentTab === 'sklad_inventory') {
-        if (typeof item['Общо'] === 'number' && item['Общо'] < 0) {
-            row.style.backgroundColor = '#fff7ed';
-            row.style.borderLeft = '5px solid #ea580c';
+    currentRenderedRows = itemsToRender || globalRows; const config = tableConfigs[currentTab]; document.getElementById('loadingLayout').style.display = 'none';
+    const table = document.getElementById('mainTable'); const thead = document.getElementById('tableHead'); const tbody = document.getElementById('tableBody');
+    if (thead.innerHTML === '') {
+        const headerRow = document.createElement('tr');
+        if (!config.readOnlyTab) {
+            const thCheck = document.createElement('th');
+            thCheck.style.width = '40px'; thCheck.style.textAlign = 'center';
+            thCheck.innerHTML = `<input type="checkbox" id="selectAllCb" class="row-checkbox" onchange="toggleSelectAll(event)">`;
+            headerRow.appendChild(thCheck);
         }
+
+        config.fields.forEach(f => {
+            if (f.hideOnAdd) return;
+            const th = document.createElement('th');
+
+            const labelDiv = document.createElement('div');
+            labelDiv.innerText = f.label || f.name;
+            th.appendChild(labelDiv);
+
+            const filterInput = document.createElement('input');
+            filterInput.type = 'text';
+            filterInput.placeholder = '🔍 Филтър...';
+            filterInput.style.width = '100%';
+            filterInput.style.boxSizing = 'border-box';
+            filterInput.style.marginTop = '6px';
+            filterInput.style.padding = '4px 6px';
+            filterInput.style.fontSize = '12px';
+            filterInput.style.border = '1px solid #cbd5e1';
+            filterInput.style.borderRadius = '4px';
+            filterInput.style.fontWeight = 'normal';
+
+            if (globalColumnFilters[f.name]) filterInput.value = globalColumnFilters[f.name];
+
+            filterInput.oninput = (e) => {
+                globalColumnFilters[f.name] = e.target.value.toLowerCase().trim();
+                filterTable();
+            };
+
+            th.appendChild(filterInput);
+            headerRow.appendChild(th);
+        });
+
+        if (!config.readOnlyTab) {
+            const thActions = document.createElement('th'); thActions.innerText = 'Действие'; thActions.style.textAlign = 'center';
+            headerRow.appendChild(thActions);
+        }
+        thead.appendChild(headerRow);
     }
 
-    if (!config.readOnlyTab) {
-        const tdCheck = document.createElement('td'); tdCheck.style.textAlign = 'center';
-        const isChecked = selectedIndices.has(trueIndex) ? 'checked' : '';
-        tdCheck.innerHTML = `<input type="checkbox" class="row-checkbox row-cb" data-index="${trueIndex}" onchange="toggleRowSelection(event, ${trueIndex})" ${isChecked}>`;
-        row.appendChild(tdCheck);
-    }
+    tbody.innerHTML = '';
 
-    config.fields.forEach(f => {
-      if (f.hideOnAdd) return; const td = document.createElement('td'); let val = item[f.name] !== undefined && item[f.name] !== null ? item[f.name] : '';
-      
-      if (currentTab === 'personal' && f.name === 'Статус') {
-          if (val === 'Активен') td.innerHTML = `<span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🟢 ${val}</span>`;
-          else td.innerHTML = `<span style="background:#fee2e2; color:#b91c1c; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🛑 ${val}</span>`;
-          row.appendChild(td); return;
-      }
+    if (currentRenderedRows.length === 0) { tbody.innerHTML = `<tr><td colspan="${config.fields.length + (config.readOnlyTab ? 0 : 2)}" style="text-align:center; padding:40px;">Няма данни.</td></tr>`; table.style.display = 'table'; return; }
 
-      if (currentTab === 'plan' && f.name === 'Статус') {
-          let sStyle = 'background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;';
-          if (val === 'Завършен') sStyle = 'background:#dcfce7; color:#15803d; border:1px solid #bbf7d0;';
-          else if (val && val.includes('Опакован')) sStyle = 'background:#fef3c7; color:#b45309; border:1px solid #fde68a;';
-          else if (val && val.includes('Изпратен')) sStyle = 'background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;';
-          td.innerHTML = `<span style="${sStyle} padding:4px 10px; border-radius:20px; font-weight:800; font-size:0.85em; display:inline-flex; align-items:center; gap:4px;">${val}</span>`;
-          row.appendChild(td); return;
-      }
+    currentRenderedRows.forEach((item) => {
+        const row = document.createElement('tr'); const trueIndex = globalRows.indexOf(item);
+        if (currentTab === 'chekiraniya') {
+            let isLate = false; if (item['Действие'] === 'Влизане' && item['Време']) { let d = new Date(item['Време']); if (d.getHours() > 8 || (d.getHours() === 8 && d.getMinutes() > 0)) isLate = true; }
+            if (isLate || (item['Бележка'] && item['Бележка'].includes('ИЗВЪН ОБЕКТА'))) { row.style.backgroundColor = '#fef2f2'; row.style.borderLeft = '5px solid #ef4444'; }
+            else if (item['Действие'] === 'Авто излизане') { row.style.backgroundColor = '#fffbeb'; row.style.borderLeft = '5px solid #f59e0b'; }
+        }
+        if (currentTab === 'personal') {
+            if (item['Статус'] === 'Блокиран') { row.style.backgroundColor = '#fef2f2'; row.style.color = '#991b1b'; }
+        }
+        if (currentTab === 'sklad_inventory') {
+            if (typeof item['Общо'] === 'number' && item['Общо'] < 0) {
+                row.style.backgroundColor = '#fff7ed';
+                row.style.borderLeft = '5px solid #ea580c';
+            }
+        }
 
-      if (currentTab === 'otcheti' && f.name === 'Статус') {
-          let hasPendingDisc = (typeof globalMaterialRequests !== 'undefined') && globalMaterialRequests.some(r => 
-              r.status === 'Чакаща' && 
-              r.part_name === item['ID Детайл'] && 
-              r.notes && r.notes.includes('"type":"discrepancy"')
-          );
-          if (hasPendingDisc) {
-              td.innerHTML = `<span style="background:#fff7ed; color:#c2410c; border:1.5px solid #fed7aa; padding:3px 8px; border-radius:12px; font-weight:800; font-size:0.82em;" title="Има чакащо доотчитане от предходна операция">⚠️ Отчетено (Чака доотчитане)</span>`;
-              row.style.borderLeft = '5px solid #ea580c';
-              row.style.backgroundColor = '#fffbeb';
-              row.appendChild(td);
-              return;
-          }
-      }
+        if (!config.readOnlyTab) {
+            const tdCheck = document.createElement('td'); tdCheck.style.textAlign = 'center';
+            const isChecked = selectedIndices.has(trueIndex) ? 'checked' : '';
+            tdCheck.innerHTML = `<input type="checkbox" class="row-checkbox row-cb" data-index="${trueIndex}" onchange="toggleRowSelection(event, ${trueIndex})" ${isChecked}>`;
+            row.appendChild(tdCheck);
+        }
 
-      if ((f.name === 'Време' || f.name === 'Дата') && val) { try { let pVal = val; if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z'; td.innerHTML = `<b>${new Date(pVal).toLocaleString('bg-BG')}</b>`; } catch(e) { td.innerText = val; } row.appendChild(td); return; }
-      if (currentTab === 'chekiraniya' && f.name === 'Действие') {
-          if (val === 'Влизане') td.innerHTML = `<span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🟢 ${val}</span>`;
-          else if (val === 'Излизане') td.innerHTML = `<span style="background:#fee2e2; color:#b91c1c; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🔴 ${val}</span>`;
-          else if (val === 'Авто излизане') td.innerHTML = `<span style="background:#fef3c7; color:#b45309; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🕒 ${val}</span>`;
-          else td.innerText = val; row.appendChild(td); return;
-      }
-      if (currentTab === 'chekiraniya' && f.name === 'Локация' && val && val.includes(',')) { let coords = val.replace(/\s/g, ''); td.innerHTML = `<a href="https://www.google.com/maps?q=${coords}" target="_blank" style="color:#2563eb; font-weight:bold; text-decoration:none;">📍 Карта</a>`; row.appendChild(td); return; }
-      if (currentTab === 'chekiraniya' && f.name === 'Бележка' && val.includes('ИЗВЪН ОБЕКТА')) { td.innerHTML = `⚠️ <b style="color:#dc2626;">${val}</b>`; row.appendChild(td); return; }
-      if (typeof val === 'string' && val.startsWith('http')) { td.innerHTML = `<a href="${val}" target="_blank" style="background:#e0e7ff; color:#4338ca; padding:5px 12px; border-radius:6px; font-weight:800; text-decoration:none; font-size:0.85em; display:inline-block;">🔗 Отвори</a>`; row.appendChild(td); return; }
-      if ((currentTab === 'plan' || currentTab === 'nomenklatura' || currentTab === 'sklad_inventory') && f.name === 'ID Детайл' && val) {
-          let safeVal = String(val).replace(/"/g, '&quot;').replace(/'/g, '\\\'');
-          let encVal = encodeURIComponent(String(val));
-          td.innerHTML = `<button data-part="${encVal}" onclick="if(typeof openResolverTreeFromBtn==='function'){openResolverTreeFromBtn(this)}else{openResolverTree('${safeVal}')}" style="background:none; border:none; color:#2563eb; font-weight:900; text-decoration:underline; cursor:pointer; font-size:1em; padding:0; text-align:left;" title="🔍 Виж вложени детайли и материали">${val}</button>`;
-          if (item['__packaged_info']) td.innerHTML += item['__packaged_info'];
-          row.appendChild(td); return;
-      }
-      if (currentTab === 'sklad_inventory' && (f.name === 'Общо' || f.name === 'Свободни') && typeof val === 'number' && val < 0) {
-          td.innerHTML = `<span style="background:#fef2f2; color:#dc2626; border:1.5px solid #fecaca; padding:2px 8px; border-radius:10px; font-weight:800; display:inline-block;" title="Дефицит: следващата операция е отчела повече бройки, чака се доотчитане тук">⚠️ ${val} бр. (Дефицит)</span>`;
-          row.appendChild(td); return;
-      }
-      if (currentTab === 'sklad_inventory' && f.name === 'Минимално количество/Буфер' && typeof val === 'number' && val < 0) {
-          td.innerHTML = `<span style="color:#dc2626; font-weight:bold;">${val}</span>`;
-          row.appendChild(td); return;
-      }
-      td.innerText = val; 
-      if (currentTab === 'plan' && f.name === 'Вътрешно име' && item['__packaged_info']) {
-          td.innerHTML = val + item['__packaged_info'];
-      }
-      row.appendChild(td);
+        config.fields.forEach(f => {
+            if (f.hideOnAdd) return; const td = document.createElement('td'); let val = item[f.name] !== undefined && item[f.name] !== null ? item[f.name] : '';
+
+            if (currentTab === 'personal' && f.name === 'Статус') {
+                if (val === 'Активен') td.innerHTML = `<span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🟢 ${val}</span>`;
+                else td.innerHTML = `<span style="background:#fee2e2; color:#b91c1c; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🛑 ${val}</span>`;
+                row.appendChild(td); return;
+            }
+
+            if (currentTab === 'plan' && f.name === 'Статус') {
+                let sStyle = 'background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;';
+                if (val === 'Завършен') sStyle = 'background:#dcfce7; color:#15803d; border:1px solid #bbf7d0;';
+                else if (val && val.includes('Опакован')) sStyle = 'background:#fef3c7; color:#b45309; border:1px solid #fde68a;';
+                else if (val && val.includes('Изпратен')) sStyle = 'background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;';
+                td.innerHTML = `<span style="${sStyle} padding:4px 10px; border-radius:20px; font-weight:800; font-size:0.85em; display:inline-flex; align-items:center; gap:4px;">${val}</span>`;
+                row.appendChild(td); return;
+            }
+
+            if (currentTab === 'otcheti' && f.name === 'Статус') {
+                let hasPendingDisc = (typeof globalMaterialRequests !== 'undefined') && globalMaterialRequests.some(r =>
+                    r.status === 'Чакаща' &&
+                    r.part_name === item['ID Детайл'] &&
+                    r.notes && r.notes.includes('"type":"discrepancy"')
+                );
+                if (hasPendingDisc) {
+                    td.innerHTML = `<span style="background:#fff7ed; color:#c2410c; border:1.5px solid #fed7aa; padding:3px 8px; border-radius:12px; font-weight:800; font-size:0.82em;" title="Има чакащо доотчитане от предходна операция">⚠️ Отчетено (Чака доотчитане)</span>`;
+                    row.style.borderLeft = '5px solid #ea580c';
+                    row.style.backgroundColor = '#fffbeb';
+                    row.appendChild(td);
+                    return;
+                }
+            }
+
+            if ((f.name === 'Време' || f.name === 'Дата') && val) { try { let pVal = val; if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z'; td.innerHTML = `<b>${new Date(pVal).toLocaleString('bg-BG')}</b>`; } catch (e) { td.innerText = val; } row.appendChild(td); return; }
+            if (currentTab === 'chekiraniya' && f.name === 'Действие') {
+                if (val === 'Влизане') td.innerHTML = `<span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🟢 ${val}</span>`;
+                else if (val === 'Излизане') td.innerHTML = `<span style="background:#fee2e2; color:#b91c1c; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🔴 ${val}</span>`;
+                else if (val === 'Авто излизане') td.innerHTML = `<span style="background:#fef3c7; color:#b45309; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🕒 ${val}</span>`;
+                else td.innerText = val; row.appendChild(td); return;
+            }
+            if (currentTab === 'chekiraniya' && f.name === 'Локация' && val && val.includes(',')) { let coords = val.replace(/\s/g, ''); td.innerHTML = `<a href="https://www.google.com/maps?q=${coords}" target="_blank" style="color:#2563eb; font-weight:bold; text-decoration:none;">📍 Карта</a>`; row.appendChild(td); return; }
+            if (currentTab === 'chekiraniya' && f.name === 'Бележка' && val.includes('ИЗВЪН ОБЕКТА')) { td.innerHTML = `⚠️ <b style="color:#dc2626;">${val}</b>`; row.appendChild(td); return; }
+            if (typeof val === 'string' && val.startsWith('http')) { td.innerHTML = `<a href="${val}" target="_blank" style="background:#e0e7ff; color:#4338ca; padding:5px 12px; border-radius:6px; font-weight:800; text-decoration:none; font-size:0.85em; display:inline-block;">🔗 Отвори</a>`; row.appendChild(td); return; }
+            if ((currentTab === 'plan' || currentTab === 'nomenklatura' || currentTab === 'sklad_inventory') && f.name === 'ID Детайл' && val) {
+                let safeVal = String(val).replace(/"/g, '&quot;').replace(/'/g, '\\\'');
+                let encVal = encodeURIComponent(String(val));
+                td.innerHTML = `<button data-part="${encVal}" onclick="if(typeof openResolverTreeFromBtn==='function'){openResolverTreeFromBtn(this)}else{openResolverTree('${safeVal}')}" style="background:none; border:none; color:#2563eb; font-weight:900; text-decoration:underline; cursor:pointer; font-size:1em; padding:0; text-align:left;" title="🔍 Виж вложени детайли и материали">${val}</button>`;
+                if (item['__packaged_info']) td.innerHTML += item['__packaged_info'];
+                row.appendChild(td); return;
+            }
+            if (currentTab === 'sklad_inventory' && (f.name === 'Общо' || f.name === 'Свободни') && typeof val === 'number' && val < 0) {
+                td.innerHTML = `<span style="background:#fef2f2; color:#dc2626; border:1.5px solid #fecaca; padding:2px 8px; border-radius:10px; font-weight:800; display:inline-block;" title="Дефицит: следващата операция е отчела повече бройки, чака се доотчитане тук">⚠️ ${val} бр. (Дефицит)</span>`;
+                row.appendChild(td); return;
+            }
+            if (currentTab === 'sklad_inventory' && f.name === 'Минимално количество/Буфер' && typeof val === 'number' && val < 0) {
+                td.innerHTML = `<span style="color:#dc2626; font-weight:bold;">${val}</span>`;
+                row.appendChild(td); return;
+            }
+            td.innerText = val;
+            if (currentTab === 'plan' && f.name === 'Вътрешно име' && item['__packaged_info']) {
+                td.innerHTML = val + item['__packaged_info'];
+            }
+            row.appendChild(td);
+        });
+        if (!config.readOnlyTab) {
+            const tdActions = document.createElement('td'); tdActions.style.textAlign = 'center';
+            tdActions.innerHTML = `<button class="action-btn btn-edit" onclick="openEditModal(${trueIndex})">✏️</button><button class="action-btn btn-delete" onclick="deleteItem(${trueIndex})">🗑️</button>`;
+            row.appendChild(tdActions);
+        }
+        tbody.appendChild(row);
     });
-      if (!config.readOnlyTab && currentTab !== 'sklad') {
-          const tdActions = document.createElement('td'); tdActions.style.textAlign = 'center';
-          tdActions.innerHTML = `<button class="action-btn btn-edit" onclick="openEditModal(${trueIndex})">✏️</button><button class="action-btn btn-delete" onclick="deleteItem(${trueIndex})">🗑️</button>`;
-          row.appendChild(tdActions);
-      }
-    tbody.appendChild(row);
-  });
-  table.style.display = 'table';
-  
-  const allCheckbox = document.getElementById('selectAllCb');
-  if (allCheckbox) {
-      const visibleCheckboxes = document.querySelectorAll('.row-cb');
-      const allChecked = visibleCheckboxes.length > 0 && Array.from(visibleCheckboxes).every(cb => cb.checked);
-      allCheckbox.checked = allChecked;
-  }
+    table.style.display = 'table';
+
+    const allCheckbox = document.getElementById('selectAllCb');
+    if (allCheckbox) {
+        const visibleCheckboxes = document.querySelectorAll('.row-cb');
+        const allChecked = visibleCheckboxes.length > 0 && Array.from(visibleCheckboxes).every(cb => cb.checked);
+        allCheckbox.checked = allChecked;
+    }
 }
 
-function filterTable() { 
+function filterTable() {
     if (currentTab === 'probi') {
         const q = String(document.getElementById('searchInput')?.value || '').trim();
         if (typeof onProbiSearchFromGlobal === 'function') onProbiSearchFromGlobal(q);
@@ -543,27 +545,27 @@ function filterTable() {
         return;
     }
     const normalizeStr = (str) => String(str || '').replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
-    const q = normalizeStr(document.getElementById('searchInput').value); 
+    const q = normalizeStr(document.getElementById('searchInput').value);
     let f = globalRows;
-    
+
     if (q) {
         f = f.filter(r => Object.values(r).some(v => normalizeStr(v).includes(q)));
     }
-    
+
     Object.keys(globalColumnFilters).forEach(col => {
         const colQ = globalColumnFilters[col];
         if (colQ) {
             f = f.filter(r => {
                 let val = r[col];
                 if ((col === 'Време' || col === 'Дата') && val) {
-                     try { let pVal = val; if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z'; val = new Date(pVal).toLocaleString('bg-BG'); } catch(e) {}
+                    try { let pVal = val; if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z'; val = new Date(pVal).toLocaleString('bg-BG'); } catch (e) { }
                 }
                 return normalizeStr(val).includes(colQ);
             });
         }
     });
-    
-    renderDynamicTable(f); 
+
+    renderDynamicTable(f);
 }
 
 let globalNomenclatureCodes = [];
@@ -574,10 +576,10 @@ function filterSkladDetails(val) {
     dropdown.innerHTML = '';
     let q = val.toLowerCase().trim();
     if (!q) { dropdown.style.display = 'none'; return; }
-    
+
     let matches = globalNomenclatureCodes.filter(code => code.toLowerCase().includes(q));
     if (matches.length === 0) { dropdown.style.display = 'none'; return; }
-    
+
     matches.slice(0, 50).forEach(match => {
         let div = document.createElement('div');
         div.style.padding = '8px 12px';
@@ -597,11 +599,11 @@ function filterSkladDetails(val) {
 }
 
 function buildForm(data = null) {
-  const area = document.getElementById('formFieldsArea'); area.innerHTML = ''; const fields = tableConfigs[currentTab].fields;
-  
-  if (currentTab === 'sklad_inventory') {
-      if (!isEditMode) {
-          area.innerHTML = `
+    const area = document.getElementById('formFieldsArea'); area.innerHTML = ''; const fields = tableConfigs[currentTab].fields;
+
+    if (currentTab === 'sklad_inventory') {
+        if (!isEditMode) {
+            area.innerHTML = `
             <div class="form-group" style="position:relative;">
                 <label>ID Детайл (Код):</label>
                 <input type="text" id="inp_skladDetail" class="form-input" 
@@ -617,16 +619,16 @@ function buildForm(data = null) {
             <div class="form-group"><label>Количество (буфер):</label><input type="text" id="inp_skladQtyBuffer" class="form-input" value="0" required></div>
             <div class="form-group"><label>Процент Свръхпроизводство (%):</label><input type="number" id="inp_skladScrap" class="form-input" step="any" min="0" placeholder="Без промяна"></div>
           `;
-          
-          if (globalNomenclatureCodes.length === 0) {
-              client.from('Номенклатура').select('*').limit(100000).then(res => {
-                  if (res.data) {
-                      globalNomenclatureCodes = res.data.map(n => String(n['ID Детайл']).trim()).filter(Boolean);
-                  }
-              });
-          }
-      } else {
-          area.innerHTML = `
+
+            if (globalNomenclatureCodes.length === 0) {
+                client.from('Номенклатура').select('*').limit(100000).then(res => {
+                    if (res.data) {
+                        globalNomenclatureCodes = res.data.map(n => String(n['ID Детайл']).trim()).filter(Boolean);
+                    }
+                });
+            }
+        } else {
+            area.innerHTML = `
             <div class="form-group"><label>ID Детайл (Код):</label><input type="text" id="inp_skladDetail" class="form-input" readonly style="background:#f1f5f9; color:#64748b;"></div>
             <div class="form-group"><label>Операция:</label><input type="text" id="inp_skladOp" class="form-input" readonly style="background:#f1f5f9; color:#64748b;"><input type="hidden" id="inp_skladRealOp"></div>
             <div class="form-group"><label>Текуща наличност:</label><input type="number" id="inp_skladOldQty" class="form-input" readonly style="background:#f1f5f9; color:#64748b;"></div>
@@ -634,36 +636,52 @@ function buildForm(data = null) {
             <div class="form-group"><label>Буфер (Минимално количество):</label><input type="number" id="inp_skladBuffer" class="form-input" step="any" required></div>
             <div class="form-group"><label>Процент Свръхпроизводство (%):</label><input type="number" id="inp_skladScrap" class="form-input" step="any" min="0" required></div>
           `;
-          document.getElementById('inp_skladDetail').value = data['ID Детайл'] || '';
-          document.getElementById('inp_skladOp').value = data['Операция'] || '';
-          document.getElementById('inp_skladRealOp').value = data['Операция'] || '';
-          document.getElementById('inp_skladOldQty').value = data['Общо'] || 0;
-          document.getElementById('inp_skladQty').value = data['Общо'] || 0;
-          document.getElementById('inp_skladBuffer').value = data['Минимално количество/Буфер'] || 0;
-          document.getElementById('inp_skladScrap').value = data['% Брак'] || 0;
-      }
-      return;
-  }
-
-  fields.forEach(f => {
-    if (f.hideOnAdd && !isEditMode) return; const group = document.createElement('div'); group.className = 'form-group'; const label = document.createElement('label'); label.innerText = f.label || f.name; group.appendChild(label); let input;
-    if (f.type === 'select') { input = document.createElement('select'); f.options.forEach(opt => { const option = document.createElement('option'); option.value = opt; option.innerText = opt; input.appendChild(option); }); if (data && data[f.name]) input.value = data[f.name]; else if (f.def) input.value = f.def; } 
-    else { input = document.createElement('input'); input.type = f.type === 'number' ? 'number' : 'text'; if (f.type === 'number') input.step = 'any'; if (data && data[f.name] !== undefined && data[f.name] !== null) input.value = data[f.name]; else if (f.def !== undefined) input.value = typeof f.def === 'function' ? f.def() : f.def; }
-    input.id = 'inp_' + f.name; if (f.required) input.required = true;
-    if (f.name === 'ID Детайл' || f.name === 'ID Родител' || f.name === 'ID Компонент' || f.name === 'Код на детайла') {
-        input.setAttribute('list', 'dl_nomenklatura');
-        input.setAttribute('autocomplete', 'off');
-        input.placeholder = '🔍 Въведете или изберете код...';
-    } else if (f.name === 'Машина') {
-        input.setAttribute('list', 'dl_machines');
-        input.setAttribute('autocomplete', 'off');
-        input.placeholder = '🏭 Въведете или изберете машина...';
-    } else if (f.name === 'Норма (мин/бр)') {
-        input.placeholder = 'напр. 3.5 мин/бр';
+            document.getElementById('inp_skladDetail').value = data['ID Детайл'] || '';
+            document.getElementById('inp_skladOp').value = data['Операция'] || '';
+            document.getElementById('inp_skladRealOp').value = data['Операция'] || '';
+            document.getElementById('inp_skladOldQty').value = data['Общо'] || 0;
+            document.getElementById('inp_skladQty').value = data['Общо'] || 0;
+            document.getElementById('inp_skladBuffer').value = data['Минимално количество/Буфер'] || 0;
+            document.getElementById('inp_skladScrap').value = data['% Брак'] || 0;
+        }
+        return;
     }
-    if (f.readonly || (isEditMode && f.readonlyOnEdit)) { input.readOnly = true; input.style.backgroundColor = '#f1f5f9'; input.style.color = '#64748b'; input.style.cursor = 'not-allowed'; if (f.type === 'select') input.disabled = true; }
-    group.appendChild(input); area.appendChild(group);
-  });
+
+    fields.forEach(f => {
+        if (f.hideOnAdd && !isEditMode) return; const group = document.createElement('div'); group.className = 'form-group'; const label = document.createElement('label'); label.innerText = f.label || f.name; group.appendChild(label); let input;
+        if (f.type === 'select') { input = document.createElement('select'); f.options.forEach(opt => { const option = document.createElement('option'); option.value = opt; option.innerText = opt; input.appendChild(option); }); if (data && data[f.name]) input.value = data[f.name]; else if (f.def) input.value = f.def; }
+        else { input = document.createElement('input'); input.type = f.type === 'number' ? 'number' : 'text'; if (f.type === 'number') input.step = 'any'; if (data && data[f.name] !== undefined && data[f.name] !== null) input.value = data[f.name]; else if (f.def !== undefined) input.value = typeof f.def === 'function' ? f.def() : f.def; }
+        input.id = 'inp_' + f.name; if (f.required) input.required = true;
+        if (f.name === 'ID Детайл' || f.name === 'ID Родител' || f.name === 'ID Компонент' || f.name === 'Код на детайла') {
+            input.setAttribute('list', 'dl_nomenklatura');
+            input.setAttribute('autocomplete', 'off');
+            input.placeholder = '🔍 Въведете или изберете код...';
+        } else if (f.name === 'Машина') {
+            input.setAttribute('list', 'dl_machines');
+            input.setAttribute('autocomplete', 'off');
+            input.placeholder = '🏭 Въведете или изберете машина...';
+        } else if (f.name === 'Норма (мин/бр)') {
+            input.placeholder = 'напр. 3.5 мин/бр';
+        }
+        if (f.readonly || (isEditMode && f.readonlyOnEdit)) { input.readOnly = true; input.style.backgroundColor = '#f1f5f9'; input.style.color = '#64748b'; input.style.cursor = 'not-allowed'; if (f.type === 'select') input.disabled = true; }
+        group.appendChild(input); area.appendChild(group);
+    });
+
+    if (currentTab === 'sklad') {
+        const updateSkladOstatuk = () => {
+            const start = parseFloat(document.getElementById('inp_Начална наличност')?.value) || 0;
+            const deliv = parseFloat(document.getElementById('inp_Доставено')?.value) || 0;
+            const used = parseFloat(document.getElementById('inp_Изразходено')?.value) || 0;
+            const ostEl = document.getElementById('inp_Остатък');
+            if (ostEl) ostEl.value = (start + deliv - used);
+        };
+        setTimeout(() => {
+            ['inp_Начална наличност', 'inp_Доставено', 'inp_Изразходено'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', updateSkladOstatuk);
+            });
+        }, 50);
+    }
 }
 
 function openAddModal() { isEditMode = false; editingIndex = null; document.getElementById('modalTitle').innerHTML = '➕ Добавяне: ' + tableConfigs[currentTab].label.replace(/[^а-яА-Я ]/g, '').trim(); buildForm(); document.getElementById('modalBackdrop').style.display = 'flex'; }
@@ -674,9 +692,9 @@ async function fetchAll(table, orderCol) {
     let allData = [];
     let from = 0;
     const step = 1000;
-    while(true) {
+    while (true) {
         let query = client.from(table).select('*').range(from, from + step - 1);
-        if (orderCol) query = query.order(orderCol, {ascending: true});
+        if (orderCol) query = query.order(orderCol, { ascending: true });
         let { data, error } = await query;
         if (error || !data || data.length === 0) break;
         allData = allData.concat(data);
@@ -694,7 +712,7 @@ async function computeSkladData() {
         fetchAll('sklad_bufferi'),
         fetchAll('marshruti')
     ]);
-    
+
     let bufferMap = {};
     let bufferScrapMap = {};
     let bufferOpMap = {};
@@ -706,7 +724,7 @@ async function computeSkladData() {
             bufferOpMap[code] = String(b['Операция'] || '').trim();
         });
     }
-    
+
     let nomNameMap = {};
     let nomLocMap = {};
     if (nomRes.data) {
@@ -716,7 +734,7 @@ async function computeSkladData() {
             nomLocMap[c] = String(n['Местоположение'] || '').trim();
         });
     }
-    
+
     let routeMap = {};
     let lastDropoffMap = {};
     if (routeRes.data) {
@@ -741,7 +759,7 @@ async function computeSkladData() {
             }
         });
     }
-    
+
     let packingData = [];
     let pRes = await client.from('otcheti')
         .select('*')
@@ -749,7 +767,7 @@ async function computeSkladData() {
         .eq('Статус', 'Отчетено')
         .limit(100000);
     if (pRes.data) packingData = pRes.data;
-    
+
     let packedByDetail = {};
     let packedDetailsByBox = {};
     packingData.forEach(p => {
@@ -758,7 +776,7 @@ async function computeSkladData() {
         let op = String(p['Операция']);
         let boxMatch = op.match(/Кашон №\s*(.+)/i);
         let box = boxMatch ? boxMatch[1].trim() : 'Неизвестен';
-        
+
         if (!packedByDetail[code]) {
             packedByDetail[code] = 0;
             packedDetailsByBox[code] = {};
@@ -775,13 +793,13 @@ async function computeSkladData() {
         let scrap = bufferScrapMap[code] || 0;
         let targetOpRaw = bufferOpMap[code] || '';
         let targetOpKey = targetOpRaw ? targetOpRaw.toLowerCase() : 'готов продукт';
-        
+
         let opKey = String(item['Операция'] || '').trim().toLowerCase();
         let isGpItem = (opKey === 'готов продукт');
         let isBufferRow = (opKey === targetOpKey);
-        
+
         let opName = item['Операция'] || '';
-        
+
         let reservedQty = 0;
         let reservedStr = "0";
         if (isGpItem) {
@@ -794,9 +812,9 @@ async function computeSkladData() {
                 reservedStr = boxTexts.join(', ');
             }
         }
-        
+
         let freeQty = isGpItem ? Math.max(0, qty - reservedQty) : qty;
-        
+
         let loc = '';
         if (isGpItem) {
             loc = nomLocMap[code] || lastDropoffMap[code] || 'Склад Готови Детайли';
@@ -822,16 +840,16 @@ async function computeSkladData() {
             });
         }
     });
-    
+
     Object.keys(bufferMap).forEach(code => {
         let buf = bufferMap[code];
         let scrap = bufferScrapMap[code] || 0;
         let targetOpRaw = bufferOpMap[code] || '';
         let targetOpKey = targetOpRaw ? targetOpRaw.toLowerCase() : 'готов продукт';
         let targetOpDisplay = targetOpRaw || 'Готов продукт';
-        
+
         let shouldShowEmpty = buf > 0 || (scrap > 0 && scrap !== 20);
-        
+
         if (shouldShowEmpty && !rows.some(r => String(r['ID Детайл']).trim().toLowerCase() === code && String(r['Операция']).toLowerCase() === targetOpKey)) {
             rows.push({
                 "RawPlanId": "",
@@ -848,7 +866,7 @@ async function computeSkladData() {
             });
         }
     });
-    
+
     return rows;
 }
 
@@ -857,368 +875,386 @@ async function computeSkladData() {
 // backflushSimulation removed as it is no longer used
 
 async function saveForm(e) {
-  e.preventDefault(); const config = tableConfigs[currentTab]; const btn = e.target.querySelector('button[type="submit"]'); btn.innerText = 'Записване...'; btn.disabled = true; 
-  
-  if (currentTab === 'sklad_inventory') {
-      try {
-          if (!isEditMode) {
-              const det = document.getElementById('inp_skladDetail').value.trim();
-              const op = document.getElementById('inp_skladOp').value.trim();
-              const qty = parseFloat(document.getElementById('inp_skladQty')?.value) || 0;
-              const bufferQty = parseFloat(document.getElementById('inp_skladQtyBuffer')?.value) || 0;
-              const scrapInput = document.getElementById('inp_skladScrap')?.value || "";
-              const scrap = parseFloat(scrapInput) || 0;
-              const defectsQty = parseFloat(document.getElementById('inp_skladDefects')?.value) || 0;
-              if (!det || !op || (qty === 0 && bufferQty === 0 && scrapInput === "" && defectsQty === 0)) throw new Error("Моля, въведете поне едно количество (физическо, буфер, брак бройки) или % свръхпроизводство.");
-              
-              if (qty !== 0 && defectsQty !== 0) throw new Error("Можете да въведете само едното: Количество или Брак!");
+    e.preventDefault(); const config = tableConfigs[currentTab]; const btn = e.target.querySelector('button[type="submit"]'); btn.innerText = 'Записване...'; btn.disabled = true;
 
-              if (qty !== 0 || defectsQty !== 0) {
-                  Swal.fire({title: 'Записване на наличности...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
-                  
-                  let cleanDet = det.toLowerCase();
-                  let opName = op.trim().toLowerCase();
-                  let tName = 'inventory';
-                  
-                  const { data: routeData } = await client.from('marshruti').select('*').ilike('Код на детайла', cleanDet);
-                  if (routeData && routeData.length > 0) {
-                      routeData.sort((a,b) => (parseInt(a['№ Операция'])||0) - (parseInt(b['№ Операция'])||0));
-                      let lastOp = routeData[routeData.length - 1]['Име на операция'].trim().toLowerCase();
-                      if (opName === lastOp || opName === 'готов детайл') {
-                          opName = 'готов продукт';
-                      }
-                  } else {
-                      if (opName === 'готов детайл') opName = 'готов продукт';
-                  }
-                  
-                  let query = client.from(tName).select('*').ilike('ID Детайл', cleanDet).ilike('Операция', opName);
-                  let { data: currData } = await query;
-                  
-                  let currentStock = 0;
-                  let exactDet = det;
-                  let exactOp = opName;
-                  if (currData && currData.length > 0) {
-                      currentStock = parseFloat(currData[0]['Количество']) || 0;
-                      exactDet = currData[0]['ID Детайл'];
-                      exactOp = currData[0]['Операция'];
-                  }
-                  
-                  let newTotal = currentStock + qty - defectsQty;
-                  
-                  if (newTotal < 0) {
-                      Swal.close();
-                      throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
-                  }
-                  
-                  let auditNewData = { "ID Детайл": cleanDet, "Разлика": (qty !== 0 ? qty : -defectsQty), "Ново Количество": newTotal, "Операция": opName };
-                  
-                  await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
-                  
-                  let payload = { "ID Детайл": exactDet, "Операция": exactOp, "Количество": newTotal };
-                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
-                  if (upsertErr) throw upsertErr;
-                  
-                  if (qty !== 0) {
-                      let otchetiPayload = {
-                          "ID План": null,
-                          "ID Детайл": exactDet,
-                          "Операция": exactOp,
-                          "Количество": qty,
-                          "Статус": "Отчетено",
-                          "Оператор": "СИСТЕМА (Корекция наличност)",
-                          "Дата": new Date().toISOString()
-                      };
-                      await client.from('otcheti').insert([otchetiPayload]);
-                  }
-                  
-                  if (defectsQty > 0) {
-                      let brakPayload = {
-                          "ID План": null,
-                          "ID Детайл": exactDet,
-                          "Операция": exactOp,
-                          "Количество": defectsQty,
-                          "Статус": "Брак",
-                          "Оператор": "Администратор",
-                          "Дата": new Date().toISOString()
-                      };
-                      await client.from('otcheti').insert([brakPayload]);
-                  }
-              }
-              
-              if (bufferQty !== 0 || scrapInput !== "") {
-                  Swal.fire({title: 'Запазване на буфер...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
-                  let currentBuffer = 0;
-                  let currentScrap = 0;
-                  const { data: bufData } = await client.from('sklad_bufferi').select('Буфер, "% Брак"').eq('ID Детайл', det);
-                  if (bufData && bufData.length > 0) {
-                      currentBuffer = parseFloat(bufData[0]['Буфер']) || 0;
-                      currentScrap = parseFloat(bufData[0]['% Брак']) || 0;
-                  }
-                  const newBufferTotal = currentBuffer + bufferQty;
-                  const newScrap = scrapInput !== "" ? parseFloat(scrapInput) : currentScrap;
-                  await client.from('sklad_bufferi').delete().eq('ID Детайл', det);
-                  const { error: bufError } = await client.from('sklad_bufferi').insert([{ "ID Детайл": det, "Операция": op, "Буфер": newBufferTotal, "% Брак": newScrap }]);
-                  if (bufError) throw bufError;
-              }
-              
-              Swal.fire({icon: 'success', title: 'Успешно добавено в склада!', timer: 1500, showConfirmButton: false});
-          } else {
-              const det = document.getElementById('inp_skladDetail').value.trim();
-              const realOpEl = document.getElementById('inp_skladRealOp');
-              const op = (realOpEl && realOpEl.value) ? realOpEl.value.trim() : document.getElementById('inp_skladOp').value.trim();
-              const oldQty = parseFloat(document.getElementById('inp_skladOldQty').value) || 0;
-              const newQty = parseFloat(document.getElementById('inp_skladQty').value) || 0;
-              const newBuffer = parseFloat(document.getElementById('inp_skladBuffer').value) || 0;
-              const newScrap = parseFloat(document.getElementById('inp_skladScrap').value) || 0;
-              const diff = newQty - oldQty;
-              
-              if (diff !== 0) {
-                  Swal.fire({title: 'Записване на наличности...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
-                  let tName = 'inventory';
-                  let opName = op.trim().toLowerCase();
-                  if (opName === 'готов детайл') opName = 'готов продукт';
-                  let cleanDet = det.toLowerCase();
-                  
-                  let query = client.from(tName).select('Количество').eq('ID Детайл', cleanDet).eq('Операция', opName);
-                  let { data: currData } = await query;
-                  
-                  let currentStock = currData && currData.length > 0 ? parseFloat(currData[0]['Количество']) || 0 : 0;
-                  let newTotal = currentStock + diff;
-                  
-                  if (newTotal < 0) {
-                      Swal.close();
-                      throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
-                  }
-                  
-                  let payload = { "ID Детайл": cleanDet, "Операция": opName, "Количество": newTotal };
-                  
-                  let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
-                  if (upsertErr) throw upsertErr;
-                  
-                  let auditNewData = { "ID Детайл": cleanDet, "Операция": opName, "Разлика": diff, "Ново Количество": newTotal };
-                  
-                  await client.from('audit_logs').insert([{ table_name: tName, action_type: 'UPDATE', old_data: { "Количество": oldQty }, new_data: auditNewData }]);
-                  
-                  let otchetiPayload = {
-                      "ID План": null,
-                      "ID Детайл": cleanDet,
-                      "Операция": opName,
-                      "Количество": diff,
-                      "Статус": "Отчетено",
-                      "Оператор": "СИСТЕМА (Корекция наличност)",
-                      "Дата": new Date().toISOString()
-                  };
-                  await client.from('otcheti').insert([otchetiPayload]);
-              }
-              
-              
-              await client.from('sklad_bufferi').delete().eq('ID Детайл', det);
-              const { error: bufError } = await client.from('sklad_bufferi').insert([{ "ID Детайл": det, "Операция": op, "Буфер": newBuffer, "% Брак": newScrap }]);
-              if (bufError) throw bufError;
-              
-              Swal.fire({icon: 'success', title: 'Успешен запис!', timer: 1500, showConfirmButton: false});
-          }
-          if (window.invalidateAdminCache) window.invalidateAdminCache();
-          closeModal(); loadCurrentTableData(true);
-      } catch (err) { Swal.fire('Грешка', err.message, 'error'); } finally { btn.innerText = 'Запази запис'; btn.disabled = false; }
-      return;
-  }
+    if (currentTab === 'sklad_inventory') {
+        try {
+            if (!isEditMode) {
+                const det = document.getElementById('inp_skladDetail').value.trim();
+                const op = document.getElementById('inp_skladOp').value.trim();
+                const qty = parseFloat(document.getElementById('inp_skladQty')?.value) || 0;
+                const bufferQty = parseFloat(document.getElementById('inp_skladQtyBuffer')?.value) || 0;
+                const scrapInput = document.getElementById('inp_skladScrap')?.value || "";
+                const scrap = parseFloat(scrapInput) || 0;
+                const defectsQty = parseFloat(document.getElementById('inp_skladDefects')?.value) || 0;
+                if (!det || !op || (qty === 0 && bufferQty === 0 && scrapInput === "" && defectsQty === 0)) throw new Error("Моля, въведете поне едно количество (физическо, буфер, брак бройки) или % свръхпроизводство.");
 
-  let payload = {};
-  config.fields.forEach(f => { 
-      const el = document.getElementById('inp_' + f.name); 
-      if (el && !f.readonly && !(isEditMode && f.readonlyOnEdit)) { 
-          let val = el.value; 
-          if (f.type === 'number') {
-              val = parseFloat(val) || 0; 
-          } else if (f.type === 'date' && val === "") {
-              val = null;
-          }
-          payload[f.name] = val; 
-      } 
-  });
-  try {
-    if (currentTab === 'plan' && payload['Статус'] === '🚚 Изпратен') {
-        let oldStatus = isEditMode ? globalRows[editingIndex]['Статус'] : null;
-        if (oldStatus !== '🚚 Изпратен') {
-            let detailID = payload['ID Детайл'];
-            if (!detailID && isEditMode) detailID = globalRows[editingIndex]['ID Детайл'];
-            let qtyToDeduct = payload['Целево количество'] || 0;
-            
-            Swal.fire({title: 'Проверка на маршрут и наличности...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
-            
-            const { data: routeData, error: routeErr } = await client.from('marshruti').select('*').eq('Код на детайла', detailID);
-            if (routeErr) throw routeErr;
-            
-            let selectedOp = '';
-            if (routeData && routeData.length > 0) {
-                routeData.sort((a, b) => (parseInt(a['№ Операция']) || 0) - (parseInt(b['№ Операция']) || 0));
-                selectedOp = String(routeData[routeData.length - 1]['Име на операция']).trim();
+                if (qty !== 0 && defectsQty !== 0) throw new Error("Можете да въведете само едното: Количество или Брак!");
+
+                if (qty !== 0 || defectsQty !== 0) {
+                    Swal.fire({ title: 'Записване на наличности...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+                    let cleanDet = det.toLowerCase();
+                    let opName = op.trim().toLowerCase();
+                    let tName = 'inventory';
+
+                    const { data: routeData } = await client.from('marshruti').select('*').ilike('Код на детайла', cleanDet);
+                    if (routeData && routeData.length > 0) {
+                        routeData.sort((a, b) => (parseInt(a['№ Операция']) || 0) - (parseInt(b['№ Операция']) || 0));
+                        let lastOp = routeData[routeData.length - 1]['Име на операция'].trim().toLowerCase();
+                        if (opName === lastOp || opName === 'готов детайл') {
+                            opName = 'готов продукт';
+                        }
+                    } else {
+                        if (opName === 'готов детайл') opName = 'готов продукт';
+                    }
+
+                    let query = client.from(tName).select('*').ilike('ID Детайл', cleanDet).ilike('Операция', opName);
+                    let { data: currData } = await query;
+
+                    let currentStock = 0;
+                    let exactDet = det;
+                    let exactOp = opName;
+                    if (currData && currData.length > 0) {
+                        currentStock = parseFloat(currData[0]['Количество']) || 0;
+                        exactDet = currData[0]['ID Детайл'];
+                        exactOp = currData[0]['Операция'];
+                    }
+
+                    let newTotal = currentStock + qty - defectsQty;
+
+                    if (newTotal < 0) {
+                        Swal.close();
+                        throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
+                    }
+
+                    let auditNewData = { "ID Детайл": cleanDet, "Разлика": (qty !== 0 ? qty : -defectsQty), "Ново Количество": newTotal, "Операция": opName };
+
+                    await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
+
+                    let payload = { "ID Детайл": exactDet, "Операция": exactOp, "Количество": newTotal };
+                    let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
+                    if (upsertErr) throw upsertErr;
+
+                    if (qty !== 0) {
+                        let otchetiPayload = {
+                            "ID План": null,
+                            "ID Детайл": exactDet,
+                            "Операция": exactOp,
+                            "Количество": qty,
+                            "Статус": "Отчетено",
+                            "Оператор": "СИСТЕМА (Корекция наличност)",
+                            "Дата": new Date().toISOString()
+                        };
+                        await client.from('otcheti').insert([otchetiPayload]);
+                    }
+
+                    if (defectsQty > 0) {
+                        let brakPayload = {
+                            "ID План": null,
+                            "ID Детайл": exactDet,
+                            "Операция": exactOp,
+                            "Количество": defectsQty,
+                            "Статус": "Брак",
+                            "Оператор": "Администратор",
+                            "Дата": new Date().toISOString()
+                        };
+                        await client.from('otcheti').insert([brakPayload]);
+                    }
+                }
+
+                if (bufferQty !== 0 || scrapInput !== "") {
+                    Swal.fire({ title: 'Запазване на буфер...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    let currentBuffer = 0;
+                    let currentScrap = 0;
+                    const { data: bufData } = await client.from('sklad_bufferi').select('Буфер, "% Брак"').eq('ID Детайл', det);
+                    if (bufData && bufData.length > 0) {
+                        currentBuffer = parseFloat(bufData[0]['Буфер']) || 0;
+                        currentScrap = parseFloat(bufData[0]['% Брак']) || 0;
+                    }
+                    const newBufferTotal = currentBuffer + bufferQty;
+                    const newScrap = scrapInput !== "" ? parseFloat(scrapInput) : currentScrap;
+                    await client.from('sklad_bufferi').delete().eq('ID Детайл', det);
+                    const { error: bufError } = await client.from('sklad_bufferi').insert([{ "ID Детайл": det, "Операция": op, "Буфер": newBufferTotal, "% Брак": newScrap }]);
+                    if (bufError) throw bufError;
+                }
+
+                Swal.fire({ icon: 'success', title: 'Успешно добавено в склада!', timer: 1500, showConfirmButton: false });
             } else {
-                Swal.close();
-                throw new Error("Не е намерена маршрутна карта за този детайл. Не може да се определи последната операция!");
+                const det = document.getElementById('inp_skladDetail').value.trim();
+                const realOpEl = document.getElementById('inp_skladRealOp');
+                const op = (realOpEl && realOpEl.value) ? realOpEl.value.trim() : document.getElementById('inp_skladOp').value.trim();
+                const oldQty = parseFloat(document.getElementById('inp_skladOldQty').value) || 0;
+                const newQty = parseFloat(document.getElementById('inp_skladQty').value) || 0;
+                const newBuffer = parseFloat(document.getElementById('inp_skladBuffer').value) || 0;
+                const newScrap = parseFloat(document.getElementById('inp_skladScrap').value) || 0;
+                const diff = newQty - oldQty;
+
+                if (diff !== 0) {
+                    Swal.fire({ title: 'Записване на наличности...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    let tName = 'inventory';
+                    let opName = op.trim().toLowerCase();
+                    if (opName === 'готов детайл') opName = 'готов продукт';
+                    let cleanDet = det.toLowerCase();
+
+                    let query = client.from(tName).select('Количество').eq('ID Детайл', cleanDet).eq('Операция', opName);
+                    let { data: currData } = await query;
+
+                    let currentStock = currData && currData.length > 0 ? parseFloat(currData[0]['Количество']) || 0 : 0;
+                    let newTotal = currentStock + diff;
+
+                    if (newTotal < 0) {
+                        Swal.close();
+                        throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
+                    }
+
+                    let payload = { "ID Детайл": cleanDet, "Операция": opName, "Количество": newTotal };
+
+                    let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
+                    if (upsertErr) throw upsertErr;
+
+                    let auditNewData = { "ID Детайл": cleanDet, "Операция": opName, "Разлика": diff, "Ново Количество": newTotal };
+
+                    await client.from('audit_logs').insert([{ table_name: tName, action_type: 'UPDATE', old_data: { "Количество": oldQty }, new_data: auditNewData }]);
+
+                    let otchetiPayload = {
+                        "ID План": null,
+                        "ID Детайл": cleanDet,
+                        "Операция": opName,
+                        "Количество": diff,
+                        "Статус": "Отчетено",
+                        "Оператор": "СИСТЕМА (Корекция наличност)",
+                        "Дата": new Date().toISOString()
+                    };
+                    await client.from('otcheti').insert([otchetiPayload]);
+                }
+
+
+                await client.from('sklad_bufferi').delete().eq('ID Детайл', det);
+                const { error: bufError } = await client.from('sklad_bufferi').insert([{ "ID Детайл": det, "Операция": op, "Буфер": newBuffer, "% Брак": newScrap }]);
+                if (bufError) throw bufError;
+
+                Swal.fire({ icon: 'success', title: 'Успешен запис!', timer: 1500, showConfirmButton: false });
             }
-            
-            const { data: stockData, error: stockErr } = await client.from('inventory').select('*').eq('ID Детайл', detailID).eq('Операция', selectedOp);
-            if (stockErr) throw stockErr;
-            
-            let availableStock = 0;
-            if (stockData && stockData.length > 0) {
-                availableStock = parseFloat(stockData[0]['Количество'] !== undefined ? stockData[0]['Количество'] : stockData[0]['Наличност в цеха']) || 0;
-            }
-            
-            if (availableStock < qtyToDeduct) {
-                Swal.close();
-                throw new Error(`Няма достатъчно завършени бройки на последната операция (${selectedOp})! Налични: ${availableStock} бр., Опитвате да изпратите: ${qtyToDeduct} бр.`);
-            }
-            
-            Swal.fire({title: 'Изписване от склад...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
-            let otchetiPayload = { "ID План": null, "ID Детайл": detailID, "Операция": selectedOp, "Количество": -qtyToDeduct, "Статус": "Отчетено", "Оператор": "СИСТЕМА (Експедиция)", "Дата": new Date().toISOString() };
-            const { error: otchetiErr } = await client.from('otcheti').insert([otchetiPayload]);
-            if (otchetiErr) throw otchetiErr;
-        }
+            if (window.invalidateAdminCache) window.invalidateAdminCache();
+            closeModal(); loadCurrentTableData(true);
+        } catch (err) { Swal.fire('Грешка', err.message, 'error'); } finally { btn.innerText = 'Запази запис'; btn.disabled = false; }
+        return;
     }
 
-    if (currentTab === 'porachki' && payload['Статус'] === 'Прието') {
-        let oldStatus = isEditMode ? globalRows[editingIndex]['Статус'] : null;
-        if (oldStatus !== 'Прието') {
-            let itemCode = payload['Материал'];
-            let qty = parseFloat(payload['Количество']) || 0;
-            
-            // fetch current from sklad
-            const { data: skData, error: skErr } = await client.from('sklad').select('Доставено, Остатък').eq('ID Детайл', itemCode);
-            if (!skErr && skData && skData.length > 0) {
-                let currentDostaveno = parseFloat(skData[0]['Доставено']) || 0;
-                let currentOstatuk = parseFloat(skData[0]['Остатък']) || 0;
-                await client.from('sklad').update({ 
-                    'Доставено': currentDostaveno + qty,
-                    'Остатък': currentOstatuk + qty
-                }).eq('ID Детайл', itemCode);
+    let payload = {};
+    config.fields.forEach(f => {
+        const el = document.getElementById('inp_' + f.name);
+        if (el && !f.readonly && !(isEditMode && f.readonlyOnEdit)) {
+            let val = el.value;
+            if (f.type === 'number') {
+                val = parseFloat(val) || 0;
+            } else if (f.type === 'date' && val === "") {
+                val = null;
+            }
+            payload[f.name] = val;
+        }
+    });
+    if (currentTab === 'sklad') {
+        let startQty = parseFloat(payload['Начална наличност']) || 0;
+        let delivQty = parseFloat(payload['Доставено']) || 0;
+        let usedQty = parseFloat(payload['Изразходено']) || 0;
+        payload['Остатък'] = startQty + delivQty - usedQty;
+    }
+    try {
+        if (currentTab === 'plan' && payload['Статус'] === '🚚 Изпратен') {
+            let oldStatus = isEditMode ? globalRows[editingIndex]['Статус'] : null;
+            if (oldStatus !== '🚚 Изпратен') {
+                let detailID = payload['ID Детайл'];
+                if (!detailID && isEditMode) detailID = globalRows[editingIndex]['ID Детайл'];
+                let qtyToDeduct = payload['Целево количество'] || 0;
+
+                Swal.fire({ title: 'Проверка на маршрут и наличности...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+                const { data: routeData, error: routeErr } = await client.from('marshruti').select('*').eq('Код на детайла', detailID);
+                if (routeErr) throw routeErr;
+
+                let selectedOp = '';
+                if (routeData && routeData.length > 0) {
+                    routeData.sort((a, b) => (parseInt(a['№ Операция']) || 0) - (parseInt(b['№ Операция']) || 0));
+                    selectedOp = String(routeData[routeData.length - 1]['Име на операция']).trim();
+                } else {
+                    Swal.close();
+                    throw new Error("Не е намерена маршрутна карта за този детайл. Не може да се определи последната операция!");
+                }
+
+                const { data: stockData, error: stockErr } = await client.from('inventory').select('*').eq('ID Детайл', detailID).eq('Операция', selectedOp);
+                if (stockErr) throw stockErr;
+
+                let availableStock = 0;
+                if (stockData && stockData.length > 0) {
+                    availableStock = parseFloat(stockData[0]['Количество'] !== undefined ? stockData[0]['Количество'] : stockData[0]['Наличност в цеха']) || 0;
+                }
+
+                if (availableStock < qtyToDeduct) {
+                    Swal.close();
+                    throw new Error(`Няма достатъчно завършени бройки на последната операция (${selectedOp})! Налични: ${availableStock} бр., Опитвате да изпратите: ${qtyToDeduct} бр.`);
+                }
+
+                Swal.fire({ title: 'Изписване от склад...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                let otchetiPayload = { "ID План": null, "ID Детайл": detailID, "Операция": selectedOp, "Количество": -qtyToDeduct, "Статус": "Отчетено", "Оператор": "СИСТЕМА (Експедиция)", "Дата": new Date().toISOString() };
+                const { error: otchetiErr } = await client.from('otcheti').insert([otchetiPayload]);
+                if (otchetiErr) throw otchetiErr;
             }
         }
-    }
 
-    if (isEditMode) { 
-        const row = globalRows[editingIndex]; 
-        const keyVal = row[config.key]; 
-        if (currentTab === 'sklad_inventory') {
-            let oldQty = parseFloat(row['Общо']) || 0;
-            let newQty = parseFloat(payload['Общо']) || 0;
-            let delta = newQty - oldQty;
-            if (delta !== 0) {
-                let opName = (row['Оригинална Операция'] || row['Операция']);
-                let planIdVal = document.getElementById('inp_skladPlanId').value || null;
-                let otchetiPayload = {
-                    "ID План": planIdVal,
-                    "ID Детайл": row['ID Детайл'],
-                    "Операция": opName,
-                    "Количество": delta,
-                    "Статус": "Отчетено",
-                    "Оператор": "СИСТЕМА (Корекция наличност)",
-                    "Дата": new Date().toISOString()
-                };
-                const { error: updErr2 } = await client.from('otcheti').insert([otchetiPayload]);
-                if (updErr2) throw updErr2;
-            }
-            Swal.fire({icon: 'success', title: 'Наличността е коригирана!', timer: 1500, showConfirmButton: false});
-        } else {
-            const { error } = await client.from(config.table).update(payload).eq(config.key, keyVal); 
-            if (error) throw error; 
-            Swal.fire({icon: 'success', title: 'Успешно запазено!', timer: 1000, showConfirmButton: false}); 
-            
-            if (currentTab === 'plan' && payload['Статус'] === '🚚 Изпратен') {
-                if (typeof checkAndGenerateArchive === 'function') {
-                    let m = payload['Месец'] || (globalRows && globalRows[editingIndex] ? globalRows[editingIndex]['Месец'] : null);
-                    let y = payload['Година'] || (globalRows && globalRows[editingIndex] ? globalRows[editingIndex]['Година'] : null);
-                    if (m && y) await checkAndGenerateArchive(m, parseInt(y));
+        if (currentTab === 'porachki' && payload['Статус'] === 'Прието') {
+            let oldStatus = isEditMode ? globalRows[editingIndex]['Статус'] : null;
+            if (oldStatus !== 'Прието') {
+                let itemCode = payload['Материал'];
+                let qty = parseFloat(payload['Количество']) || 0;
+
+                // fetch current from sklad
+                const { data: skData, error: skErr } = await client.from('sklad').select('Доставено, Остатък').eq('ID Детайл', itemCode);
+                if (!skErr && skData && skData.length > 0) {
+                    let currentDostaveno = parseFloat(skData[0]['Доставено']) || 0;
+                    let currentOstatuk = parseFloat(skData[0]['Остатък']) || 0;
+                    await client.from('sklad').update({
+                        'Доставено': currentDostaveno + qty,
+                        'Остатък': currentOstatuk + qty
+                    }).eq('ID Детайл', itemCode);
                 }
             }
         }
-    } 
-    else { 
-        let inserts = [payload];
-        
-        if (currentTab === 'plan') {
-            const phantoms = {
-                "575-91001-9": "Ф63.4 204J",
-                "h25-f1e": "Кв. Фл. 22108201Е",
-                "575-60021": "Капак с китайски отливки"
-            };
-            let code = String(payload['Вътрешно име'] || '').trim().toLowerCase();
-            if (phantoms[code]) {
-                let phantomPayload = { ...payload };
-                phantomPayload['Вътрешно име'] = phantoms[code];
-                inserts.push(phantomPayload);
+
+        if (isEditMode) {
+            const row = globalRows[editingIndex];
+            const keyVal = row[config.key];
+            if (currentTab === 'sklad_inventory') {
+                let oldQty = parseFloat(row['Общо']) || 0;
+                let newQty = parseFloat(payload['Общо']) || 0;
+                let delta = newQty - oldQty;
+                if (delta !== 0) {
+                    let opName = (row['Оригинална Операция'] || row['Операция']);
+                    let planIdVal = document.getElementById('inp_skladPlanId').value || null;
+                    let otchetiPayload = {
+                        "ID План": planIdVal,
+                        "ID Детайл": row['ID Детайл'],
+                        "Операция": opName,
+                        "Количество": delta,
+                        "Статус": "Отчетено",
+                        "Оператор": "СИСТЕМА (Корекция наличност)",
+                        "Дата": new Date().toISOString()
+                    };
+                    const { error: updErr2 } = await client.from('otcheti').insert([otchetiPayload]);
+                    if (updErr2) throw updErr2;
+                }
+                Swal.fire({ icon: 'success', title: 'Наличността е коригирана!', timer: 1500, showConfirmButton: false });
+            } else if (currentTab === 'sklad') {
+                let query = client.from('sklad').update(payload).eq(config.key, keyVal);
+                if (row['Изразходено'] !== undefined) query = query.eq('Изразходено', row['Изразходено']);
+                if (row['Начална наличност'] !== undefined) query = query.eq('Начална наличност', row['Начална наличност']);
+                const { error } = await query;
+                if (error) throw error;
+                Swal.fire({ icon: 'success', title: 'Успешно запазено!', timer: 1000, showConfirmButton: false });
+            } else {
+                const { error } = await client.from(config.table).update(payload).eq(config.key, keyVal);
+                if (error) throw error;
+                Swal.fire({ icon: 'success', title: 'Успешно запазено!', timer: 1000, showConfirmButton: false });
+
+                if (currentTab === 'plan' && payload['Статус'] === '🚚 Изпратен') {
+                    if (typeof checkAndGenerateArchive === 'function') {
+                        let m = payload['Месец'] || (globalRows && globalRows[editingIndex] ? globalRows[editingIndex]['Месец'] : null);
+                        let y = payload['Година'] || (globalRows && globalRows[editingIndex] ? globalRows[editingIndex]['Година'] : null);
+                        if (m && y) await checkAndGenerateArchive(m, parseInt(y));
+                    }
+                }
             }
         }
+        else {
+            let inserts = [payload];
 
-        const { error } = await client.from(config.table).insert(inserts); 
-        if (error) throw error; 
-        Swal.fire({icon: 'success', title: 'Успешно добавено!', timer: 1000, showConfirmButton: false}); 
-    }
-    
-    if (currentTab === 'porachki') {
-        let isNewOrder = !isEditMode;
-        let isChangedToPorachano = isEditMode && payload['Статус'] === 'Поръчано' && globalRows[editingIndex]['Статус'] !== 'Поръчано';
-        if (isNewOrder || isChangedToPorachano) {
-            let recipient = payload['Имейл на доставчик'] || '';
-            let materialName = payload['Материал'] || '';
-            let orderQty = payload['Количество'] || 0;
-            let subject = encodeURIComponent("Поръчка на материал: " + materialName);
-            let body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция:\nМатериал: ${materialName}\nКоличество: ${orderQty} бр.\n\nМоля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,`);
-            
-            // Вместо mailto, директно отваряме Gmail (понеже видях, че ползвате Gmail)
-            let gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${recipient}&su=${subject}&body=${body}`;
-            // Отваряме в нов, по-малък прозорец (popup), за да не изгубите админ панела
-            window.open(gmailUrl, 'GmailPopup', 'width=800,height=600,left=200,top=100,scrollbars=yes');
+            if (currentTab === 'plan') {
+                const phantoms = {
+                    "575-91001-9": "Ф63.4 204J",
+                    "h25-f1e": "Кв. Фл. 22108201Е",
+                    "575-60021": "Капак с китайски отливки"
+                };
+                let code = String(payload['Вътрешно име'] || '').trim().toLowerCase();
+                if (phantoms[code]) {
+                    let phantomPayload = { ...payload };
+                    phantomPayload['Вътрешно име'] = phantoms[code];
+                    inserts.push(phantomPayload);
+                }
+            }
+
+            const { error } = await client.from(config.table).insert(inserts);
+            if (error) throw error;
+            Swal.fire({ icon: 'success', title: 'Успешно добавено!', timer: 1000, showConfirmButton: false });
         }
-    }
-    if (window.invalidateAdminCache) window.invalidateAdminCache();
-    closeModal(); loadCurrentTableData(true);
-  } catch (err) { Swal.fire('Грешка', err.message, 'error'); } finally { btn.innerText = 'Запази запис'; btn.disabled = false; }
+
+        if (currentTab === 'porachki') {
+            let isNewOrder = !isEditMode;
+            let isChangedToPorachano = isEditMode && payload['Статус'] === 'Поръчано' && globalRows[editingIndex]['Статус'] !== 'Поръчано';
+            if (isNewOrder || isChangedToPorachano) {
+                let recipient = payload['Имейл на доставчик'] || '';
+                let materialName = payload['Материал'] || '';
+                let orderQty = payload['Количество'] || 0;
+                let subject = encodeURIComponent("Поръчка на материал: " + materialName);
+                let body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция:\nМатериал: ${materialName}\nКоличество: ${orderQty} бр.\n\nМоля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,`);
+
+                // Вместо mailto, директно отваряме Gmail (понеже видях, че ползвате Gmail)
+                let gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${recipient}&su=${subject}&body=${body}`;
+                // Отваряме в нов, по-малък прозорец (popup), за да не изгубите админ панела
+                window.open(gmailUrl, 'GmailPopup', 'width=800,height=600,left=200,top=100,scrollbars=yes');
+            }
+        }
+        if (window.invalidateAdminCache) window.invalidateAdminCache();
+        closeModal(); loadCurrentTableData(true);
+    } catch (err) { Swal.fire('Грешка', err.message, 'error'); } finally { btn.innerText = 'Запази запис'; btn.disabled = false; }
 }
 
 async function deleteItem(index) {
-  const config = tableConfigs[currentTab]; const row = globalRows[index]; 
-  
-  if (currentTab === 'sklad_inventory') {
-      const res = await Swal.fire({ title: 'Нулиране на наличността?', text: `Наличността за ${row['ID Детайл']} (${row['Операция']}) ще бъде зададена на 0.`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Да, нулирай!', cancelButtonText: 'Отказ' });
-      if (res.isConfirmed) { 
-          try { 
-              Swal.fire({title: 'Записване...', allowOutsideClick: false, didOpen: () => Swal.showLoading()}); 
-              let tName = 'inventory';
-              let opName = (row['Оригинална Операция'] || row['Операция']).trim().toLowerCase();
-              let cleanDet = String(row['ID Детайл']).trim().toLowerCase();
-              
-              let query = client.from(tName).delete().ilike('ID Детайл', cleanDet);
-              if (currentTab === 'sklad_inventory' || currentTab === 'sklad_wip') query = query.ilike('Операция', opName);
-              const { error } = await query;
-              
-              if (error) throw error; 
-              
-              let auditNewData = { "ID Детайл": cleanDet, "Ново Количество": 0 };
-              if (currentTab === 'sklad_wip') auditNewData["Операция"] = opName;
-              await client.from('audit_logs').insert([{ table_name: tName, action_type: 'DELETE', old_data: { "Количество": row['Общо'] }, new_data: auditNewData }]);
-              if (window.invalidateAdminCache) window.invalidateAdminCache();
-              Swal.fire({icon: 'success', title: 'Изтрито!', timer: 1000, showConfirmButton: false}); 
-              loadCurrentTableData(true); 
-          } catch(err) { Swal.fire('Грешка', err.message, 'error'); } 
-      }
-      return;
-  }
+    const config = tableConfigs[currentTab]; const row = globalRows[index];
 
-  const keyVal = row[config.key];
-  const res = await Swal.fire({ title: 'Сигурни ли сте?', text: "Записът ще бъде изтрит безвъзвратно!", icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Да, изтрий!', cancelButtonText: 'Отказ' });
-  if (res.isConfirmed) { 
-      try { 
-          Swal.fire({title: 'Изтриване...', allowOutsideClick: false, didOpen: () => Swal.showLoading()}); 
-          const { error } = await client.from(config.table).delete().eq(config.key, keyVal); 
-          if (error) throw error; 
-          if (window.invalidateAdminCache) window.invalidateAdminCache();
-          Swal.fire({icon: 'success', title: 'Изтрито!', timer: 1000, showConfirmButton: false}); 
-          loadCurrentTableData(true); 
-      } catch(err) { Swal.fire('Грешка', err.message, 'error'); } 
-  }
+    if (currentTab === 'sklad_inventory') {
+        const res = await Swal.fire({ title: 'Нулиране на наличността?', text: `Наличността за ${row['ID Детайл']} (${row['Операция']}) ще бъде зададена на 0.`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Да, нулирай!', cancelButtonText: 'Отказ' });
+        if (res.isConfirmed) {
+            try {
+                Swal.fire({ title: 'Записване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                let tName = 'inventory';
+                let opName = (row['Оригинална Операция'] || row['Операция']).trim().toLowerCase();
+                let cleanDet = String(row['ID Детайл']).trim().toLowerCase();
+
+                let query = client.from(tName).delete().ilike('ID Детайл', cleanDet);
+                if (currentTab === 'sklad_inventory' || currentTab === 'sklad_wip') query = query.ilike('Операция', opName);
+                const { error } = await query;
+
+                if (error) throw error;
+
+                let auditNewData = { "ID Детайл": cleanDet, "Ново Количество": 0 };
+                if (currentTab === 'sklad_wip') auditNewData["Операция"] = opName;
+                await client.from('audit_logs').insert([{ table_name: tName, action_type: 'DELETE', old_data: { "Количество": row['Общо'] }, new_data: auditNewData }]);
+                if (window.invalidateAdminCache) window.invalidateAdminCache();
+                Swal.fire({ icon: 'success', title: 'Изтрито!', timer: 1000, showConfirmButton: false });
+                loadCurrentTableData(true);
+            } catch (err) { Swal.fire('Грешка', err.message, 'error'); }
+        }
+        return;
+    }
+
+    const keyVal = row[config.key];
+    const res = await Swal.fire({ title: 'Сигурни ли сте?', text: "Записът ще бъде изтрит безвъзвратно!", icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Да, изтрий!', cancelButtonText: 'Отказ' });
+    if (res.isConfirmed) {
+        try {
+            Swal.fire({ title: 'Изтриване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            let query = client.from(config.table).delete().eq(config.key, keyVal);
+            if (currentTab === 'sklad') {
+                if (row['Изразходено'] !== undefined) query = query.eq('Изразходено', row['Изразходено']);
+                if (row['Начална наличност'] !== undefined) query = query.eq('Начална наличност', row['Начална наличност']);
+            }
+            const { error } = await query;
+            if (error) throw error;
+            if (window.invalidateAdminCache) window.invalidateAdminCache();
+            Swal.fire({ icon: 'success', title: 'Изтрито!', timer: 1000, showConfirmButton: false });
+            loadCurrentTableData(true);
+        } catch (err) { Swal.fire('Грешка', err.message, 'error'); }
+    }
 }
 
 async function loadSkladOperations(detailCode) {
@@ -1231,21 +1267,21 @@ async function loadSkladOperations(detailCode) {
         if (error) throw error;
         sel.innerHTML = '';
         if (!data || data.length === 0) { sel.innerHTML = '<option value="">Не са намерени операции</option>'; return; }
-        
+
         data.sort((a, b) => (a['№ Операция'] || 0) - (b['№ Операция'] || 0));
-        
+
         data.forEach(op => {
             const opt = document.createElement('option');
             opt.value = String(op['Име на операция']).trim();
             opt.innerText = String(op['Име на операция']).trim();
             sel.appendChild(opt);
         });
-    } catch(err) {
+    } catch (err) {
         sel.innerHTML = '<option value="">' + (err.message || 'Грешка') + '</option>';
         console.error(err);
     }
 }
-window.openLogisticsModal = async function() {
+window.openLogisticsModal = async function () {
     const modalBackdrop = document.getElementById('logisticsModalBackdrop');
     const contentEl = document.getElementById('logisticsContent');
     if (modalBackdrop) modalBackdrop.style.display = 'flex';
@@ -1264,7 +1300,7 @@ window.openLogisticsModal = async function() {
             return;
         }
     }
-    
+
     if (needsPackFetch && rows && rows.length > 0) {
         try {
             const packRes = await client.from('otcheti').select('*').ilike('Операция', 'Опаковане - Кашон №%').in('Статус', ['Отчетено', 'Изпратено']);
@@ -1294,7 +1330,7 @@ window.openLogisticsModal = async function() {
     rows.forEach(row => {
         let key = row['Месец'] + ' ' + row['Година'];
         if (!plansMap[key]) plansMap[key] = { name: key, month: row['Месец'], year: row['Година'], total: 0, done: 0, packed: 0, fullyPacked: true };
-        
+
         plansMap[key].total++;
         if (row['Статус'] === 'Завършен' || row['Статус'] === '📦 Опакован') {
             plansMap[key].done++;
@@ -1309,8 +1345,8 @@ window.openLogisticsModal = async function() {
     });
 
     let html = '';
-    let plansList = Object.values(plansMap).sort((a,b) => b.year - a.year || b.month - a.month);
-    
+    let plansList = Object.values(plansMap).sort((a, b) => b.year - a.year || b.month - a.month);
+
     if (plansList.length === 0) {
         html = '<div style="text-align:center; padding:20px; color:#64748b;">Няма заредени планове.</div>';
     } else {
@@ -1334,20 +1370,20 @@ window.openLogisticsModal = async function() {
     if (contentEl) contentEl.innerHTML = html;
 };
 
-window.massLogisticsAction = async function(month, year) {
+window.massLogisticsAction = async function (month, year) {
     const res = await Swal.fire({ title: 'Сигурни ли сте?', text: `Искате ли да изпратите (експедирате) всички завършени детайли за Месец ${month} / ${year}? Това ще извади наличностите им от склада!`, icon: 'warning', showCancelButton: true, confirmButtonText: 'Да, изпрати', cancelButtonText: 'Отказ' });
     if (!res.isConfirmed) return;
 
     try {
-        Swal.fire({title: 'Изпращане...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
-        
+        Swal.fire({ title: 'Изпращане...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
         // 1. Взимаме детайлите, които ще бъдат изпратени
         const { data: detailsToShip, error: fetchErr } = await client.from('plan')
             .select('id, "Вътрешно име", "Целево количество"')
             .eq('Месец', month).eq('Година', year).in('Статус', ['Завършен', '📦 Опакован']);
-            
+
         if (fetchErr) throw fetchErr;
-        
+
         if (detailsToShip && detailsToShip.length > 0) {
             const nomRes = await client.from('Номенклатура').select('*');
             const nomMap = {};
@@ -1371,11 +1407,11 @@ window.massLogisticsAction = async function(month, year) {
                     "Дата": new Date().toISOString()
                 };
             });
-            
+
             // 3. Инсъртваме отчетите (Това ще извика тригера и ще извади от склада)
             const { error: insErr } = await client.from('otcheti').insert(otchetiInserts);
             if (insErr) throw insErr;
-            
+
             // 3.5. Обновяваме статуса на всички записи за 'Опаковане' свързани с тези планове на 'Изпратено',
             // за да изчезнат от колоната 'Запазени'
             const planIds = detailsToShip.map(d => String(d.id));
@@ -1393,19 +1429,19 @@ window.massLogisticsAction = async function(month, year) {
         const { error: updErr } = await client.from('plan')
             .update({ 'Статус': '🚚 Изпратен' })
             .eq('Месец', month).eq('Година', year).in('Статус', ['Завършен', '📦 Опакован']);
-            
+
         if (updErr) throw updErr;
-        
-        Swal.fire({icon: 'success', title: 'Успешно!', text: `Изпратени са ${detailsToShip ? detailsToShip.length : 0} записа.`, timer: 2000, showConfirmButton: false});
-        
+
+        Swal.fire({ icon: 'success', title: 'Успешно!', text: `Изпратени са ${detailsToShip ? detailsToShip.length : 0} записа.`, timer: 2000, showConfirmButton: false });
+
         document.getElementById('logisticsModalBackdrop').style.display = 'none';
-        
+
         if (typeof checkAndGenerateArchive === 'function') {
             await checkAndGenerateArchive(month, parseInt(year));
         }
 
         loadCurrentTableData();
-    } catch(err) {
+    } catch (err) {
         Swal.fire('Грешка', err.message, 'error');
     }
 };
@@ -1420,28 +1456,28 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
-window.openMrpModal = async function() {
+window.openMrpModal = async function () {
     try {
-        Swal.fire({title: 'Анализ на нуждите...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
-        
+        Swal.fire({ title: 'Анализ на нуждите...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
         const { data: plans, error: planErr } = await client.from('plan').select('*').eq('Статус', 'Активен');
         if (planErr) throw planErr;
-        
+
         const { data: bomList, error: bomErr } = await client.from('bom').select('*');
         if (bomErr) throw bomErr;
-        
 
-        
+
+
         const { data: skladList, error: skladErr } = await client.from('sklad').select('*');
         if (skladErr) throw skladErr;
-        
+
         const bomMap = {};
         bomList.forEach(b => {
             let parent = b['ID Родител']?.trim()?.toLowerCase();
             if (!bomMap[parent]) bomMap[parent] = [];
             bomMap[parent].push({ child: b['ID Компонент']?.trim()?.toLowerCase(), qty: parseFloat(b['Количество']) || 1 });
         });
-        
+
         const skladMap = {};
         skladList.forEach(s => {
             skladMap[s['ID Детайл']?.trim()?.toLowerCase()] = {
@@ -1450,11 +1486,11 @@ window.openMrpModal = async function() {
                 min: parseFloat(s['Минимално количество']) || 0
             };
         });
-        
+
         let totalDemands = {};
-        
+
         function explode(itemId, qty) {
-            if(!itemId) return;
+            if (!itemId) return;
             let key = itemId.trim().toLowerCase();
             if (bomMap[key] && bomMap[key].length > 0) {
                 bomMap[key].forEach(childNode => {
@@ -1465,23 +1501,23 @@ window.openMrpModal = async function() {
                 totalDemands[key] += qty;
             }
         }
-        
+
         plans.forEach(p => {
             let planItem = p['ID Детайл'] || p['Вътрешно име'];
             let planQty = parseFloat(p['Целево количество']) || 0;
             explode(planItem, planQty);
         });
-        
+
         let deficits = [];
         for (let itemKey in totalDemands) {
             let demand = totalDemands[itemKey];
             let sk = skladMap[itemKey];
-            
-            if (sk) { 
+
+            if (sk) {
                 let stock = sk.stock;
                 let min = sk.min;
                 let free = stock - demand;
-                
+
                 if (free < min) {
                     deficits.push({
                         item: sk.name,
@@ -1494,12 +1530,12 @@ window.openMrpModal = async function() {
                 }
             }
         }
-        
+
         let html = '';
         if (deficits.length === 0) {
             html = `<div style="text-align:center; padding: 40px; font-size:1.2em; color:#059669; font-weight:bold;">✅ Няма критични липси! Всички материали са над минимума.</div>`;
         } else {
-            deficits.sort((a,b) => b.missing - a.missing);
+            deficits.sort((a, b) => b.missing - a.missing);
             window.__mrpDeficits = deficits;
             html = `<table class="minimal-table" style="width:100%; text-align:left; border-collapse:collapse;">
                 <thead><tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">
@@ -1525,41 +1561,41 @@ window.openMrpModal = async function() {
             });
             html += `</tbody></table>`;
         }
-        
+
         Swal.close();
         document.getElementById('mrpContent').innerHTML = html;
         document.getElementById('mrpModalBackdrop').style.display = 'flex';
-        
-    } catch(err) {
+
+    } catch (err) {
         Swal.fire('Грешка при анализа', err.message, 'error');
     }
 };
 
-window.createOrderForDeficitByIndex = function(index) {
+window.createOrderForDeficitByIndex = function (index) {
     const d = window.__mrpDeficits && window.__mrpDeficits[index];
     if (!d) return;
     window.createOrderForDeficit(d.item, d.missing);
 };
 
-window.createOrderForDeficit = function(item, recommendedQty) {
+window.createOrderForDeficit = function (item, recommendedQty) {
     const mrpModal = document.getElementById('mrpModalBackdrop');
     if (mrpModal) mrpModal.style.display = 'none';
-    
+
     if (typeof switchTab === 'function' && currentTab !== 'porachki') {
         switchTab('porachki');
     }
-    
+
     if (typeof openAddModal === 'function') {
         openAddModal();
     }
-    
+
     const fillInputs = () => {
         const itemInput = document.getElementById('inp_Материал');
         const qtyInput = document.getElementById('inp_Количество');
         if (itemInput) itemInput.value = item || '';
         if (qtyInput) qtyInput.value = (recommendedQty !== undefined && recommendedQty !== null) ? recommendedQty : '';
     };
-    
+
     fillInputs();
     setTimeout(fillInputs, 50);
     setTimeout(fillInputs, 200);
@@ -1689,15 +1725,15 @@ function formatAuditLogDetails(log) {
 async function fetchAuditLogs() {
     let container = document.getElementById('auditContent');
     container.innerHTML = '<div style="text-align:center; padding:20px; color:#64748b;">Зареждане на историята... ⏳</div>';
-    
+
     let tableFilter = document.getElementById('auditTableFilter').value;
     let searchInput = document.getElementById('auditSearchFilter');
     let searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
-    
+
     try {
         if (searchTerm) {
             let isTraceabilityMode = (tableFilter === 'all' || tableFilter === 'inventory');
-            
+
             let auditQuery = client.from('audit_logs').select('*').order('changed_at', { ascending: false }).limit(3000);
             if (tableFilter !== 'all') {
                 if (tableFilter === 'inventory') {
@@ -1706,21 +1742,21 @@ async function fetchAuditLogs() {
                     auditQuery = auditQuery.eq('table_name', tableFilter);
                 }
             }
-            
+
             let [auditRes, otchetiRes, recentOtchetiRes] = await Promise.all([
                 auditQuery,
-                isTraceabilityMode ? client.from('otcheti').select('*').ilike('ID Детайл', `%${searchTerm}%`).order('Дата', { ascending: false }).limit(300) : Promise.resolve({data:[]}),
-                isTraceabilityMode ? client.from('otcheti').select('ID Детайл, Дата').order('Дата', { ascending: false }).limit(3000) : Promise.resolve({data:[]})
+                isTraceabilityMode ? client.from('otcheti').select('*').ilike('ID Детайл', `%${searchTerm}%`).order('Дата', { ascending: false }).limit(300) : Promise.resolve({ data: [] }),
+                isTraceabilityMode ? client.from('otcheti').select('ID Детайл, Дата').order('Дата', { ascending: false }).limit(3000) : Promise.resolve({ data: [] })
             ]);
-            
+
             if (auditRes.error) throw auditRes.error;
             if (otchetiRes.error) throw otchetiRes.error;
-            
+
             let filteredAudit = (auditRes.data || []).filter(log => {
                 let str = JSON.stringify(log.new_data || {}) + JSON.stringify(log.old_data || {});
                 return str.toLowerCase().includes(searchTerm);
             });
-            
+
             let combined = [];
             (otchetiRes.data || []).forEach(o => {
                 combined.push({ type: 'otchet', time: new Date(o['Дата']), data: o });
@@ -1728,20 +1764,20 @@ async function fetchAuditLogs() {
             filteredAudit.forEach(a => {
                 combined.push({ type: 'audit', time: new Date(a.changed_at), data: a });
             });
-            
+
             combined.sort((a, b) => b.time - a.time);
-            
+
             if (combined.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:20px; color:#64748b;">Няма намерена история за "' + searchTerm + '".</div>';
                 return;
             }
-            
+
             let html = '<table style="width:100%; border-collapse:collapse; background:white; font-size:0.9em; box-shadow:0 1px 3px rgba(0,0,0,0.1);">';
             html += '<thead style="background:#f8fafc; color:#0f172a;"><tr><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:150px;">Време</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:120px;">Събитие</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left;">Детайли (Проследимост)</th></tr></thead><tbody>';
-            
+
             combined.forEach(item => {
                 let dateStr = item.time.toLocaleString('bg-BG');
-                
+
                 if (item.type === 'otchet') {
                     let o = item.data;
                     html += `<tr>
@@ -1755,24 +1791,24 @@ async function fetchAuditLogs() {
                     let log = item.data;
                     let oldData = log.old_data || {};
                     let newData = log.new_data || {};
-                    
+
                     if (['inventory', 'inventory_gp', 'inventory_wip'].includes(log.table_name)) {
                         let actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">СКЛАД</span>';
                         if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">НОВ В СКЛАД</span>';
-                        
+
                         let detailsHtml = '';
                         let oldQty = parseFloat(oldData['Количество'] || oldData['Общо']) || 0;
                         let newQty = parseFloat(newData['Количество'] || newData['Общо']) || 0;
                         let detailId = newData['ID Детайл'] || oldData['ID Детайл'] || 'Неизвестен детайл';
                         let opName = newData['Операция'] || oldData['Операция'] || '';
                         let opHtml = opName ? ` <span style="font-size:0.9em; color:#64748b;">(Оп: ${opName})</span>` : '';
-                        
+
                         if (log.action_type === 'INSERT') oldQty = 0;
                         let diff = newQty - oldQty;
                         let diffStr = diff > 0 ? `<span style="color:#16a34a; font-weight:bold;">(+${diff})</span>` : (diff < 0 ? `<span style="color:#ef4444; font-weight:bold;">(${diff})</span>` : '');
-                        
+
                         detailsHtml = `Склад: <b>${detailId}</b>${opHtml} | <span style="text-decoration:line-through; color:#94a3b8;">${oldQty} бр.</span> ➡️ <b>${newQty} бр.</b> ${diffStr}`;
-                                       
+
                         if (diff < 0 && recentOtchetiRes && recentOtchetiRes.data) {
                             let parentMatch = recentOtchetiRes.data.find(ro => Math.abs(new Date(ro['Дата']) - item.time) < 3000);
                             if (parentMatch) {
@@ -1791,9 +1827,9 @@ async function fetchAuditLogs() {
                         if (log.action_type === 'DELETE') actionBadge = '<span style="background:#fee2e2; color:#b91c1c; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ИЗТРИВАНЕ</span>';
                         else if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ДОБАВЯНЕ</span>';
                         else actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">РЕДАКЦИЯ</span>';
-                        
+
                         let detailsHtml = formatAuditLogDetails(log);
-                        
+
                         html += `<tr>
                             <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
                             <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${actionBadge}<br><span style="font-size:0.85em; color:#64748b;">${log.table_name}</span></td>
@@ -1802,7 +1838,7 @@ async function fetchAuditLogs() {
                     }
                 }
             });
-            
+
             html += '</tbody></table>';
             container.innerHTML = html;
             return;
@@ -1810,7 +1846,7 @@ async function fetchAuditLogs() {
 
         // --- Стандартно поведение (без търсене) ---
         let query = client.from('audit_logs').select('*').order('changed_at', { ascending: false }).limit(200);
-        
+
         if (tableFilter !== 'all') {
             if (tableFilter === 'inventory') {
                 query = query.in('table_name', ['inventory', 'inventory_gp', 'inventory_wip']);
@@ -1818,27 +1854,27 @@ async function fetchAuditLogs() {
                 query = query.eq('table_name', tableFilter);
             }
         }
-        
+
         const { data, error } = await query;
         if (error) throw error;
-        
+
         if (!data || data.length === 0) {
             container.innerHTML = '<div style="text-align:center; padding:20px; color:#64748b;">Няма записани промени за тази таблица.</div>';
             return;
         }
-        
+
         let html = '<table style="width:100%; border-collapse:collapse; background:white; font-size:0.9em; box-shadow:0 1px 3px rgba(0,0,0,0.1);">';
         html += '<thead style="background:#e2e8f0; color:#475569;"><tr><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:150px;">Време</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:120px;">Таблица</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:center; width:80px;">Действие</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left;">Детайли</th></tr></thead><tbody>';
-        
+
         data.forEach(log => {
             let dateStr = new Date(log.changed_at).toLocaleString('bg-BG');
             let actionBadge = '';
             if (log.action_type === 'DELETE') actionBadge = '<span style="background:#fee2e2; color:#b91c1c; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ИЗТРИВАНЕ</span>';
             else if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ДОБАВЯНЕ</span>';
             else actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">РЕДАКЦИЯ</span>';
-            
+
             let detailsHtml = formatAuditLogDetails(log);
-            
+
             html += `<tr>
                 <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
                 <td style="padding:10px; border:1px solid #e2e8f0; font-weight:bold; color:#1e293b;">${log.table_name}</td>
@@ -1846,16 +1882,16 @@ async function fetchAuditLogs() {
                 <td style="padding:10px; border:1px solid #e2e8f0; font-family:monospace; word-break:break-word;">${detailsHtml}</td>
             </tr>`;
         });
-        
+
         html += '</tbody></table>';
         container.innerHTML = html;
-        
+
     } catch (err) {
         container.innerHTML = '<div style="text-align:center; padding:20px; color:#ef4444;">Грешка: ' + err.message + '</div>';
     }
 }
 
-window.forceReloadTerminals = async function() {
+window.forceReloadTerminals = async function () {
     Swal.fire({
         title: 'Сигурни ли сте?',
         text: 'Това ще презареди екраните на всички терминали в цеха.',
