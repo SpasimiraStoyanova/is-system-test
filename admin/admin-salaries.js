@@ -19,6 +19,7 @@ let currentShiftGraceMinutes = 5; // толеранс до 08:05 ч.
 let salaryRulesCache = [];
 let salaryCalculations = [];
 let isCalculatingSalaries = false;
+let currentSalaryMonthStatus = 'Не е запазено';
 
 // Първоначални правила по подразбиране (според Заповедта)
 const DEFAULT_BONUS_RULES = [
@@ -185,12 +186,17 @@ window.calculateMonthlySalaries = async function () {
                 .eq('month', monthName)
                 .eq('year', year);
             if (savedLogs && savedLogs.length > 0) {
+                const isApproved = savedLogs.some(s => s.status === 'Одобрено');
+                currentSalaryMonthStatus = isApproved ? 'Одобрено' : 'Чернова';
                 savedLogs.forEach(s => {
                     if (s.worker_email) savedLogsMap[s.worker_email.toLowerCase().trim()] = s;
                 });
+            } else {
+                currentSalaryMonthStatus = 'Не е запазено';
             }
         } catch (e) {
             console.warn('salary_monthly_logs not yet queried:', e.message);
+            currentSalaryMonthStatus = 'Не е запазено';
         }
 
         // Rules
@@ -366,8 +372,8 @@ function renderSalariesLayout() {
                         ${[2025, 2026, 2027].map(y => `<option value="${y}" ${y === currentSalaryYear ? 'selected' : ''}>${y} г.</option>`).join('')}
                     </select>
 
-                    <button type="button" class="btn-primary" onclick="calculateMonthlySalaries()" style="padding:7px 14px; font-size:0.88em; background:#2563eb; display:inline-flex; align-items:center; gap:6px;">
-                        <span>⚡</span> Пресметни за месеца
+                    <button type="button" class="btn-primary" onclick="calculateMonthlySalaries()" style="padding:7px 14px; font-size:0.88em; background:#2563eb; display:inline-flex; align-items:center; gap:6px;" title="Опресни и пресметни засичанията за месеца">
+                        <span>⚡</span> Пресметни
                     </button>
 
                     <button type="button" class="btn-primary" onclick="openBonusRulesModal()" style="padding:7px 14px; font-size:0.88em; background:#4f46e5; display:inline-flex; align-items:center; gap:6px;" title="Преглед и редакция на правилата за бонуси и глоби">
@@ -378,9 +384,43 @@ function renderSalariesLayout() {
                         <span>📥</span> Excel Ведомост
                     </button>
 
-                    <button type="button" class="btn-primary" onclick="saveMonthlySalariesToDb()" style="padding:7px 14px; font-size:0.88em; background:#0f172a; display:inline-flex; align-items:center; gap:6px;" title="Запази одобрените стойности">
-                        <span>💾</span> Запази
+                    <button type="button" class="btn-primary" onclick="saveMonthlySalariesToDb('Чернова')" style="padding:7px 14px; font-size:0.88em; background:#475569; display:inline-flex; align-items:center; gap:6px;" title="Запази чернова в базата данни (само за администратор)">
+                        <span>💾</span> Запази чернова
                     </button>
+
+                    ${currentSalaryMonthStatus === 'Одобрено' ? `
+                    <button type="button" class="btn-primary" onclick="unpublishMonthlySalaries()" style="padding:7px 14px; font-size:0.88em; background:#ea580c; display:inline-flex; align-items:center; gap:6px;" title="Свали от цеховите терминали и върни в чернова">
+                        <span>↩️</span> Свали от терминалите
+                    </button>
+                    ` : `
+                    <button type="button" class="btn-primary" onclick="publishMonthlySalariesToTerminals()" style="padding:7px 14px; font-size:0.88em; background:#16a34a; box-shadow:0 2px 6px rgba(22,163,74,0.35); display:inline-flex; align-items:center; gap:6px;" title="Одобри и публикувай фишовете за месеца към цеховите терминали">
+                        <span>📤</span> Одобри и Публикувай към терминалите
+                    </button>
+                    `}
+                </div>
+            </div>
+
+            <!-- Status Banner -->
+            <div style="margin-bottom:16px; padding:10px 14px; border-radius:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:${currentSalaryMonthStatus === 'Одобрено' ? '#f0fdf4' : currentSalaryMonthStatus === 'Чернова' ? '#fefce8' : '#f8fafc'}; border:1px solid ${currentSalaryMonthStatus === 'Одобрено' ? '#86efac' : currentSalaryMonthStatus === 'Чернова' ? '#fde047' : '#cbd5e1'};">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:0.85em; font-weight:700; color:#475569;">Статус за цеха:</span>
+                    ${currentSalaryMonthStatus === 'Одобрено' 
+                        ? `<span style="background:#16a34a; color:#ffffff; padding:3px 10px; border-radius:9999px; font-size:0.8em; font-weight:800; display:inline-flex; align-items:center; gap:5px;">
+                            <span>🟢</span> ОДОБРЕНО И ПУБЛИКУВАНО КЪМ ТЕРМИНАЛИТЕ
+                           </span>`
+                        : currentSalaryMonthStatus === 'Чернова'
+                            ? `<span style="background:#ca8a04; color:#ffffff; padding:3px 10px; border-radius:9999px; font-size:0.8em; font-weight:800; display:inline-flex; align-items:center; gap:5px;">
+                                <span>🟡</span> ЧЕРНОВА (Служителите ОЩЕ НЕ виждат фишовете си)
+                               </span>`
+                            : `<span style="background:#64748b; color:#ffffff; padding:3px 10px; border-radius:9999px; font-size:0.8em; font-weight:800;">
+                                ⚪ НЕ Е ЗАПАЗЕНО В БАЗАТА
+                               </span>`
+                    }
+                </div>
+                <div style="font-size:0.8em; color:#64748b;">
+                    ${currentSalaryMonthStatus === 'Одобрено' 
+                        ? '✅ Служителите могат да си отворят фиша от личното досие на терминала.' 
+                        : '🔒 Достъпно само в административния панел. За да стане видимо за служителите, натиснете „Одобри и Публикувай“.'}
                 </div>
             </div>
 
@@ -939,16 +979,67 @@ window.exportSalariesToExcel = function () {
 };
 
 // ==============================================================================
-// 9. Запазване на месечните изчисления в Supabase (salary_monthly_logs)
+// 9. Запазване и Публикуване към цеховите терминали (salary_monthly_logs)
 // ==============================================================================
-window.saveMonthlySalariesToDb = async function () {
+window.publishMonthlySalariesToTerminals = async function () {
     if (!salaryCalculations || salaryCalculations.length === 0) {
         Swal.fire('Няма данни', 'Първо пресметнете заплатите за месеца.', 'info');
         return;
     }
 
     const monthName = MONTH_NAMES_BG[currentSalaryMonthIndex];
-    Swal.fire({ title: `Запазване на ведомост за ${monthName}...`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    const confirm = await Swal.fire({
+        title: `📤 Публикуване на фишове за ${monthName}?`,
+        html: `
+            <div style="text-align:left; font-size:0.92rem; color:#334155; line-height:1.5;">
+                <p>Сигурни ли сте, че искате да <b>одобрите и публикувате</b> изчисленията за <b>${monthName} ${currentSalaryYear} г.</b> към цеховите терминали?</p>
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; padding:10px 12px; border-radius:8px; margin-top:10px; font-size:0.85rem; color:#166534;">
+                    ✅ <b>Какво ще стане:</b> Всички служители (${salaryCalculations.length} души) ще могат да влязат в личното си досие на терминала с личния си ПИН и да видят своя електронен фиш с бонусите за месеца.
+                </div>
+            </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '🚀 Да, Публикувай към терминалите',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#16a34a',
+        cancelButtonColor: '#64748b'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    await saveMonthlySalariesToDb('Одобрено');
+};
+
+window.unpublishMonthlySalaries = async function () {
+    const monthName = MONTH_NAMES_BG[currentSalaryMonthIndex];
+    const confirm = await Swal.fire({
+        title: `Сваляне от терминалите?`,
+        text: `Искате ли да върнете ведомостта за ${monthName} ${currentSalaryYear} г. в статус "Чернова"? Служителите временно няма да я виждат на терминалите, докато не я публикувате отново.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: '↩️ Върни в чернова',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#ea580c'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    await saveMonthlySalariesToDb('Чернова');
+};
+
+window.saveMonthlySalariesToDb = async function (targetStatus = 'Чернова') {
+    if (!salaryCalculations || salaryCalculations.length === 0) {
+        Swal.fire('Няма данни', 'Първо пресметнете заплатите за месеца.', 'info');
+        return;
+    }
+
+    const monthName = MONTH_NAMES_BG[currentSalaryMonthIndex];
+    Swal.fire({ 
+        title: targetStatus === 'Одобрено' ? `Публикуване на фишове за ${monthName}...` : `Запазване на чернова за ${monthName}...`, 
+        allowOutsideClick: false, 
+        didOpen: () => Swal.showLoading() 
+    });
 
     try {
         const rowsToSave = salaryCalculations.map(c => ({
@@ -970,7 +1061,7 @@ window.saveMonthlySalariesToDb = async function () {
             total_penalty: c.totalPenalty || 0,
             total_bonus: c.totalBonus || 0,
             final_payout: c.finalBonusPayout || 0,
-            status: 'Одобрено',
+            status: targetStatus,
             details_json: { lates: c.lates, failedAudits: c.failedAudits },
             updated_at: new Date().toISOString()
         }));
@@ -978,19 +1069,33 @@ window.saveMonthlySalariesToDb = async function () {
         const { error } = await client.from('salary_monthly_logs').upsert(rowsToSave, { onConflict: 'month,year,worker_email' });
         if (error) throw error;
 
-        Swal.fire({
-            icon: 'success',
-            title: 'Ведомостта е запазена!',
-            text: `Записите за ${monthName} ${currentSalaryYear} г. са съхранени в базата данни със статус "Одобрено".`,
-            timer: 2000,
-            showConfirmButton: false
-        });
+        currentSalaryMonthStatus = targetStatus;
+        salaryCalculations.forEach(c => { c.status = targetStatus; });
+
+        renderSalariesModule();
+
+        if (targetStatus === 'Одобрено') {
+            Swal.fire({
+                icon: 'success',
+                title: 'Фишовете са публикувани!',
+                html: `Ведомостта за <b>${monthName} ${currentSalaryYear} г.</b> е одобрена.<br>Всички служители вече могат да си виждат фиша на терминалите с личния си ПИН.`,
+                confirmButtonColor: '#16a34a'
+            });
+        } else {
+            Swal.fire({
+                icon: 'success',
+                title: 'Черновата е запазена!',
+                text: `Данните за ${monthName} ${currentSalaryYear} г. са запазени в базата като чернова. Служителите все още не ги виждат на терминалите.`,
+                timer: 2200,
+                showConfirmButton: false
+            });
+        }
     } catch (e) {
         console.warn('saveMonthlySalariesToDb note:', e.message);
         Swal.fire({
-            icon: 'info',
-            title: 'Изчисленията са готови!',
-            html: `Данните са пресметнати и достъпни на екрана и в Excel.<br><br><span style="font-size:0.85em; color:#64748b;">За запазване директно в таблица на Supabase, изпълнете еднократно <b>setup_salaries_system.sql</b> в Supabase SQL Editor.</span>`
+            icon: 'error',
+            title: 'Грешка при запис',
+            html: `Неуспешен запис в базата данни: ${e.message}<br><br><span style="font-size:0.85em; color:#64748b;">Уверете се, че сте изпълнили еднократно SQL скрипта <b>setup_salaries_system.sql</b> в Supabase SQL Editor.</span>`
         });
     }
 };

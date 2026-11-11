@@ -149,15 +149,19 @@ window.switchTermDossierTab = function(tabKey) {
 
     // Контейнери
     const tabDocs = document.getElementById('termDossierTab_docs');
+    const tabSalary = document.getElementById('termDossierTab_salary');
     const tabWork = document.getElementById('termDossierTab_work');
     const tabAttendance = document.getElementById('termDossierTab_attendance');
 
     if (tabDocs) tabDocs.style.display = (tabKey === 'docs') ? 'flex' : 'none';
+    if (tabSalary) tabSalary.style.display = (tabKey === 'salary') ? 'flex' : 'none';
     if (tabWork) tabWork.style.display = (tabKey === 'work') ? 'flex' : 'none';
     if (tabAttendance) tabAttendance.style.display = (tabKey === 'attendance') ? 'flex' : 'none';
 
     if (tabKey === 'docs') {
         loadTermDocs(currentDossierEmail);
+    } else if (tabKey === 'salary') {
+        loadTermSalary(currentDossierEmail);
     } else if (tabKey === 'work') {
         loadTermWork(currentDossierEmail, currentDossierWorkerName);
     } else if (tabKey === 'attendance') {
@@ -536,3 +540,163 @@ function renderTermAttendanceList() {
     html += '</div>';
     listDiv.innerHTML = html;
 }
+
+// ========================================================
+// 💰 Електронен фиш за заплати & бонуси в терминала
+// ========================================================
+let currentWorkerSalaryLogs = [];
+
+window.loadTermSalary = async function(email) {
+    const contentDiv = document.getElementById('termSalaryContent');
+    const filterWrap = document.getElementById('termSalaryMonthFilterWrap');
+    if (!contentDiv) return;
+
+    contentDiv.innerHTML = `<div style="text-align: center; color: #64748b; padding: 30px 10px;">⏳ Зареждане на одобрени фишове...</div>`;
+
+    try {
+        const targetEmail = (email || '').toLowerCase().trim();
+        const { data, error } = await termDosietaClient
+            .from('salary_monthly_logs')
+            .select('*')
+            .ilike('worker_email', targetEmail)
+            .eq('status', 'Одобрено')
+            .order('year', { ascending: false });
+
+        if (error) throw error;
+
+        currentWorkerSalaryLogs = data || [];
+
+        if (currentWorkerSalaryLogs.length === 0) {
+            if (filterWrap) filterWrap.innerHTML = '';
+            contentDiv.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; background: white; border: 1px dashed #cbd5e1; border-radius: 12px; margin: 10px;">
+                    <div style="font-size: 2.8em; margin-bottom: 8px;">💶</div>
+                    <div style="font-weight: 800; color: #334155; font-size: 1.05em;">Няма публикувани фишове за бонуси</div>
+                    <div style="font-size: 0.85em; color: #64748b; margin-top: 6px; max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.45;">
+                        Когато ръководството одобри и публикува ведомостта за съответния месец, вашият детайлен фиш ще се визуализира тук автоматично.
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        if (filterWrap) {
+            filterWrap.innerHTML = `
+                <select id="selTermSalaryMonth" onchange="renderSelectedWorkerPayslip(this.value)" style="padding: 4px 10px; border-radius: 6px; border: 1.5px solid #86efac; font-weight: 800; background: #fff; color: #166534; font-size: 0.85em; outline: none;">
+                    ${currentWorkerSalaryLogs.map((log, idx) => `
+                        <option value="${idx}">📅 ${log.month} ${log.year} г.</option>
+                    `).join('')}
+                </select>
+            `;
+        }
+
+        renderSelectedWorkerPayslip(0);
+
+    } catch (err) {
+        console.error('loadTermSalary error:', err);
+        contentDiv.innerHTML = `<div style="color: #b91c1c; text-align: center; padding: 20px; background: #fef2f2; border-radius: 8px;">⚠️ Грешка при зареждане на фишове: ${err.message || err}</div>`;
+    }
+};
+
+window.renderSelectedWorkerPayslip = function(index) {
+    const contentDiv = document.getElementById('termSalaryContent');
+    if (!contentDiv || !currentWorkerSalaryLogs[index]) return;
+
+    const log = currentWorkerSalaryLogs[index];
+    const baseBonus = Number(log.base_bonus || 0);
+    const lateCount = Number(log.late_count || 0);
+    const latePenalty = Number(log.late_penalty || 0);
+    const auditFailed = Number(log.audit_3s_failed_count || 0);
+    const auditPenalty = Number(log.audit_3s_penalty || 0);
+    const manualAdj = Number(log.manual_adjustment || 0);
+    const manualNotes = log.manual_notes || '';
+    const totalBonus = Number(log.total_bonus || 0);
+    const finalPayout = Number(log.final_payout || 0);
+
+    const perfectBonus = totalBonus - baseBonus;
+
+    contentDiv.innerHTML = `
+        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto;">
+            <!-- Header -->
+            <div style="border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <div style="font-weight: 900; font-size: 1.15em; color: #1e3a8a;">AMCI • Фиш за Бонуси &amp; Мотивация</div>
+                    <div style="font-size: 0.82em; color: #64748b; margin-top: 2px;">
+                        Период: <b>${log.month} ${log.year} г.</b>
+                    </div>
+                </div>
+                <span style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 3px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.78em;">
+                    🟢 Одобрен от Ръководството
+                </span>
+            </div>
+
+            <!-- Employee Info -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 0.88em;">
+                <div>
+                    <span style="color: #64748b;">Служител:</span> <b>${log.worker_name || log.worker_email}</b>
+                </div>
+                <div>
+                    <span style="color: #64748b;">Длъжност:</span> <b>${log.position || 'Оператор'}</b>
+                </div>
+            </div>
+
+            <!-- Details List -->
+            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.88em;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #ffffff; border: 1px solid #f1f5f9; border-radius: 6px;">
+                    <span>💶 Базов бонус за длъжността:</span>
+                    <b style="color: #1e40af;">+${baseBonus.toFixed(2)} €</b>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #ffffff; border: 1px solid #f1f5f9; border-radius: 6px;">
+                    <div>
+                        <span>⏱️ Закъснения за смяна (след 08:05):</span>
+                        <span style="font-size: 0.82em; color: #64748b; margin-left: 6px;">(${lateCount} ${lateCount === 1 ? 'път' : 'пъти'})</span>
+                    </div>
+                    <b style="color: ${latePenalty > 0 ? '#dc2626' : '#16a34a'};">${latePenalty > 0 ? `-${latePenalty.toFixed(2)} €` : '0.00 €'}</b>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #ffffff; border: 1px solid #f1f5f9; border-radius: 6px;">
+                    <div>
+                        <span>🧹 3S Одити на работното място:</span>
+                        <span style="font-size: 0.82em; color: #64748b; margin-left: 6px;">(${auditFailed} неиздържани)</span>
+                    </div>
+                    <b style="color: ${auditPenalty > 0 ? '#dc2626' : '#16a34a'};">${auditPenalty > 0 ? `-${auditPenalty.toFixed(2)} €` : '0.00 €'}</b>
+                </div>
+
+                ${perfectBonus > 0 ? `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px;">
+                    <span>🎁 Поощрение (0 закъснения за месеца):</span>
+                    <b style="color: #16a34a;">+${perfectBonus.toFixed(2)} €</b>
+                </div>
+                ` : ''}
+
+                ${manualAdj !== 0 ? `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #fefce8; border: 1px solid #fde047; border-radius: 6px;">
+                    <div>
+                        <span>🏷️ Индивидуална корекция:</span>
+                        ${manualNotes ? `<div style="font-size: 0.78em; color: #713f12; margin-top: 2px;">Бележка: ${manualNotes}</div>` : ''}
+                    </div>
+                    <b style="color: ${manualAdj > 0 ? '#16a34a' : '#dc2626'};">${manualAdj > 0 ? `+${manualAdj.toFixed(2)} €` : `${manualAdj.toFixed(2)} €`}</b>
+                </div>
+                ` : ''}
+            </div>
+
+            <!-- Total Payout Banner -->
+            <div style="margin-top: 16px; padding: 12px 16px; background: #f0fdf4; border: 2px solid #86efac; border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-size: 0.8em; font-weight: 800; color: #166534; text-transform: uppercase;">Краен Бонус за изплащане:</div>
+                    <div style="font-size: 0.75em; color: #15803d; margin-top: 1px;">Чиста сума според правилата</div>
+                </div>
+                <div style="font-size: 1.6em; font-weight: 900; color: #15803d;">
+                    ${finalPayout.toFixed(2)} €
+                </div>
+            </div>
+
+            <div style="margin-top: 14px; text-align: right;">
+                <button type="button" onclick="window.print()" style="padding: 6px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 700; color: #334155; font-size: 0.82em; cursor: pointer;">
+                    🖨️ Принтирай фиша
+                </button>
+            </div>
+        </div>
+    `;
+};

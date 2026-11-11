@@ -104,9 +104,12 @@
         </div>
 
         <!-- Главни табове -->
-        <div style="display: flex; border-bottom: 1px solid #e2e8f0; background: #f8fafc;" id="termDossierMainTabs">
+        <div style="display: flex; border-bottom: 1px solid #e2e8f0; background: #f8fafc; overflow-x: auto;" id="termDossierMainTabs">
           <button class="term-dossier-tab-btn active" id="tabBtn_docs" onclick="switchTermDossierTab('docs')">
-            📁 Документи & Фишове
+            📁 Документи
+          </button>
+          <button class="term-dossier-tab-btn" id="tabBtn_salary" onclick="switchTermDossierTab('salary')">
+            💰 Бонуси &amp; Фиш
           </button>
           <button class="term-dossier-tab-btn" id="tabBtn_work" onclick="switchTermDossierTab('work')">
             🛠️ Свършена работа
@@ -129,6 +132,17 @@
           <!-- Documents list container -->
           <div id="termDocsList" style="padding: 14px; overflow-y: auto; flex: 1; background: #f8fafc; min-height: 220px;">
             <div style="text-align: center; color: #94a3b8; padding: 30px 10px;">Зареждане на документи...</div>
+          </div>
+        </div>
+
+        <!-- ТАБ БОНУСИ & ЕЛЕКТРОНЕН ФИШ -->
+        <div id="termDossierTab_salary" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+          <div style="padding: 10px 16px; background: #f0fdf4; border-bottom: 1px solid #bbf7d0; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: #166534; flex-wrap: wrap; gap: 8px;">
+            <span>💶 <b>Одобрени електронни фишове и бонуси</b></span>
+            <div id="termSalaryMonthFilterWrap" style="display: flex; align-items: center; gap: 6px;"></div>
+          </div>
+          <div id="termSalaryContent" style="padding: 14px; overflow-y: auto; flex: 1; background: #f8fafc; min-height: 220px;">
+            <div style="text-align: center; color: #94a3b8; padding: 30px 10px;">Зареждане на фишове...</div>
           </div>
         </div>
 
@@ -167,7 +181,7 @@
     <script src="terminal/terminal-tasks.js?v=4.47"></script>
     <script src="terminal/terminal-actions.js?v=23"></script>
     <script src="terminal/terminal-calendar.js?v=3" defer></script>
-    <script src="terminal/terminal-dossier.js?v=5"></script>
+    <script src="terminal/terminal-dossier.js?v=6"></script>
   </body>
 </html>
 
