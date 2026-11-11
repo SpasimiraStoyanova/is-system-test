@@ -1,14 +1,216 @@
-window.onload = () => {
-    if (sessionStorage.getItem('is_admin_logged') !== 'true') {
-        Swal.fire({
-            title: '🔐 Системен достъп', text: 'Въведете административен PIN код', input: 'password', allowOutsideClick: false, allowEscapeKey: false, showCancelButton: false, confirmButtonText: 'ВХОД', confirmButtonColor: '#4338ca'
-        }).then((result) => {
-            if (result.value === ADMIN_PIN) {
-                sessionStorage.setItem('is_admin_logged', 'true'); document.getElementById('appContent').style.display = 'block'; initializeApp();
-            } else { Swal.fire('Грешен код!', 'Опитайте отново.', 'error').then(() => location.reload()); }
-        });
-    } else { document.getElementById('appContent').style.display = 'block'; initializeApp(); }
+// ==========================================
+// 🔐 АВТЕНТИКАЦИЯ СЪС SUPABASE AUTH
+// ==========================================
+let currentAdminUser = null;
+let isAppInitialized = false;
+
+window.onload = async () => {
+    await initAdminAuth();
 };
+
+async function initAdminAuth() {
+    try {
+        // Слушател за промяна в състоянието на сесията
+        if (client && client.auth) {
+            client.auth.onAuthStateChange((event, session) => {
+                if (event === 'SIGNED_OUT') {
+                    currentAdminUser = null;
+                    const app = document.getElementById('appContent');
+                    if (app) app.style.display = 'none';
+                    showAdminLoginModal();
+                } else if (event === 'SIGNED_IN' && session && session.user) {
+                    if (!currentAdminUser) {
+                        onAdminAuthSuccess(session.user);
+                    }
+                }
+            });
+        }
+
+        // Проверка за съществуваща активна сесия
+        const { data: { session }, error } = await client.auth.getSession();
+        if (error) {
+            console.warn('Supabase getSession warning:', error);
+        }
+
+        if (session && session.user) {
+            onAdminAuthSuccess(session.user);
+        } else {
+            showAdminLoginModal();
+        }
+    } catch (err) {
+        console.error('Критична грешка при проверка на сесия:', err);
+        showAdminLoginModal();
+    }
+}
+
+function onAdminAuthSuccess(user) {
+    currentAdminUser = user;
+    const app = document.getElementById('appContent');
+    if (app) {
+        app.style.display = 'block';
+    }
+
+    renderNavAuthArea(user);
+
+    if (!isAppInitialized) {
+        isAppInitialized = true;
+        initializeApp();
+    }
+}
+
+function renderNavAuthArea(user) {
+    const navAuth = document.getElementById('navAuthArea');
+    if (!navAuth) return;
+    const userEmail = (user && user.email) ? user.email : 'Администратор';
+    navAuth.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; background: #ffffff; border: 1px solid #e2e8f0; padding: 4px 10px; border-radius: 9999px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" title="Влезли сте като: ${userEmail}">
+            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e;" title="Активна защитена сесия"></span>
+            <span style="font-weight: 700; color: #334155; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${userEmail}</span>
+        </div>
+        <button type="button" onclick="adminLogout()" class="btn-admin-logout" title="Изход от административния панел">
+            <span>🚪</span> <span>Изход</span>
+        </button>
+    `;
+}
+
+async function adminLogout() {
+    const res = await Swal.fire({
+        title: 'Изход от системата?',
+        text: 'Сигурни ли сте, че искате да излезете от административния панел?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '🚪 Да, излез',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#dc2626',
+        cancelButtonColor: '#64748b'
+    });
+
+    if (res.isConfirmed) {
+        try {
+            await client.auth.signOut();
+        } catch (e) {
+            console.error('Грешка при signOut:', e);
+        }
+        sessionStorage.clear();
+        location.reload();
+    }
+}
+
+function showAdminLoginModal() {
+    const app = document.getElementById('appContent');
+    if (app) app.style.display = 'none';
+
+    const lastEmail = localStorage.getItem('last_admin_email') || '';
+
+    Swal.fire({
+        title: '🔐 AMCI Административен Вход',
+        html: `
+            <div style="text-align: left; padding: 8px 4px 4px 4px; font-family: inherit;">
+                <p style="color: #64748b; font-size: 0.92rem; margin-top: 0; margin-bottom: 16px; line-height: 1.45;">
+                    Въведете вашия административен <strong>Supabase</strong> акаунт (имейл и парола) за достъп до системата.
+                </p>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 5px;">Имейл адрес:</label>
+                    <input id="swalAdminEmail" type="email" autocomplete="username" value="${lastEmail.replace(/"/g, '&quot;')}" placeholder="admin@amci.bg" class="swal2-input" style="width: 100%; box-sizing: border-box; margin: 0; padding: 10px 12px; height: 44px; font-size: 0.95rem; border-radius: 8px;">
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 5px;">Парола:</label>
+                    <input id="swalAdminPassword" type="password" autocomplete="current-password" placeholder="••••••••" class="swal2-input" style="width: 100%; box-sizing: border-box; margin: 0; padding: 10px 12px; height: 44px; font-size: 0.95rem; border-radius: 8px;">
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-top: 14px; font-size: 0.78rem; color: #64748b; line-height: 1.45;">
+                    🛡️ <strong>Криптирана защита:</strong> Паролата се проверява директно през Supabase Auth. В изходния код вече няма твърдо зададени PIN кодове.
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        confirmButtonText: '🚀 ВХОД В СИСТЕМАТА',
+        confirmButtonColor: '#4338ca',
+        showCancelButton: false,
+        showLoaderOnConfirm: true,
+        didOpen: () => {
+            const emailInput = document.getElementById('swalAdminEmail');
+            const passInput = document.getElementById('swalAdminPassword');
+            if (emailInput && emailInput.value) {
+                if (passInput) passInput.focus();
+            } else if (emailInput) {
+                emailInput.focus();
+            }
+
+            [emailInput, passInput].forEach(inp => {
+                if (inp) {
+                    inp.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            Swal.clickConfirm();
+                        }
+                    });
+                }
+            });
+        },
+        preConfirm: async () => {
+            const email = (document.getElementById('swalAdminEmail')?.value || '').trim();
+            const password = document.getElementById('swalAdminPassword')?.value || '';
+
+            if (!email) {
+                Swal.showValidationMessage('Моля, въведете имейл адрес.');
+                return false;
+            }
+            if (!password) {
+                Swal.showValidationMessage('Моля, въведете парола.');
+                return false;
+            }
+
+            try {
+                const { data, error } = await client.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+
+                if (error) {
+                    let msg = error.message;
+                    if (msg === 'Invalid login credentials') {
+                        msg = '❌ Грешен имейл или парола! Уверете се, че потребителят е създаден в Supabase Dashboard > Authentication > Users.';
+                    } else if (msg.includes('Email not confirmed')) {
+                        msg = '⚠️ Имейлът не е потвърден в Supabase (маркирайте "Auto Confirm" в Dashboard-а).';
+                    }
+                    Swal.showValidationMessage(msg);
+                    return false;
+                }
+
+                if (!data || !data.user) {
+                    Swal.showValidationMessage('Възникна грешка при автентикация. Опитайте отново.');
+                    return false;
+                }
+
+                try {
+                    localStorage.setItem('last_admin_email', email);
+                } catch (e) {}
+
+                return data.user;
+            } catch (err) {
+                Swal.showValidationMessage('Възникна грешка при връзка със сървъра: ' + (err.message || err));
+                return false;
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed && result.value) {
+            onAdminAuthSuccess(result.value);
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 3000,
+                timerProgressBar: true
+            });
+            Toast.fire({
+                icon: 'success',
+                title: `Успешен вход! Здравейте, ${result.value.email}`
+            });
+        }
+    });
+}
 
 let globalActivePlansForDropdown = [];
 let globalColumnFilters = {};
