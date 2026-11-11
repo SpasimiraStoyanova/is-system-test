@@ -501,6 +501,8 @@ function renderResolverView() {
                     <button class="resolver-view-tab-btn ${currentResolverView === 'tree' ? 'active' : ''}" 
                             onclick="setResolverView('tree')">🌳 Дърво</button>
                 </div>
+                <button class="resolver-view-tab-btn" onclick="if(typeof openMaterialDossier==='function')openMaterialDossier('${currentPartCode}')" title="Картон на материала, поръчки и движения" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; font-weight:800;">📜 Картон / Движения</button>
+                <button class="resolver-view-tab-btn" onclick="window.open('traceability.html?search=' + encodeURIComponent('${currentPartCode}'), '_blank')" title="Отвори пълната хронология в Инвентарен Детектив" style="background:#f1f5f9; border:1px solid #cbd5e1;">🕵️ Детектив</button>
                 <button class="resolver-view-tab-btn" onclick="reloadResolverData()" title="Презареди данни от базата" style="background:#f1f5f9; border:1px solid #cbd5e1;">🔄 Обнови</button>
             </div>
         </div>
@@ -592,6 +594,48 @@ function renderResolverView() {
             });
         }
     }
+
+    // Reverse BOM ("Къде се влага този детайл / материал?")
+    const whereUsedList = [];
+    const seenWhereUsed = new Set();
+
+    (cachedBom || []).forEach(b => {
+        const comp = String(b['ID Компонент'] || '').trim().toUpperCase();
+        if (comp === currentUpper) {
+            const parentCode = String(b['ID Родител'] || '').trim();
+            const parentUpper = parentCode.toUpperCase();
+            if (parentCode && !seenWhereUsed.has(parentUpper)) {
+                seenWhereUsed.add(parentUpper);
+                whereUsedList.push({
+                    parentCode: parentCode,
+                    parentUpper: parentUpper,
+                    norm: parseFloat(b['Количество']) || 1,
+                    unit: 'бр.',
+                    opNum: b['Влага се на Оп. №'] || null,
+                    source: 'BOM'
+                });
+            }
+        }
+    });
+
+    (cachedNomenklatura || []).forEach(n => {
+        const parentMat = String(n['ID Родител'] || '').trim().toUpperCase();
+        if (parentMat === currentUpper) {
+            const productCode = String(n['ID Детайл'] || '').trim();
+            const productUpper = productCode.toUpperCase();
+            if (productCode && !seenWhereUsed.has(productUpper)) {
+                seenWhereUsed.add(productUpper);
+                whereUsedList.push({
+                    parentCode: productCode,
+                    parentUpper: productUpper,
+                    norm: parseFloat(n['Разходна норма']) || 1,
+                    unit: n['Единици'] || 'бр.',
+                    opNum: null,
+                    source: 'Номенклатура'
+                });
+            }
+        }
+    });
 
     // Hero Header for Current Part
     const partType = nomInfo['Тип'] || 'Детайл';
@@ -703,6 +747,7 @@ function renderResolverView() {
                     <div class="resolver-hero-badges">
                         <span class="resolver-pill resolver-pill-stat">🛠️ <b>${partsList.length}</b> полуфабриката / детайла</span>
                         <span class="resolver-pill resolver-pill-stat">📦 <b>${materialsList.length}</b> суровини / консуматива</span>
+                        ${whereUsedList.length > 0 ? `<span class="resolver-pill resolver-pill-stat" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;">🧩 Влага се в <b>${whereUsedList.length}</b> изделия</span>` : ''}
                         ${rootRoutes.length > 0 ? `<span class="resolver-pill resolver-pill-stat" style="background:#fef3c7; color:#92400e; border-color:#fde68a;">🔄 <b>${rootRoutes.length}</b> операции</span>` : ''}
                     </div>
                 </div>
@@ -899,13 +944,83 @@ function renderResolverView() {
         `;
     }
 
+    let whereUsedHtml = '';
+    if (whereUsedList.length > 0) {
+        whereUsedHtml = `
+            <div class="resolver-section" style="border:1.5px solid #93c5fd; background:#ffffff;">
+                <div class="resolver-section-header" style="background:#eff6ff; border-bottom:1px solid #bfdbfe;">
+                    <div class="resolver-section-title" style="color:#1e40af;">
+                        <span>🧩 Къде се влага този материал? (Обратен BOM)</span>
+                        <span style="font-size:0.85em; font-weight:normal; color:#475569;">– компонентът се използва в общо ${whereUsedList.length} изделия</span>
+                    </div>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="resolver-table">
+                        <thead>
+                            <tr style="background:#f8fafc;">
+                                <th>Изделие / Родителски детайл</th>
+                                <th style="text-align:center; width:110px;">Разходна норма</th>
+                                <th style="text-align:center; width:130px;">За ${currentResolverMultiplier} бр. родител</th>
+                                <th style="width:230px;">Наличност на родителя</th>
+                                <th style="text-align:right; width:120px;">Действие</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${whereUsedList.map(w => {
+                                const parentNom = nomMap[w.parentUpper] || {};
+                                const parentName = parentNom['Вътрешно име'] || '';
+                                const parentStockInfo = resolveStockForPart(w.parentCode, 1, skladMap, invMap, nomMap);
+                                const parentStockBadge = parentStockInfo ? parentStockInfo.badgeHtml : '<span class="resolver-stock-none">⚪ 0 бр.</span>';
+                                const totalReq = w.norm * currentResolverMultiplier;
+                                const safeParent = encodeURIComponent(w.parentCode);
+
+                                return `
+                                    <tr>
+                                        <td>
+                                            <div style="font-weight: 800; color: #1e293b; font-size: 1.05em;">${w.parentCode}</div>
+                                            ${parentName && parentName !== w.parentCode ? `<div style="font-size: 0.85em; color: #475569;">${parentName}</div>` : ''}
+                                            <div style="font-size: 0.78em; color: #64748b; margin-top: 2px;">
+                                                <span style="background:#f1f5f9; padding:1px 6px; border-radius:4px;">Източник: ${w.source}</span>
+                                                ${w.opNum ? `<span style="background:#fef3c7; color:#92400e; padding:1px 6px; border-radius:4px; margin-left:4px;">Оп. № ${w.opNum}</span>` : ''}
+                                            </div>
+                                        </td>
+                                        <td style="text-align:center; font-weight:bold; color:#475569;">${w.norm} ${w.unit}</td>
+                                        <td style="text-align:center; font-weight:800; color:#1e293b; background:#f8fafc;">${totalReq.toLocaleString('bg-BG')} ${w.unit}</td>
+                                        <td>${parentStockBadge}</td>
+                                        <td style="text-align:right;">
+                                            <button class="resolver-drill-btn" style="padding: 4px 10px; font-size: 0.82em; white-space: nowrap; background:#2563eb;" onclick="drillDownResolverPart(decodeURIComponent('${safeParent}'))" title="Отвори спецификацията на родителя">
+                                                🔍 Виж състав ➔
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    const isLeafMaterial = (partsList.length === 0 && materialsList.length === 0);
+    let leafMaterialEmptyNote = '';
+    if (isLeafMaterial && whereUsedList.length === 0) {
+        leafMaterialEmptyNote = `
+            <div class="resolver-section" style="padding: 16px 20px; color: #64748b; font-size: 0.95em; background: #ffffff;">
+                ℹ️ За този детайл/материал няма въведени връзки в BOM или Номенклатура къде се влага.
+            </div>
+        `;
+    }
+
     contentEl.innerHTML = `
         <div class="resolver-modal-container">
             ${toolbarHtml}
             ${heroHtml}
-            ${partsHtml}
-            ${materialsHtml}
+            ${isLeafMaterial ? (whereUsedHtml || leafMaterialEmptyNote) : ''}
+            ${!isLeafMaterial ? partsHtml : ''}
+            ${!isLeafMaterial ? materialsHtml : ''}
             ${routesHtml}
+            ${!isLeafMaterial ? whereUsedHtml : ''}
         </div>
     `;
 }

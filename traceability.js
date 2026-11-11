@@ -101,6 +101,24 @@ async function loadStaticData() {
 }
 loadStaticData();
 
+window.addEventListener('DOMContentLoaded', () => {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchVal = urlParams.get('search');
+        if (searchVal) {
+            const inp = document.getElementById('searchInput');
+            if (inp) {
+                inp.value = decodeURIComponent(searchVal);
+                setTimeout(() => {
+                    if (typeof startSearch === 'function') startSearch();
+                }, 400);
+            }
+        }
+    } catch(e) {
+        console.warn('URL search parse error:', e);
+    }
+});
+
 async function fetchRobustRows(table, select, searchCol, searchStr) {
     let allData = [];
     let sr = 0;

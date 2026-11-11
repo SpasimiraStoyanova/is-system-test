@@ -495,10 +495,10 @@ function renderDynamicTable(itemsToRender = null) {
             if (currentTab === 'chekiraniya' && f.name === 'Локация' && val && val.includes(',')) { let coords = val.replace(/\s/g, ''); td.innerHTML = `<a href="https://www.google.com/maps?q=${coords}" target="_blank" style="color:#2563eb; font-weight:bold; text-decoration:none;">📍 Карта</a>`; row.appendChild(td); return; }
             if (currentTab === 'chekiraniya' && f.name === 'Бележка' && val.includes('ИЗВЪН ОБЕКТА')) { td.innerHTML = `⚠️ <b style="color:#dc2626;">${val}</b>`; row.appendChild(td); return; }
             if (typeof val === 'string' && val.startsWith('http')) { td.innerHTML = `<a href="${val}" target="_blank" style="background:#e0e7ff; color:#4338ca; padding:5px 12px; border-radius:6px; font-weight:800; text-decoration:none; font-size:0.85em; display:inline-block;">🔗 Отвори</a>`; row.appendChild(td); return; }
-            if ((currentTab === 'plan' || currentTab === 'nomenklatura' || currentTab === 'sklad_inventory') && f.name === 'ID Детайл' && val) {
+            if ((currentTab === 'plan' || currentTab === 'nomenklatura' || currentTab === 'sklad_inventory' || currentTab === 'sklad') && f.name === 'ID Детайл' && val) {
                 let safeVal = String(val).replace(/"/g, '&quot;').replace(/'/g, '\\\'');
                 let encVal = encodeURIComponent(String(val));
-                td.innerHTML = `<button data-part="${encVal}" onclick="if(typeof openResolverTreeFromBtn==='function'){openResolverTreeFromBtn(this)}else{openResolverTree('${safeVal}')}" style="background:none; border:none; color:#2563eb; font-weight:900; text-decoration:underline; cursor:pointer; font-size:1em; padding:0; text-align:left;" title="🔍 Виж вложени детайли и материали">${val}</button>`;
+                td.innerHTML = `<button data-part="${encVal}" onclick="if(typeof openResolverTreeFromBtn==='function'){openResolverTreeFromBtn(this)}else{openResolverTree('${safeVal}')}" style="background:none; border:none; color:#2563eb; font-weight:900; text-decoration:underline; cursor:pointer; font-size:1em; padding:0; text-align:left;" title="🔍 Виж къде се влага или рецепта на материала">${val}</button>`;
                 if (item['__packaged_info']) td.innerHTML += item['__packaged_info'];
                 row.appendChild(td); return;
             }
@@ -510,6 +510,14 @@ function renderDynamicTable(itemsToRender = null) {
                 td.innerHTML = `<span style="color:#dc2626; font-weight:bold;">${val}</span>`;
                 row.appendChild(td); return;
             }
+            if (currentTab === 'sklad' && f.name === 'Остатък') {
+                let ost = parseFloat(val) || 0;
+                let minStock = parseFloat(item['Минимално количество']) || 0;
+                if (minStock > 0 && ost <= minStock) {
+                    td.innerHTML = `<span style="background:#fee2e2; color:#b91c1c; border:1.5px solid #fca5a5; padding:3px 8px; border-radius:12px; font-weight:800; font-size:0.9em;" title="⚠️ Критична наличност: остатъкът (${ost}) е под или на буфера (${minStock})">⚠️ ${ost} (Критично)</span>`;
+                    row.appendChild(td); return;
+                }
+            }
             td.innerText = val;
             if (currentTab === 'plan' && f.name === 'Вътрешно име' && item['__packaged_info']) {
                 td.innerHTML = val + item['__packaged_info'];
@@ -518,7 +526,12 @@ function renderDynamicTable(itemsToRender = null) {
         });
         if (!config.readOnlyTab) {
             const tdActions = document.createElement('td'); tdActions.style.textAlign = 'center';
-            tdActions.innerHTML = `<button class="action-btn btn-edit" onclick="openEditModal(${trueIndex})">✏️</button><button class="action-btn btn-delete" onclick="deleteItem(${trueIndex})">🗑️</button>`;
+            let extraActionBtns = '';
+            if (currentTab === 'sklad') {
+                let safeCode = String(item['ID Детайл'] || '').replace(/"/g, '&quot;').replace(/'/g, '\\\'');
+                extraActionBtns = `<button class="action-btn" onclick="openMaterialDossier('${safeCode}')" title="📜 Картон на материала (История на движенията)" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; margin-right:4px;">📜</button>`;
+            }
+            tdActions.innerHTML = `${extraActionBtns}<button class="action-btn btn-edit" onclick="openEditModal(${trueIndex})" title="Редактирай">✏️</button><button class="action-btn btn-delete" onclick="deleteItem(${trueIndex})" title="Изтрий">🗑️</button>`;
             row.appendChild(tdActions);
         }
         tbody.appendChild(row);
@@ -675,6 +688,101 @@ function buildForm(data = null) {
             const ostEl = document.getElementById('inp_Остатък');
             if (ostEl) ostEl.value = (start + deliv - used);
         };
+
+        if (isEditMode && data) {
+            const baseUsed = parseFloat(data['Изразходено']) || 0;
+            const baseDeliv = parseFloat(data['Доставено']) || 0;
+            const matCode = data['ID Детайл'] || '';
+
+            const quickBox = document.createElement('div');
+            quickBox.className = 'sklad-quick-box';
+            quickBox.style.cssText = 'background:linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%); border:1.5px solid #93c5fd; border-radius:10px; padding:12px; margin-bottom:16px; box-shadow:0 2px 4px rgba(0,0,0,0.04);';
+            quickBox.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="font-weight:800; color:#1e3a8a; font-size:0.92em;">⚡ Бързи складови операции (Без смятане на ум)</span>
+                    <span style="font-size:0.78em; color:#64748b;">Въведете само промяната</span>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div style="background:#fff; border:1.5px solid #fed7aa; border-radius:8px; padding:8px 10px;">
+                        <label style="display:block; font-size:0.82em; font-weight:800; color:#c2410c; margin-bottom:4px;">
+                            🔴 Изпиши (- бр.):
+                        </label>
+                        <input type="number" id="inp_quick_deduct" class="form-input" placeholder="напр. 25" min="0" step="any" style="border-color:#fb923c; font-weight:800; font-size:1.1em; color:#9a3412;">
+                        <div style="font-size:0.73em; color:#78716c; margin-top:3px;">Увеличава Изразходено с въведеното</div>
+                    </div>
+                    <div style="background:#fff; border:1.5px solid #bbf7d0; border-radius:8px; padding:8px 10px;">
+                        <label style="display:block; font-size:0.82em; font-weight:800; color:#15803d; margin-bottom:4px;">
+                            🟢 Заприходи (+ бр.):
+                        </label>
+                        <input type="number" id="inp_quick_add" class="form-input" placeholder="напр. 50" min="0" step="any" style="border-color:#4ade80; font-weight:800; font-size:1.1em; color:#166534;">
+                        <div style="font-size:0.73em; color:#78716c; margin-top:3px;">Увеличава Доставено с въведеното</div>
+                    </div>
+                </div>
+            `;
+            area.insertBefore(quickBox, area.firstChild);
+
+            setTimeout(() => {
+                const qDeduct = document.getElementById('inp_quick_deduct');
+                const qAdd = document.getElementById('inp_quick_add');
+                if (qDeduct) {
+                    qDeduct.addEventListener('input', () => {
+                        const val = parseFloat(qDeduct.value) || 0;
+                        const el = document.getElementById('inp_Изразходено');
+                        if (el) {
+                            el.value = baseUsed + val;
+                            updateSkladOstatuk();
+                        }
+                    });
+                }
+                if (qAdd) {
+                    qAdd.addEventListener('input', () => {
+                        const val = parseFloat(qAdd.value) || 0;
+                        const el = document.getElementById('inp_Доставено');
+                        if (el) {
+                            el.value = baseDeliv + val;
+                            updateSkladOstatuk();
+                        }
+                    });
+                }
+            }, 50);
+
+            // Add bottom button for Card / History
+            const safeMatCode = String(matCode).replace(/"/g, '&quot;').replace(/'/g, '\\\'');
+            const historyBtn = document.createElement('button');
+            historyBtn.type = 'button';
+            historyBtn.className = 'btn-primary';
+            historyBtn.style.cssText = 'background:#4338ca; width:100%; margin-top:14px; padding:9px 12px; font-weight:800; border-radius:8px; font-size:0.9em;';
+            historyBtn.innerHTML = '📜 Виж Картон на материала (История на движенията)';
+            historyBtn.onclick = () => openMaterialDossier(safeMatCode);
+            area.appendChild(historyBtn);
+        } else if (!isEditMode) {
+            // In Add Mode: duplicate detection live in form
+            setTimeout(() => {
+                const inpCode = document.getElementById('inp_ID Детайл');
+                if (inpCode) {
+                    const warnDiv = document.createElement('div');
+                    warnDiv.id = 'skladAddWarn';
+                    warnDiv.style.cssText = 'display:none; color:#991b1b; background:#fee2e2; border:1.5px solid #fca5a5; padding:8px 12px; border-radius:6px; font-size:0.85em; font-weight:700; margin-top:6px;';
+                    inpCode.parentNode.appendChild(warnDiv);
+
+                    const checkDup = () => {
+                        const val = String(inpCode.value || '').trim().toLowerCase();
+                        if (!val) { warnDiv.style.display = 'none'; return; }
+                        const matchIdx = globalRows.findIndex(r => String(r['ID Детайл'] || '').trim().toLowerCase() === val);
+                        if (matchIdx !== -1) {
+                            const match = globalRows[matchIdx];
+                            warnDiv.innerHTML = `⚠️ Внимание: Този материал вече съществува в склада с наличност <b>${match['Остатък'] !== undefined ? match['Остатък'] : (match['Начална наличност'] || 0)} ${match['Мерна единица'] || 'бр.'}</b>! <br><button type="button" onclick="closeModal(); openEditModal(${matchIdx});" style="margin-top:6px; background:#dc2626; color:white; border:none; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">✏️ Отвори съществуващия запис за редакция</button>`;
+                            warnDiv.style.display = 'block';
+                        } else {
+                            warnDiv.style.display = 'none';
+                        }
+                    };
+                    inpCode.addEventListener('input', checkDup);
+                    inpCode.addEventListener('change', checkDup);
+                }
+            }, 50);
+        }
+
         setTimeout(() => {
             ['inp_Начална наличност', 'inp_Доставено', 'inp_Изразходено'].forEach(id => {
                 const el = document.getElementById(id);
@@ -1060,6 +1168,30 @@ async function saveForm(e) {
         let delivQty = parseFloat(payload['Доставено']) || 0;
         let usedQty = parseFloat(payload['Изразходено']) || 0;
         payload['Остатък'] = startQty + delivQty - usedQty;
+
+        if (!isEditMode) {
+            const newCode = String(payload['ID Детайл'] || '').trim().toLowerCase();
+            const existingRowIndex = globalRows.findIndex(r => String(r['ID Детайл'] || '').trim().toLowerCase() === newCode);
+            if (existingRowIndex !== -1) {
+                const existing = globalRows[existingRowIndex];
+                btn.innerText = 'Запази запис';
+                btn.disabled = false;
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Материалът вече съществува!',
+                    html: `В склада вече има позиция <b>"${existing['ID Детайл']}"</b>!<br><br>Текущ остатък: <b>${existing['Остатък'] !== undefined ? existing['Остатък'] : (existing['Начална наличност'] || 0)} ${existing['Мерна единица'] || 'бр.'}</b>.<br><br>Не създавайте нов ред, за да не се получават дубликати!<br>Желаете ли да отворите съществуващия запис за редакция (изписване / заприходяване)?`,
+                    showCancelButton: true,
+                    confirmButtonText: '✏️ Отвори за редакция',
+                    cancelButtonText: 'Отказ',
+                    confirmButtonColor: '#3b82f6'
+                }).then((res) => {
+                    if (res.isConfirmed) {
+                        openEditModal(existingRowIndex);
+                    }
+                });
+                return;
+            }
+        }
     }
     try {
         if (currentTab === 'plan' && payload['Статус'] === '🚚 Изпратен') {
@@ -1912,4 +2044,171 @@ window.forceReloadTerminals = async function () {
             }
         }
     });
+};
+
+window.openMaterialDossier = async function(materialCode) {
+    if (!materialCode) return;
+    const cleanCode = String(materialCode).trim();
+    
+    Swal.fire({
+        title: 'Зареждане на картон...',
+        html: `Справка за <b>${cleanCode}</b>`,
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const [skRes, porRes, bomRes, nomRes] = await Promise.all([
+            client.from('sklad').select('*').ilike('ID Детайл', cleanCode),
+            client.from('porachki_materiali').select('*').ilike('Материал', cleanCode).order('Дата на поръчка', { ascending: false }),
+            client.from('bom').select('*').ilike('ID Компонент', cleanCode),
+            client.from('Номенклатура').select('*').or(`"ID Родител".ilike.${cleanCode},"ID Детайл".ilike.${cleanCode}`)
+        ]);
+
+        const skItem = (skRes.data && skRes.data.length > 0) ? skRes.data[0] : null;
+        const porList = porRes.data || [];
+        const bomParents = bomRes.data || [];
+        const nomItems = nomRes.data || [];
+
+        const whereUsed = [];
+        const seenWhereUsed = new Set();
+        bomParents.forEach(b => {
+            const p = String(b['ID Родител'] || '').trim();
+            if (p && !seenWhereUsed.has(p.toUpperCase())) {
+                seenWhereUsed.add(p.toUpperCase());
+                whereUsed.push({ code: p, norm: parseFloat(b['Количество']) || 1, unit: 'бр.', source: 'BOM' });
+            }
+        });
+        nomItems.forEach(n => {
+            const r = String(n['ID Родител'] || '').trim();
+            if (r.toLowerCase() === cleanCode.toLowerCase()) {
+                const p = String(n['ID Детайл'] || '').trim();
+                if (p && !seenWhereUsed.has(p.toUpperCase())) {
+                    seenWhereUsed.add(p.toUpperCase());
+                    whereUsed.push({ code: p, norm: parseFloat(n['Разходна норма']) || 1, unit: n['Единици'] || 'бр.', source: 'Номенклатура' });
+                }
+            }
+        });
+
+        const startQty = skItem ? (parseFloat(skItem['Начална наличност']) || 0) : 0;
+        const delivQty = skItem ? (parseFloat(skItem['Доставено']) || 0) : 0;
+        const usedQty = skItem ? (parseFloat(skItem['Изразходено']) || 0) : 0;
+        const stockQty = skItem ? (parseFloat(skItem['Остатък']) || 0) : 0;
+        const minQty = skItem ? (parseFloat(skItem['Минимално количество']) || 0) : 0;
+        const unit = skItem ? (skItem['Мерна единица'] || 'бр.') : 'бр.';
+        const isCritical = (minQty > 0 && stockQty <= minQty);
+
+        let html = `
+            <div style="text-align:left; font-size:0.95em;">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:14px; text-align:center;">
+                    <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:8px;">
+                        <div style="font-size:0.75em; color:#64748b; font-weight:700;">НАЧАЛНА</div>
+                        <div style="font-size:1.2em; font-weight:900; color:#1e293b;">${startQty.toLocaleString('bg-BG')}</div>
+                    </div>
+                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:8px;">
+                        <div style="font-size:0.75em; color:#15803d; font-weight:700;">ДОСТАВЕНО (+)</div>
+                        <div style="font-size:1.2em; font-weight:900; color:#166534;">+${delivQty.toLocaleString('bg-BG')}</div>
+                    </div>
+                    <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:8px;">
+                        <div style="font-size:0.75em; color:#c2410c; font-weight:700;">ИЗРАЗХОДЕНО (-)</div>
+                        <div style="font-size:1.2em; font-weight:900; color:#9a3412;">-${usedQty.toLocaleString('bg-BG')}</div>
+                    </div>
+                    <div style="background:${isCritical ? '#fef2f2' : '#eff6ff'}; border:1.5px solid ${isCritical ? '#fca5a5' : '#bfdbfe'}; border-radius:8px; padding:8px;">
+                        <div style="font-size:0.75em; color:${isCritical ? '#b91c1c' : '#1d4ed8'}; font-weight:800;">ТЕКУЩ ОСТАТЪК</div>
+                        <div style="font-size:1.3em; font-weight:900; color:${isCritical ? '#dc2626' : '#1e40af'};">${stockQty.toLocaleString('bg-BG')} ${unit}</div>
+                        ${isCritical ? '<div style="font-size:0.7em; color:#b91c1c; font-weight:bold;">⚠️ Под минимум!</div>' : ''}
+                    </div>
+                </div>
+
+                <div style="margin-bottom:14px; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+                    <div style="background:#f1f5f9; padding:6px 12px; font-weight:800; font-size:0.85em; color:#334155; display:flex; justify-content:space-between; align-items:center;">
+                        <span>🧩 Къде се влага в производството (${whereUsed.length} детайла)</span>
+                        <button type="button" onclick="Swal.close(); openResolverTree('${cleanCode}');" style="background:none; border:none; color:#2563eb; font-weight:bold; font-size:0.8em; cursor:pointer; text-decoration:underline;">Виж в Резолвер ➔</button>
+                    </div>
+                    <div style="max-height:140px; overflow-y:auto; padding:8px;">
+                        ${whereUsed.length > 0 ? `
+                            <table style="width:100%; border-collapse:collapse; font-size:0.85em;">
+                                <thead>
+                                    <tr style="color:#64748b; border-bottom:1px solid #e2e8f0; text-align:left;">
+                                        <th style="padding:4px 6px;">Детайл / Изделие</th>
+                                        <th style="padding:4px 6px; text-align:center;">Норма</th>
+                                        <th style="padding:4px 6px; text-align:right;">Източник</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${whereUsed.map(w => `
+                                        <tr style="border-bottom:1px solid #f8fafc;">
+                                            <td style="padding:4px 6px; font-weight:700; color:#1e293b;">${w.code}</td>
+                                            <td style="padding:4px 6px; text-align:center; font-weight:bold; color:#4338ca;">${w.norm} ${w.unit}</td>
+                                            <td style="padding:4px 6px; text-align:right; font-size:0.8em; color:#64748b;">${w.source}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        ` : '<div style="color:#94a3b8; font-size:0.85em; text-align:center; padding:8px;">Няма намерени рецепти къде се влага този материал.</div>'}
+                    </div>
+                </div>
+
+                <div style="margin-bottom:14px; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+                    <div style="background:#f1f5f9; padding:6px 12px; font-weight:800; font-size:0.85em; color:#334155;">
+                        🛒 История на заявките & доставките (${porList.length})
+                    </div>
+                    <div style="max-height:160px; overflow-y:auto; padding:8px;">
+                        ${porList.length > 0 ? `
+                            <table style="width:100%; border-collapse:collapse; font-size:0.82em;">
+                                <thead>
+                                    <tr style="color:#64748b; border-bottom:1px solid #e2e8f0; text-align:left;">
+                                        <th style="padding:4px 6px;">Дата</th>
+                                        <th style="padding:4px 6px;">Доставчик</th>
+                                        <th style="padding:4px 6px; text-align:center;">Кол-во</th>
+                                        <th style="padding:4px 6px; text-align:center;">Статус</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${porList.map(p => {
+                                        const isReceived = (p['Статус'] === 'Прието');
+                                        const dateStr = p['Дата на приемане'] || p['Дата на поръчка'] || '—';
+                                        return `
+                                            <tr style="border-bottom:1px solid #f8fafc;">
+                                                <td style="padding:4px 6px; color:#475569;">${dateStr}</td>
+                                                <td style="padding:4px 6px; font-weight:600; color:#1e293b;">${p['Доставчик'] || '—'}</td>
+                                                <td style="padding:4px 6px; text-align:center; font-weight:bold; color:#15803d;">${p['Количество']} бр.</td>
+                                                <td style="padding:4px 6px; text-align:center;">
+                                                    <span style="background:${isReceived ? '#dcfce7' : '#fef3c7'}; color:${isReceived ? '#15803d' : '#b45309'}; padding:2px 6px; border-radius:10px; font-size:0.85em; font-weight:800;">
+                                                        ${isReceived ? '🟢 Прието' : '⏳ Поръчано'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        ` : '<div style="color:#94a3b8; font-size:0.85em; text-align:center; padding:8px;">Няма регистрирани поръчки в таб Поръчки материали.</div>'}
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:10px;">
+                    <button type="button" class="btn-primary" onclick="Swal.close(); window.open('traceability.html?search=' + encodeURIComponent('${cleanCode}'), '_blank');" style="background:#0f172a; font-size:0.85em; padding:6px 12px;">
+                        🕵️ Инвентарен Детектив (Timeline) ➔
+                    </button>
+                    <button type="button" class="btn-primary" onclick="Swal.close(); if(typeof openSpotlightPartDossier==='function'){openSpotlightPartDossier('${cleanCode}');}" style="background:#4338ca; font-size:0.85em; padding:6px 12px;">
+                        🔍 Единно Досие (Spotlight) ➔
+                    </button>
+                </div>
+            </div>
+        `;
+
+        Swal.fire({
+            title: `📜 Картон на материала: ${cleanCode}`,
+            html: html,
+            width: 680,
+            showCloseButton: true,
+            confirmButtonText: 'Затвори',
+            confirmButtonColor: '#64748b'
+        });
+
+    } catch (err) {
+        console.error('Error fetching material dossier:', err);
+        Swal.fire('Грешка', 'Неуспешно зареждане на данните за картона: ' + err.message, 'error');
+    }
 };
