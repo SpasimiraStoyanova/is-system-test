@@ -115,10 +115,11 @@ async function fetchAndRenderData() {
                   .lte('Дата', endIso)
                   .order('Дата', {ascending: true}),
             client.from('marshruti')
-                  .select('Код на детайла, Име на операция, "Норма (мин/бр)"')
+                  .select('*')
                   .limit(100000)
         ]);
         if (otchetiRes.error) throw otchetiRes.error;
+        if (routesRes.error) console.warn("Грешка при зареждане на маршрутни карти:", routesRes.error);
 
         currentNormsMap = {};
         if (routesRes.data) {
@@ -250,10 +251,11 @@ async function fetchPartAllHistory(query) {
                   .ilike('ID Детайл', `%${query}%`)
                   .order('Дата', { ascending: true }),
             client.from('marshruti')
-                  .select('Код на детайла, Име на операция, "Норма (мин/бр)"')
+                  .select('*')
                   .limit(100000)
         ]);
         if (otchetiRes.error) throw otchetiRes.error;
+        if (routesRes.error) console.warn("Грешка при зареждане на маршрутни карти:", routesRes.error);
 
         if (routesRes.data) {
             routesRes.data.forEach(r => {
