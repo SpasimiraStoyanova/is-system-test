@@ -475,6 +475,20 @@ async function deleteMaterialRequest(id) {
 // ИЗВЕСТИЯ ЗА ЕКСПРЕСНИ РЕВИЗИИ (SPOT AUDITS) В ГЛАВЕН АДМИН
 // ========================================================
 
+function markAuditAsReadInAdmin(auditId) {
+    try {
+        localStorage.setItem('last_read_spot_audit_time', new Date().toISOString());
+        let readIds = [];
+        try { readIds = JSON.parse(localStorage.getItem('read_spot_audit_ids') || '[]'); } catch(e) {}
+        if (auditId && !readIds.includes(auditId)) {
+            readIds.push(auditId);
+            localStorage.setItem('read_spot_audit_ids', JSON.stringify(readIds));
+        }
+        window.dispatchEvent(new Event('storage'));
+    } catch(e) {}
+    checkAdminSpotAudits();
+}
+
 async function checkAdminSpotAudits() {
     try {
         const subBadge = document.getElementById('adminSpotAuditSubBadge');
@@ -486,7 +500,7 @@ async function checkAdminSpotAudits() {
         const { data, error } = await client
             .from('spot_audits')
             .select('id, status, created_at, answered_at')
-            .eq('status', 'DISCREPANCY')
+            .in('status', ['DISCREPANCY', 'MATCH'])
             .gte('created_at', today.toISOString());
 
         if (error) return;
@@ -508,8 +522,10 @@ async function checkAdminSpotAudits() {
 
         let count = unread.length;
         if (count > 0) {
+            let hasDiscrepancy = unread.some(a => a.status === 'DISCREPANCY');
             subBadge.innerText = count;
             subBadge.style.display = 'inline-block';
+            subBadge.style.background = hasDiscrepancy ? '#ef4444' : '#16a34a';
         } else {
             subBadge.style.display = 'none';
         }
@@ -533,7 +549,9 @@ function initAdminSpotAuditRealtime() {
         adminSpotAuditRealtime = client.channel('admin-spot-audits-live')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'spot_audits' }, (payload) => {
                 const newRow = payload.new || {};
-                if (newRow && newRow.status === 'DISCREPANCY') {
+                if (!newRow) return;
+
+                if (newRow.status === 'DISCREPANCY') {
                     if (typeof playNotificationChime === 'function') playNotificationChime();
                     let diffVal = parseFloat(newRow.difference_qty) || 0;
                     let diffSign = diffVal > 0 ? '+' : '';
@@ -562,22 +580,31 @@ function initAdminSpotAuditRealtime() {
                         confirmButtonText: '🎯 Отвори Табло Машини & Задачи',
                         cancelButtonText: 'Затвори'
                     }).then((res) => {
-                        try {
-                            localStorage.setItem('last_read_spot_audit_time', new Date().toISOString());
-                            let readIds = [];
-                            try { readIds = JSON.parse(localStorage.getItem('read_spot_audit_ids') || '[]'); } catch(e) {}
-                            if (newRow && newRow.id && !readIds.includes(newRow.id)) {
-                                readIds.push(newRow.id);
-                                localStorage.setItem('read_spot_audit_ids', JSON.stringify(readIds));
-                            }
-                            window.dispatchEvent(new Event('storage'));
-                        } catch(e) {}
-
-                        checkAdminSpotAudits();
-
+                        markAuditAsReadInAdmin(newRow.id);
                         if (res.isConfirmed) {
                             window.open('workplace-tasks.html', '_blank');
                         }
+                    });
+                } else if (newRow.status === 'MATCH') {
+                    if (typeof playNotificationChime === 'function') playNotificationChime();
+                    Swal.fire({
+                        title: '🟢 Точна ревизия!',
+                        html: `
+                            <div style="font-size:1.02em; line-height:1.5; color:#1e293b; text-align:left; background:#f0fdf4; border:1.5px solid #bbf7d0; border-radius:10px; padding:14px; margin-top:8px;">
+                                <div>👷 <b>Работник:</b> <span style="color:#15803d; font-weight:800; font-size:1.1em;">${newRow.worker_name || 'ОПЕРАТОР'}</span></div>
+                                <div>🏭 <b>Работно място:</b> <b>${newRow.target_machine}</b></div>
+                                <div>📦 <b>Детайл:</b> <b>${newRow.part_code}</b> (${newRow.operation})</div>
+                                <hr style="border:none; border-top:1px dashed #86efac; margin:10px 0;">
+                                <div style="font-size:1.08em; color:#166534; font-weight:800;">
+                                    ✅ Потвърдени точно: ${newRow.reported_qty} бр. (Всичко е наред)
+                                </div>
+                            </div>
+                        `,
+                        icon: 'success',
+                        confirmButtonColor: '#16a34a',
+                        confirmButtonText: 'Супер, разбрах'
+                    }).then(() => {
+                        markAuditAsReadInAdmin(newRow.id);
                     });
                 }
                 checkAdminSpotAudits();

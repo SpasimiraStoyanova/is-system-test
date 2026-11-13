@@ -1383,7 +1383,8 @@ function getReadAuditInfo() {
 }
 
 function isAuditUnread(audit) {
-    if (!audit || audit.status !== 'DISCREPANCY') return false;
+    if (!audit) return false;
+    if (audit.status !== 'DISCREPANCY' && audit.status !== 'MATCH') return false;
     const { lastTime, readIds } = getReadAuditInfo();
     if (readIds.has(audit.id)) return false;
     let auditTime = new Date(audit.answered_at || audit.created_at).getTime();
@@ -1837,8 +1838,10 @@ function updateSpotAuditBadges() {
     let match = rawSpotAudits.filter(a => a.status === 'MATCH').length;
     let total = rawSpotAudits.length;
 
-    // Непрочетени разминавания (за които операторът е подал сигнал, но админът още не ги е прегледал)
-    let unreadDiff = rawSpotAudits.filter(a => isAuditUnread(a)).length;
+    // Непрочетени отговори от работници
+    let unreadDiff = rawSpotAudits.filter(a => a.status === 'DISCREPANCY' && isAuditUnread(a)).length;
+    let unreadMatch = rawSpotAudits.filter(a => a.status === 'MATCH' && isAuditUnread(a)).length;
+    let unreadTotal = unreadDiff + unreadMatch;
 
     const elTotal = document.getElementById('countAuditAll');
     const elPending = document.getElementById('countAuditPending');
@@ -1859,6 +1862,11 @@ function updateSpotAuditBadges() {
             badgePending.style.background = '#ef4444';
             badgePending.innerText = unreadDiff;
             badgePending.title = `Има ${unreadDiff} непрегледани разминавания`;
+        } else if (unreadMatch > 0) {
+            badgePending.style.display = 'inline-block';
+            badgePending.style.background = '#16a34a';
+            badgePending.innerText = unreadMatch;
+            badgePending.title = `Има ${unreadMatch} нови потвърдени точни ревизии`;
         } else if (pending > 0) {
             badgePending.style.display = 'inline-block';
             badgePending.style.background = '#ea580c';
@@ -1869,15 +1877,21 @@ function updateSpotAuditBadges() {
         }
     }
 
-    // Червено известие в горната лента (Бутон "🎯 Експресна Ревизия")
-    // Показва се САМО ако има непрегледано разминаване! Когато се прочете -> изчезва!
+    // Червено или зелено известие в горната лента (Бутон "🎯 Експресна Ревизия")
+    // Показва се при нов получен отчет (червено при разлика, зелено при точен брой). Когато се прочете -> изчезва!
     if (navBadge) {
         if (unreadDiff > 0) {
             navBadge.style.display = 'inline-block';
             navBadge.style.background = '#ef4444';
             navBadge.innerText = unreadDiff;
-            navBadge.title = `Има ${unreadDiff} ново/и непрегледано/и разминаване/я от ревизия!`;
+            navBadge.title = `Има ${unreadDiff} ново непрегледано разминаване от ревизия!`;
             navBadge.style.animation = 'pulse 1.8s infinite';
+        } else if (unreadMatch > 0) {
+            navBadge.style.display = 'inline-block';
+            navBadge.style.background = '#16a34a';
+            navBadge.innerText = unreadMatch;
+            navBadge.title = `Има ${unreadMatch} ново потвърждение за точна наличност!`;
+            navBadge.style.animation = 'none';
         } else {
             navBadge.style.display = 'none';
             navBadge.style.animation = 'none';
@@ -2090,17 +2104,32 @@ function onSpotAuditAnswerReceived(audit) {
         });
     } else if (audit.status === 'MATCH') {
         playAuditAlertSound(false);
-        const Toast = Swal.mixin({
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 4500,
-            timerProgressBar: true
-        });
-        Toast.fire({
+        Swal.fire({
+            title: '🟢 Точна ревизия!',
+            html: `
+                <div style="font-size:1.02em; line-height:1.5; color:#1e293b; text-align:left; background:#f0fdf4; border:1.5px solid #bbf7d0; border-radius:10px; padding:14px; margin-top:8px;">
+                    <div>👷 <b>Работник:</b> <span style="color:#15803d; font-weight:800; font-size:1.1em;">${escapeHtml(audit.worker_name || 'ОПЕРАТОР')}</span></div>
+                    <div>🏭 <b>Работно място:</b> <b>${escapeHtml(audit.target_machine)}</b></div>
+                    <div>📦 <b>Детайл:</b> <b>${escapeHtml(audit.part_code)}</b> (${escapeHtml(audit.operation)})</div>
+                    <hr style="border:none; border-top:1px dashed #86efac; margin:10px 0;">
+                    <div style="font-size:1.1em; color:#166534; font-weight:800;">
+                        ✅ Потвърдени точно: <b>${audit.reported_qty} бр.</b> (Всичко е наред)
+                    </div>
+                </div>
+            `,
             icon: 'success',
-            title: `🟢 Точна ревизия на ${escapeHtml(audit.target_machine)}!`,
-            text: `${escapeHtml(audit.worker_name || 'Работник')} потвърди точно ${audit.reported_qty} бр. за ${escapeHtml(audit.part_code)}.`
+            showCancelButton: true,
+            confirmButtonColor: '#16a34a',
+            cancelButtonColor: '#94a3b8',
+            confirmButtonText: '📋 Отвори Дневника',
+            cancelButtonText: 'Супер, разбрах',
+            backdrop: true
+        }).then((res) => {
+            markAllSpotAuditsAsRead();
+            if (res.isConfirmed) {
+                openSpotAuditModal();
+                switchSpotAuditTab('history');
+            }
         });
     }
 
