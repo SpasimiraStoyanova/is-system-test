@@ -1679,31 +1679,6 @@ async function sendSpotAuditPushNotification({ machine, targetWorker, targetEmai
     }
 }
 
-    try {
-        const response = await fetch("https://onesignal.com/api/v1/notifications", {
-            method: "POST",
-            headers: { 
-                "Content-Type": "application/json; charset=utf-8", 
-                "Authorization": "Key " + ONESIGNAL_API_KEY 
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const errTxt = await response.text().catch(() => '');
-            console.warn("OneSignal Push грешка от сървъра:", errTxt);
-            return false;
-        }
-
-        const resData = await response.json().catch(() => ({}));
-        console.log("OneSignal Push изпратено успешно:", resData);
-        return true;
-    } catch (e) {
-        console.warn("OneSignal Push грешка при свързване:", e);
-        return false;
-    }
-}
-
 async function submitNewSpotAudit() {
     const machine = (document.getElementById('auditMachineSelect').value || '').trim();
     const wSelect = document.getElementById('auditWorkerSelect');
