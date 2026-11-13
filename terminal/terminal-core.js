@@ -65,6 +65,7 @@ async function initTerminal() {
         });
     }
     if (savedMachine === null) { await changeMachine(true); } else { currentMachine = savedMachine; document.getElementById('uiMachineName').innerText = currentMachine || "ВСИЧКИ"; }
+    if (typeof syncWorkerMachineToDb === 'function') syncWorkerMachineToDb();
     
     checkSystemMessage();
     loadTasks();

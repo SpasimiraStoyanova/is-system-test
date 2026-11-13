@@ -312,6 +312,7 @@ async function changeMachine(isInitial = false) {
             let finalSelection = []; document.querySelectorAll('.machine-cb:checked').forEach(cb => finalSelection.push(cb.value));
             currentMachine = finalSelection.join(','); localStorage.setItem('mes_machine', currentMachine);
             document.getElementById('uiMachineName').innerText = (finalSelection.length > 0) ? finalSelection.join(', ') : "ВСИЧКИ";
+            if (typeof syncWorkerMachineToDb === 'function') syncWorkerMachineToDb();
             loadTasks();
         }
     } catch (err) { Swal.fire('Gрешка', err.message, 'error'); }
@@ -1524,6 +1525,9 @@ async function loadTasks(isSilent = false) {
       renderTasks(globalTasks);
       if (typeof checkPendingSpotAudits === 'function') {
           checkPendingSpotAudits();
+      }
+      if (typeof checkIdleWorkerReminder === 'function') {
+          checkIdleWorkerReminder();
       }
   } catch (err) { console.error(err); document.getElementById('tasksContainer').innerHTML = '<div style="text-align:center; padding: 40px; color:#ef4444; font-weight:bold;">❌ Грешка:<br>' + err.message + '</div>'; }
 }

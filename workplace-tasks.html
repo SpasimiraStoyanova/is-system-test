@@ -22,6 +22,10 @@
             <span class="sub-brand">/ 🎯 Табло Машини &amp; Задачи</span>
         </div>
         <div class="action-buttons-group">
+            <button class="btn-primary" onclick="openIdleRemindersModal()" style="background-color: #ea580c; box-shadow: 0 2px 5px rgba(234, 88, 12, 0.35); display: flex; align-items: center; gap: 6px;" title="Дневник на напомнянията за непоета задача след 8:35 ч.">
+                <i class="fas fa-bell"></i> <span>🔔 Напомняния (8:35)</span>
+                <span id="navIdleRemindersBadge" style="display: none; background: #dc2626; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78em; font-weight: 900; box-shadow: 0 0 6px rgba(220, 38, 38, 0.6);">0</span>
+            </button>
             <button class="btn-primary" onclick="openSpotAuditModal()" style="background-color: #7c3aed; box-shadow: 0 2px 5px rgba(124, 58, 237, 0.35); display: flex; align-items: center; gap: 6px;">
                 <i class="fas fa-clipboard-check"></i> <span>🎯 Експресна Ревизия</span>
                 <span id="navSpotAuditBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78em; font-weight: 900; box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);">0</span>
@@ -256,6 +260,57 @@
       </div>
     </div>
 
-    <script src="workplace-tasks.js?v=12"></script>
+    <!-- ============================================================== -->
+    <!-- МОДАЛЕН ПРОЗОРЕЦ: ДНЕВНИК НА НАПОМНЯНИЯТА ЗА НЕПОЕТИ ЗАДАЧИ    -->
+    <!-- ============================================================== -->
+    <div id="idleRemindersModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+      <div style="background: white; border-radius: 16px; width: 95%; max-width: 1000px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.25); border: 1px solid #fed7aa;">
+        <!-- Header -->
+        <div style="padding: 16px 22px; background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border-bottom: 1.5px solid #fed7aa; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 42px; height: 42px; border-radius: 10px; background: #ea580c; color: white; display: flex; align-items: center; justify-content: center; font-size: 1.3em;">
+              <i class="fas fa-bell"></i>
+            </div>
+            <div>
+              <div style="font-size: 1.25em; font-weight: 900; color: #9a3412;">Дневник: Напомняния за непоета задача (08:35 ч.)</div>
+              <div style="font-size: 0.82em; color: #c2410c;">Контрол на чекирани работници със свободни детайли, които още не са поели задача</div>
+            </div>
+          </div>
+          <button onclick="closeIdleRemindersModal()" style="border: none; background: #fed7aa; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; color: #9a3412; font-weight: bold;">✖</button>
+        </div>
+
+        <!-- Controls / Badges Bar -->
+        <div style="padding: 12px 20px; background: #fff; border-bottom: 1px solid #edf2f7; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <span style="font-weight: 700; color: #475569; font-size: 0.9em;">Днес:</span>
+            <span class="chip" style="background: #fff7ed; color: #c2410c; border-color: #fed7aa;">Общо: <b id="countIdleTotal">0</b></span>
+            <span class="chip" style="background: #fef2f2; color: #b91c1c; border-color: #fecaca;">🔴 Непрочетени: <b id="countIdleUnread">0</b></span>
+            <span class="chip" style="background: #f0fdf4; color: #166534; border-color: #bbf7d0;">🟢 Прочетени: <b id="countIdleRead">0</b></span>
+            <span class="chip" style="background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe;">🚀 С поета задача: <b id="countIdleClaimed">0</b></span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-secondary" onclick="scanAndSendIdleRemindersCentral(true)" style="font-size: 0.85em; padding: 6px 12px; background: #ffedd5; border: 1px solid #fdba74; color: #9a3412; font-weight: 700;" title="Провери веднага всички чекирани работници">
+              <i class="fas fa-search"></i> Провери сега
+            </button>
+            <button class="btn-secondary" onclick="loadIdleRemindersHistory()" style="font-size: 0.85em; padding: 6px 12px;">
+              <i class="fas fa-sync-alt"></i> Опресни
+            </button>
+          </div>
+        </div>
+
+        <!-- Content Area / Table -->
+        <div style="padding: 16px; overflow-y: auto; flex: 1; background: #f8fafc;" id="idleRemindersTableWrap">
+          <div style="text-align: center; color: #94a3b8; padding: 40px 10px;">Зареждане на дневника...</div>
+        </div>
+
+        <!-- Footer -->
+        <div style="padding: 10px 20px; border-top: 1px solid #e2e8f0; background: #fff; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.8em; color: #94a3b8;">🔒 Системата блокира терминала на работника, докато той не натисне „Разбрах, поемам задача“</span>
+          <button onclick="closeIdleRemindersModal()" style="padding: 8px 18px; background: #64748b; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.85em; cursor: pointer;">Затвори</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="workplace-tasks.js?v=13"></script>
 </body>
 </html>

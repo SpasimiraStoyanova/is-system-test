@@ -109,9 +109,24 @@ async function validateRealTimeStock(taskData, val) {
 }
 
 function claimCurrentTaskDOM(taskId) {
+  if (window.pendingIdleTaskReminder && !window.pendingIdleTaskReminder.read_at) {
+      Swal.fire({
+          title: 'Внимание!',
+          text: 'Първо трябва да потвърдите полученото напомняне!',
+          icon: 'warning',
+          confirmButtonText: 'ОК',
+          confirmButtonColor: '#2563eb',
+          allowOutsideClick: false
+      });
+      return;
+  }
   if (navigator.vibrate) navigator.vibrate(50); 
   activeTaskId = taskId; 
   window['startTime_' + taskId] = new Date().toISOString();
+  
+  if (typeof markTaskClaimedInReminders === 'function') {
+      markTaskClaimedInReminders();
+  }
   
   let taskData = globalTasks.find(t => t.id === taskId);
   if (taskData) {

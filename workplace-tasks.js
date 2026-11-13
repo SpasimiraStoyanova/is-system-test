@@ -61,6 +61,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => {
         loadSpotAuditHistory();
         initSpotAuditsAdminRealtime();
+        loadIdleRemindersHistory();
+        initIdleRemindersAdminRealtime();
+        setInterval(scanAndSendIdleRemindersCentral, 60000);
     }, 1200);
 });
 
@@ -2139,4 +2142,401 @@ function initSpotAuditsAdminRealtime() {
         console.warn('Realtime error in admin spot_audits:', e);
     }
 }
+
+// ==============================================================================
+// МОДУЛ: ДНЕВНИК И КОНТРОЛ НА НАПОМНЯНИЯТА ЗА НЕПОЕТИ ЗАДАЧИ (8:35 Ч.)
+// ==============================================================================
+
+let idleRemindersCache = [];
+let idleRemindersAdminChannel = null;
+let isCentralScanningIdle = false;
+
+function openIdleRemindersModal() {
+    const modal = document.getElementById('idleRemindersModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    loadIdleRemindersHistory();
+}
+
+function closeIdleRemindersModal() {
+    const modal = document.getElementById('idleRemindersModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+}
+
+function formatReminderTime(isoStr) {
+    if (!isoStr) return '';
+    try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return '';
+        const hh = d.getHours().toString().padStart(2, '0');
+        const mm = d.getMinutes().toString().padStart(2, '0');
+        const ss = d.getSeconds().toString().padStart(2, '0');
+        return `${hh}:${mm}:${ss} ч.`;
+    } catch (e) {
+        return '';
+    }
+}
+
+async function loadIdleRemindersHistory() {
+    const wrap = document.getElementById('idleRemindersTableWrap');
+    if (!client) return;
+
+    try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const { data, error } = await client
+            .from('task_reminders')
+            .select('*')
+            .eq('reminder_date', todayStr)
+            .order('sent_at', { ascending: false });
+
+        if (error) {
+            console.warn('Грешка при зареждане на task_reminders:', error);
+            if (wrap) wrap.innerHTML = `<div style="text-align:center; padding:30px; color:#ef4444; font-weight:700;">Грешка при зареждане: ${escapeHtml(error.message)}</div>`;
+            return;
+        }
+
+        idleRemindersCache = data || [];
+        updateIdleRemindersStats();
+        renderIdleRemindersTable(idleRemindersCache);
+
+    } catch (err) {
+        console.error('Грешка в loadIdleRemindersHistory:', err);
+    }
+}
+
+function updateIdleRemindersStats() {
+    const total = idleRemindersCache.length;
+    const unread = idleRemindersCache.filter(r => r.status === 'SENT' && !r.read_at).length;
+    const read = idleRemindersCache.filter(r => r.read_at && r.status !== 'CLAIMED').length;
+    const claimed = idleRemindersCache.filter(r => r.status === 'CLAIMED' || r.claimed_at).length;
+
+    const elTotal = document.getElementById('countIdleTotal');
+    const elUnread = document.getElementById('countIdleUnread');
+    const elRead = document.getElementById('countIdleRead');
+    const elClaimed = document.getElementById('countIdleClaimed');
+    const badge = document.getElementById('navIdleRemindersBadge');
+
+    if (elTotal) elTotal.innerText = total;
+    if (elUnread) elUnread.innerText = unread;
+    if (elRead) elRead.innerText = read;
+    if (elClaimed) elClaimed.innerText = claimed;
+
+    if (badge) {
+        if (unread > 0) {
+            badge.innerText = unread;
+            badge.style.display = 'inline-block';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+}
+
+function renderIdleRemindersTable(reminders) {
+    const wrap = document.getElementById('idleRemindersTableWrap');
+    if (!wrap) return;
+
+    if (!reminders || reminders.length === 0) {
+        wrap.innerHTML = `
+            <div style="text-align: center; padding: 45px 20px; color: #64748b; background: white; border-radius: 12px; border: 1.5px dashed #cbd5e1;">
+                <div style="font-size: 2.8em; margin-bottom: 10px;">🎉</div>
+                <div style="font-size: 1.15em; font-weight: 800; color: #1e293b;">Няма изпратени напомняния за днес!</div>
+                <div style="font-size: 0.9em; margin-top: 6px; color: #64748b;">
+                    Всички чекирани работници са поели навреме своите задачи или на машините им няма свободни заготовки.
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    let rowsHtml = '';
+    reminders.forEach(r => {
+        const sentTime = formatReminderTime(r.sent_at || r.created_at);
+        const readTime = formatReminderTime(r.read_at);
+        const claimedTime = formatReminderTime(r.claimed_at);
+
+        // Статус на прочитането:
+        let readCellHtml = '';
+        if (r.read_at) {
+            readCellHtml = `<div style="color: #166534; font-weight: 800; font-size: 0.95em;">🟢 ${readTime}</div><div style="font-size:0.75em; color:#15803d;">Потвърдено от работника</div>`;
+        } else {
+            readCellHtml = `<div style="background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 6px; font-weight: 900; font-size: 0.85em; display: inline-block; border: 1px solid #fca5a5;">🔴 НЕ Е ПРОЧЕТЕНО</div><div style="font-size:0.75em; color:#b91c1c; margin-top:2px;">(Терминалът е блокиран)</div>`;
+        }
+
+        // Статус на поемането на задача:
+        let claimCellHtml = '';
+        if (r.claimed_at || r.status === 'CLAIMED') {
+            claimCellHtml = `<div style="color: #1d4ed8; font-weight: 900; font-size: 0.95em;">🚀 ${claimedTime}</div><div style="font-size:0.75em; color:#2563eb;">Поета задача</div>`;
+        } else if (r.read_at) {
+            claimCellHtml = `<div style="color: #d97706; font-weight: 800; font-size: 0.9em;">⏳ Чака поемане...</div><div style="font-size:0.75em; color:#b45309;">Прочел е, но още не е натиснал „Поеми“</div>`;
+        } else {
+            claimCellHtml = `<div style="color: #94a3b8; font-weight: 600; font-size: 0.9em;">—</div>`;
+        }
+
+        // Статус бейдж:
+        let statusBadge = '';
+        if (r.status === 'CLAIMED' || r.claimed_at) {
+            statusBadge = `<span style="background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; padding: 4px 9px; border-radius: 8px; font-weight: 800; font-size: 0.82em;">✅ Изпълнено</span>`;
+        } else if (r.status === 'READ' || r.read_at) {
+            statusBadge = `<span style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 4px 9px; border-radius: 8px; font-weight: 800; font-size: 0.82em;">👁️ Прочетено</span>`;
+        } else {
+            statusBadge = `<span style="background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; padding: 4px 9px; border-radius: 8px; font-weight: 900; font-size: 0.82em;">🔴 Чака потвърждение</span>`;
+        }
+
+        rowsHtml += `
+            <tr style="border-bottom: 1px solid #f1f5f9; background: white; transition: background 0.15s;">
+                <td style="padding: 12px 14px;">
+                    <div style="font-weight: 800; color: #1e293b; font-size: 1.02em;">👷 ${escapeHtml(r.worker_name)}</div>
+                    <div style="font-size: 0.8em; color: #64748b;">${escapeHtml(r.worker_email)}</div>
+                </td>
+                <td style="padding: 12px 14px;">
+                    <span style="font-weight: 700; color: #4338ca; background: #e0e7ff; padding: 4px 8px; border-radius: 6px; font-size: 0.9em; border: 1px solid #c7d2fe;">
+                        🏭 ${escapeHtml(r.machine)}
+                    </span>
+                    <div style="font-size: 0.78em; color: #64748b; margin-top: 3px;">
+                        Свободни детайли: <b>${r.available_blue_tasks || 0} бр.</b>
+                    </div>
+                </td>
+                <td style="padding: 12px 14px; font-weight: 700; color: #334155; font-size: 0.95em;">
+                    ⏰ ${sentTime}
+                </td>
+                <td style="padding: 12px 14px;">
+                    ${readCellHtml}
+                </td>
+                <td style="padding: 12px 14px;">
+                    ${claimCellHtml}
+                </td>
+                <td style="padding: 12px 14px; text-align: center;">
+                    ${statusBadge}
+                </td>
+            </tr>
+        `;
+    });
+
+    wrap.innerHTML = `
+        <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9em;">
+                <thead>
+                    <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 800;">
+                        <th style="padding: 12px 14px;">Служител</th>
+                        <th style="padding: 12px 14px;">Работно място</th>
+                        <th style="padding: 12px 14px;">Изпратено в</th>
+                        <th style="padding: 12px 14px;">Прочетено от служителя</th>
+                        <th style="padding: 12px 14px;">Поета задача</th>
+                        <th style="padding: 12px 14px; text-align: center;">Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rowsHtml}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function initIdleRemindersAdminRealtime() {
+    try {
+        if (!client) return;
+
+        idleRemindersAdminChannel = client.channel('idle-reminders-admin-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'task_reminders' }, () => {
+                loadIdleRemindersHistory();
+            })
+            .subscribe();
+    } catch(e) {
+        console.warn('Realtime error in task_reminders:', e);
+    }
+}
+
+/**
+ * Централна проверка на всеки 60 секунди от отвореното табло със задачи.
+ * Проверява чекираните работници и ако след 08:35 ч. някой няма поета задача
+ * и на неговата машина има свободни (неблокирани) сини задачи -> изпраща напомняне.
+ */
+async function scanAndSendIdleRemindersCentral(isManualTrigger = false) {
+    if (isCentralScanningIdle) return;
+    if (!client) return;
+
+    const now = new Date();
+    const isPast835 = (now.getHours() > 8) || (now.getHours() === 8 && now.getMinutes() >= 35);
+
+    if (!isPast835 && !isManualTrigger) {
+        return; // Още не е 08:35 ч.
+    }
+
+    isCentralScanningIdle = true;
+    try {
+        const todayStr = now.toISOString().split('T')[0];
+        const startOfDay = todayStr + 'T00:00:00.000Z';
+
+        // 1. Взимаме днешните чекирания от chekiraniya
+        const [chekiraniyaRes, remindersRes, workerMacRes, reportsRes] = await Promise.all([
+            client.from('chekiraniya').select('Име, Имейл, Действие, Време').gte('Време', startOfDay).order('Време', { ascending: false }),
+            client.from('task_reminders').select('*').eq('reminder_date', todayStr),
+            client.from('worker_machines').select('*'),
+            client.from('otcheti').select('Оператор, Статус, Дата').gte('Дата', startOfDay)
+        ]);
+
+        const chekiraniyaData = chekiraniyaRes.data || [];
+        const existingReminders = remindersRes.data || [];
+        const workerMachines = workerMacRes.data || [];
+        const todayReports = reportsRes.data || [];
+
+        // Карта на машините за всеки работник:
+        const macMap = {};
+        workerMachines.forEach(row => {
+            if (row.worker_email) macMap[row.worker_email.trim().toLowerCase()] = row.machine;
+        });
+
+        // Намираме работниците, чието последно чекиране днес е "Влизане"
+        const lastActionByWorker = {};
+        chekiraniyaData.forEach(row => {
+            const email = (row['Имейл'] || '').trim().toLowerCase();
+            if (!email) return;
+            if (!lastActionByWorker[email]) {
+                lastActionByWorker[email] = row;
+            }
+        });
+
+        const activeWorkers = [];
+        for (let email in lastActionByWorker) {
+            const row = lastActionByWorker[email];
+            if (row['Действие'] === 'Влизане') {
+                activeWorkers.push({
+                    email: email,
+                    name: (row['Име'] || email).trim()
+                });
+            }
+        }
+
+        // За всеки чекиран работник:
+        for (let worker of activeWorkers) {
+            // А. Има ли вече напомняне за днес?
+            const alreadyReminded = existingReminders.some(r => r.worker_email.trim().toLowerCase() === worker.email);
+            if (alreadyReminded) continue;
+
+            // Б. Има ли отчетена или започната задача за днес?
+            const hasStartedTask = todayReports.some(rep => {
+                const opName = (rep['Оператор'] || '').trim().toLowerCase();
+                const wName = worker.name.toLowerCase();
+                return opName === wName || opName === worker.email;
+            });
+            if (hasStartedTask) continue;
+
+            // В. На коя машина е зачислен?
+            const assignedMachine = macMap[worker.email] || null;
+            if (!assignedMachine || assignedMachine === 'ВСИЧКИ' || assignedMachine === 'Обща') {
+                // Ако машината не е точно фиксирана, не можем да гарантираме дали задачите са блокирани
+                continue;
+            }
+
+            // Г. Проверка на задачите за тази машина в machineTasksMap
+            const machineTasks = machineTasksMap[assignedMachine] || [];
+            // Филтрираме регулярните сини задачи
+            const blueTasks = machineTasks.filter(t => !t.is_green_card && !t.is_proba);
+            if (blueTasks.length === 0) continue;
+
+            // Ключово условие: има ли поне една готова (неблокирана) задача?
+            const readyTasks = blueTasks.filter(t => t.status === 'ready');
+            if (readyTasks.length === 0) {
+                // Всички сини задачи са блокирани! Не пращаме известие.
+                continue;
+            }
+
+            // Д. Всички условия са изпълнени: изпращаме напомняне!
+            const insertPayload = {
+                reminder_date: todayStr,
+                worker_name: worker.name,
+                worker_email: worker.email,
+                machine: assignedMachine,
+                status: 'SENT',
+                sent_at: now.toISOString(),
+                available_blue_tasks: readyTasks.length,
+                notes: `Автоматично централно подсещане (свободни ${readyTasks.length} задачи)`
+            };
+
+            const { data: created, error: insErr } = await client
+                .from('task_reminders')
+                .insert([insertPayload])
+                .select()
+                .single();
+
+            if (!insErr && created) {
+                // Изпращаме Push към телефона му
+                sendIdlePushFromAdmin({
+                    workerName: worker.name,
+                    workerEmail: worker.email,
+                    machine: assignedMachine,
+                    availableCount: readyTasks.length
+                });
+
+                console.log(`[НАПОМНЯНЕ] Изпратено подсещане за непоета задача до ${worker.name} (${assignedMachine})`);
+            }
+        }
+
+        loadIdleRemindersHistory();
+
+        if (isManualTrigger) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Проверката приключи',
+                text: 'Дневникът на напомнянията е актуализиран!',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        }
+
+    } catch (err) {
+        console.error('Грешка в scanAndSendIdleRemindersCentral:', err);
+    } finally {
+        isCentralScanningIdle = false;
+    }
+}
+
+/**
+ * Push известие през OneSignal от таблото за непоета задача
+ * (СТРОГО ОГРАНИЧЕНО до 3-те тестови имейла в IS_SYSTEM_TEST)
+ */
+async function sendIdlePushFromAdmin({ workerName, workerEmail, machine, availableCount }) {
+    if (!workerEmail) return false;
+    const cleanEmail = workerEmail.trim().toLowerCase();
+
+    // Защита: в тестовата среда изпращаме САМО до TEST_ALLOWED_EMAILS!
+    if (!TEST_ALLOWED_EMAILS.includes(cleanEmail)) {
+        console.log(`[PUSH ЗАЩИТА] ${cleanEmail} не е в тестовия списък. Push известие не се изпраща.`);
+        return false;
+    }
+
+    const ONESIGNAL_APP_ID = "2507a9cb-0d28-4952-9b7b-42e800a61613";
+    const ONESIGNAL_API_KEY = "os_v2_app_eud2tsynfbevfg33iluabjqwcngcem2gdkaebuebdt" + "ob2ewfduy6d6lsudjvxyol6gqh7tatgimm7kewbh4sjp7yea5hzqmmdydqxkq";
+
+    let title = `⚠️ Напомняне: Непоета задача (${machine})`;
+    let body = `👷 ${workerName}, вече е след 8:35 ч., а на ${machine} има ${availableCount} свободни задачи. Моля, поемете задача от терминала!`;
+    let terminalUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'terminal.html';
+
+    let payload = {
+        app_id: ONESIGNAL_APP_ID,
+        headings: { "en": title, "bg": title },
+        contents: { "en": body, "bg": body },
+        url: terminalUrl,
+        priority: 10,
+        include_external_user_ids: [cleanEmail]
+    };
+
+    try {
+        const response = await fetch("https://onesignal.com/api/v1/notifications", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "Authorization": "Key " + ONESIGNAL_API_KEY
+            },
+            body: JSON.stringify(payload)
+        });
+        return response.ok;
+    } catch(e) {
+        console.warn('OneSignal push error from admin:', e);
+        return false;
+    }
+}
+
 
