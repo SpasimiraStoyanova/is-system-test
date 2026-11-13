@@ -1522,6 +1522,9 @@ async function loadTasks(isSilent = false) {
       }
 
       renderTasks(globalTasks);
+      if (typeof checkPendingSpotAudits === 'function') {
+          checkPendingSpotAudits();
+      }
   } catch (err) { console.error(err); document.getElementById('tasksContainer').innerHTML = '<div style="text-align:center; padding: 40px; color:#ef4444; font-weight:bold;">❌ Грешка:<br>' + err.message + '</div>'; }
 }
 

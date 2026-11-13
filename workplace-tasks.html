@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Табло Задачи & Приоритети по Машини | AMCI</title>
+    <title>Табло Машини &amp; Задачи | AMCI</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="admin/admin.css?v=11">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
@@ -22,6 +22,9 @@
             <span class="sub-brand">/ 🎯 Табло Машини &amp; Задачи</span>
         </div>
         <div class="action-buttons-group">
+            <button class="btn-primary" onclick="openSpotAuditModal()" style="background-color: #7c3aed; box-shadow: 0 2px 5px rgba(124, 58, 237, 0.35);">
+                <i class="fas fa-clipboard-check"></i> 🎯 Експресна Ревизия
+            </button>
             <button class="btn-primary" onclick="window.location.href='admin.html'" style="background-color: #475569;">
                 <i class="fas fa-arrow-left"></i> Към Главен Админ
             </button>
@@ -133,6 +136,120 @@
         </div>
     </div>
 
-    <script src="workplace-tasks.js?v=6"></script>
+    <!-- Модал за Експресна Ревизия (Spot Audit) -->
+    <div id="spotAuditModalBackdrop" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); z-index: 9999; justify-content: center; align-items: center; padding: 12px; box-sizing: border-box; backdrop-filter: blur(4px);">
+      <div style="background: white; border-radius: 16px; width: 100%; max-width: 860px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.35);">
+        
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid #e2e8f0; background: #fdf4ff;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.6em;">🎯</span>
+            <div>
+              <div style="font-weight: 800; color: #581c87; font-size: 1.1em;">Експресна Ревизия на Наличност (Spot Audit)</div>
+              <div style="font-size: 0.82em; color: #7e22ce;">Изпращане на внезапна проверка към терминала на работника</div>
+            </div>
+          </div>
+          <button onclick="closeSpotAuditModal()" style="border: none; background: #e9d5ff; border-radius: 50%; width: 32px; height: 32px; font-size: 14px; cursor: pointer; color: #6b21a8; font-weight: bold;">✖</button>
+        </div>
+
+        <!-- Табове -->
+        <div style="display: flex; border-bottom: 1px solid #e2e8f0; background: #faf5ff;">
+          <button class="audit-tab-btn active" id="tabBtn_newAudit" onclick="switchSpotAuditTab('new')">
+            🚀 Пусни нова проверка
+          </button>
+          <button class="audit-tab-btn" id="tabBtn_historyAudit" onclick="switchSpotAuditTab('history')">
+            📋 Дневник на ревизиите <span id="auditPendingBadge" style="background:#ea580c; color:white; font-size:0.75em; padding:2px 7px; border-radius:10px; font-weight:800; display:none; margin-left:4px;">0</span>
+          </button>
+        </div>
+
+        <!-- ТАБ 1: НОВА ПРОВЕРКА -->
+        <div id="spotAuditTab_new" style="padding: 20px; overflow-y: auto; flex: 1;">
+          <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+              <div>
+                <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 6px; font-size: 0.9em;">
+                  🏭 Работно място (Машина):
+                </label>
+                <select id="auditMachineSelect" class="custom-select" style="width: 100%; padding: 10px; border-radius: 8px; font-weight: 700;" onchange="onAuditMachineChange()">
+                  <option value="">-- Изберете машина --</option>
+                </select>
+              </div>
+
+              <div>
+                <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 6px; font-size: 0.9em;">
+                  📦 Детайл:
+                </label>
+                <select id="auditPartSelect" class="custom-select" style="width: 100%; padding: 10px; border-radius: 8px; font-weight: 700;" onchange="onAuditPartChange()">
+                  <option value="">-- Изберете детайл --</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+              <div>
+                <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 6px; font-size: 0.9em;">
+                  ⚙️ Операция:
+                </label>
+                <input type="text" id="auditOpInput" placeholder="Име на операция (напр. Оп. 10 Набиване)" style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 700; box-sizing: border-box;">
+              </div>
+
+              <div>
+                <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 6px; font-size: 0.9em;">
+                  🔢 Очаквани бройки (по система):
+                </label>
+                <input type="number" id="auditExpectedInput" min="0" placeholder="напр. 20" style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; font-size: 1.1em; color: #7e22ce; box-sizing: border-box;">
+              </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 6px; font-size: 0.9em;">
+                👷 Насочи към конкретен работник на смяна днес (по избор):
+              </label>
+              <select id="auditWorkerSelect" class="custom-select" style="width: 100%; padding: 10px; border-radius: 8px; font-weight: 700;">
+                <option value="">-- Всеки на това работно място (по подразбиране) --</option>
+              </select>
+              <small style="color: #64748b; font-size: 0.8em; margin-top: 4px; display: block;">
+                🟢 Показва само работниците, които са се чекирали на работа днес. Ако изберете човек, проверката ще се покаже <b>само на неговия екран</b>.
+              </small>
+            </div>
+
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; color: #1e40af; margin-bottom: 16px;">
+              ℹ️ При изпращане, на терминала на избраното работно място веднага ще излезе подсещащ банер. Работникът ще потвърди дали бройките са <b>точно толкова</b>, или ще въведе <b>реално преброените</b>.
+            </div>
+
+            <button type="button" onclick="submitNewSpotAudit()" style="background: #7c3aed; color: white; width: 100%; padding: 14px; border: none; border-radius: 10px; font-weight: 900; font-size: 1.1em; cursor: pointer; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);">
+              🚀 ИЗПРАТИ ИЗНЕАНДВАЩА ПРОВЕРКА КЪМ ТЕРМИНАЛА
+            </button>
+          </div>
+        </div>
+
+        <!-- ТАБ 2: ДНЕВНИК НА РЕВИЗИИТЕ -->
+        <div id="spotAuditTab_history" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+          <div style="padding: 10px 20px; background: #fff; border-bottom: 1px solid #edf2f7; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 6px;">
+              <button class="chip active" id="chip_audit_all" onclick="filterAuditHistory('all')">Всички (<span id="countAuditAll">0</span>)</button>
+              <button class="chip" id="chip_audit_pending" onclick="filterAuditHistory('pending')">⏳ Чакащи (<span id="countAuditPending">0</span>)</button>
+              <button class="chip" id="chip_audit_diff" onclick="filterAuditHistory('diff')">🔴 Разминавания (<span id="countAuditDiff">0</span>)</button>
+              <button class="chip" id="chip_audit_match" onclick="filterAuditHistory('match')">🟢 Точни (<span id="countAuditMatch">0</span>)</button>
+            </div>
+            <button class="btn-secondary" onclick="loadSpotAuditHistory()" style="font-size: 0.85em; padding: 6px 12px;">
+              <i class="fas fa-sync-alt"></i> Опресни дневника
+            </button>
+          </div>
+
+          <div style="padding: 16px; overflow-y: auto; flex: 1; background: #f8fafc;" id="spotAuditsTableWrap">
+            <div style="text-align: center; color: #94a3b8; padding: 40px 10px;">Зареждане на дневника...</div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="padding: 10px 20px; border-top: 1px solid #e2e8f0; background: #fff; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.8em; color: #94a3b8;">🎯 Записите пазят персонална отговорност (име на работника + дата/час)</span>
+          <button onclick="closeSpotAuditModal()" style="padding: 8px 18px; background: #64748b; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.85em; cursor: pointer;">Затвори</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="workplace-tasks.js?v=7"></script>
 </body>
 </html>

@@ -846,7 +846,14 @@ function renderAllMachines() {
                                     ${escapeHtml(t.detail_name)}
                                     <span class="task-detail-code">${escapeHtml(t.detail_id)}</span>
                                 </div>
-                                <div>${drawingBtn}</div>
+                                <div style="display:flex; align-items:center; gap:4px;">
+                                    ${drawingBtn}
+                                    <button type="button" class="btn-drawing" style="width:22px; height:22px; font-size:0.75em; background:#7c3aed; color:white; border:none; border-radius:4px; cursor:pointer;" 
+                                        title="Пусни изненадваща ревизия за този детайл на ${escapeHtml(machineName)}" 
+                                        onclick="quickTriggerSpotAudit('${escapeHtml(machineName)}', '${escapeHtml(t.detail_id)}', '${escapeHtml(t.op_name)}', ${t.available_prev || t.remain_qty || 0})">
+                                        <i class="fas fa-clipboard-check"></i>
+                                    </button>
+                                </div>
                             </div>
                             <div class="task-op-row">
                                 <span class="task-op-badge">Оп. ${t.op_num}</span>
@@ -1349,4 +1356,430 @@ function exportToExcel() {
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ==============================================================================
+// SPOT AUDITS (ЕКСПРЕСНИ РЕВИЗИИ) - УПРАВЛЕНИЕ В ТАБЛО ЗАДАЧИ
+// ==============================================================================
+
+let rawSpotAudits = [];
+let currentAuditFilter = 'all';
+
+function openSpotAuditModal(prefillMachine = '', prefillPart = '', prefillOp = '', prefillQty = '') {
+    const backdrop = document.getElementById('spotAuditModalBackdrop');
+    if (!backdrop) return;
+    backdrop.style.display = 'flex';
+
+    populateAuditMachineSelect();
+    loadCheckedInWorkers();
+    
+    if (prefillMachine) {
+        document.getElementById('auditMachineSelect').value = prefillMachine;
+        onAuditMachineChange();
+    }
+    if (prefillPart) {
+        document.getElementById('auditPartSelect').value = prefillPart;
+        onAuditPartChange();
+    }
+    if (prefillOp) {
+        document.getElementById('auditOpInput').value = prefillOp;
+    }
+    if (prefillQty !== '' && prefillQty !== null && prefillQty !== undefined) {
+        document.getElementById('auditExpectedInput').value = prefillQty;
+    }
+
+    switchSpotAuditTab('new');
+    loadSpotAuditHistory();
+}
+
+function closeSpotAuditModal() {
+    const backdrop = document.getElementById('spotAuditModalBackdrop');
+    if (backdrop) backdrop.style.display = 'none';
+}
+
+function switchSpotAuditTab(tab) {
+    const tabNew = document.getElementById('spotAuditTab_new');
+    const tabHistory = document.getElementById('spotAuditTab_history');
+    const btnNew = document.getElementById('tabBtn_newAudit');
+    const btnHistory = document.getElementById('tabBtn_historyAudit');
+
+    if (tab === 'new') {
+        tabNew.style.display = 'block';
+        tabHistory.style.display = 'none';
+        btnNew.classList.add('active');
+        btnHistory.classList.remove('active');
+    } else {
+        tabNew.style.display = 'none';
+        tabHistory.style.display = 'flex';
+        btnNew.classList.remove('active');
+        btnHistory.classList.add('active');
+        loadSpotAuditHistory();
+    }
+}
+
+function populateAuditMachineSelect() {
+    const select = document.getElementById('auditMachineSelect');
+    if (!select) return;
+
+    let currentVal = select.value;
+    let html = '<option value="">-- Изберете машина --</option>';
+    allUniqueMachines.forEach(m => {
+        html += `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`;
+    });
+    select.innerHTML = html;
+    if (currentVal) select.value = currentVal;
+}
+
+function onAuditMachineChange() {
+    const mSelect = document.getElementById('auditMachineSelect');
+    const pSelect = document.getElementById('auditPartSelect');
+    if (!mSelect || !pSelect) return;
+
+    let machine = mSelect.value;
+    let tasks = machineTasksMap[machine] || [];
+
+    let uniqueParts = {};
+    tasks.forEach(t => {
+        if (!uniqueParts[t.detail_id]) uniqueParts[t.detail_id] = t;
+    });
+
+    let html = '<option value="">-- Изберете детайл --</option>';
+    Object.values(uniqueParts).forEach(t => {
+        html += `<option value="${escapeHtml(t.detail_id)}" data-op="${escapeHtml(t.op_name)}" data-qty="${t.available_prev || t.remain_qty || 0}">${escapeHtml(t.detail_id)} (${escapeHtml(t.detail_name)})</option>`;
+    });
+
+    pSelect.innerHTML = html;
+    document.getElementById('auditOpInput').value = '';
+    document.getElementById('auditExpectedInput').value = '';
+}
+
+function onAuditPartChange() {
+    const pSelect = document.getElementById('auditPartSelect');
+    const opInput = document.getElementById('auditOpInput');
+    const expInput = document.getElementById('auditExpectedInput');
+    if (!pSelect || !opInput || !expInput) return;
+
+    const opt = pSelect.options[pSelect.selectedIndex];
+    if (opt && opt.value) {
+        opInput.value = opt.getAttribute('data-op') || '';
+        expInput.value = opt.getAttribute('data-qty') || '0';
+    }
+}
+
+function quickTriggerSpotAudit(machine, detailId, opName, qty) {
+    openSpotAuditModal(machine, detailId, opName, qty);
+}
+
+async function loadCheckedInWorkers() {
+    const wSelect = document.getElementById('auditWorkerSelect');
+    if (!wSelect) return;
+
+    try {
+        let today = new Date();
+        today.setHours(0, 0, 0, 0);
+        let todayIso = today.toISOString();
+
+        const [chekiraniyaRes, personalRes] = await Promise.all([
+            client.from('chekiraniya')
+                .select('*')
+                .gte('Време', todayIso)
+                .order('Време', { ascending: false }),
+            client.from('personal').select('Имейл, Име')
+        ]);
+
+        let emailToName = {};
+        if (personalRes.data) {
+            personalRes.data.forEach(p => {
+                if (p['Имейл'] && p['Име']) emailToName[p['Имейл'].trim().toLowerCase()] = p['Име'].trim();
+            });
+        }
+
+        let latestByWorker = {};
+        (chekiraniyaRes.data || []).forEach(row => {
+            let email = String(row['Имейл'] || '').trim().toLowerCase();
+            let name = String(row['Име'] || emailToName[email] || row['Имейл'] || '').trim();
+            if (!name) return;
+            if (!latestByWorker[name]) {
+                latestByWorker[name] = row;
+            }
+        });
+
+        let checkedInList = [];
+        for (let name in latestByWorker) {
+            let row = latestByWorker[name];
+            if (row['Действие'] === 'Влизане') {
+                let time = '';
+                try {
+                    let d = new Date(row['Време']);
+                    time = d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+                } catch(e) {}
+                checkedInList.push({ name, time });
+            }
+        }
+
+        checkedInList.sort((a, b) => a.name.localeCompare(b.name, 'bg'));
+
+        let html = '<option value="">-- Всеки на това работно място (по подразбиране) --</option>';
+        checkedInList.forEach(w => {
+            html += `<option value="${escapeHtml(w.name)}">🟢 ${escapeHtml(w.name)} (чекиран в ${w.time} ч.)</option>`;
+        });
+
+        if (checkedInList.length === 0) {
+            html += '<option value="" disabled>Няма чекирани работници за днес</option>';
+        }
+
+        wSelect.innerHTML = html;
+    } catch(err) {
+        console.warn('Грешка при зареждане на чекирани работници:', err);
+    }
+}
+
+async function submitNewSpotAudit() {
+    const machine = (document.getElementById('auditMachineSelect').value || '').trim();
+    const targetWorker = (document.getElementById('auditWorkerSelect').value || '').trim() || null;
+    const partCode = (document.getElementById('auditPartSelect').value || '').trim();
+    const op = (document.getElementById('auditOpInput').value || '').trim();
+    const expVal = document.getElementById('auditExpectedInput').value;
+    const expQty = parseFloat(expVal);
+
+    if (!machine) {
+        Swal.fire('Липсва машина', 'Моля, изберете работно място (машина)!', 'warning');
+        return;
+    }
+    if (!partCode) {
+        Swal.fire('Липсва детайл', 'Моля, изберете детайл!', 'warning');
+        return;
+    }
+    if (!op) {
+        Swal.fire('Липсва операция', 'Моля, въведете операция!', 'warning');
+        return;
+    }
+    if (isNaN(expQty) || expQty < 0) {
+        Swal.fire('Невалидно количество', 'Моля, въведете валидно очаквано количество!', 'warning');
+        return;
+    }
+
+    const workerTargetDesc = targetWorker 
+        ? `<div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:6px 10px; color:#166534; font-weight:700; margin-top:8px;">🎯 Насочена персонално към: <b>${escapeHtml(targetWorker)}</b> (ще се покаже САМО на неговия екран)</div>`
+        : `<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; color:#64748b; font-weight:600; margin-top:8px;">👥 Насочена към: <b>Всеки на това работно място</b></div>`;
+
+    const confirmRes = await Swal.fire({
+        title: 'Изпращане на ревизия',
+        html: `Ще изпратите изненадваща проверка към <b>${escapeHtml(machine)}</b>:<br><br>
+               Детайл: <b>${escapeHtml(partCode)}</b><br>
+               Операция: <b>${escapeHtml(op)}</b><br>
+               Очаквани: <b style="color:#7c3aed; font-size:1.15em;">${expQty} бр.</b>
+               ${workerTargetDesc}`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#7c3aed',
+        cancelButtonColor: '#94a3b8',
+        confirmButtonText: '🚀 ДА, ИЗПРАТИ',
+        cancelButtonText: 'Отказ'
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
+    Swal.fire({ title: 'Изпращане...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    try {
+        const { error } = await client.from('spot_audits').insert([{
+            target_machine: machine,
+            target_worker: targetWorker,
+            part_code: partCode,
+            operation: op,
+            expected_qty: expQty,
+            status: 'PENDING'
+        }]);
+
+        if (error) throw error;
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Проверката е изпратена!',
+            text: targetWorker 
+                ? `Сигналът е изпратен персонално към работник ${targetWorker}.` 
+                : `Сигналът е изпратен към терминала на работно място "${machine}".`,
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+        switchSpotAuditTab('history');
+        loadSpotAuditHistory();
+
+    } catch (err) {
+        console.error('Грешка при изпращане на ревизия:', err);
+        Swal.fire('Грешка', err.message, 'error');
+    }
+}
+
+async function loadSpotAuditHistory() {
+    const wrap = document.getElementById('spotAuditsTableWrap');
+    if (!wrap) return;
+
+    try {
+        const { data, error } = await client
+            .from('spot_audits')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+        if (error) throw error;
+        rawSpotAudits = data || [];
+        updateSpotAuditBadges();
+        renderSpotAuditHistoryTable();
+
+    } catch (err) {
+        console.error('Грешка при зареждане на дневника за ревизии:', err);
+        wrap.innerHTML = `<div style="text-align:center; color:#ef4444; padding:30px;">❌ Грешка при зареждане: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+function updateSpotAuditBadges() {
+    let pending = rawSpotAudits.filter(a => a.status === 'PENDING').length;
+    let diff = rawSpotAudits.filter(a => a.status === 'DISCREPANCY').length;
+    let match = rawSpotAudits.filter(a => a.status === 'MATCH').length;
+    let total = rawSpotAudits.length;
+
+    const elTotal = document.getElementById('countAuditAll');
+    const elPending = document.getElementById('countAuditPending');
+    const elDiff = document.getElementById('countAuditDiff');
+    const elMatch = document.getElementById('countAuditMatch');
+    const badgePending = document.getElementById('auditPendingBadge');
+
+    if (elTotal) elTotal.innerText = total;
+    if (elPending) elPending.innerText = pending;
+    if (elDiff) elDiff.innerText = diff;
+    if (elMatch) elMatch.innerText = match;
+
+    if (badgePending) {
+        if (pending > 0) {
+            badgePending.style.display = 'inline-block';
+            badgePending.innerText = pending;
+        } else {
+            badgePending.style.display = 'none';
+        }
+    }
+}
+
+function filterAuditHistory(filter) {
+    currentAuditFilter = filter;
+    ['all', 'pending', 'diff', 'match'].forEach(f => {
+        const chip = document.getElementById('chip_audit_' + f);
+        if (chip) {
+            if (f === filter) chip.classList.add('active');
+            else chip.classList.remove('active');
+        }
+    });
+    renderSpotAuditHistoryTable();
+}
+
+function renderSpotAuditHistoryTable() {
+    const wrap = document.getElementById('spotAuditsTableWrap');
+    if (!wrap) return;
+
+    let list = rawSpotAudits;
+    if (currentAuditFilter === 'pending') list = list.filter(a => a.status === 'PENDING');
+    else if (currentAuditFilter === 'diff') list = list.filter(a => a.status === 'DISCREPANCY');
+    else if (currentAuditFilter === 'match') list = list.filter(a => a.status === 'MATCH');
+
+    if (list.length === 0) {
+        wrap.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:40px; font-weight:700;">Няма намерени записи в дневника.</div>`;
+        return;
+    }
+
+    let rowsHtml = '';
+    list.forEach(a => {
+        let createdD = new Date(a.created_at);
+        let timeStr = createdD.toLocaleDateString('bg-BG') + ' ' + createdD.getHours().toString().padStart(2, '0') + ':' + createdD.getMinutes().toString().padStart(2, '0');
+
+        let statusHtml = '';
+        let diffText = '-';
+        let reportedText = '-';
+        let workerText = a.worker_name ? `<b>${escapeHtml(a.worker_name)}</b>` : '<span style="color:#94a3b8;">Очаква отговор...</span>';
+
+        if (a.status === 'PENDING') {
+            statusHtml = `<span class="audit-status-badge audit-status-pending">⏳ Очаква отговор</span>`;
+        } else if (a.status === 'MATCH') {
+            statusHtml = `<span class="audit-status-badge audit-status-match">🟢 Точно съвпадение</span>`;
+            reportedText = `<b>${a.reported_qty} бр.</b>`;
+            diffText = `<span style="color:#16a34a; font-weight:800;">0 бр.</span>`;
+        } else if (a.status === 'DISCREPANCY') {
+            let diffVal = parseFloat(a.difference_qty) || 0;
+            let diffSign = diffVal > 0 ? '+' : '';
+            statusHtml = `<span class="audit-status-badge audit-status-diff">🔴 Разминаване (${diffSign}${diffVal})</span>`;
+            reportedText = `<b style="color:#dc2626;">${a.reported_qty} бр.</b>`;
+            diffText = `<b style="color:#dc2626;">${diffSign}${diffVal} бр.</b>`;
+        } else if (a.status === 'CANCELLED') {
+            statusHtml = `<span class="audit-status-badge" style="background:#f1f5f9; color:#64748b;">⚪ Анулирана</span>`;
+        }
+
+        let actionHtml = '';
+        if (a.status === 'PENDING') {
+            actionHtml = `<button onclick="cancelSpotAudit(${a.id})" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; padding:3px 8px; font-size:0.8em; color:#dc2626; cursor:pointer; font-weight:700;" title="Анулирай проверката">❌ Отказ</button>`;
+        }
+
+        rowsHtml += `
+            <tr>
+                <td style="font-size:0.85em; color:#64748b; white-space:nowrap;">${timeStr}</td>
+                <td>
+                    <b style="color:#1e293b;">${escapeHtml(a.target_machine)}</b>
+                    ${a.target_worker 
+                        ? `<div style="font-size:0.8em; color:#6b21a8; font-weight:800; margin-top:2px;" title="Насочена лично към този работник">🎯 ${escapeHtml(a.target_worker)}</div>` 
+                        : '<div style="font-size:0.78em; color:#94a3b8; margin-top:2px;">👥 Всеки на машината</div>'}
+                </td>
+                <td>
+                    <div style="font-weight:800; color:#4338ca;">${escapeHtml(a.part_code)}</div>
+                    <div style="font-size:0.82em; color:#64748b;">${escapeHtml(a.operation)}</div>
+                </td>
+                <td style="font-weight:800; color:#7e22ce;">${a.expected_qty} бр.</td>
+                <td>${reportedText}</td>
+                <td>${diffText}</td>
+                <td>${workerText}</td>
+                <td>${statusHtml}</td>
+                <td style="text-align:right;">${actionHtml}</td>
+            </tr>
+        `;
+    });
+
+    wrap.innerHTML = `
+        <table class="spot-audits-table">
+            <thead>
+                <tr>
+                    <th>Дата / Час</th>
+                    <th>Работно място</th>
+                    <th>Детайл &amp; Оп.</th>
+                    <th>Очаквани</th>
+                    <th>Преброени</th>
+                    <th>Разлика</th>
+                    <th>Проверил (Работник)</th>
+                    <th>Резултат</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rowsHtml}
+            </tbody>
+        </table>
+    `;
+}
+
+async function cancelSpotAudit(id) {
+    const res = await Swal.fire({
+        title: 'Анулиране на ревизия',
+        text: 'Сигурни ли сте, че искате да анулирате тази изпратена проверка?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc2626',
+        confirmButtonText: 'Да, анулирай',
+        cancelButtonText: 'Отказ'
+    });
+    if (!res.isConfirmed) return;
+
+    try {
+        await client.from('spot_audits').update({ status: 'CANCELLED' }).eq('id', id);
+        loadSpotAuditHistory();
+    } catch(err) {
+        Swal.fire('Грешка', err.message, 'error');
+    }
 }
