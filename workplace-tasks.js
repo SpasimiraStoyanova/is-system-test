@@ -1369,6 +1369,58 @@ function escapeHtml(str) {
 let rawSpotAudits = [];
 let currentAuditFilter = 'all';
 
+// Проследяване на прегледаните/прочетените ревизии
+function getReadAuditInfo() {
+    let lastTime = 0;
+    let readIds = new Set();
+    try {
+        let lastStr = localStorage.getItem('last_read_spot_audit_time');
+        if (lastStr) lastTime = new Date(lastStr).getTime();
+        let parsedIds = JSON.parse(localStorage.getItem('read_spot_audit_ids') || '[]');
+        readIds = new Set(parsedIds);
+    } catch(e) {}
+    return { lastTime, readIds };
+}
+
+function isAuditUnread(audit) {
+    if (!audit || audit.status !== 'DISCREPANCY') return false;
+    const { lastTime, readIds } = getReadAuditInfo();
+    if (readIds.has(audit.id)) return false;
+    let auditTime = new Date(audit.answered_at || audit.created_at).getTime();
+    return auditTime > lastTime;
+}
+
+function markAllSpotAuditsAsRead(showFeedback = false) {
+    try {
+        localStorage.setItem('last_read_spot_audit_time', new Date().toISOString());
+        let allIds = (rawSpotAudits || []).map(a => a.id).filter(Boolean);
+        let currentRead = [];
+        try { currentRead = JSON.parse(localStorage.getItem('read_spot_audit_ids') || '[]'); } catch(e) {}
+        let merged = Array.from(new Set([...currentRead, ...allIds]));
+        localStorage.setItem('read_spot_audit_ids', JSON.stringify(merged));
+    } catch(e) {}
+
+    updateSpotAuditBadges();
+
+    if (showFeedback && typeof Swal !== 'undefined') {
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 2000,
+            timerProgressBar: true
+        });
+        Toast.fire({
+            icon: 'success',
+            title: 'Известията са маркирани като прегледани'
+        });
+    }
+
+    try {
+        window.dispatchEvent(new Event('storage'));
+    } catch(e) {}
+}
+
 function openSpotAuditModal(prefillMachine = '', prefillPart = '', prefillOp = '', prefillQty = '') {
     const backdrop = document.getElementById('spotAuditModalBackdrop');
     if (!backdrop) return;
@@ -1392,13 +1444,20 @@ function openSpotAuditModal(prefillMachine = '', prefillPart = '', prefillOp = '
         document.getElementById('auditExpectedInput').value = prefillQty;
     }
 
-    switchSpotAuditTab('new');
+    if (prefillMachine) {
+        switchSpotAuditTab('new');
+    } else {
+        // Отворено от горния бутон с известието -> отваряме направо дневника и маркираме като прочетено
+        switchSpotAuditTab('history');
+        markAllSpotAuditsAsRead();
+    }
     loadSpotAuditHistory();
 }
 
 function closeSpotAuditModal() {
     const backdrop = document.getElementById('spotAuditModalBackdrop');
     if (backdrop) backdrop.style.display = 'none';
+    markAllSpotAuditsAsRead();
 }
 
 function switchSpotAuditTab(tab) {
@@ -1417,6 +1476,7 @@ function switchSpotAuditTab(tab) {
         tabHistory.style.display = 'flex';
         btnNew.classList.remove('active');
         btnHistory.classList.add('active');
+        markAllSpotAuditsAsRead();
         loadSpotAuditHistory();
     }
 }
@@ -1645,6 +1705,9 @@ function updateSpotAuditBadges() {
     let match = rawSpotAudits.filter(a => a.status === 'MATCH').length;
     let total = rawSpotAudits.length;
 
+    // Непрочетени разминавания (за които операторът е подал сигнал, но админът още не ги е прегледал)
+    let unreadDiff = rawSpotAudits.filter(a => isAuditUnread(a)).length;
+
     const elTotal = document.getElementById('countAuditAll');
     const elPending = document.getElementById('countAuditPending');
     const elDiff = document.getElementById('countAuditDiff');
@@ -1657,28 +1720,35 @@ function updateSpotAuditBadges() {
     if (elDiff) elDiff.innerText = diff;
     if (elMatch) elMatch.innerText = match;
 
+    // Бадж на таб "Дневник на ревизиите" в модала
     if (badgePending) {
-        if (pending > 0) {
+        if (unreadDiff > 0) {
             badgePending.style.display = 'inline-block';
+            badgePending.style.background = '#ef4444';
+            badgePending.innerText = unreadDiff;
+            badgePending.title = `Има ${unreadDiff} непрегледани разминавания`;
+        } else if (pending > 0) {
+            badgePending.style.display = 'inline-block';
+            badgePending.style.background = '#ea580c';
             badgePending.innerText = pending;
+            badgePending.title = `Има ${pending} чакащи отговор ревизии`;
         } else {
             badgePending.style.display = 'none';
         }
     }
 
+    // Червено известие в горната лента (Бутон "🎯 Експресна Ревизия")
+    // Показва се САМО ако има непрегледано разминаване! Когато се прочете -> изчезва!
     if (navBadge) {
-        if (diff > 0) {
+        if (unreadDiff > 0) {
             navBadge.style.display = 'inline-block';
             navBadge.style.background = '#ef4444';
-            navBadge.innerText = diff;
-            navBadge.title = `Има ${diff} отчетени разминавания от ревизии!`;
-        } else if (pending > 0) {
-            navBadge.style.display = 'inline-block';
-            navBadge.style.background = '#f59e0b';
-            navBadge.innerText = pending;
-            navBadge.title = `Има ${pending} чакащи ревизии`;
+            navBadge.innerText = unreadDiff;
+            navBadge.title = `Има ${unreadDiff} ново/и непрегледано/и разминаване/я от ревизия!`;
+            navBadge.style.animation = 'pulse 1.8s infinite';
         } else {
             navBadge.style.display = 'none';
+            navBadge.style.animation = 'none';
         }
     }
 }
@@ -1728,7 +1798,9 @@ function renderSpotAuditHistoryTable() {
         } else if (a.status === 'DISCREPANCY') {
             let diffVal = parseFloat(a.difference_qty) || 0;
             let diffSign = diffVal > 0 ? '+' : '';
-            statusHtml = `<span class="audit-status-badge audit-status-diff">🔴 Разминаване (${diffSign}${diffVal})</span>`;
+            let isUnread = isAuditUnread(a);
+            let unreadTag = isUnread ? `<span style="background:#fee2e2; color:#b91c1c; font-size:0.7em; font-weight:900; padding:2px 6px; border-radius:4px; margin-left:5px; border:1px solid #fecaca;">НОВО</span>` : '';
+            statusHtml = `<span class="audit-status-badge audit-status-diff">🔴 Разминаване (${diffSign}${diffVal})${unreadTag}</span>`;
             reportedText = `<b style="color:#dc2626;">${a.reported_qty} бр.</b>`;
             diffText = `<b style="color:#dc2626;">${diffSign}${diffVal} бр.</b>`;
         } else if (a.status === 'CANCELLED') {
@@ -1877,6 +1949,8 @@ function onSpotAuditAnswerReceived(audit) {
             cancelButtonText: 'Разбрах',
             backdrop: true
         }).then((res) => {
+            // Щом админът е видял съобщението и натисне някой от бутоните, отбелязваме като прочетено
+            markAllSpotAuditsAsRead();
             if (res.isConfirmed) {
                 openSpotAuditModal();
                 switchSpotAuditTab('history');
@@ -1905,6 +1979,15 @@ let spotAuditAdminChannel = null;
 function initSpotAuditsAdminRealtime() {
     try {
         if (!client) return;
+
+        // Синхронизация между различни отворени табове при прочитане
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'last_read_spot_audit_time' || e.key === 'read_spot_audit_ids') {
+                updateSpotAuditBadges();
+                renderSpotAuditHistoryTable();
+            }
+        });
+
         spotAuditAdminChannel = client.channel('spot-audits-admin-realtime')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'spot_audits' }, (payload) => {
                 const newRow = payload.new || {};

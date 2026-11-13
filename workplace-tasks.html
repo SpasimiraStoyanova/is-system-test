@@ -233,9 +233,14 @@
               <button class="chip" id="chip_audit_diff" onclick="filterAuditHistory('diff')">🔴 Разминавания (<span id="countAuditDiff">0</span>)</button>
               <button class="chip" id="chip_audit_match" onclick="filterAuditHistory('match')">🟢 Точни (<span id="countAuditMatch">0</span>)</button>
             </div>
-            <button class="btn-secondary" onclick="loadSpotAuditHistory()" style="font-size: 0.85em; padding: 6px 12px;">
-              <i class="fas fa-sync-alt"></i> Опресни дневника
-            </button>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-secondary" onclick="markAllSpotAuditsAsRead(true)" style="font-size: 0.85em; padding: 6px 12px; background: #f8fafc; border: 1px solid #cbd5e1; color: #475569; border-radius: 8px; cursor: pointer; font-weight: 700;" title="Изчистване на червения бадж за известие">
+                <i class="fas fa-check-double text-success"></i> Маркирай като прегледани
+              </button>
+              <button class="btn-secondary" onclick="loadSpotAuditHistory()" style="font-size: 0.85em; padding: 6px 12px;">
+                <i class="fas fa-sync-alt"></i> Опресни дневника
+              </button>
+            </div>
           </div>
 
           <div style="padding: 16px; overflow-y: auto; flex: 1; background: #f8fafc;" id="spotAuditsTableWrap">
@@ -251,6 +256,6 @@
       </div>
     </div>
 
-    <script src="workplace-tasks.js?v=7"></script>
+    <script src="workplace-tasks.js?v=8"></script>
 </body>
 </html>

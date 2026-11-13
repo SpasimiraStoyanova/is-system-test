@@ -485,13 +485,28 @@ async function checkAdminSpotAudits() {
 
         const { data, error } = await client
             .from('spot_audits')
-            .select('id, status')
+            .select('id, status, created_at, answered_at')
             .eq('status', 'DISCREPANCY')
             .gte('created_at', today.toISOString());
 
         if (error) return;
 
-        let count = data ? data.length : 0;
+        let lastTime = 0;
+        let readIds = new Set();
+        try {
+            let lastStr = localStorage.getItem('last_read_spot_audit_time');
+            if (lastStr) lastTime = new Date(lastStr).getTime();
+            let parsedIds = JSON.parse(localStorage.getItem('read_spot_audit_ids') || '[]');
+            readIds = new Set(parsedIds);
+        } catch(e) {}
+
+        let unread = (data || []).filter(a => {
+            if (readIds.has(a.id)) return false;
+            let t = new Date(a.answered_at || a.created_at).getTime();
+            return t > lastTime;
+        });
+
+        let count = unread.length;
         if (count > 0) {
             subBadge.innerText = count;
             subBadge.style.display = 'inline-block';
@@ -505,6 +520,14 @@ let adminSpotAuditRealtime = null;
 function initAdminSpotAuditRealtime() {
     try {
         if (!client) return;
+
+        // Синхронизация при отбелязване на ревизия като прегледана
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'last_read_spot_audit_time' || e.key === 'read_spot_audit_ids') {
+                checkAdminSpotAudits();
+            }
+        });
+
         checkAdminSpotAudits();
 
         adminSpotAuditRealtime = client.channel('admin-spot-audits-live')
@@ -539,6 +562,19 @@ function initAdminSpotAuditRealtime() {
                         confirmButtonText: '🎯 Отвори Табло Машини & Задачи',
                         cancelButtonText: 'Затвори'
                     }).then((res) => {
+                        try {
+                            localStorage.setItem('last_read_spot_audit_time', new Date().toISOString());
+                            let readIds = [];
+                            try { readIds = JSON.parse(localStorage.getItem('read_spot_audit_ids') || '[]'); } catch(e) {}
+                            if (newRow && newRow.id && !readIds.includes(newRow.id)) {
+                                readIds.push(newRow.id);
+                                localStorage.setItem('read_spot_audit_ids', JSON.stringify(readIds));
+                            }
+                            window.dispatchEvent(new Event('storage'));
+                        } catch(e) {}
+
+                        checkAdminSpotAudits();
+
                         if (res.isConfirmed) {
                             window.open('workplace-tasks.html', '_blank');
                         }
