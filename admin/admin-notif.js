@@ -40,7 +40,7 @@ async function sendOneSignalNotification(target, title, body) {
 
         const secretKey = "os_v2_app_eud2tsynfbevfg33iluabjqwcngcem2gdkaebuebdt" + "ob2ewfduy6d6lsudjvxyol6gqh7tatgimm7kewbh4sjp7yea5hzqmmdydqxkq";
 
-        const response = await fetch("https://corsproxy.io/?https://onesignal.com/api/v1/notifications", {
+        const response = await fetch("https://onesignal.com/api/v1/notifications", {
             method: "POST",
             headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": "Key " + secretKey },
             body: JSON.stringify(payload)

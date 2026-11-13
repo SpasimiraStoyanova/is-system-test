@@ -69,11 +69,72 @@ async function initTerminal() {
     checkSystemMessage();
     loadTasks();
     if (typeof loadHistoryFromDB === 'function') loadHistoryFromDB();
+    setTimeout(checkAndPromptNotifications, 1000);
 
     setInterval(() => { 
         if (!activeTaskId && isUserCheckedIn) loadTasks(true); 
         checkSystemCommands();
     }, 30000); 
+}
+
+function checkAndPromptNotifications() {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'granted') {
+        const area = document.getElementById('terminalPushNoticeArea');
+        if (area) area.style.display = 'none';
+        return;
+    }
+
+    const area = document.getElementById('terminalPushNoticeArea');
+    if (!area) return;
+
+    if (Notification.permission === 'denied') {
+        area.innerHTML = `
+            <div style="background:#fff1f2; border:1px solid #fecdd3; border-radius:10px; padding:10px 14px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <div style="font-size:0.85em; color:#991b1b; font-weight:700;">
+                    ⚠️ Известията за този телефон са блокирани от браузъра. За да чувате ревизиите при заключен екран, разрешете ги от катинарчето 🔒 до адреса.
+                </div>
+            </div>
+        `;
+        area.style.display = 'block';
+    } else {
+        area.innerHTML = `
+            <div style="background:#eff6ff; border:1.5px solid #93c5fd; border-radius:12px; padding:12px 16px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; box-shadow:0 2px 8px rgba(37,99,235,0.12);">
+                <div style="font-size:0.9em; color:#1e40af; font-weight:700; display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:1.4em;">🔔</span>
+                    <span>Разрешете известия, за да чувате ревизиите дори при заключен екран:</span>
+                </div>
+                <button type="button" onclick="requestTerminalPushPermission()" style="background:#2563eb; color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:900; font-size:0.9em; cursor:pointer; box-shadow:0 2px 5px rgba(37,99,235,0.3);">
+                    👉 Разреши известията
+                </button>
+            </div>
+        `;
+        area.style.display = 'block';
+    }
+}
+
+async function requestTerminalPushPermission() {
+    try {
+        if (window.OneSignalDeferred) {
+            window.OneSignalDeferred.push(async function(OneSignal) {
+                await OneSignal.Notifications.requestPermission();
+                if (Notification.permission === 'granted') {
+                    const area = document.getElementById('terminalPushNoticeArea');
+                    if (area) area.style.display = 'none';
+                    if (currentEmail) OneSignal.login(currentEmail);
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Известията са разрешени!',
+                        text: 'Вече ще получавате звукови Push известия дори при заключен екран.',
+                        timer: 2500,
+                        showConfirmButton: false
+                    });
+                }
+            });
+        }
+    } catch(e) {
+        console.warn('Грешка при искане на известия:', e);
+    }
 }
 
 let terminalStartTime = new Date().getTime();
