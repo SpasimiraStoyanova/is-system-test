@@ -22,8 +22,9 @@
             <span class="sub-brand">/ 🎯 Табло Машини &amp; Задачи</span>
         </div>
         <div class="action-buttons-group">
-            <button class="btn-primary" onclick="openSpotAuditModal()" style="background-color: #7c3aed; box-shadow: 0 2px 5px rgba(124, 58, 237, 0.35);">
-                <i class="fas fa-clipboard-check"></i> 🎯 Експресна Ревизия
+            <button class="btn-primary" onclick="openSpotAuditModal()" style="background-color: #7c3aed; box-shadow: 0 2px 5px rgba(124, 58, 237, 0.35); display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-clipboard-check"></i> <span>🎯 Експресна Ревизия</span>
+                <span id="navSpotAuditBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78em; font-weight: 900; box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);">0</span>
             </button>
             <button class="btn-primary" onclick="window.location.href='admin.html'" style="background-color: #475569;">
                 <i class="fas fa-arrow-left"></i> Към Главен Админ

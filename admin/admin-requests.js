@@ -469,3 +469,92 @@ async function deleteMaterialRequest(id) {
         }
     }
 }
+
+
+// ========================================================
+// ИЗВЕСТИЯ ЗА ЕКСПРЕСНИ РЕВИЗИИ (SPOT AUDITS) В ГЛАВЕН АДМИН
+// ========================================================
+
+async function checkAdminSpotAudits() {
+    try {
+        const subBadge = document.getElementById('adminSpotAuditSubBadge');
+        if (!subBadge) return;
+
+        let today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const { data, error } = await client
+            .from('spot_audits')
+            .select('id, status')
+            .eq('status', 'DISCREPANCY')
+            .gte('created_at', today.toISOString());
+
+        if (error) return;
+
+        let count = data ? data.length : 0;
+        if (count > 0) {
+            subBadge.innerText = count;
+            subBadge.style.display = 'inline-block';
+        } else {
+            subBadge.style.display = 'none';
+        }
+    } catch(e) {}
+}
+
+let adminSpotAuditRealtime = null;
+function initAdminSpotAuditRealtime() {
+    try {
+        if (!client) return;
+        checkAdminSpotAudits();
+
+        adminSpotAuditRealtime = client.channel('admin-spot-audits-live')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'spot_audits' }, (payload) => {
+                const newRow = payload.new || {};
+                if (newRow && newRow.status === 'DISCREPANCY') {
+                    if (typeof playNotificationChime === 'function') playNotificationChime();
+                    let diffVal = parseFloat(newRow.difference_qty) || 0;
+                    let diffSign = diffVal > 0 ? '+' : '';
+
+                    Swal.fire({
+                        title: '🔴 Разминаване в Ревизия!',
+                        html: `
+                            <div style="font-size:1.02em; line-height:1.5; color:#1e293b; text-align:left; background:#fff1f2; border:1.5px solid #fecdd3; border-radius:10px; padding:14px; margin-top:8px;">
+                                <div>👷 <b>Работник:</b> <span style="color:#b91c1c; font-weight:800; font-size:1.1em;">${newRow.worker_name || 'ОПЕРАТОР'}</span></div>
+                                <div>🏭 <b>Работно място:</b> <b>${newRow.target_machine}</b></div>
+                                <div>📦 <b>Детайл:</b> <b>${newRow.part_code}</b> (${newRow.operation})</div>
+                                <hr style="border:none; border-top:1px dashed #f43f5e; margin:10px 0;">
+                                <div style="display:flex; justify-content:space-between; font-size:1.05em;">
+                                    <span>Очаквани: <b>${newRow.expected_qty} бр.</b></span>
+                                    <span>Преброени: <b style="color:#dc2626; font-size:1.15em;">${newRow.reported_qty} бр.</b></span>
+                                </div>
+                                <div style="margin-top:6px; font-size:1.1em; color:#b91c1c; font-weight:900;">
+                                    ⚠️ Разлика: ${diffSign}${diffVal} бр.
+                                </div>
+                            </div>
+                        `,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#0284c7',
+                        cancelButtonColor: '#94a3b8',
+                        confirmButtonText: '🎯 Отвори Табло Машини & Задачи',
+                        cancelButtonText: 'Затвори'
+                    }).then((res) => {
+                        if (res.isConfirmed) {
+                            window.open('workplace-tasks.html', '_blank');
+                        }
+                    });
+                }
+                checkAdminSpotAudits();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'spot_audits' }, () => {
+                checkAdminSpotAudits();
+            })
+            .subscribe();
+    } catch(e) {
+        console.warn('Realtime error in admin spot audits:', e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(initAdminSpotAuditRealtime, 1500);
+});

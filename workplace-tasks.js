@@ -58,6 +58,10 @@ async function fetchAllRows(table, select = '*', extraFilter = null, maxRows = 1
 // Initialization
 document.addEventListener('DOMContentLoaded', async () => {
     await loadAllData();
+    setTimeout(() => {
+        loadSpotAuditHistory();
+        initSpotAuditsAdminRealtime();
+    }, 1200);
 });
 
 async function loadAllData() {
@@ -1646,6 +1650,7 @@ function updateSpotAuditBadges() {
     const elDiff = document.getElementById('countAuditDiff');
     const elMatch = document.getElementById('countAuditMatch');
     const badgePending = document.getElementById('auditPendingBadge');
+    const navBadge = document.getElementById('navSpotAuditBadge');
 
     if (elTotal) elTotal.innerText = total;
     if (elPending) elPending.innerText = pending;
@@ -1658,6 +1663,22 @@ function updateSpotAuditBadges() {
             badgePending.innerText = pending;
         } else {
             badgePending.style.display = 'none';
+        }
+    }
+
+    if (navBadge) {
+        if (diff > 0) {
+            navBadge.style.display = 'inline-block';
+            navBadge.style.background = '#ef4444';
+            navBadge.innerText = diff;
+            navBadge.title = `Има ${diff} отчетени разминавания от ревизии!`;
+        } else if (pending > 0) {
+            navBadge.style.display = 'inline-block';
+            navBadge.style.background = '#f59e0b';
+            navBadge.innerText = pending;
+            navBadge.title = `Има ${pending} чакащи ревизии`;
+        } else {
+            navBadge.style.display = 'none';
         }
     }
 }
@@ -1783,3 +1804,120 @@ async function cancelSpotAudit(id) {
         Swal.fire('Грешка', err.message, 'error');
     }
 }
+
+// Звуково известяване за администратора
+function playAuditAlertSound(isDiscrepancy) {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') ctx.resume();
+        const now = ctx.currentTime;
+        
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        if (isDiscrepancy) {
+            // Двутонен предупредителен сигнал за разминаване
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(587.33, now); // D5
+            osc.frequency.setValueAtTime(440.00, now + 0.18); // A4
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+            osc.start(now);
+            osc.stop(now + 0.5);
+        } else {
+            // Приятен позитивен сигнал за точна ревизия
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, now); // C5
+            osc.frequency.setValueAtTime(659.25, now + 0.12); // E5
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            osc.start(now);
+            osc.stop(now + 0.35);
+        }
+    } catch(e) {
+        console.warn('Audio play error:', e);
+    }
+}
+
+// Обработка на отговорена ревизия в реално време
+function onSpotAuditAnswerReceived(audit) {
+    let isDiscrepancy = (audit.status === 'DISCREPANCY');
+
+    if (isDiscrepancy) {
+        playAuditAlertSound(true);
+        let diffVal = parseFloat(audit.difference_qty) || 0;
+        let diffSign = diffVal > 0 ? '+' : '';
+
+        Swal.fire({
+            title: '🔴 Внимание: Получено разминаване!',
+            html: `
+                <div style="font-size:1.02em; line-height:1.5; color:#1e293b; text-align:left; background:#fff1f2; border:1.5px solid #fecdd3; border-radius:10px; padding:14px; margin-top:8px;">
+                    <div>👷 <b>Работник:</b> <span style="color:#b91c1c; font-weight:800; font-size:1.1em;">${escapeHtml(audit.worker_name || 'ОПЕРАТОР')}</span></div>
+                    <div>🏭 <b>Работно място:</b> <b>${escapeHtml(audit.target_machine)}</b></div>
+                    <div>📦 <b>Детайл:</b> <b>${escapeHtml(audit.part_code)}</b> (${escapeHtml(audit.operation)})</div>
+                    <hr style="border:none; border-top:1px dashed #f43f5e; margin:10px 0;">
+                    <div style="display:flex; justify-content:space-between; font-size:1.05em;">
+                        <span>Очаквани: <b>${audit.expected_qty} бр.</b></span>
+                        <span>Преброени: <b style="color:#dc2626; font-size:1.15em;">${audit.reported_qty} бр.</b></span>
+                    </div>
+                    <div style="margin-top:6px; font-size:1.1em; color:#b91c1c; font-weight:900;">
+                        ⚠️ Разлика: ${diffSign}${diffVal} бр.
+                    </div>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#7c3aed',
+            cancelButtonColor: '#94a3b8',
+            confirmButtonText: '📋 Отвори Дневника',
+            cancelButtonText: 'Разбрах',
+            backdrop: true
+        }).then((res) => {
+            if (res.isConfirmed) {
+                openSpotAuditModal();
+                switchSpotAuditTab('history');
+            }
+        });
+    } else if (audit.status === 'MATCH') {
+        playAuditAlertSound(false);
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 4500,
+            timerProgressBar: true
+        });
+        Toast.fire({
+            icon: 'success',
+            title: `🟢 Точна ревизия на ${escapeHtml(audit.target_machine)}!`,
+            text: `${escapeHtml(audit.worker_name || 'Работник')} потвърди точно ${audit.reported_qty} бр. за ${escapeHtml(audit.part_code)}.`
+        });
+    }
+
+    loadSpotAuditHistory();
+}
+
+let spotAuditAdminChannel = null;
+function initSpotAuditsAdminRealtime() {
+    try {
+        if (!client) return;
+        spotAuditAdminChannel = client.channel('spot-audits-admin-realtime')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'spot_audits' }, (payload) => {
+                const newRow = payload.new || {};
+                if (newRow && (newRow.status === 'MATCH' || newRow.status === 'DISCREPANCY')) {
+                    onSpotAuditAnswerReceived(newRow);
+                }
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'spot_audits' }, () => {
+                loadSpotAuditHistory();
+            })
+            .subscribe();
+    } catch(e) {
+        console.warn('Realtime error in admin spot_audits:', e);
+    }
+}
+
