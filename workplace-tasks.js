@@ -1626,8 +1626,10 @@ async function sendSpotAuditPushNotification({ machine, targetWorker, targetEmai
         // Насочено персонално към въпросния работник по неговия имейл/external_id
         payload.include_external_user_ids = [targetEmail.toLowerCase().trim()];
     } else {
-        // Насочено към всички абонирани устройства
-        payload.included_segments = ["Total Subscriptions"];
+        // В ТЕСТОВАТА СРЕДА НЕ изпращаме до всички реални телефони в цеха (Total Subscriptions)!
+        // Изпраща се само до тестващия администратор, за да не се безпокоят работниците:
+        let adminEmail = localStorage.getItem('mes_email') || 'sstoyanova.amci@gmail.com';
+        payload.include_external_user_ids = [adminEmail.toLowerCase().trim()];
     }
 
     try {
