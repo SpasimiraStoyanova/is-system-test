@@ -2258,55 +2258,75 @@ function renderIdleRemindersTable(reminders) {
         // Статус на прочитането:
         let readCellHtml = '';
         if (r.read_at) {
-            readCellHtml = `<div style="color: #166534; font-weight: 800; font-size: 0.95em;">🟢 ${readTime}</div><div style="font-size:0.75em; color:#15803d;">Потвърдено от работника</div>`;
+            readCellHtml = `
+                <div style="color: #166534; font-weight: 800; font-size: 0.95em; white-space: nowrap;">🟢 ${readTime}</div>
+                <div style="font-size:0.75em; color:#15803d; font-weight:600; white-space: nowrap;">Потвърдено от работника</div>
+            `;
         } else {
-            readCellHtml = `<div style="background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 6px; font-weight: 900; font-size: 0.85em; display: inline-block; border: 1px solid #fca5a5;">🔴 НЕ Е ПРОЧЕТЕНО</div><div style="font-size:0.75em; color:#b91c1c; margin-top:2px;">(Терминалът е блокиран)</div>`;
+            readCellHtml = `
+                <div style="background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 6px; font-weight: 900; font-size: 0.85em; display: inline-block; border: 1px solid #fca5a5; white-space: nowrap;">🔴 НЕ Е ПРОЧЕТЕНО</div>
+                <div style="font-size:0.75em; color:#b91c1c; margin-top:2px; font-weight:600; white-space: nowrap;">(Терминалът е блокиран)</div>
+            `;
         }
 
         // Статус на поемането на задача:
         let claimCellHtml = '';
         if (r.claimed_at || r.status === 'CLAIMED') {
-            claimCellHtml = `<div style="color: #1d4ed8; font-weight: 900; font-size: 0.95em;">🚀 ${claimedTime}</div><div style="font-size:0.75em; color:#2563eb;">Поета задача</div>`;
+            claimCellHtml = `
+                <div style="color: #1d4ed8; font-weight: 900; font-size: 0.98em; white-space: nowrap;">🚀 ${claimedTime || 'Поета'}</div>
+                <div style="font-size:0.75em; color:#2563eb; font-weight:700; white-space: nowrap;">Поета задача</div>
+            `;
         } else if (r.read_at) {
-            claimCellHtml = `<div style="color: #d97706; font-weight: 800; font-size: 0.9em;">⏳ Чака поемане...</div><div style="font-size:0.75em; color:#b45309;">Прочел е, но още не е натиснал „Поеми“</div>`;
+            claimCellHtml = `
+                <div style="color: #d97706; font-weight: 800; font-size: 0.9em; white-space: nowrap;">⏳ Чака поемане...</div>
+                <div style="font-size:0.75em; color:#b45309; font-weight:600; white-space: nowrap;">Прочел е, но още не е поел</div>
+            `;
         } else {
-            claimCellHtml = `<div style="color: #94a3b8; font-weight: 600; font-size: 0.9em;">—</div>`;
+            claimCellHtml = `<div style="color: #94a3b8; font-weight: 600; font-size: 0.9em; text-align: center;">—</div>`;
         }
 
         // Статус бейдж:
         let statusBadge = '';
         if (r.status === 'CLAIMED' || r.claimed_at) {
-            statusBadge = `<span style="background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; padding: 4px 9px; border-radius: 8px; font-weight: 800; font-size: 0.82em;">✅ Изпълнено</span>`;
+            statusBadge = `<span style="background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.82em; white-space: nowrap;">✅ Изпълнено</span>`;
         } else if (r.status === 'READ' || r.read_at) {
-            statusBadge = `<span style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 4px 9px; border-radius: 8px; font-weight: 800; font-size: 0.82em;">👁️ Прочетено</span>`;
+            statusBadge = `<span style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.82em; white-space: nowrap;">👁️ Прочетено</span>`;
         } else {
-            statusBadge = `<span style="background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; padding: 4px 9px; border-radius: 8px; font-weight: 900; font-size: 0.82em;">🔴 Чака потвърждение</span>`;
+            statusBadge = `<span style="background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; padding: 4px 10px; border-radius: 8px; font-weight: 900; font-size: 0.82em; white-space: nowrap;">🔴 Чака потвърждение</span>`;
+        }
+
+        // Компактно форматиране на работното място, за да не чупи ширината на таблицата:
+        let rawMachine = r.machine || 'Обща';
+        let displayMachine = rawMachine;
+        if (rawMachine.includes(',') && rawMachine.length > 25) {
+            const count = rawMachine.split(',').length;
+            displayMachine = `Всички (${count} машини)`;
         }
 
         rowsHtml += `
             <tr style="border-bottom: 1px solid #f1f5f9; background: white; transition: background 0.15s;">
-                <td style="padding: 12px 14px;">
+                <td style="padding: 12px 14px; min-width: 170px;">
                     <div style="font-weight: 800; color: #1e293b; font-size: 1.02em;">👷 ${escapeHtml(r.worker_name)}</div>
-                    <div style="font-size: 0.8em; color: #64748b;">${escapeHtml(r.worker_email)}</div>
+                    <div style="font-size: 0.8em; color: #64748b; margin-top: 2px;">${escapeHtml(r.worker_email)}</div>
                 </td>
-                <td style="padding: 12px 14px;">
-                    <span style="font-weight: 700; color: #4338ca; background: #e0e7ff; padding: 4px 8px; border-radius: 6px; font-size: 0.9em; border: 1px solid #c7d2fe;">
-                        🏭 ${escapeHtml(r.machine)}
+                <td style="padding: 12px 14px; min-width: 160px; max-width: 220px;">
+                    <span style="font-weight: 700; color: #4338ca; background: #e0e7ff; padding: 4px 8px; border-radius: 6px; font-size: 0.88em; border: 1px solid #c7d2fe; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(rawMachine)}">
+                        🏭 ${escapeHtml(displayMachine)}
                     </span>
-                    <div style="font-size: 0.78em; color: #64748b; margin-top: 3px;">
-                        Свободни детайли: <b>${r.available_blue_tasks || 0} бр.</b>
+                    <div style="font-size: 0.78em; color: #64748b; margin-top: 4px;">
+                        Свободни детайли: <b style="color: #1e293b;">${r.available_blue_tasks || 0} бр.</b>
                     </div>
                 </td>
-                <td style="padding: 12px 14px; font-weight: 700; color: #334155; font-size: 0.95em;">
+                <td style="padding: 12px 14px; font-weight: 700; color: #334155; font-size: 0.95em; white-space: nowrap; width: 110px;">
                     ⏰ ${sentTime}
                 </td>
-                <td style="padding: 12px 14px;">
+                <td style="padding: 12px 14px; min-width: 150px;">
                     ${readCellHtml}
                 </td>
-                <td style="padding: 12px 14px;">
+                <td style="padding: 12px 14px; min-width: 150px;">
                     ${claimCellHtml}
                 </td>
-                <td style="padding: 12px 14px; text-align: center;">
+                <td style="padding: 12px 14px; text-align: center; width: 120px;">
                     ${statusBadge}
                 </td>
             </tr>
@@ -2314,10 +2334,10 @@ function renderIdleRemindersTable(reminders) {
     });
 
     wrap.innerHTML = `
-        <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9em;">
+        <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <table style="width: 100%; min-width: 920px; border-collapse: collapse; text-align: left; font-size: 0.9em;">
                 <thead>
-                    <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 800;">
+                    <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 800; white-space: nowrap;">
                         <th style="padding: 12px 14px;">Служител</th>
                         <th style="padding: 12px 14px;">Работно място</th>
                         <th style="padding: 12px 14px;">Изпратено в</th>
