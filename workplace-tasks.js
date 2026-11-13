@@ -1605,23 +1605,42 @@ async function loadCheckedInWorkers() {
 
 async function sendSpotAuditPushNotification({ machine, targetWorker, targetEmail, partCode, op, expectedQty }) {
     // ==========================================================================
-    // СТРОГА ЗАЩИТА ЗА ТЕСТОВАТА СРЕДА (IS_SYSTEM_TEST):
-    // В тестовата среда е АБСОЛЮТНО ЗАБРАНЕНО изпращане на Push към реални колеги!
-    // Известие се разрешава ЕДИНСТВЕНО И САМО до Вашия тестов имейл.
+    // БЯЛ СПИСЪК ЗА ТЕСТОВАТА СРЕДА (IS_SYSTEM_TEST):
+    // Известия се изпращат ЕДИНСТВЕНО И САМО до трите тестови профила:
+    // 1. Спасимира Стоянова (sstoyanova.amci@gmail.com)
+    // 2. Васил Асенов (amcirazlog@gmail.com)
+    // 3. Ивайло Аврамов (ivaylo.avr@gmail.com)
+    // Към никой друг колега в цеха НЕ се изпраща Push!
     // ==========================================================================
-    const TEST_ALLOWED_EMAIL = 'sstoyanova.amci@gmail.com';
+    const TEST_ALLOWED_EMAILS = [
+        'sstoyanova.amci@gmail.com',
+        'amcirazlog@gmail.com',
+        'ivaylo.avr@gmail.com'
+    ];
 
-    let recipientEmail = (targetEmail || '').toLowerCase().trim();
-    if (recipientEmail !== TEST_ALLOWED_EMAIL) {
-        console.log(`[TEST ENVIRONMENT LOCK] OneSignal Push е блокиран, за да не се безпокоят колеги от реалната система. Допуска се само ${TEST_ALLOWED_EMAIL}`);
-        return false;
+    let recipients = [];
+    if (targetEmail && targetEmail.trim() !== '') {
+        let normEmail = targetEmail.toLowerCase().trim();
+        if (TEST_ALLOWED_EMAILS.includes(normEmail)) {
+            recipients.push(normEmail);
+        } else {
+            console.log(`[TEST ENVIRONMENT LOCK] OneSignal Push е блокиран за ${normEmail}, тъй като не е в тестовия списък.`);
+            return false;
+        }
+    } else {
+        // Ако проверката е за цялото работно място, изпращаме САМО до тестовия списък:
+        recipients = [...TEST_ALLOWED_EMAILS];
     }
+
+    if (recipients.length === 0) return false;
 
     const ONESIGNAL_APP_ID = "2507a9cb-0d28-4952-9b7b-42e800a61613";
     const ONESIGNAL_API_KEY = "os_v2_app_eud2tsynfbevfg33iluabjqwcngcem2gdkaebuebdt" + "ob2ewfduy6d6lsudjvxyol6gqh7tatgimm7kewbh4sjp7yea5hzqmmdydqxkq";
 
     let title = `🎯 Експресна Ревизия (${machine})`;
-    let body = `👷 ${targetWorker || 'Оператор'}, моля проверете бройките за ${partCode} (${op})! Очаквани: ${expectedQty} бр.`;
+    let body = targetWorker 
+        ? `👷 ${targetWorker}, моля проверете бройките за ${partCode} (${op})! Очаквани: ${expectedQty} бр.`
+        : `⚠️ Моля, проверете бройките за ${partCode} (${op}) на ${machine}! Очаквани: ${expectedQty} бр.`;
 
     let terminalUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'terminal.html';
 
@@ -1631,8 +1650,33 @@ async function sendSpotAuditPushNotification({ machine, targetWorker, targetEmai
         contents: { "en": body, "bg": body },
         url: terminalUrl,
         priority: 10,
-        include_external_user_ids: [TEST_ALLOWED_EMAIL]
+        include_external_user_ids: recipients
     };
+
+    try {
+        const response = await fetch("https://onesignal.com/api/v1/notifications", {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json; charset=utf-8", 
+                "Authorization": "Key " + ONESIGNAL_API_KEY 
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errTxt = await response.text().catch(() => '');
+            console.warn("OneSignal Push грешка от сървъра:", errTxt);
+            return false;
+        }
+
+        const resData = await response.json().catch(() => ({}));
+        console.log("OneSignal Push изпратено успешно до тестовите профили:", resData);
+        return true;
+    } catch (e) {
+        console.warn("OneSignal Push грешка при свързване:", e);
+        return false;
+    }
+}
 
     try {
         const response = await fetch("https://onesignal.com/api/v1/notifications", {
