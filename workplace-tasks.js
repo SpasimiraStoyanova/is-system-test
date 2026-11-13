@@ -2415,18 +2415,18 @@ async function scanAndSendIdleRemindersCentral(isManualTrigger = false) {
             const alreadyReminded = existingReminders.some(r => r.worker_email.trim().toLowerCase() === worker.email);
             if (alreadyReminded) continue;
 
-            // Б. Има ли отчетена или започната задача за днес?
-            const hasStartedTask = todayReports.some(rep => {
+            // Б. Има ли текущо активна (започната и незавършена) задача в момента?
+            const hasActiveTaskNow = todayReports.some(rep => {
+                if (rep['Статус'] !== 'Започната') return false;
                 const opName = (rep['Оператор'] || '').trim().toLowerCase();
                 const wName = worker.name.toLowerCase();
                 return opName === wName || opName === worker.email;
             });
-            if (hasStartedTask) continue;
+            if (hasActiveTaskNow) continue;
 
             // В. На коя машина е зачислен?
             const assignedMachine = macMap[worker.email] || null;
-            if (!assignedMachine || assignedMachine === 'ВСИЧКИ' || assignedMachine === 'Обща') {
-                // Ако машината не е точно фиксирана, не можем да гарантираме дали задачите са блокирани
+            if (!assignedMachine || assignedMachine === 'Обща') {
                 continue;
             }
 

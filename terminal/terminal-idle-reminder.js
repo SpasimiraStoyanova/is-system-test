@@ -128,27 +128,41 @@ async function checkIdleWorkerReminder() {
         const todayStr = now.toISOString().split('T')[0];
         const cleanEmail = currentEmail.trim().toLowerCase();
 
-        // 2. Проверка дали работникът вече е поел задача в текущата сесия
+        // 2. Първо проверяваме дали в task_reminders вече има запис за днес
+        const { data: reminderData, error: remErr } = await client
+            .from('task_reminders')
+            .select('*')
+            .eq('reminder_date', todayStr)
+            .eq('worker_email', cleanEmail)
+            .limit(1);
+
+        if (remErr) {
+            console.warn('Грешка при четене на task_reminders:', remErr);
+            isIdleReminderChecking = false;
+            return;
+        }
+
+        let existing = (reminderData && reminderData.length > 0) ? reminderData[0] : null;
+
+        // Ако вече има напомняне за днес и то все още НЕ Е ПРОЧЕТЕНО -> веднага показваме блокиращия прозорец!
+        if (existing && existing.status === 'SENT' && !existing.read_at) {
+            showBlockingIdleTaskReminder(existing);
+            isIdleReminderChecking = false;
+            return;
+        }
+
+        // Ако вече е прочетено или изпълнено за днес -> няма нужда от ново
+        if (existing) {
+            isIdleReminderChecking = false;
+            return;
+        }
+
+        // 3. Проверка дали работникът в момента има текущо поета активна задача
         if (activeTaskId !== null && activeTaskId !== undefined) {
             isIdleReminderChecking = false;
             return;
         }
         if (globalTasks.some(t => t.isTaken)) {
-            isIdleReminderChecking = false;
-            return;
-        }
-
-        // 3. Проверка в базата (otcheti) дали има отчетена или започната задача за днес
-        const startOfDay = todayStr + 'T00:00:00.000Z';
-        const { data: todayReports, error: repErr } = await client
-            .from('otcheti')
-            .select('id, Статус')
-            .eq('Оператор', currentOperator)
-            .gte('Дата', startOfDay)
-            .limit(10);
-
-        if (!repErr && todayReports && todayReports.length > 0) {
-            // Работникът вече има действия за днес
             isIdleReminderChecking = false;
             return;
         }
@@ -171,55 +185,34 @@ async function checkIdleWorkerReminder() {
             return;
         }
 
-        // 5. Проверка в task_reminders дали вече има запис за днес
-        const { data: reminderData, error: remErr } = await client
+        // 5. Няма напомняне за днес, няма поета задача в момента и има свободни сини задачи -> СЪЗДАВАМЕ НАПОМНЯНЕ!
+        const insertPayload = {
+            reminder_date: todayStr,
+            worker_name: currentOperator || currentEmail,
+            worker_email: cleanEmail,
+            machine: currentMachine || 'Обща',
+            status: 'SENT',
+            sent_at: now.toISOString(),
+            available_blue_tasks: unblockedBlueTasks.length,
+            notes: `Има ${unblockedBlueTasks.length} свободни сини задачи`
+        };
+
+        const { data: created, error: insErr } = await client
             .from('task_reminders')
-            .select('*')
-            .eq('reminder_date', todayStr)
-            .eq('worker_email', cleanEmail)
-            .limit(1);
+            .insert([insertPayload])
+            .select()
+            .single();
 
-        if (remErr) {
-            console.warn('Грешка при четене на task_reminders:', remErr);
-            isIdleReminderChecking = false;
-            return;
-        }
-
-        let existing = (reminderData && reminderData.length > 0) ? reminderData[0] : null;
-
-        if (!existing) {
-            // Създаваме нов запис за днес (веднъж за деня)
-            const insertPayload = {
-                reminder_date: todayStr,
-                worker_name: currentOperator || currentEmail,
-                worker_email: cleanEmail,
+        if (!insErr && created) {
+            existing = created;
+            // Изпращаме и Push известие към мобилния телефон
+            sendIdleReminderPushNotification({
+                workerName: currentOperator,
+                workerEmail: cleanEmail,
                 machine: currentMachine || 'Обща',
-                status: 'SENT',
-                sent_at: now.toISOString(),
-                available_blue_tasks: unblockedBlueTasks.length,
-                notes: `Има ${unblockedBlueTasks.length} свободни сини задачи`
-            };
-
-            const { data: created, error: insErr } = await client
-                .from('task_reminders')
-                .insert([insertPayload])
-                .select()
-                .single();
-
-            if (!insErr && created) {
-                existing = created;
-                // Изпращаме и Push известие към мобилния телефон
-                sendIdleReminderPushNotification({
-                    workerName: currentOperator,
-                    workerEmail: cleanEmail,
-                    machine: currentMachine || 'Обща',
-                    availableCount: unblockedBlueTasks.length
-                });
-            }
-        }
-
-        // 6. Ако съществува запис и ВСЕ ОЩЕ НЕ Е ПРОЧЕТЕН -> показваме БЛОКИРАЩИЯ ПРОЗОРЕЦ!
-        if (existing && existing.status === 'SENT' && !existing.read_at) {
+                availableCount: unblockedBlueTasks.length
+            });
+            // Показваме блокиращия прозорец
             showBlockingIdleTaskReminder(existing);
         }
 
@@ -357,3 +350,4 @@ if (idleReminderCheckTimer) clearInterval(idleReminderCheckTimer);
 idleReminderCheckTimer = setInterval(() => {
     checkIdleWorkerReminder();
 }, 30000);
+

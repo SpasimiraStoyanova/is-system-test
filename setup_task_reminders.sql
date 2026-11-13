@@ -85,3 +85,4 @@ CREATE POLICY "Allow public update worker_machines" ON public.worker_machines FO
 
 DROP POLICY IF EXISTS "Allow public delete worker_machines" ON public.worker_machines;
 CREATE POLICY "Allow public delete worker_machines" ON public.worker_machines FOR DELETE TO anon, authenticated USING (true);
+
