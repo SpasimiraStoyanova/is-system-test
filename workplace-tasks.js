@@ -1604,13 +1604,24 @@ async function loadCheckedInWorkers() {
 // ==============================================================================
 
 async function sendSpotAuditPushNotification({ machine, targetWorker, targetEmail, partCode, op, expectedQty }) {
+    // ==========================================================================
+    // СТРОГА ЗАЩИТА ЗА ТЕСТОВАТА СРЕДА (IS_SYSTEM_TEST):
+    // В тестовата среда е АБСОЛЮТНО ЗАБРАНЕНО изпращане на Push към реални колеги!
+    // Известие се разрешава ЕДИНСТВЕНО И САМО до Вашия тестов имейл.
+    // ==========================================================================
+    const TEST_ALLOWED_EMAIL = 'sstoyanova.amci@gmail.com';
+
+    let recipientEmail = (targetEmail || '').toLowerCase().trim();
+    if (recipientEmail !== TEST_ALLOWED_EMAIL) {
+        console.log(`[TEST ENVIRONMENT LOCK] OneSignal Push е блокиран, за да не се безпокоят колеги от реалната система. Допуска се само ${TEST_ALLOWED_EMAIL}`);
+        return false;
+    }
+
     const ONESIGNAL_APP_ID = "2507a9cb-0d28-4952-9b7b-42e800a61613";
     const ONESIGNAL_API_KEY = "os_v2_app_eud2tsynfbevfg33iluabjqwcngcem2gdkaebuebdt" + "ob2ewfduy6d6lsudjvxyol6gqh7tatgimm7kewbh4sjp7yea5hzqmmdydqxkq";
 
     let title = `🎯 Експресна Ревизия (${machine})`;
-    let body = targetWorker 
-        ? `👷 ${targetWorker}, моля проверете бройките за ${partCode} (${op})! Очаквани: ${expectedQty} бр.`
-        : `⚠️ Моля, проверете бройките за ${partCode} (${op}) на ${machine}! Очаквани: ${expectedQty} бр.`;
+    let body = `👷 ${targetWorker || 'Оператор'}, моля проверете бройките за ${partCode} (${op})! Очаквани: ${expectedQty} бр.`;
 
     let terminalUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'terminal.html';
 
@@ -1619,18 +1630,9 @@ async function sendSpotAuditPushNotification({ machine, targetWorker, targetEmai
         headings: { "en": title, "bg": title },
         contents: { "en": body, "bg": body },
         url: terminalUrl,
-        priority: 10
+        priority: 10,
+        include_external_user_ids: [TEST_ALLOWED_EMAIL]
     };
-
-    if (targetEmail && targetEmail.trim() !== '') {
-        // Насочено персонално към въпросния работник по неговия имейл/external_id
-        payload.include_external_user_ids = [targetEmail.toLowerCase().trim()];
-    } else {
-        // В ТЕСТОВАТА СРЕДА НЕ изпращаме до всички реални телефони в цеха (Total Subscriptions)!
-        // Изпраща се само до тестващия администратор, за да не се безпокоят работниците:
-        let adminEmail = localStorage.getItem('mes_email') || 'sstoyanova.amci@gmail.com';
-        payload.include_external_user_ids = [adminEmail.toLowerCase().trim()];
-    }
 
     try {
         const response = await fetch("https://onesignal.com/api/v1/notifications", {
