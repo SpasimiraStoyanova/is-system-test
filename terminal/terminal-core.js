@@ -80,20 +80,19 @@ async function initTerminal() {
 
 function checkAndPromptNotifications() {
     if (typeof Notification === 'undefined') return;
-    if (Notification.permission === 'granted') {
-        const area = document.getElementById('terminalPushNoticeArea');
-        if (area) area.style.display = 'none';
-        return;
-    }
-
     const area = document.getElementById('terminalPushNoticeArea');
     if (!area) return;
+
+    if (Notification.permission === 'granted') {
+        area.style.display = 'none';
+        return;
+    }
 
     if (Notification.permission === 'denied') {
         area.innerHTML = `
             <div style="background:#fff1f2; border:1px solid #fecdd3; border-radius:10px; padding:10px 14px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
                 <div style="font-size:0.85em; color:#991b1b; font-weight:700;">
-                    ⚠️ Известията за този телефон са блокирани от браузъра. За да чувате ревизиите при заключен екран, разрешете ги от катинарчето 🔒 до адреса.
+                    ⚠️ Известията са блокирани в браузъра. За да ги разрешите, натиснете иконата с настройки (плъзгачите ⚙️ или катинарчето 🔒) горе вляво до адреса и разрешете „Известия“.
                 </div>
             </div>
         `;
@@ -105,32 +104,77 @@ function checkAndPromptNotifications() {
                     <span style="font-size:1.4em;">🔔</span>
                     <span>Разрешете известия, за да чувате ревизиите дори при заключен екран:</span>
                 </div>
-                <button type="button" onclick="requestTerminalPushPermission()" style="background:#2563eb; color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:900; font-size:0.9em; cursor:pointer; box-shadow:0 2px 5px rgba(37,99,235,0.3);">
-                    👉 Разреши известията
-                </button>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button type="button" onclick="requestTerminalPushPermission()" style="background:#2563eb; color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:900; font-size:0.9em; cursor:pointer; box-shadow:0 2px 5px rgba(37,99,235,0.3);">
+                        👉 Разреши известията
+                    </button>
+                </div>
             </div>
         `;
         area.style.display = 'block';
     }
 }
 
+// При връщане към таба автоматично проверяваме дали правата са обновени в браузъра
+window.addEventListener('focus', () => {
+    checkAndPromptNotifications();
+});
+
 async function requestTerminalPushPermission() {
     try {
+        if (typeof Notification === 'undefined') {
+            Swal.fire('Информация', 'Този браузър не поддържа Push известия.', 'info');
+            return;
+        }
+
+        // 1. Ако вече са разрешени:
+        if (Notification.permission === 'granted') {
+            const area = document.getElementById('terminalPushNoticeArea');
+            if (area) area.style.display = 'none';
+            if (window.OneSignalDeferred) {
+                window.OneSignalDeferred.push(async function(OneSignal) {
+                    if (currentEmail) OneSignal.login(currentEmail);
+                });
+            }
+            Swal.fire({
+                icon: 'success',
+                title: 'Известията вече са разрешени!',
+                timer: 1800,
+                showConfirmButton: false
+            });
+            return;
+        }
+
+        // 2. ДИРЕКТНО извикване на браузърния диалогов прозорец (User Gesture):
+        const perm = await Notification.requestPermission();
+
+        // 3. Синхронизация с OneSignal:
         if (window.OneSignalDeferred) {
             window.OneSignalDeferred.push(async function(OneSignal) {
-                await OneSignal.Notifications.requestPermission();
-                if (Notification.permission === 'granted') {
-                    const area = document.getElementById('terminalPushNoticeArea');
-                    if (area) area.style.display = 'none';
+                try {
+                    await OneSignal.Notifications.requestPermission();
                     if (currentEmail) OneSignal.login(currentEmail);
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Известията са разрешени!',
-                        text: 'Вече ще получавате звукови Push известия дори при заключен екран.',
-                        timer: 2500,
-                        showConfirmButton: false
-                    });
-                }
+                } catch(e) {}
+            });
+        }
+
+        if (perm === 'granted') {
+            const area = document.getElementById('terminalPushNoticeArea');
+            if (area) area.style.display = 'none';
+            Swal.fire({
+                icon: 'success',
+                title: 'Известията са разрешени!',
+                text: 'Вече ще получавате звукови Push съобщения.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        } else if (perm === 'denied') {
+            checkAndPromptNotifications();
+            Swal.fire({
+                icon: 'warning',
+                title: 'Известията са отказани',
+                html: 'Браузърът блокира известията.<br><br>Моля, натиснете иконата с настройки (плъзгачите <b>⚙️</b>) горе вляво до интернет адреса и позволете <b>„Известия“ (Notifications)</b>.',
+                confirmButtonColor: '#2563eb'
             });
         }
     } catch(e) {
