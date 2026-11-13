@@ -1577,15 +1577,16 @@ async function loadCheckedInWorkers() {
                     let d = new Date(row['Време']);
                     time = d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
                 } catch(e) {}
-                checkedInList.push({ name, time });
+                let email = String(row['Имейл'] || '').trim().toLowerCase();
+                checkedInList.push({ name, email, time });
             }
         }
 
         checkedInList.sort((a, b) => a.name.localeCompare(b.name, 'bg'));
 
-        let html = '<option value="">-- Всеки на това работно място (по подразбиране) --</option>';
+        let html = '<option value="" data-email="">-- Всеки на това работно място (по подразбиране) --</option>';
         checkedInList.forEach(w => {
-            html += `<option value="${escapeHtml(w.name)}">🟢 ${escapeHtml(w.name)} (чекиран в ${w.time} ч.)</option>`;
+            html += `<option value="${escapeHtml(w.name)}" data-email="${escapeHtml(w.email)}">🟢 ${escapeHtml(w.name)} (чекиран в ${w.time} ч.)</option>`;
         });
 
         if (checkedInList.length === 0) {
@@ -1598,9 +1599,69 @@ async function loadCheckedInWorkers() {
     }
 }
 
+// ==============================================================================
+// ONESIGNAL PUSH ИЗВЕСТИЯ КЪМ МОБИЛНИ ТЕЛЕФОНИ
+// ==============================================================================
+
+async function sendSpotAuditPushNotification({ machine, targetWorker, targetEmail, partCode, op, expectedQty }) {
+    const ONESIGNAL_APP_ID = "2507a9cb-0d28-4952-9b7b-42e800a61613";
+    const ONESIGNAL_API_KEY = "os_v2_app_eud2tsynfbevfg33iluabjqwcngcem2gdkaebuebdt" + "ob2ewfduy6d6lsudjvxyol6gqh7tatgimm7kewbh4sjp7yea5hzqmmdydqxkq";
+
+    let title = `🎯 Експресна Ревизия (${machine})`;
+    let body = targetWorker 
+        ? `👷 ${targetWorker}, моля проверете бройките за ${partCode} (${op})! Очаквани: ${expectedQty} бр.`
+        : `⚠️ Моля, проверете бройките за ${partCode} (${op}) на ${machine}! Очаквани: ${expectedQty} бр.`;
+
+    let terminalUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'terminal.html';
+
+    let payload = {
+        app_id: ONESIGNAL_APP_ID,
+        headings: { "en": title, "bg": title },
+        contents: { "en": body, "bg": body },
+        url: terminalUrl,
+        priority: 10
+    };
+
+    if (targetEmail && targetEmail.trim() !== '') {
+        // Насочено персонално към въпросния работник по неговия имейл/external_id
+        payload.include_external_user_ids = [targetEmail.toLowerCase().trim()];
+    } else {
+        // Насочено към всички абонирани устройства
+        payload.included_segments = ["Total Subscriptions"];
+    }
+
+    try {
+        const response = await fetch("https://corsproxy.io/?https://onesignal.com/api/v1/notifications", {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json; charset=utf-8", 
+                "Authorization": "Key " + ONESIGNAL_API_KEY 
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errTxt = await response.text().catch(() => '');
+            console.warn("OneSignal Push грешка от сървъра:", errTxt);
+            return false;
+        }
+
+        const resData = await response.json().catch(() => ({}));
+        console.log("OneSignal Push изпратено успешно:", resData);
+        return true;
+    } catch (e) {
+        console.warn("OneSignal Push грешка при свързване:", e);
+        return false;
+    }
+}
+
 async function submitNewSpotAudit() {
     const machine = (document.getElementById('auditMachineSelect').value || '').trim();
-    const targetWorker = (document.getElementById('auditWorkerSelect').value || '').trim() || null;
+    const wSelect = document.getElementById('auditWorkerSelect');
+    const targetWorker = (wSelect.value || '').trim() || null;
+    const selectedOpt = wSelect.options[wSelect.selectedIndex];
+    const targetEmail = (selectedOpt && selectedOpt.getAttribute('data-email')) || null;
+
     const partCode = (document.getElementById('auditPartSelect').value || '').trim();
     const op = (document.getElementById('auditOpInput').value || '').trim();
     const expVal = document.getElementById('auditExpectedInput').value;
@@ -1624,7 +1685,7 @@ async function submitNewSpotAudit() {
     }
 
     const workerTargetDesc = targetWorker 
-        ? `<div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:6px 10px; color:#166534; font-weight:700; margin-top:8px;">🎯 Насочена персонално към: <b>${escapeHtml(targetWorker)}</b> (ще се покаже САМО на неговия екран)</div>`
+        ? `<div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:6px 10px; color:#166534; font-weight:700; margin-top:8px;">🎯 Насочена персонално към: <b>${escapeHtml(targetWorker)}</b> (ще изпрати и Push съобщение към неговия телефон)</div>`
         : `<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; color:#64748b; font-weight:600; margin-top:8px;">👥 Насочена към: <b>Всеки на това работно място</b></div>`;
 
     const confirmRes = await Swal.fire({
@@ -1658,13 +1719,36 @@ async function submitNewSpotAudit() {
 
         if (error) throw error;
 
+        // Изпращане на Push известие към мобилния телефон на работника
+        let pushSent = false;
+        try {
+            pushSent = await sendSpotAuditPushNotification({
+                machine,
+                targetWorker,
+                targetEmail,
+                partCode,
+                op,
+                expectedQty: expQty
+            });
+        } catch(pErr) {
+            console.warn('OneSignal Push грешка:', pErr);
+        }
+
+        let pushText = pushSent
+            ? `<div style="margin-top:8px; color:#16a34a; font-weight:700; font-size:0.95em;">📲 Звуково Push известие беше изпратено директно към телефона!</div>`
+            : `<div style="margin-top:8px; color:#64748b; font-size:0.85em;">ℹ️ Записано в системата (терминалът ще го отрази на живо).</div>`;
+
         Swal.fire({
             icon: 'success',
             title: 'Проверката е изпратена!',
-            text: targetWorker 
-                ? `Сигналът е изпратен персонално към работник ${targetWorker}.` 
-                : `Сигналът е изпратен към терминала на работно място "${machine}".`,
-            timer: 2000,
+            html: `
+                <div>${targetWorker 
+                    ? `Сигналът е изпратен персонално към работник: <b>${escapeHtml(targetWorker)}</b>.` 
+                    : `Сигналът е изпратен към терминала на работно място "<b>${escapeHtml(machine)}</b>".`}
+                </div>
+                ${pushText}
+            `,
+            timer: 3500,
             showConfirmButton: false
         });
 

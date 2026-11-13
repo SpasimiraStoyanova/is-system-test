@@ -54,7 +54,16 @@ async function initTerminal() {
         OneSignalDeferred.push(function(OneSignal) { OneSignal.login(currentEmail); }); 
     }
 
-    if (!currentOperator || !currentEmail) { await setupProfile(); } else { document.getElementById('uiOperatorName').innerText = currentOperator; }
+    if (!currentOperator || !currentEmail) { 
+        await setupProfile(); 
+    } else { 
+        document.getElementById('uiOperatorName').innerText = currentOperator; 
+        OneSignalDeferred.push(function(OneSignal) { 
+            OneSignal.login(currentEmail); 
+            if (currentOperator) OneSignal.User.addTag("operator_name", currentOperator);
+            if (currentMachine) OneSignal.User.addTag("machine", currentMachine);
+        });
+    }
     if (savedMachine === null) { await changeMachine(true); } else { currentMachine = savedMachine; document.getElementById('uiMachineName').innerText = currentMachine || "ВСИЧКИ"; }
     
     checkSystemMessage();
