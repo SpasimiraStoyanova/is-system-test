@@ -291,6 +291,7 @@ window.openToolingOrderModal = async function(reqId) {
     let defaultEmail = '';
     let currentStock = 0;
     let invItemId = null;
+    let packSize = 10;
 
     // Интелигентно извличане на заявеното от оператора количество от бележката:
     let defaultOrderQty = 10;
@@ -321,6 +322,7 @@ window.openToolingOrderModal = async function(reqId) {
             invItemId = item.id;
             defaultSupplier = item.supplier || '';
             currentStock = parseFloat(item.quantity) || 0;
+            packSize = parseFloat(item.pack_size) || 10;
         }
 
         if (defaultSupplier) {
@@ -337,6 +339,8 @@ window.openToolingOrderModal = async function(reqId) {
         }
     } catch(e) {}
 
+    const initBoxes = packSize > 0 ? ((defaultOrderQty % packSize === 0) ? (defaultOrderQty / packSize) : (defaultOrderQty / packSize).toFixed(1)) : 1;
+
     const { value: formValues } = await Swal.fire({
         title: '🛒 Поръчка на Инструментална Екипировка',
         html: `
@@ -346,15 +350,25 @@ window.openToolingOrderModal = async function(reqId) {
                     <div style="font-size: 0.85em; color: #64748b; margin-top: 3px;">
                         🏭 За машина: <b>${escapeHtml(req.workstation_name)}</b> &bull; Заявил: <b>${escapeHtml(req.operator_name || 'Оператор')}</b>
                     </div>
-                    <div style="font-size: 0.85em; color: #0284c7; margin-top: 2px;">
-                        📦 Текуща наличност в склада: <b>${currentStock} бр.</b>
+                    <div style="font-size: 0.85em; color: #0284c7; margin-top: 3px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px;">
+                        <span>📦 Текуща наличност: <b>${currentStock} бр.</b></span>
+                        <span style="background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 6px; font-weight: 800; border: 1px solid #bae6fd;">📦 В опаковка: <b>${packSize} бр./кутия</b></span>
                     </div>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <div>
-                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Количество за поръчка (бр.): *</label>
-                        <input type="number" id="swalOrderQty" value="${defaultOrderQty}" min="1" step="any" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; color: #1e293b; box-sizing: border-box;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label style="font-weight: 700; color: #475569;">Количество (бр.): *</label>
+                            <span id="swalBoxCalcInfo" style="font-size: 0.8em; color: #0284c7; font-weight: 800;">📦 ${initBoxes} ${initBoxes == 1 ? 'кутия' : 'кутии'}</span>
+                        </div>
+                        <input type="number" id="swalOrderQty" value="${defaultOrderQty}" min="1" step="any" oninput="
+                            let q = parseFloat(this.value) || 0;
+                            let ps = ${packSize};
+                            let bx = ps > 0 ? (q % ps === 0 ? (q/ps) : (q/ps).toFixed(1)) : 1;
+                            let infoEl = document.getElementById('swalBoxCalcInfo');
+                            if (infoEl) infoEl.innerText = '📦 ' + bx + (bx == 1 ? ' кутия' : ' кутии');
+                        " style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; color: #1e293b; box-sizing: border-box;">
                     </div>
                     <div>
                         <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Доставчик:</label>
@@ -449,8 +463,14 @@ window.openToolingOrderModal = async function(reqId) {
                 noteLine = `Забележка / Оферта: ${trimNote}\n`;
             }
 
+            let packLine = '';
+            if (packSize > 1) {
+                let boxes = (orderQty % packSize === 0) ? (orderQty / packSize) : (orderQty / packSize).toFixed(1);
+                packLine = ` (${boxes} ${boxes == 1 ? 'кутия' : 'кутии'} по ${packSize} бр.)`;
+            }
+
             const subject = encodeURIComponent("Поръчка на инструментална екипировка: " + toolName);
-            const body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция за нашето производство:\nАртикул / Пластина: ${toolName}\nКоличество: ${orderQty} бр.\nПредназначение: Машина ${workstation}\n${noteLine}Моля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,\nAMCI`);
+            const body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция за нашето производство:\nАртикул / Пластина: ${toolName}\nКоличество: ${orderQty} бр.${packLine}\nПредназначение: Машина ${workstation}\n${noteLine}Моля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,\nAMCI`);
 
             const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipient)}&su=${subject}&body=${body}`;
             window.open(gmailUrl, 'GmailPopup', 'width=800,height=600,left=200,top=100,scrollbars=yes');

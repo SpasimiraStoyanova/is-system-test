@@ -997,6 +997,22 @@ function renderDynamicTable(itemsToRender = null) {
                 }
                 row.appendChild(td); return;
             }
+            if (f.name === 'pack_size') {
+                let pSize = parseFloat(val) || (currentTab === 'tooling_sklad' ? 10 : 1);
+                td.innerHTML = `<span style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:2px 8px; border-radius:10px; font-weight:800; font-size:0.88em; display:inline-flex; align-items:center; gap:4px;" title="Опаковъчна единица (кутия / кашон / пакет)">📦 ${pSize} бр.</span>`;
+                row.appendChild(td); return;
+            }
+            if (currentTab === 'tooling_sklad' && f.name === 'quantity') {
+                let q = parseFloat(val) || 0;
+                let pack = parseFloat(item['pack_size']) || 10;
+                let boxesStr = '';
+                if (pack > 1 && q > 0) {
+                    let b = (q % pack === 0) ? (q / pack) : (q / pack).toFixed(1);
+                    boxesStr = ` <small style="color:#64748b; font-weight:600;">(${b} ${b == 1 ? 'кут.' : 'кутии'})</small>`;
+                }
+                td.innerHTML = `<b>${q}</b> бр.${boxesStr}`;
+                row.appendChild(td); return;
+            }
             td.innerText = val;
             if (currentTab === 'plan' && f.name === 'Вътрешно име' && item['__packaged_info']) {
                 td.innerHTML = val + item['__packaged_info'];
@@ -1919,9 +1935,15 @@ async function saveForm(e) {
                 let orderQty = payload['min_quantity'] || 10;
                 let machine = payload['machine_name'] || 'Цех';
                 let supplier = payload['supplier'] || '';
+                let packSize = parseFloat(payload['pack_size']) || 10;
+                let packLine = '';
+                if (packSize > 1) {
+                    let boxes = (orderQty % packSize === 0) ? (orderQty / packSize) : (orderQty / packSize).toFixed(1);
+                    packLine = ` (${boxes} ${boxes == 1 ? 'кутия' : 'кутии'} по ${packSize} бр.)`;
+                }
                 let recipient = supplier ? (localStorage.getItem('tooling_supplier_email_' + supplier.trim().toLowerCase()) || '') : '';
                 let subject = encodeURIComponent("Поръчка на инструментална екипировка: " + toolName);
-                let body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция за нашето производство:\nАртикул / Пластина: ${toolName}\nКоличество: ${orderQty} бр.\nПредназначение: Машина ${machine}\n\nМоля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,`);
+                let body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция за нашето производство:\nАртикул / Пластина: ${toolName}\nКоличество: ${orderQty} бр.${packLine}\nПредназначение: Машина ${machine}\n\nМоля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,`);
 
                 let gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipient)}&su=${subject}&body=${body}`;
                 window.open(gmailUrl, 'GmailPopup', 'width=800,height=600,left=200,top=100,scrollbars=yes');

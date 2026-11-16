@@ -10,3 +10,4 @@ DROP INDEX IF EXISTS public.uq_task_reminders_date_worker;
 
 -- Създаване на обикновен индекс за бързо търсене по дата и служител
 CREATE INDEX IF NOT EXISTS idx_task_reminders_worker_date_all ON public.task_reminders (worker_email, reminder_date, sent_at DESC);
+

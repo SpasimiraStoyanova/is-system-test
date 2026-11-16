@@ -21,16 +21,27 @@ window.openTerminalToolingRequestModal = async function() {
 
     // Зареждаме типичните пластини/консумативи за това работно място от tooling_inventory
     let toolOptionsHtml = '';
+    let toolPackSizeMap = {};
     try {
         const { data: invTools } = await client.from('tooling_inventory')
-            .select('item_code, name, machine_name')
+            .select('item_code, name, machine_name, pack_size')
             .order('item_code');
         
         let machTools = (invTools || []).filter(t => !t.machine_name || t.machine_name.includes(mach) || mach.includes(t.machine_name) || t.machine_name.toLowerCase() === 'общо');
         if (machTools.length > 0) {
-            toolOptionsHtml = machTools.map(t => `<option value="${escapeHtml(t.item_code)} - ${escapeHtml(t.name)}">`).join('');
+            toolOptionsHtml = machTools.map(t => {
+                let codeKey = String(t.item_code).trim().toLowerCase();
+                let fullKey = `${t.item_code} - ${t.name}`.trim().toLowerCase();
+                let pSize = parseFloat(t.pack_size) || 10;
+                toolPackSizeMap[codeKey] = pSize;
+                toolPackSizeMap[fullKey] = pSize;
+                let packText = pSize > 1 ? ` (📦 ${pSize} бр./кут.)` : '';
+                return `<option value="${escapeHtml(t.item_code)} - ${escapeHtml(t.name)}">${escapeHtml(t.item_code)} - ${escapeHtml(t.name)}${packText}</option>`;
+            }).join('');
         }
     } catch(e) {}
+
+    window._tempToolPackSizeMap = toolPackSizeMap;
 
     const { value: formValues } = await Swal.fire({
         title: '🛠️ Заявка за Пластини / Инструмент',
@@ -42,7 +53,15 @@ window.openTerminalToolingRequestModal = async function() {
                 </div>
                 <div>
                     <label style="font-weight: 700; color: #475569;">📦 Изискван инструмент / пластина: *</label>
-                    <input type="text" id="swalToolItem" list="dl_tool_items" placeholder="напр. Пластина WNMG 080408, Фреза ф10..." style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 700; box-sizing: border-box;">
+                    <input type="text" id="swalToolItem" list="dl_tool_items" oninput="
+                        let val = this.value.trim().toLowerCase();
+                        let map = window._tempToolPackSizeMap || {};
+                        let ps = map[val] || (val.split(' - ')[0] && map[val.split(' - ')[0].trim()]) || 10;
+                        let badge = document.getElementById('swalToolPackSizeBadge');
+                        if (badge) badge.innerText = '📦 В опаковка: ' + ps + ' бр.';
+                        let qtyInp = document.getElementById('swalToolQty');
+                        if (qtyInp && (!qtyInp.value || qtyInp.value === '10' || qtyInp.value === '1')) qtyInp.value = ps;
+                    " placeholder="напр. Пластина WNMG 080408, Фреза ф10..." style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 700; box-sizing: border-box;">
                     <datalist id="dl_tool_items">${toolOptionsHtml}</datalist>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -55,7 +74,10 @@ window.openTerminalToolingRequestModal = async function() {
                         </select>
                     </div>
                     <div>
-                        <label style="font-weight: 700; color: #475569;">🔢 Количество (бр.):</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                            <label style="font-weight: 700; color: #475569;">🔢 Количество:</label>
+                            <span id="swalToolPackSizeBadge" style="font-size: 0.78em; color: #0369a1; background: #e0f2fe; padding: 1px 6px; border-radius: 6px; font-weight: 700;">📦 Опаковка: 10 бр.</span>
+                        </div>
                         <input type="number" id="swalToolQty" value="10" min="1" step="any" placeholder="напр. 10 или 20" style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; color: #1e293b; box-sizing: border-box;">
                     </div>
                 </div>
