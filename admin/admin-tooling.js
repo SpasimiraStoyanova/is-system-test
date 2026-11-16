@@ -731,7 +731,7 @@ window.openToolCalibrationHistoryModal = async function(toolCode, toolName) {
 // (С потвърждение чрез личен ПИН код на служителя)
 // ==============================================================================
 
-window.openCreateEquipmentProtocolModal = async function() {
+window.openCreateEquipmentProtocolModal = async function(preselectedEmail = null) {
     Swal.fire({ title: 'Зареждане на служителите...', didOpen: () => Swal.showLoading() });
     
     let workers = [];
@@ -748,7 +748,11 @@ window.openCreateEquipmentProtocolModal = async function() {
         return;
     }
 
-    const workerOptions = workers.map(w => `<option value="${escapeHtml(w['Имейл'])}" data-name="${escapeHtml(w['Име'])}">${escapeHtml(w['Име'])} (${escapeHtml(w['Имейл'])})</option>`).join('');
+    const cleanPreselected = preselectedEmail ? preselectedEmail.toLowerCase().trim() : null;
+    const workerOptions = workers.map(w => {
+        const isSel = (cleanPreselected && w['Имейл'] && w['Имейл'].toLowerCase().trim() === cleanPreselected) ? 'selected' : '';
+        return `<option value="${escapeHtml(w['Имейл'])}" data-name="${escapeHtml(w['Име'])}" ${isSel}>${escapeHtml(w['Име'])} (${escapeHtml(w['Имейл'])})</option>`;
+    }).join('');
     const today = new Date().toISOString().split('T')[0];
     const defaultHandedBy = localStorage.getItem('last_admin_email') || 'Администрация';
     const protoNum = `ППП-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;

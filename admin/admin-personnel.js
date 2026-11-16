@@ -177,7 +177,7 @@ function closeFolderModal() {
 }
 
 function switchFolderTab(tabId) { 
-    ['att', 'work', 'docs', '3s', 'bonuses'].forEach(id => { 
+    ['att', 'work', 'docs', '3s', 'bonuses', 'equipment'].forEach(id => { 
         const btn = document.getElementById('tab' + id.charAt(0).toUpperCase() + id.slice(1) + 'Btn');
         const cont = document.getElementById('f-' + id);
         if (btn) btn.classList.remove('active'); 
@@ -192,6 +192,120 @@ function switchFolderTab(tabId) {
     if (tabId === 'docs') loadWorkerDocs(); 
     if (tabId === '3s') loadWorker3sAudits(); 
     if (tabId === 'bonuses') loadWorkerBonuses(); 
+    if (tabId === 'equipment') loadWorkerEquipmentProtocols(); 
+}
+
+async function loadWorkerEquipmentProtocols() {
+    const list = document.getElementById('workerEquipmentList');
+    if (!list) return;
+    list.innerHTML = '<div style="padding:25px; text-align:center; color:#64748b;">Зареждане на зачислена екипировка и протоколи... 🦺</div>';
+    try {
+        const safeEsc = (typeof escapeHtml === 'function') ? escapeHtml : (str => String(str || '').replace(/[&<>"']/g, ''));
+        const { data: protocols, error } = await client
+            .from('equipment_protocols')
+            .select('*')
+            .eq('worker_email', currentFolderEmail)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            if (error.code === '42P01') {
+                list.innerHTML = '<div style="padding:30px; text-align:center; color:#b45309; background:#fffbeb; border:1px solid #fde68a; border-radius:10px;">⚠️ Таблицата <code>equipment_protocols</code> все още не е създадена в базата данни (изпълнете <code>setup_workstations_tools.sql</code>).</div>';
+                return;
+            }
+            throw error;
+        }
+
+        // Преброяване на активни зачислени вещи
+        let totalActiveItemsCount = 0;
+        let pendingSignCount = 0;
+        (protocols || []).forEach(p => {
+            if (p.status === 'Приет' && Array.isArray(p.items)) {
+                p.items.forEach(it => { totalActiveItemsCount += (parseFloat(it.qty) || 1); });
+            }
+            if (p.status === 'Чака подпис') pendingSignCount++;
+        });
+
+        let summaryHeader = `
+            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <div style="font-weight:900; color:#1e293b; font-size:1.05em;">🦺 Зачислено Работно Оборудване, ЛПС и Уреди</div>
+                    <div style="font-size:0.84em; color:#64748b; margin-top:2px;">
+                        Активно зачислени вещи: <b style="color:#0284c7;">${totalActiveItemsCount} бр.</b> | 
+                        Чакащи подпис с ПИН: <b style="color:${pendingSignCount > 0 ? '#ea580c' : '#15803d'};">${pendingSignCount}</b>
+                    </div>
+                </div>
+                <button type="button" class="btn-primary" onclick="if(typeof openCreateEquipmentProtocolModal==='function') openCreateEquipmentProtocolModal('${safeEsc(currentFolderEmail)}')" style="background:#ea580c; padding:7px 14px; font-size:0.85em; font-weight:800; border-radius:8px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+                    <span>➕</span> <span>Нов Протокол за този служител</span>
+                </button>
+            </div>
+        `;
+
+        if (!protocols || protocols.length === 0) {
+            list.innerHTML = summaryHeader + `
+                <div style="text-align:center; padding:35px 20px; color:#94a3b8; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:10px;">
+                    <div style="font-size:2.5em; margin-bottom:8px;">🦺</div>
+                    <div style="font-weight:800; color:#475569; font-size:1em;">Няма издадени приемо-предавателни протоколи за този служител</div>
+                    <div style="font-size:0.82em; color:#94a3b8; margin-top:4px;">Натиснете бутона „Нов Протокол за този служител“ горе, за да му зачислите инструменти, работно облекло или ЛПС.</div>
+                </div>
+            `;
+            return;
+        }
+
+        let itemsHtml = protocols.map(p => {
+            let statusBadge = '<span style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; padding:3px 9px; border-radius:6px; font-weight:800; font-size:0.82em;">⏳ Чака подпис с ПИН</span>';
+            if (p.status === 'Приет') {
+                statusBadge = '<span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 9px; border-radius:6px; font-weight:800; font-size:0.82em;">🟢 Приет (Подписан с ПИН)</span>';
+            } else if (p.status === 'Върнат') {
+                statusBadge = '<span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 9px; border-radius:6px; font-weight:800; font-size:0.82em;">🔄 Върнат</span>';
+            } else if (p.status === 'Бракуван') {
+                statusBadge = '<span style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; padding:3px 9px; border-radius:6px; font-weight:800; font-size:0.82em;">🗑️ Бракуван</span>';
+            }
+
+            let dateCreated = p.created_at ? new Date(p.created_at).toLocaleDateString('bg-BG') : '--';
+            let signedInfo = p.signed_at 
+                ? `<div style="font-size:0.78em; color:#166534; font-weight:700; margin-top:6px;">🔒 Подписан от работника с личен ПИН на ${new Date(p.signed_at).toLocaleString('bg-BG')}</div>`
+                : '';
+
+            let itemsRows = '';
+            if (Array.isArray(p.items)) {
+                itemsRows = p.items.map(it => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px dashed #e2e8f0; font-size:0.88em;">
+                        <div>
+                            <b style="color:#1e293b;">• ${safeEsc(it.name)}</b> 
+                            <span style="background:#f1f5f9; color:#475569; padding:1px 6px; border-radius:4px; font-size:0.8em; margin-left:6px;">${safeEsc(it.category || 'ЛПС')}</span>
+                            ${it.code ? `<span style="color:#64748b; font-size:0.8em; margin-left:4px;">(№ ${safeEsc(it.code)})</span>` : ''}
+                        </div>
+                        <span style="font-weight:900; color:#0284c7;">${it.qty || 1} бр.</span>
+                    </div>
+                `).join('');
+            }
+
+            return `
+                <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                        <div>
+                            <span style="font-weight:900; color:#1e293b; font-size:0.98em;">Протокол № ${safeEsc(p.protocol_number)}</span>
+                            <span style="color:#64748b; font-size:0.82em; margin-left:8px;">Дата: ${dateCreated} | Предал: <b>${safeEsc(p.handed_by || 'Администрация')}</b></span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            ${statusBadge}
+                            <button type="button" class="btn-secondary" onclick="if(typeof openEquipmentProtocolViewModal==='function') openEquipmentProtocolViewModal(${p.id})" style="padding:4px 10px; font-size:0.8em; cursor:pointer;">👁️ Преглед / Връщане</button>
+                        </div>
+                    </div>
+                    <div style="background:#f8fafc; border-radius:8px; padding:8px 12px; margin-top:6px;">
+                        ${itemsRows}
+                    </div>
+                    ${signedInfo}
+                    ${p.notes ? `<div style="font-size:0.8em; color:#64748b; margin-top:6px;"><em>Забележка: ${safeEsc(p.notes)}</em></div>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        list.innerHTML = summaryHeader + itemsHtml;
+
+    } catch(err) {
+        list.innerHTML = `<div style="color:#ef4444; padding:15px;">Грешка при зареждане на зачислените вещи: ${err.message}</div>`;
+    }
 }
 
 async function loadWorker3sAudits() {
