@@ -319,6 +319,15 @@ window.openTerminalSignProtocolModal = async function(protocolId) {
                         <div>Дата: <b>${createdDateStr}</b></div>
                     </div>
 
+                    ${proto.notes ? `
+                        <div style="background: #f0f9ff; border: 1.5px solid #bae6fd; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; color: #0369a1; line-height: 1.4;">
+                            <div style="font-weight: 800; color: #0284c7; margin-bottom: 3px; display: flex; align-items: center; gap: 5px;">
+                                <span>📝</span> <span>Забележка / Указания от Администрацията:</span>
+                            </div>
+                            <div style="color: #0f172a; font-weight: 600;">${escapeHtml(proto.notes)}</div>
+                        </div>
+                    ` : ''}
+
                     <div style="font-weight: 800; color: #1e293b; font-size: 0.95em;">
                         📦 Списък на зачисляваните вещи, ЛПС и инструменти:
                     </div>
@@ -499,6 +508,7 @@ window.loadTermEquipmentProtocols = async function(email) {
                     <div style="background:#f8fafc; border-radius:8px; padding:8px 12px; margin-top:6px;">
                         ${itemsTable}
                     </div>
+                    ${proto.notes ? `<div style="font-size:0.82em; color:#475569; margin-top:6px; background:#f8fafc; border:1px solid #e2e8f0; padding:6px 10px; border-radius:6px;">📝 <b>Забележка:</b> ${escapeHtml(proto.notes)}</div>` : ''}
                     ${signedStr ? `<div style="font-size:0.78em; color:#166534; font-weight:700; margin-top:6px;">${signedStr}</div>` : ''}
                 </div>
             `;

@@ -888,8 +888,8 @@ window.openCreateEquipmentProtocolModal = async function(preselectedEmail = null
                 handed_by: handedBy,
                 items: items,
                 status: 'Чака подпис',
-                notes: notes ? `${notes} (Издаден на ${protoDate})` : `Издаден на ${protoDate}`,
-                created_at: new Date().toISOString()
+                notes: notes || null,
+                created_at: protoDate ? new Date(protoDate).toISOString() : new Date().toISOString()
             };
         }
     }).then(async (res) => {
