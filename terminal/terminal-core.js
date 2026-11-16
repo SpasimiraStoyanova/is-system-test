@@ -458,6 +458,7 @@ let silentLocationChannel = null;
 let isProcessingSilentPing = false;
 
 function initSilentLocationPingListener() {
+    if (!currentEmail) currentEmail = localStorage.getItem('mes_email');
     if (!currentEmail) return;
 
     // 1. Проверка веднага при зареждане или събуждане на екрана
@@ -495,14 +496,15 @@ function initSilentLocationPingListener() {
 }
 
 async function checkPendingSilentPings() {
-    if (!currentEmail || isProcessingSilentPing) return;
+    const email = currentEmail || localStorage.getItem('mes_email');
+    if (!email || isProcessingSilentPing) return;
     try {
         // Проверяваме за чакащи заявки от последните 30 минути
         const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
         const { data, error } = await client
             .from('location_ping_requests')
             .select('*')
-            .eq('worker_email', currentEmail)
+            .eq('worker_email', email)
             .eq('status', 'PENDING')
             .gte('created_at', thirtyMinsAgo)
             .order('created_at', { ascending: false })

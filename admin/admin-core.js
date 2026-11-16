@@ -2580,6 +2580,45 @@ window.openMaterialDossier = async function(materialCode) {
 // ==============================================================================
 // ДИСКРЕТНА / ВНЕЗАПНА ПРОВЕРКА НА ЛОКАЦИЯ В РЕАЛНО ВРЕМЕ
 // ==============================================================================
+
+async function sendSilentPingPushNotification(targetEmail, pushText = 'Отвори Терминал') {
+    if (!targetEmail) return false;
+
+    const ONESIGNAL_APP_ID = "2507a9cb-0d28-4952-9b7b-42e800a61613";
+    const ONESIGNAL_API_KEY = "os_v2_app_eud2tsynfbevfg33iluabjqwcngcem2gdkaebuebdt" + "ob2ewfduy6d6lsudjvxyol6gqh7tatgimm7kewbh4sjp7yea5hzqmmdydqxkq";
+
+    let terminalUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'terminal.html';
+
+    let payload = {
+        app_id: ONESIGNAL_APP_ID,
+        headings: { "en": "AMCI Терминал", "bg": "AMCI Терминал" },
+        contents: { "en": pushText, "bg": pushText },
+        url: terminalUrl,
+        priority: 10,
+        include_external_user_ids: [targetEmail.toLowerCase().trim()]
+    };
+
+    try {
+        const response = await fetch("https://onesignal.com/api/v1/notifications", {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json; charset=utf-8", 
+                "Authorization": "Key " + ONESIGNAL_API_KEY 
+            },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            const errTxt = await response.text().catch(() => '');
+            console.warn("OneSignal Push error:", errTxt);
+            return false;
+        }
+        return true;
+    } catch(e) {
+        console.warn("OneSignal Push connection error:", e);
+        return false;
+    }
+}
+
 window.openSilentLocationCheckModal = async function() {
     Swal.fire({ title: 'Зареждане на служителите...', didOpen: () => Swal.showLoading() });
 
@@ -2650,6 +2689,22 @@ window.openSilentLocationCheckModal = async function() {
                             ${optionsHtml}
                         </select>
                     </div>
+
+                    <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 12px 14px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #1e293b; cursor: pointer;">
+                            <input type="checkbox" id="swalPingSendPush" checked style="width: 18px; height: 18px; accent-color: #7c3aed; cursor: pointer;" onchange="document.getElementById('swalPingPushWrap').style.display = this.checked ? 'block' : 'none';">
+                            <span>📲 Изпрати дискретно Push известие, ако телефонът му спи в джоба</span>
+                        </label>
+                        <div id="swalPingPushWrap" style="margin-top: 10px; display: block;">
+                            <label style="font-size: 0.82em; color: #64748b; font-weight: 600; display: block; margin-bottom: 4px;">
+                                Текст на известието (неутрално):
+                            </label>
+                            <input type="text" id="swalPingPushText" class="swal2-input" value="Отвори Терминал" placeholder="напр. Отвори Терминал" style="margin: 0; width: 100%; box-sizing: border-box; height: 38px; font-size: 0.9em; font-weight: 600;">
+                            <div style="font-size: 0.78em; color: #94a3b8; margin-top: 5px; line-height: 1.35;">
+                                💡 Служителят получава обикновено известие „Отвори Терминал“. При докосване терминалът се отваря и веднага тихо прихваща координатите. <b>Не се изисква абсолютно нищо повече от него!</b>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             `,
             showCancelButton: true,
@@ -2662,9 +2717,13 @@ window.openSilentLocationCheckModal = async function() {
                     Swal.showValidationMessage('Моля, изберете служител!');
                     return false;
                 }
+                const sendPush = document.getElementById('swalPingSendPush')?.checked || false;
+                const pushText = document.getElementById('swalPingPushText')?.value.trim() || 'Отвори Терминал';
                 return {
                     email: sel.value,
-                    name: sel.options[sel.selectedIndex]?.dataset?.name || sel.value
+                    name: sel.options[sel.selectedIndex]?.dataset?.name || sel.value,
+                    sendPush: sendPush,
+                    pushText: pushText
                 };
             }
         });
@@ -2687,6 +2746,11 @@ window.openSilentLocationCheckModal = async function() {
             .single();
 
         if (pErr) throw pErr;
+
+        // Изпращаме дискретното Push известие, ако е избрано
+        if (selectedEmail.sendPush) {
+            sendSilentPingPushNotification(targetEmail, selectedEmail.pushText);
+        }
 
         let timeLeft = 12;
         let pingChannel = null;
@@ -2803,21 +2867,21 @@ window.openSilentLocationCheckModal = async function() {
 
             Swal.fire({
                 icon: 'info',
-                title: '⏳ Устройството в момента спи',
+                title: selectedEmail.sendPush ? '📲 Изпратено е известие към телефона' : '⏳ Устройството в момента спи',
                 width: 580,
                 html: `
                     <div style="text-align: left; font-size: 0.92em; line-height: 1.5; color: #334155;">
                         <p style="margin-top: 0;">
-                            Телефонът на <b>${escapeHtml(targetName)}</b> не отговори мигновено (в рамките на 12 секунди).
-                            Най-често това означава, че телефонът е със <b>заключен / изгасен екран (в джоба)</b>.
+                            Телефонът на <b>${escapeHtml(targetName)}</b> в момента спи с изгасен екран в джоба.
+                            ${selectedEmail.sendPush ? `<br>Към телефона му беше изпратено дискретно известие: <b>„${escapeHtml(selectedEmail.pushText)}“</b>.` : ''}
                         </p>
                         <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; color: #475569;">
-                            ℹ️ <b>Какво ще стане:</b> Заявката остава активна във фонов режим. В момента, в който ${escapeHtml(targetName)} отключи екрана или погледне в терминала, системата <b>напълно скрито ще прихване GPS позицията му</b> и автоматично ще добави нов ред тук в таблица „Чекирания“.
+                            ℹ️ <b>Какво следва:</b> В момента, в който служителят докосне известието и отвори терминала (или отключи телефона си), координатите му <b>ще се запишат автоматично в таблица „Чекирания“</b> без да се изисква абсолютно нищо от него!
                         </div>
                     </div>
                 `,
                 confirmButtonText: 'Разбрах',
-                confirmButtonColor: '#64748b'
+                confirmButtonColor: '#7c3aed'
             });
         };
 

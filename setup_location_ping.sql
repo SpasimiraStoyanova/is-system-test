@@ -41,3 +41,4 @@ CREATE POLICY "Allow all on location_ping_requests" ON public.location_ping_requ
 
 GRANT ALL ON public.location_ping_requests TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+
