@@ -122,6 +122,7 @@ function claimCurrentTaskDOM(taskId) {
   }
   if (navigator.vibrate) navigator.vibrate(50); 
   activeTaskId = taskId; 
+  try { localStorage.removeItem('mes_last_task_idle_start'); } catch(e){}
   window['startTime_' + taskId] = new Date().toISOString();
   
   if (typeof markTaskClaimedInReminders === 'function') {
@@ -162,6 +163,7 @@ function claimCurrentTaskDOM(taskId) {
 function pauseTaskDOM(taskId) {
   if (navigator.vibrate) navigator.vibrate(50); 
   activeTaskId = null; 
+  try { localStorage.setItem('mes_last_task_idle_start', String(Date.now())); } catch(e){} 
 
   let taskData = globalTasks.find(t => t.id === taskId);
   if (taskData) {
@@ -311,6 +313,7 @@ async function finishTask(taskId, btn) {
 
       if (typeof autoResolveAndonForTask === 'function') { autoResolveAndonForTask(taskData, val); }
       addLogToHistory('ГОТОВО', val, taskId); activeTaskId = null; 
+      try { localStorage.setItem('mes_last_task_idle_start', String(Date.now())); } catch(e){} 
       Swal.fire({ icon: 'success', title: 'Браво!', text: 'Отчетени: ' + val + ' бр.', timer: 1500, showConfirmButton: false }).then(() => { loadTasks(); });
       } catch(err) { 
           if (!navigator.onLine || err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('fetch')) {

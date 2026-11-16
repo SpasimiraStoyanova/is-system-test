@@ -2516,9 +2516,16 @@ async function scanAndSendIdleRemindersCentral(isManualTrigger = false) {
 
         // За всеки чекиран работник:
         for (let worker of activeWorkers) {
-            // А. Има ли вече напомняне за днес?
-            const alreadyReminded = existingReminders.some(r => r.worker_email.trim().toLowerCase() === worker.email);
-            if (alreadyReminded) continue;
+            // Намираме напомнянията за този работник за днес (сортирани по sent_at низходящо):
+            const workerReminders = existingReminders.filter(r => r.worker_email.trim().toLowerCase() === worker.email);
+            workerReminders.sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+            const lastReminder = workerReminders[0] || null;
+
+            // Кулдаун: ако е изпратено напомняне преди по-малко от 10 минути -> изчакваме
+            if (lastReminder && lastReminder.sent_at) {
+                const diffMs = now.getTime() - new Date(lastReminder.sent_at).getTime();
+                if (diffMs < 10 * 60 * 1000) continue;
+            }
 
             // Б. Има ли текущо активна (започната и незавършена) задача в момента?
             const hasActiveTaskNow = todayReports.some(rep => {
@@ -2528,6 +2535,37 @@ async function scanAndSendIdleRemindersCentral(isManualTrigger = false) {
                 return opName === wName || opName === worker.email;
             });
             if (hasActiveTaskNow) continue;
+
+            // Намираме последния завършен отчет за този работник днес:
+            const workerFinishedReports = todayReports.filter(rep => {
+                if (rep['Статус'] === 'Започната') return false;
+                const opName = (rep['Оператор'] || '').trim().toLowerCase();
+                const wName = worker.name.toLowerCase();
+                return opName === wName || opName === worker.email;
+            });
+            workerFinishedReports.sort((a, b) => new Date(b['Дата']).getTime() - new Date(a['Дата']).getTime());
+            const lastFinished = workerFinishedReports[0] || null;
+
+            let shouldRemindCentral = false;
+            let centralReason = '';
+            let isMorningCentral = false;
+
+            if (lastFinished && lastFinished['Дата']) {
+                const finishedDiff = now.getTime() - new Date(lastFinished['Дата']).getTime();
+                if (finishedDiff >= 10 * 60 * 1000) {
+                    shouldRemindCentral = true;
+                    const mins = Math.floor(finishedDiff / 60000);
+                    centralReason = `Централно: престой ${mins} мин. без задача след приключване`;
+                }
+            } else {
+                if (isPast835 || isManualTrigger) {
+                    shouldRemindCentral = true;
+                    centralReason = `Централно: непоета задача сутрин след 08:35 ч.`;
+                    isMorningCentral = true;
+                }
+            }
+
+            if (!shouldRemindCentral) continue;
 
             // В. На коя машина е зачислен?
             const assignedMachine = macMap[worker.email] || null;
@@ -2557,9 +2595,10 @@ async function scanAndSendIdleRemindersCentral(isManualTrigger = false) {
                 status: 'SENT',
                 sent_at: now.toISOString(),
                 available_blue_tasks: readyTasks.length,
-                notes: `Автоматично централно подсещане (свободни ${readyTasks.length} задачи)`
+                notes: centralReason
             };
 
+            let createdReminder = null;
             const { data: created, error: insErr } = await client
                 .from('task_reminders')
                 .insert([insertPayload])
@@ -2567,12 +2606,34 @@ async function scanAndSendIdleRemindersCentral(isManualTrigger = false) {
                 .single();
 
             if (!insErr && created) {
+                createdReminder = created;
+            } else if (insErr) {
+                console.warn('workplace-tasks insert notice:', insErr.message);
+                const { data: updated } = await client
+                    .from('task_reminders')
+                    .update({
+                        status: 'SENT',
+                        sent_at: now.toISOString(),
+                        read_at: null,
+                        claimed_at: null,
+                        available_blue_tasks: readyTasks.length,
+                        notes: centralReason
+                    })
+                    .eq('reminder_date', todayStr)
+                    .eq('worker_email', worker.email)
+                    .select()
+                    .single();
+                createdReminder = updated;
+            }
+
+            if (createdReminder) {
                 // Изпращаме Push към телефона му
                 sendIdlePushFromAdmin({
                     workerName: worker.name,
                     workerEmail: worker.email,
                     machine: assignedMachine,
-                    availableCount: readyTasks.length
+                    availableCount: readyTasks.length,
+                    isMorning: isMorningCentral
                 });
 
                 console.log(`[НАПОМНЯНЕ] Изпратено подсещане за непоета задача до ${worker.name} (${assignedMachine})`);
@@ -2602,7 +2663,7 @@ async function scanAndSendIdleRemindersCentral(isManualTrigger = false) {
  * Push известие през OneSignal от таблото за непоета задача
  * (СТРОГО ОГРАНИЧЕНО до 3-те тестови имейла в IS_SYSTEM_TEST)
  */
-async function sendIdlePushFromAdmin({ workerName, workerEmail, machine, availableCount }) {
+async function sendIdlePushFromAdmin({ workerName, workerEmail, machine, availableCount, isMorning = false }) {
     if (!workerEmail) return false;
     const cleanEmail = workerEmail.trim().toLowerCase();
 
@@ -2615,8 +2676,12 @@ async function sendIdlePushFromAdmin({ workerName, workerEmail, machine, availab
     const ONESIGNAL_APP_ID = "2507a9cb-0d28-4952-9b7b-42e800a61613";
     const ONESIGNAL_API_KEY = "os_v2_app_eud2tsynfbevfg33iluabjqwcngcem2gdkaebuebdt" + "ob2ewfduy6d6lsudjvxyol6gqh7tatgimm7kewbh4sjp7yea5hzqmmdydqxkq";
 
-    let title = `⚠️ Напомняне: Непоета задача (${machine})`;
-    let body = `👷 ${workerName}, вече е след 8:35 ч., а на ${machine} има ${availableCount} свободни задачи. Моля, поемете задача от терминала!`;
+    let title = isMorning 
+        ? `⚠️ Напомняне: Непоета задача (${machine})`
+        : `⚠️ Напомняне: Престой над 10 мин. (${machine})`;
+    let body = isMorning
+        ? `👷 ${workerName}, вече е след 8:35 ч., а на ${machine} има ${availableCount} свободни задачи. Моля, поемете задача от терминала!`
+        : `👷 ${workerName}, изминаха повече от 10 мин. без поета задача, а на ${machine} има ${availableCount} свободни задачи. Моля, поемете задача!`;
     let terminalUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'terminal.html';
 
     let payload = {
