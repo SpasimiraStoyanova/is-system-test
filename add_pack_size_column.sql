@@ -13,5 +13,7 @@ ALTER TABLE public.sklad ADD COLUMN IF NOT EXISTS pack_size NUMERIC DEFAULT 1;
 UPDATE public.sklad SET pack_size = 1 WHERE pack_size IS NULL;
 
 -- 3. Номенклатура ("Номенклатура")
-ALTER TABLE public."Номенклатура" ADD COLUMN IF NOT EXISTS pack_size NUMERIC DEFAULT 1;
-UPDATE public."Номенклатура" SET pack_size = 1 WHERE pack_size IS NULL;
+-- САМО за позиции от тип 'Материал'. За детайлите, които се произвеждат в цеха, полето е NULL (показва се тире "-")
+ALTER TABLE public."Номенклатура" ADD COLUMN IF NOT EXISTS pack_size NUMERIC;
+UPDATE public."Номенклатура" SET pack_size = NULL WHERE "Тип" IS NULL OR LOWER(TRIM("Тип")) != 'материал';
+

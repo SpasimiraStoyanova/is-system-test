@@ -998,7 +998,30 @@ function renderDynamicTable(itemsToRender = null) {
                 row.appendChild(td); return;
             }
             if (f.name === 'pack_size') {
-                let pSize = parseFloat(val) || (currentTab === 'tooling_sklad' ? 10 : 1);
+                if (currentTab === 'nomenklatura') {
+                    const isMaterial = item && item['Тип'] && String(item['Тип']).trim().toLowerCase() === 'материал';
+                    if (!isMaterial) {
+                        td.innerHTML = '<span style="color:#94a3b8; font-weight:bold;">—</span>';
+                        row.appendChild(td); return;
+                    }
+                    let pSize = parseFloat(val);
+                    if (!pSize || pSize <= 0) {
+                        td.innerHTML = '<span style="color:#94a3b8; font-weight:bold;">—</span>';
+                        row.appendChild(td); return;
+                    }
+                    td.innerHTML = `<span style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:2px 8px; border-radius:10px; font-weight:800; font-size:0.88em; display:inline-flex; align-items:center; gap:4px;" title="Опаковъчна единица (кутия / кашон / пакет)">📦 ${pSize} бр.</span>`;
+                    row.appendChild(td); return;
+                }
+                if (currentTab === 'sklad') {
+                    let pSize = parseFloat(val);
+                    if (!pSize || pSize <= 1) {
+                        td.innerHTML = (pSize === 1) ? '<span style="color:#64748b; font-size:0.88em;">1 бр.</span>' : '<span style="color:#94a3b8; font-weight:bold;">—</span>';
+                        row.appendChild(td); return;
+                    }
+                    td.innerHTML = `<span style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:2px 8px; border-radius:10px; font-weight:800; font-size:0.88em; display:inline-flex; align-items:center; gap:4px;" title="Опаковъчна единица">📦 ${pSize} бр.</span>`;
+                    row.appendChild(td); return;
+                }
+                let pSize = parseFloat(val) || 10;
                 td.innerHTML = `<span style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:2px 8px; border-radius:10px; font-weight:800; font-size:0.88em; display:inline-flex; align-items:center; gap:4px;" title="Опаковъчна единица (кутия / кашон / пакет)">📦 ${pSize} бр.</span>`;
                 row.appendChild(td); return;
             }
@@ -1754,6 +1777,12 @@ async function saveForm(e) {
             payload[f.name] = val;
         }
     });
+    if (currentTab === 'nomenklatura') {
+        const isMat = payload['Тип'] && String(payload['Тип']).trim().toLowerCase() === 'материал';
+        if (!isMat || !payload['pack_size'] || payload['pack_size'] <= 0) {
+            payload['pack_size'] = null;
+        }
+    }
     if (currentTab === 'sklad') {
         let startQty = parseFloat(payload['Начална наличност']) || 0;
         let delivQty = parseFloat(payload['Доставено']) || 0;
