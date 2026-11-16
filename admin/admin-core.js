@@ -811,6 +811,23 @@ function renderDynamicTable(itemsToRender = null) {
                     row.appendChild(td); return;
                 }
             }
+            if (currentTab === 'factory_tools' && f.name === 'calibration_due') {
+                if (!val) {
+                    td.innerHTML = '<span style="color:#94a3b8; font-size:0.85em;">Не е въведен</span>';
+                } else {
+                    let today = new Date(); today.setHours(0,0,0,0);
+                    let due = new Date(val); due.setHours(0,0,0,0);
+                    let diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+                    if (diffDays < 0) {
+                        td.innerHTML = `<span style="background:#fee2e2; color:#b91c1c; border:1.5px solid #fca5a5; padding:3px 8px; border-radius:12px; font-weight:800; font-size:0.85em;" title="🚨 Просрочена проверка с ${Math.abs(diffDays)} дни!">🚨 Изтекъл (${val})</span>`;
+                    } else if (diffDays <= 30) {
+                        td.innerHTML = `<span style="background:#fef3c7; color:#b45309; border:1.5px solid #fde68a; padding:3px 8px; border-radius:12px; font-weight:800; font-size:0.85em;" title="⚠️ Наближава срокът за замерване (остават ${diffDays} дни)">⚠️ След ${diffDays} дни (${val})</span>`;
+                    } else {
+                        td.innerHTML = `<span style="background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; padding:3px 8px; border-radius:12px; font-weight:700; font-size:0.85em;">🟢 До ${val} (${diffDays} дни)</span>`;
+                    }
+                }
+                row.appendChild(td); return;
+            }
             td.innerText = val;
             if (currentTab === 'plan' && f.name === 'Вътрешно име' && item['__packaged_info']) {
                 td.innerHTML = val + item['__packaged_info'];
@@ -823,6 +840,14 @@ function renderDynamicTable(itemsToRender = null) {
             if (currentTab === 'sklad') {
                 let safeCode = String(item['ID Детайл'] || '').replace(/"/g, '&quot;').replace(/'/g, '\\\'');
                 extraActionBtns = `<button class="action-btn" onclick="openMaterialDossier('${safeCode}')" title="📜 Картон на материала (История на движенията)" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; margin-right:4px;">📜</button>`;
+            }
+            if (currentTab === 'factory_tools') {
+                let safeCode = String(item['tool_code'] || '').replace(/"/g, '&quot;').replace(/'/g, '\\\'');
+                let safeName = String(item['tool_name'] || '').replace(/"/g, '&quot;').replace(/'/g, '\\\'');
+                extraActionBtns = `
+                    <button type="button" class="action-btn" onclick="openToolCalibrationModal(${item.id || 'null'}, '${safeCode}', '${safeName}')" title="📏 Ново замерване с еталони / Проверка" style="background:#fef3c7; color:#b45309; border:1px solid #fde68a; margin-right:4px; font-weight:bold;">📏</button>
+                    <button type="button" class="action-btn" onclick="openToolCalibrationHistoryModal('${safeCode}', '${safeName}')" title="📋 Метрологичен дневник / История на замерванията" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; margin-right:4px; font-weight:bold;">📋</button>
+                `;
             }
             tdActions.innerHTML = `${extraActionBtns}<button class="action-btn btn-edit" onclick="openEditModal(${trueIndex})" title="Редактирай">✏️</button><button class="action-btn btn-delete" onclick="deleteItem(${trueIndex})" title="Изтрий">🗑️</button>`;
             row.appendChild(tdActions);

@@ -73,13 +73,33 @@ CREATE TABLE IF NOT EXISTS public.tooling_requests (
     resolved_by TEXT
 );
 
--- 5. Индекси за светкавично търсене
+-- 5. Таблица: Дневник на Замервания & Калибрации (factory_tool_calibrations)
+-- (Запис на тестови точки с еталони, отчетени стойности, отклонения и история)
+CREATE TABLE IF NOT EXISTS public.factory_tool_calibrations (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    tool_id INTEGER,
+    tool_code TEXT NOT NULL,        -- напр. 'Ш-01'
+    tool_name TEXT,
+    check_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    checked_by TEXT NOT NULL,       -- Проверяващ (БТК / Метролог)
+    check_type TEXT DEFAULT 'Вътрешна проверка с еталони', -- 'Вътрешна проверка с еталони', 'Външна калибрация'
+    points JSONB NOT NULL DEFAULT '[]'::JSONB, -- [{"nominal": 10.00, "measured": 10.01, "diff": 0.01}, ...]
+    max_deviation NUMERIC DEFAULT 0,
+    result TEXT NOT NULL DEFAULT 'Годен (В допуск)', -- 'Годен (В допуск)', 'Условно годен', 'Брак / Извън допуск'
+    valid_until DATE NOT NULL,      -- Валиден до коя дата
+    notes TEXT
+);
+
+-- 6. Индекси за светкавично търсене
 CREATE INDEX IF NOT EXISTS idx_factory_machines_code ON public.factory_machines (code);
 CREATE INDEX IF NOT EXISTS idx_factory_tools_ws ON public.factory_tools (workstation_name);
 CREATE INDEX IF NOT EXISTS idx_tooling_inv_machine ON public.tooling_inventory (machine_name);
 CREATE INDEX IF NOT EXISTS idx_tooling_req_status ON public.tooling_requests (status);
+CREATE INDEX IF NOT EXISTS idx_tool_calib_code ON public.factory_tool_calibrations (tool_code);
+CREATE INDEX IF NOT EXISTS idx_tool_calib_date ON public.factory_tool_calibrations (check_date);
 
--- 6. Добавяне в Supabase Realtime (за живи нотификации и звук при заявка)
+-- 7. Добавяне в Supabase Realtime (за живи нотификации и звук при заявка)
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'tooling_requests') THEN
@@ -91,15 +111,19 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'tooling_inventory') THEN
         ALTER PUBLICATION supabase_realtime ADD TABLE public.tooling_inventory;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'factory_tool_calibrations') THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.factory_tool_calibrations;
+    END IF;
 EXCEPTION WHEN OTHERS THEN
     NULL;
 END $$;
 
--- 7. RLS Политики за пълен достъп
+-- 8. RLS Политики за пълен достъп
 ALTER TABLE public.factory_machines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.factory_tools ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tooling_inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tooling_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.factory_tool_calibrations ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all on factory_machines" ON public.factory_machines;
 CREATE POLICY "Allow all on factory_machines" ON public.factory_machines FOR ALL USING (true) WITH CHECK (true);
@@ -113,9 +137,13 @@ CREATE POLICY "Allow all on tooling_inventory" ON public.tooling_inventory FOR A
 DROP POLICY IF EXISTS "Allow all on tooling_requests" ON public.tooling_requests;
 CREATE POLICY "Allow all on tooling_requests" ON public.tooling_requests FOR ALL USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow all on factory_tool_calibrations" ON public.factory_tool_calibrations;
+CREATE POLICY "Allow all on factory_tool_calibrations" ON public.factory_tool_calibrations FOR ALL USING (true) WITH CHECK (true);
+
 GRANT ALL ON public.factory_machines TO anon, authenticated;
 GRANT ALL ON public.factory_tools TO anon, authenticated;
 GRANT ALL ON public.tooling_inventory TO anon, authenticated;
 GRANT ALL ON public.tooling_requests TO anon, authenticated;
+GRANT ALL ON public.factory_tool_calibrations TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 

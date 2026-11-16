@@ -2658,16 +2658,35 @@ window.showMachineAssignedToolsModal = function(machineName) {
         return;
     }
 
-    let rows = tools.map(t => `
-        <tr style="border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 8px 10px; font-weight:800; color:#2563eb;">${escapeHtml(t.tool_code)}</td>
-            <td style="padding: 8px 10px;">
-                <div style="font-weight:700; color:#1e293b;">${escapeHtml(t.tool_name)}</div>
-                <div style="font-size:0.8em; color:#64748b;">${escapeHtml(t.category)}</div>
-            </td>
-            <td style="padding: 8px 10px; font-size:0.85em; color:#15803d; font-weight:700;">${t.calibration_due ? 'Валиден до: ' + t.calibration_due : 'Без срок'}</td>
-        </tr>
-    `).join('');
+    let rows = tools.map(t => {
+        let calStatusHtml = '<span style="color:#64748b; font-size:0.85em;">Без срок</span>';
+        if (t.calibration_due) {
+            let today = new Date(); today.setHours(0,0,0,0);
+            let due = new Date(t.calibration_due); due.setHours(0,0,0,0);
+            let diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+            if (diffDays < 0) {
+                calStatusHtml = `<span style="color:#dc2626; font-weight:800; background:#fef2f2; border:1px solid #fecaca; padding:2px 6px; border-radius:4px; font-size:0.82em;">🚨 ИЗТЕКЛА (${t.calibration_due})</span>`;
+            } else if (diffDays <= 30) {
+                calStatusHtml = `<span style="color:#d97706; font-weight:700; background:#fffbeb; border:1px solid #fde68a; padding:2px 6px; border-radius:4px; font-size:0.82em;">⚠️ До ${t.calibration_due} (${diffDays} дни)</span>`;
+            } else {
+                calStatusHtml = `<span style="color:#15803d; font-weight:700; background:#f0fdf4; border:1px solid #bbf7d0; padding:2px 6px; border-radius:4px; font-size:0.82em;">🟢 До ${t.calibration_due}</span>`;
+            }
+        }
+        if (t.calibration_date) {
+            calStatusHtml += `<div style="font-size:0.75em; color:#64748b; margin-top:3px;">Последна проверка: <b>${t.calibration_date}</b></div>`;
+        }
+
+        return `
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 8px 10px; font-weight:800; color:#2563eb;">${escapeHtml(t.tool_code)}</td>
+                <td style="padding: 8px 10px;">
+                    <div style="font-weight:700; color:#1e293b;">${escapeHtml(t.tool_name)}</div>
+                    <div style="font-size:0.8em; color:#64748b;">${escapeHtml(t.category)}</div>
+                </td>
+                <td style="padding: 8px 10px;">${calStatusHtml}</td>
+            </tr>
+        `;
+    }).join('');
 
     Swal.fire({
         title: `🧰 Зачислени уреди: ${escapeHtml(machineName)}`,

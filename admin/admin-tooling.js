@@ -365,3 +365,365 @@ window.syncMachinesFromRoutes = async function() {
     }
 };
 
+// ==============================================================================
+// МЕТРОЛОГИЧЕН КОНТРОЛ: ЗАМЕРВАНИЯ, ОТКЛОНЕНИЯ И КАЛИБРАЦИОНЕН ДНЕВНИК
+// ==============================================================================
+
+// Функция за отваряне на формуляр за ново замерване на измервателен уред
+window.openToolCalibrationModal = function(toolId, toolCode, toolName) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const defaultChecker = localStorage.getItem('last_admin_email') || 'БТК / Метролог';
+
+    // Изчисляване на 6 месеца напред по подразбиране
+    const d = new Date();
+    d.setMonth(d.getMonth() + 6);
+    const defaultValidStr = d.toISOString().split('T')[0];
+
+    Swal.fire({
+        title: `📏 Замерване на уред: ${escapeHtml(toolCode)}`,
+        width: 720,
+        html: `
+            <div style="text-align: left; font-size: 0.9em; display: flex; flex-direction: column; gap: 12px;">
+                <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; font-weight: 700; color: #1e40af;">
+                    Инструмент: <span style="color: #1e3a8a; font-size: 1.05em;">${escapeHtml(toolName || toolCode)}</span> (Инв. № ${escapeHtml(toolCode)})
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">📅 Дата на замерване:</label>
+                        <input type="date" id="calibDate" class="swal2-input" value="${todayStr}" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 38px;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">👷 Проверяващ (БТК/Метролог):</label>
+                        <input type="text" id="calibChecker" class="swal2-input" value="${escapeHtml(defaultChecker)}" placeholder="Име на проверяващия" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 38px;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">🔬 Вид проверка:</label>
+                        <select id="calibType" class="swal2-input" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 38px;">
+                            <option value="Вътрешна проверка с еталонни мерки" selected>Вътрешна проверка с еталони</option>
+                            <option value="Външна калибрация (Лаборатория)">Външна калибрация (Лаборатория)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">⏳ Валидност на проверката:</label>
+                        <select id="calibPeriodSelect" class="swal2-input" onchange="updateCalibDueDate(this.value)" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 38px;">
+                            <option value="3">3 месеца</option>
+                            <option value="6" selected>6 месеца</option>
+                            <option value="12">1 година (12 месеца)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #475569;">📅 Валиден до (крайна дата):</label>
+                    <input type="date" id="calibValidUntil" class="swal2-input" value="${defaultValidStr}" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 38px;">
+                </div>
+
+                <!-- Контролни точки / Замервания -->
+                <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #fafaf9;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-weight: 800; color: #334155;">📐 Контролни точки за замерване (с еталони):</span>
+                        <button type="button" onclick="addCalibPointRow()" style="padding: 4px 10px; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: 700; font-size: 0.85em; cursor: pointer;">➕ Добави точка</button>
+                    </div>
+
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;" id="calibPointsTable">
+                        <thead>
+                            <tr style="background: #f1f5f9; text-align: left; border-bottom: 2px solid #cbd5e1;">
+                                <th style="padding: 6px;">Еталон (Номинал, mm)</th>
+                                <th style="padding: 6px;">Отчетено от уреда (mm)</th>
+                                <th style="padding: 6px;">Отклонение</th>
+                                <th style="padding: 6px; width: 30px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="calibPointsTbody">
+                            <tr class="calib-pt-row">
+                                <td style="padding: 4px;"><input type="number" step="0.001" class="pt-nominal" value="10.00" oninput="calcCalibRow(this)" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;"></td>
+                                <td style="padding: 4px;"><input type="number" step="0.001" class="pt-measured" placeholder="напр. 10.01" oninput="calcCalibRow(this)" style="width: 100%; padding: 6px; border: 1.5px solid #2563eb; border-radius: 4px; box-sizing: border-box; font-weight: 800;"></td>
+                                <td style="padding: 4px; font-weight: 800;" class="pt-diff">-</td>
+                                <td style="padding: 4px;"><button type="button" onclick="this.closest('tr').remove(); calcCalibOverall();" style="border:none; background:transparent; color:#ef4444; font-weight:bold; cursor:pointer;">✖</button></td>
+                            </tr>
+                            <tr class="calib-pt-row">
+                                <td style="padding: 4px;"><input type="number" step="0.001" class="pt-nominal" value="25.00" oninput="calcCalibRow(this)" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;"></td>
+                                <td style="padding: 4px;"><input type="number" step="0.001" class="pt-measured" placeholder="напр. 25.00" oninput="calcCalibRow(this)" style="width: 100%; padding: 6px; border: 1.5px solid #2563eb; border-radius: 4px; box-sizing: border-box; font-weight: 800;"></td>
+                                <td style="padding: 4px; font-weight: 800;" class="pt-diff">-</td>
+                                <td style="padding: 4px;"><button type="button" onclick="this.closest('tr').remove(); calcCalibOverall();" style="border:none; background:transparent; color:#ef4444; font-weight:bold; cursor:pointer;">✖</button></td>
+                            </tr>
+                            <tr class="calib-pt-row">
+                                <td style="padding: 4px;"><input type="number" step="0.001" class="pt-nominal" value="50.00" oninput="calcCalibRow(this)" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;"></td>
+                                <td style="padding: 4px;"><input type="number" step="0.001" class="pt-measured" placeholder="напр. 50.01" oninput="calcCalibRow(this)" style="width: 100%; padding: 6px; border: 1.5px solid #2563eb; border-radius: 4px; box-sizing: border-box; font-weight: 800;"></td>
+                                <td style="padding: 4px; font-weight: 800;" class="pt-diff">-</td>
+                                <td style="padding: 4px;"><button type="button" onclick="this.closest('tr').remove(); calcCalibOverall();" style="border:none; background:transparent; color:#ef4444; font-weight:bold; cursor:pointer;">✖</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center;">
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">📊 Макс. отчетено отклонение:</label>
+                        <div id="calibMaxDevDisplay" style="font-size: 1.1em; font-weight: 900; color: #1e293b; padding: 6px 0;">0.000 mm</div>
+                    </div>
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">🏆 Заключение за годност:</label>
+                        <select id="calibResult" class="swal2-input" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 38px; font-weight: 800;">
+                            <option value="Годен (В допуск)" selected>🟢 Годен (В допуск)</option>
+                            <option value="Условно годен">🟡 Условно годен</option>
+                            <option value="Брак / Извън допуск">🔴 Брак / За ремонт</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #475569;">📝 Забележки / Номер на протокол / Сертификат:</label>
+                    <input type="text" id="calibNotes" class="swal2-input" placeholder="напр. Измерено при t=20°C, еталони КМД клас 1" style="margin: 4px 0 0; width: 100%; box-sizing: border-box;">
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '💾 Запази Замерването',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#16a34a',
+        preConfirm: () => {
+            const checkDate = document.getElementById('calibDate').value;
+            const checker = document.getElementById('calibChecker').value.trim();
+            const validUntil = document.getElementById('calibValidUntil').value;
+            const result = document.getElementById('calibResult').value;
+            const notes = document.getElementById('calibNotes').value.trim();
+            const checkType = document.getElementById('calibType').value;
+
+            if (!checkDate || !validUntil) {
+                Swal.showValidationMessage('Моля, попълнете дата на замерване и срок на валидност!');
+                return false;
+            }
+
+            // Събиране на точките за замерване
+            const points = [];
+            let maxDev = 0;
+            document.querySelectorAll('.calib-pt-row').forEach(row => {
+                const nom = parseFloat(row.querySelector('.pt-nominal')?.value);
+                const measVal = row.querySelector('.pt-measured')?.value;
+                if (measVal !== '' && !isNaN(parseFloat(measVal))) {
+                    const meas = parseFloat(measVal);
+                    const diff = Math.round((meas - nom) * 1000) / 1000;
+                    points.push({ nominal: nom, measured: meas, diff: diff });
+                    if (Math.abs(diff) > maxDev) maxDev = Math.abs(diff);
+                }
+            });
+
+            return {
+                tool_id: toolId || null,
+                tool_code: toolCode,
+                tool_name: toolName || toolCode,
+                check_date: checkDate,
+                checked_by: checker || 'БТК',
+                check_type: checkType,
+                points: points,
+                max_deviation: maxDev,
+                result: result,
+                valid_until: validUntil,
+                notes: notes || null
+            };
+        }
+    }).then(async (res) => {
+        if (res.isConfirmed && res.value) {
+            Swal.fire({ title: 'Запис на данните...', didOpen: () => Swal.showLoading() });
+            try {
+                // 1. Запис в дневника за калибрации
+                const { error: calErr } = await client.from('factory_tool_calibrations').insert([res.value]);
+                if (calErr) throw calErr;
+
+                // 2. Обновяване на инструмента в главната таблица factory_tools
+                const toolStatus = (res.value.result === 'Брак / Извън допуск') ? 'repair' : 'active';
+                const updatePayload = {
+                    calibration_date: res.value.check_date,
+                    calibration_due: res.value.valid_until,
+                    status: toolStatus
+                };
+
+                let q = client.from('factory_tools').update(updatePayload);
+                if (toolId) q = q.eq('id', toolId);
+                else q = q.eq('tool_code', toolCode);
+                await q;
+
+                if (window.invalidateAdminCache) window.invalidateAdminCache();
+                if (window.switchTab) switchTab(currentTab, true);
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Замерването е записано успешно!',
+                    html: `
+                        Уред: <b>${escapeHtml(toolCode)}</b><br>
+                        Статус: <b>${escapeHtml(res.value.result)}</b><br>
+                        Максимално отклонение: <b>${res.value.max_deviation.toFixed(3)} mm</b><br>
+                        Валиден до: <b>${res.value.valid_until}</b>
+                    `,
+                    timer: 2500,
+                    showConfirmButton: false
+                });
+            } catch (err) {
+                Swal.fire('Грешка', 'Неуспешен запис: ' + err.message, 'error');
+            }
+        }
+    });
+};
+
+// Помощни функции за динамичните редове в модала за замерване
+window.updateCalibDueDate = function(months) {
+    const checkDateInp = document.getElementById('calibDate');
+    const baseDate = checkDateInp && checkDateInp.value ? new Date(checkDateInp.value) : new Date();
+    baseDate.setMonth(baseDate.getMonth() + parseInt(months));
+    const targetInp = document.getElementById('calibValidUntil');
+    if (targetInp) targetInp.value = baseDate.toISOString().split('T')[0];
+};
+
+window.addCalibPointRow = function() {
+    const tbody = document.getElementById('calibPointsTbody');
+    if (!tbody) return;
+    const tr = document.createElement('tr');
+    tr.className = 'calib-pt-row';
+    tr.innerHTML = `
+        <td style="padding: 4px;"><input type="number" step="0.001" class="pt-nominal" value="100.00" oninput="calcCalibRow(this)" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;"></td>
+        <td style="padding: 4px;"><input type="number" step="0.001" class="pt-measured" placeholder="напр. 100.02" oninput="calcCalibRow(this)" style="width: 100%; padding: 6px; border: 1.5px solid #2563eb; border-radius: 4px; box-sizing: border-box; font-weight: 800;"></td>
+        <td style="padding: 4px; font-weight: 800;" class="pt-diff">-</td>
+        <td style="padding: 4px;"><button type="button" onclick="this.closest('tr').remove(); calcCalibOverall();" style="border:none; background:transparent; color:#ef4444; font-weight:bold; cursor:pointer;">✖</button></td>
+    `;
+    tbody.appendChild(tr);
+};
+
+window.calcCalibRow = function(inputEl) {
+    const row = inputEl.closest('tr');
+    if (!row) return;
+    const nom = parseFloat(row.querySelector('.pt-nominal')?.value);
+    const measVal = row.querySelector('.pt-measured')?.value;
+    const diffCell = row.querySelector('.pt-diff');
+
+    if (measVal !== '' && !isNaN(parseFloat(measVal)) && !isNaN(nom)) {
+        const meas = parseFloat(measVal);
+        const diff = Math.round((meas - nom) * 1000) / 1000;
+        const sign = diff > 0 ? '+' : '';
+        const color = Math.abs(diff) <= 0.02 ? '#16a34a' : (Math.abs(diff) <= 0.05 ? '#d97706' : '#dc2626');
+        diffCell.innerHTML = `<span style="color: ${color};">${sign}${diff.toFixed(3)} mm</span>`;
+    } else {
+        diffCell.innerText = '-';
+    }
+    calcCalibOverall();
+};
+
+window.calcCalibOverall = function() {
+    let maxDev = 0;
+    let hasPoints = false;
+    document.querySelectorAll('.calib-pt-row').forEach(row => {
+        const nom = parseFloat(row.querySelector('.pt-nominal')?.value);
+        const measVal = row.querySelector('.pt-measured')?.value;
+        if (measVal !== '' && !isNaN(parseFloat(measVal)) && !isNaN(nom)) {
+            hasPoints = true;
+            const diff = Math.abs(parseFloat(measVal) - nom);
+            if (diff > maxDev) maxDev = diff;
+        }
+    });
+
+    const display = document.getElementById('calibMaxDevDisplay');
+    if (display) {
+        display.innerHTML = hasPoints ? `${maxDev.toFixed(3)} mm` : '0.000 mm';
+        display.style.color = maxDev <= 0.02 ? '#16a34a' : (maxDev <= 0.05 ? '#d97706' : '#dc2626');
+    }
+
+    const resSelect = document.getElementById('calibResult');
+    if (resSelect && hasPoints) {
+        if (maxDev <= 0.02) resSelect.value = 'Годен (В допуск)';
+        else if (maxDev <= 0.04) resSelect.value = 'Условно годен';
+        else resSelect.value = 'Брак / Извън допуск';
+    }
+};
+
+// Функция за преглед на пълната хронология / паспорт на замерванията на даден инструмент
+window.openToolCalibrationHistoryModal = async function(toolCode, toolName) {
+    Swal.fire({ title: 'Зареждане на досието на уреда...', didOpen: () => Swal.showLoading() });
+    try {
+        const { data, error } = await client
+            .from('factory_tool_calibrations')
+            .select('*')
+            .eq('tool_code', toolCode)
+            .order('check_date', { ascending: false });
+
+        if (error && !error.message.includes('relation')) throw error;
+        const history = data || [];
+
+        if (history.length === 0) {
+            Swal.fire({
+                title: `📋 Метрологично Досие: ${escapeHtml(toolCode)}`,
+                html: `
+                    <div style="padding: 15px; color: #64748b;">
+                        За този инструмент все още няма записани исторически проверки и замервания.<br>
+                        <small style="color: #94a3b8; display:block; margin-top: 8px;">Натиснете бутона <b>📏</b>, за да въведете първото замерване с еталони.</small>
+                    </div>
+                `,
+                icon: 'info'
+            });
+            return;
+        }
+
+        let cardsHtml = '';
+        history.forEach(item => {
+            const checkD = item.check_date ? new Date(item.check_date).toLocaleDateString('bg-BG') : '-';
+            const validD = item.valid_until ? new Date(item.valid_until).toLocaleDateString('bg-BG') : '-';
+            
+            let statusBadge = '<span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 8px; border-radius:6px; font-weight:800;">🟢 Годен</span>';
+            if (item.result === 'Условно годен') {
+                statusBadge = '<span style="background:#fffbeb; color:#b45309; border:1px solid #fde68a; padding:3px 8px; border-radius:6px; font-weight:800;">🟡 Условно годен</span>';
+            } else if (item.result.includes('Брак') || item.result.includes('Извън')) {
+                statusBadge = '<span style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:3px 8px; border-radius:6px; font-weight:800;">🔴 Брак / Извън допуск</span>';
+            }
+
+            let pointsList = '';
+            if (Array.isArray(item.points) && item.points.length > 0) {
+                pointsList = item.points.map(p => {
+                    const sign = p.diff > 0 ? '+' : '';
+                    return `• ${p.nominal}mm ➔ ${p.measured}mm (${sign}${p.diff}mm)`;
+                }).join(' &nbsp;|&nbsp; ');
+            }
+
+            cardsHtml += `
+                <div style="background: white; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                        <div>
+                            <span style="font-weight: 800; color: #1e293b; font-size: 1.05em;">📅 Проверка на ${checkD} г.</span>
+                            <span style="font-size: 0.85em; color: #64748b; margin-left: 8px;">от <b>${escapeHtml(item.checked_by || 'БТК')}</b></span>
+                        </div>
+                        <div>${statusBadge}</div>
+                    </div>
+                    <div style="font-size: 0.85em; color: #475569; margin-bottom: 6px;">
+                        Вид: <b>${escapeHtml(item.check_type || 'Вътрешна проверка')}</b> &nbsp;|&nbsp; 
+                        Макс. отклонение: <b style="color: #2563eb;">${parseFloat(item.max_deviation || 0).toFixed(3)} mm</b> &nbsp;|&nbsp; 
+                        Валиден до: <b style="color: #15803d;">${validD} г.</b>
+                    </div>
+                    ${pointsList ? `<div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 10px; font-size: 0.82em; color: #334155; margin-bottom: 6px;"><b>Точки:</b> ${pointsList}</div>` : ''}
+                    ${item.notes ? `<div style="font-size: 0.8em; color: #64748b; font-style: italic;">Бележка: ${escapeHtml(item.notes)}</div>` : ''}
+                </div>
+            `;
+        });
+
+        Swal.fire({
+            title: `📋 Досие на замерванията: ${escapeHtml(toolCode)}`,
+            width: 750,
+            html: `
+                <div style="background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 12px; font-size: 0.9em; text-align: left;">
+                    Уред: <b>${escapeHtml(toolName || toolCode)}</b> &nbsp;|&nbsp; Общо извършени проверки: <b>${history.length}</b>
+                </div>
+                <div style="max-height: 420px; overflow-y: auto;">
+                    ${cardsHtml}
+                </div>
+            `,
+            confirmButtonText: 'Затвори',
+            confirmButtonColor: '#2563eb'
+        });
+    } catch (err) {
+        Swal.fire('Грешка', err.message, 'error');
+    }
+};
+
+
