@@ -305,6 +305,19 @@ window.openToolingOrderModal = async function(reqId) {
             defaultSupplier = item.supplier || '';
             currentStock = parseFloat(item.quantity) || 0;
         }
+
+        if (defaultSupplier) {
+            defaultEmail = localStorage.getItem('tooling_supplier_email_' + defaultSupplier.trim().toLowerCase()) || '';
+            if (!defaultEmail) {
+                const { data: prevSuppliers } = await client.from('porachki_materiali')
+                    .select('"Имейл на доставчик"')
+                    .ilike('Доставчик', `%${defaultSupplier.trim()}%`)
+                    .limit(1);
+                if (prevSuppliers && prevSuppliers.length > 0 && prevSuppliers[0]['Имейл на доставчик']) {
+                    defaultEmail = prevSuppliers[0]['Имейл на доставчик'];
+                }
+            }
+        }
     } catch(e) {}
 
     const { value: formValues } = await Swal.fire({
@@ -333,7 +346,7 @@ window.openToolingOrderModal = async function(reqId) {
                 </div>
 
                 <div>
-                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Имейл на доставчик (за изпращане):</label>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Имейл на доставчик (за поръчка):</label>
                     <input type="email" id="swalOrderEmail" value="${escapeHtml(defaultEmail)}" placeholder="orders@supplier.bg" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
                 </div>
 
@@ -342,19 +355,17 @@ window.openToolingOrderModal = async function(reqId) {
                     <input type="text" id="swalOrderNotes" value="${escapeHtml(req.notes || '')}" placeholder="напр. оферта №12345" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
                 </div>
 
-                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px; display: flex; justify-content: space-between; align-items: center;">
-                    <div style="font-size: 0.85em; color: #1e40af;">
-                        ✉️ Желаете ли да подготвите имейл за поръчка?
+                <div style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.3em;">✉️</span>
+                    <div style="font-size: 0.84em; color: #166534; line-height: 1.4;">
+                        При натискане на <b>„Запази като Поръчана“</b> автоматично ще се отвори <b>Gmail</b> с готова заредена бланка за поръчка!
                     </div>
-                    <button type="button" onclick="prepareToolingEmailDraft('${escapeHtml(req.tool_item)}', '${escapeHtml(req.workstation_name)}')" style="background: #2563eb; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.82em; cursor: pointer;">
-                        ✉️ Отвори Имейл
-                    </button>
                 </div>
             </div>
         `,
         focusConfirm: false,
         showCancelButton: true,
-        confirmButtonText: '🛒 Запази като Поръчана',
+        confirmButtonText: '🛒 Запази и Отвори Имейл',
         cancelButtonText: 'Отказ',
         confirmButtonColor: '#2563eb',
         preConfirm: () => {
@@ -377,6 +388,12 @@ window.openToolingOrderModal = async function(reqId) {
         try {
             const adminEmail = localStorage.getItem('last_admin_email') || 'Администратор';
             const appendNote = `[Поръчано: ${formValues.qty} бр.${formValues.supplier ? ' от ' + formValues.supplier : ''}] ${formValues.notes || ''}`.trim();
+
+            if (formValues.supplier && formValues.email) {
+                try {
+                    localStorage.setItem('tooling_supplier_email_' + formValues.supplier.trim().toLowerCase(), formValues.email.trim());
+                } catch(e) {}
+            }
 
             // 1. Обновяваме tooling_requests
             const { error: reqErr } = await client
@@ -402,6 +419,17 @@ window.openToolingOrderModal = async function(reqId) {
                 await client.from('tooling_inventory').update(updPayload).ilike('item_code', cleanTool);
             }
 
+            // 3. АВТОМАТИЧНО отваряне на Gmail с предварително заредена бланка (точно както при Склад Материали!)
+            const recipient = formValues.email || '';
+            const toolName = req.tool_item || '';
+            const orderQty = formValues.qty || 10;
+            const workstation = req.workstation_name || 'Цех';
+            const subject = encodeURIComponent("Поръчка на инструментална екипировка: " + toolName);
+            const body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция за нашето производство:\nАртикул / Пластина: ${toolName}\nКоличество: ${orderQty} бр.\nПредназначение: Машина ${workstation}\n${formValues.notes ? 'Забележка / Оферта: ' + formValues.notes + '\n' : ''}\nМоля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,\nAMCI`);
+
+            const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipient)}&su=${subject}&body=${body}`;
+            window.open(gmailUrl, 'GmailPopup', 'width=800,height=600,left=200,top=100,scrollbars=yes');
+
             if (window.invalidateAdminCache) window.invalidateAdminCache('tooling_sklad');
             await fetchToolingRequests();
             renderToolingRequestsTable();
@@ -412,9 +440,10 @@ window.openToolingOrderModal = async function(reqId) {
             Swal.fire({
                 icon: 'success',
                 title: 'Поръчката е регистрирана!',
-                html: `Заявката за <b>${escapeHtml(req.tool_item)}</b> е маркирана като <b>Поръчана</b> (${formValues.qty} бр.).<br>Статусът в <b>Склад Инструментална Екипировка</b> е променен на <b>„Поръчано“</b>.`,
-                timer: 2500,
-                showConfirmButton: false
+                html: `Заявката за <b>${escapeHtml(req.tool_item)}</b> е маркирана като <b>Поръчана</b> (${formValues.qty} бр.).<br>Отворен е прозорец на <b>Gmail</b> със заредена бланка за доставчика.<br>Статусът в склада е променен на <b>„Поръчано“</b>.`,
+                timer: 3500,
+                showConfirmButton: true,
+                confirmButtonText: 'Добре'
             });
         } catch (err) {
             Swal.fire('Грешка', 'Неуспешен запис: ' + err.message, 'error');

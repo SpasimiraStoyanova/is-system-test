@@ -1911,6 +1911,22 @@ async function saveForm(e) {
                 window.open(gmailUrl, 'GmailPopup', 'width=800,height=600,left=200,top=100,scrollbars=yes');
             }
         }
+
+        if (currentTab === 'tooling_sklad') {
+            let isChangedToPorachano = payload['order_status'] === 'Поръчано' && (!isEditMode || (globalRows[editingIndex] && globalRows[editingIndex]['order_status'] !== 'Поръчано'));
+            if (isChangedToPorachano) {
+                let toolName = (payload['item_code'] || '') + (payload['name'] ? ' (' + payload['name'] + ')' : '');
+                let orderQty = payload['min_quantity'] || 10;
+                let machine = payload['machine_name'] || 'Цех';
+                let supplier = payload['supplier'] || '';
+                let recipient = supplier ? (localStorage.getItem('tooling_supplier_email_' + supplier.trim().toLowerCase()) || '') : '';
+                let subject = encodeURIComponent("Поръчка на инструментална екипировка: " + toolName);
+                let body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция за нашето производство:\nАртикул / Пластина: ${toolName}\nКоличество: ${orderQty} бр.\nПредназначение: Машина ${machine}\n\nМоля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,`);
+
+                let gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipient)}&su=${subject}&body=${body}`;
+                window.open(gmailUrl, 'GmailPopup', 'width=800,height=600,left=200,top=100,scrollbars=yes');
+            }
+        }
         if (window.invalidateAdminCache) window.invalidateAdminCache();
         closeModal(); loadCurrentTableData(true);
     } catch (err) { Swal.fire('Грешка', err.message, 'error'); } finally { btn.innerText = 'Запази запис'; btn.disabled = false; }
