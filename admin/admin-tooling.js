@@ -67,6 +67,15 @@ function updateToolingReqBadges() {
             badge.style.display = 'none';
         }
     }
+    const btnBadge = document.getElementById('toolingBtnBadge');
+    if (btnBadge) {
+        if (pendingCount > 0) {
+            btnBadge.innerText = pendingCount;
+            btnBadge.style.display = 'inline-block';
+        } else {
+            btnBadge.style.display = 'none';
+        }
+    }
 }
 
 // Изскачащо известие (Toast) при нова заявка за инструмент / пластина
@@ -256,11 +265,11 @@ function renderToolingRequestsTable() {
                 <td style="padding:10px 12px; text-align:right;">
                     <div style="display:flex; justify-content:flex-end; gap:6px;">
                         ${req.status === 'Чакаща' ? `
-                            <button onclick="updateToolingReqStatus(${req.id}, 'Поръчана')" style="padding:5px 9px; font-size:0.8em; background:#2563eb; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;" title="Маркирай като поръчана">🛒 Поръчай</button>
-                            <button onclick="updateToolingReqStatus(${req.id}, 'Осигурена')" style="padding:5px 9px; font-size:0.8em; background:#16a34a; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;" title="Осигурена в цеха">✅ Осигурена</button>
+                            <button onclick="openToolingOrderModal(${req.id})" style="padding:5px 10px; font-size:0.8em; background:#2563eb; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;" title="Отвори форма за поръчка и имейл към доставчик">🛒 Поръчай</button>
+                            <button onclick="openToolingReceiveModal(${req.id})" style="padding:5px 10px; font-size:0.8em; background:#16a34a; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;" title="Осигурена директно в цеха (Заприходи)">✅ Осигурена</button>
                         ` : ''}
                         ${req.status === 'Поръчана' ? `
-                            <button onclick="updateToolingReqStatus(${req.id}, 'Осигурена')" style="padding:5px 9px; font-size:0.8em; background:#16a34a; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;" title="Пристигнала и предадена">✅ Предадена</button>
+                            <button onclick="openToolingReceiveModal(${req.id})" style="padding:5px 10px; font-size:0.8em; background:#16a34a; color:white; border:none; border-radius:6px; font-weight:800; cursor:pointer;" title="Пратката е получена — заприходи в склада">📦 Приеми / Заприходи</button>
                         ` : ''}
                         <button onclick="deleteToolingRequest(${req.id})" style="padding:5px 8px; font-size:0.8em; background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer;" title="Изтрий запис">🗑️</button>
                     </div>
@@ -272,6 +281,286 @@ function renderToolingRequestsTable() {
     html += `</tbody></table>`;
     wrap.innerHTML = html;
 }
+
+// 1. Модал за поръчка на екипировка (с имейл към доставчик и автоматично обновяване на статуса в склада)
+window.openToolingOrderModal = async function(reqId) {
+    const req = globalToolingRequests.find(r => r.id === reqId);
+    if (!req) return;
+
+    let defaultSupplier = '';
+    let defaultEmail = '';
+    let currentStock = 0;
+    let invItemId = null;
+
+    try {
+        const cleanTool = (req.tool_item || '').split(' - ')[0].trim();
+        const { data: invList } = await client.from('tooling_inventory')
+            .select('*')
+            .or(`item_code.ilike.%${cleanTool}%,name.ilike.%${cleanTool}%`)
+            .limit(1);
+
+        if (invList && invList.length > 0) {
+            const item = invList[0];
+            invItemId = item.id;
+            defaultSupplier = item.supplier || '';
+            currentStock = parseFloat(item.quantity) || 0;
+        }
+    } catch(e) {}
+
+    const { value: formValues } = await Swal.fire({
+        title: '🛒 Поръчка на Инструментална Екипировка',
+        html: `
+            <div style="text-align: left; font-size: 0.9em; display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 10px 12px;">
+                    <div style="font-weight: 800; color: #1e293b; font-size: 1.05em;">${escapeHtml(req.tool_item)}</div>
+                    <div style="font-size: 0.85em; color: #64748b; margin-top: 3px;">
+                        🏭 За машина: <b>${escapeHtml(req.workstation_name)}</b> &bull; Заявил: <b>${escapeHtml(req.operator_name || 'Оператор')}</b>
+                    </div>
+                    <div style="font-size: 0.85em; color: #0284c7; margin-top: 2px;">
+                        📦 Текуща наличност в склада: <b>${currentStock} бр.</b>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Количество за поръчка: *</label>
+                        <input type="number" id="swalOrderQty" value="10" min="1" step="any" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Доставчик:</label>
+                        <input type="text" id="swalOrderSupplier" value="${escapeHtml(defaultSupplier)}" placeholder="напр. Искар, Сандвик..." style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Имейл на доставчик (за изпращане):</label>
+                    <input type="email" id="swalOrderEmail" value="${escapeHtml(defaultEmail)}" placeholder="orders@supplier.bg" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Забележка / Номер на оферта:</label>
+                    <input type="text" id="swalOrderNotes" value="${escapeHtml(req.notes || '')}" placeholder="напр. оферта №12345" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
+                </div>
+
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-size: 0.85em; color: #1e40af;">
+                        ✉️ Желаете ли да подготвите имейл за поръчка?
+                    </div>
+                    <button type="button" onclick="prepareToolingEmailDraft('${escapeHtml(req.tool_item)}', '${escapeHtml(req.workstation_name)}')" style="background: #2563eb; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.82em; cursor: pointer;">
+                        ✉️ Отвори Имейл
+                    </button>
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '🛒 Запази като Поръчана',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#2563eb',
+        preConfirm: () => {
+            const qty = parseFloat(document.getElementById('swalOrderQty').value) || 0;
+            if (qty <= 0) {
+                Swal.showValidationMessage('Моля, въведете валидно количество за поръчка!');
+                return false;
+            }
+            return {
+                qty: qty,
+                supplier: document.getElementById('swalOrderSupplier').value.trim(),
+                email: document.getElementById('swalOrderEmail').value.trim(),
+                notes: document.getElementById('swalOrderNotes').value.trim()
+            };
+        }
+    });
+
+    if (formValues) {
+        Swal.fire({ title: 'Записване на поръчката...', didOpen: () => Swal.showLoading() });
+        try {
+            const adminEmail = localStorage.getItem('last_admin_email') || 'Администратор';
+            const appendNote = `[Поръчано: ${formValues.qty} бр.${formValues.supplier ? ' от ' + formValues.supplier : ''}] ${formValues.notes || ''}`.trim();
+
+            // 1. Обновяваме tooling_requests
+            const { error: reqErr } = await client
+                .from('tooling_requests')
+                .update({
+                    status: 'Поръчана',
+                    notes: appendNote,
+                    resolved_at: new Date().toISOString(),
+                    resolved_by: adminEmail
+                })
+                .eq('id', req.id);
+            if (reqErr) throw reqErr;
+
+            // 2. Обновяваме tooling_inventory (статус на доставка)
+            if (invItemId) {
+                let updPayload = { order_status: 'Поръчано' };
+                if (formValues.supplier) updPayload.supplier = formValues.supplier;
+                await client.from('tooling_inventory').update(updPayload).eq('id', invItemId);
+            } else {
+                const cleanTool = (req.tool_item || '').split(' - ')[0].trim();
+                let updPayload = { order_status: 'Поръчано' };
+                if (formValues.supplier) updPayload.supplier = formValues.supplier;
+                await client.from('tooling_inventory').update(updPayload).ilike('item_code', cleanTool);
+            }
+
+            if (window.invalidateAdminCache) window.invalidateAdminCache('tooling_sklad');
+            await fetchToolingRequests();
+            renderToolingRequestsTable();
+            if (typeof loadCurrentTableData === 'function' && currentTab === 'tooling_sklad') {
+                loadCurrentTableData(true);
+            }
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Поръчката е регистрирана!',
+                html: `Заявката за <b>${escapeHtml(req.tool_item)}</b> е маркирана като <b>Поръчана</b> (${formValues.qty} бр.).<br>Статусът в <b>Склад Инструментална Екипировка</b> е променен на <b>„Поръчано“</b>.`,
+                timer: 2500,
+                showConfirmButton: false
+            });
+        } catch (err) {
+            Swal.fire('Грешка', 'Неуспешен запис: ' + err.message, 'error');
+        }
+    }
+};
+
+window.prepareToolingEmailDraft = function(toolItem, workstation) {
+    const qty = document.getElementById('swalOrderQty')?.value || '10';
+    const email = document.getElementById('swalOrderEmail')?.value || '';
+    const supplier = document.getElementById('swalOrderSupplier')?.value || 'Доставчик';
+
+    const subject = `Поръчка на инструментална екипировка: ${toolItem} - AMCI`;
+    const body = `Здравейте,\n\nМоля да приемете поръчка за следните артикули:\n\n- Артикул / Пластина: ${toolItem}\n- Количество: ${qty} бр.\n- Предназначение: Машина ${workstation}\n\nМоля за потвърждение на наличността и срок за доставка.\n\nПоздрави,\nAMCI`;
+
+    const mailtoUrl = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailtoUrl, '_blank');
+};
+
+// 2. Модал за заприходяване на доставена екипировка (както Склад Материали!)
+window.openToolingReceiveModal = async function(reqId) {
+    const req = globalToolingRequests.find(r => r.id === reqId);
+    if (!req) return;
+
+    let defaultQty = 10;
+    if (req.notes) {
+        const match = req.notes.match(/Поръчано:\s*([\d.]+)\s*бр/i);
+        if (match) defaultQty = parseFloat(match[1]) || 10;
+    }
+
+    let invItem = null;
+    try {
+        const cleanTool = (req.tool_item || '').split(' - ')[0].trim();
+        const { data: invList } = await client.from('tooling_inventory')
+            .select('*')
+            .or(`item_code.ilike.%${cleanTool}%,name.ilike.%${cleanTool}%`)
+            .limit(1);
+        if (invList && invList.length > 0) invItem = invList[0];
+    } catch(e) {}
+
+    const currentStock = invItem ? (parseFloat(invItem.quantity) || 0) : 0;
+
+    const { value: receiveValues } = await Swal.fire({
+        title: '📦 Заприходяване в Склад Инструментална Екипировка',
+        html: `
+            <div style="text-align: left; font-size: 0.9em; display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 8px; padding: 10px 12px;">
+                    <div style="font-weight: 800; color: #166534; font-size: 1.05em;">${escapeHtml(req.tool_item)}</div>
+                    <div style="font-size: 0.85em; color: #475569; margin-top: 3px;">
+                        Пратката пристигнала ли е в завода?
+                    </div>
+                    <div style="font-size: 0.85em; color: #15803d; margin-top: 3px;">
+                        Текуща наличност в склада: <b>${currentStock} бр.</b>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Получено количество (+ бр.): *</label>
+                    <input type="number" id="swalReceiveQty" value="${defaultQty}" min="0.1" step="any" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; font-size: 1.1em; color: #166534; box-sizing: border-box;">
+                    <small style="color: #64748b; display: block; margin-top: 3px;">Това количество ще се прибави автоматично към текущата наличност.</small>
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Бележка при приемане (по избор):</label>
+                    <input type="text" id="swalReceiveNotes" placeholder="напр. фактура № 987, предадено на оператора" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '✅ Заприходи и Осигури',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#16a34a',
+        preConfirm: () => {
+            const qty = parseFloat(document.getElementById('swalReceiveQty').value) || 0;
+            if (qty <= 0) {
+                Swal.showValidationMessage('Моля, въведете валидно получено количество!');
+                return false;
+            }
+            return {
+                qty: qty,
+                notes: document.getElementById('swalReceiveNotes').value.trim()
+            };
+        }
+    });
+
+    if (receiveValues) {
+        Swal.fire({ title: 'Заприходяване...', didOpen: () => Swal.showLoading() });
+        try {
+            const adminEmail = localStorage.getItem('last_admin_email') || 'Администратор';
+            const appendNote = `${req.notes || ''} [Прието: +${receiveValues.qty} бр. ${receiveValues.notes}]`.trim();
+
+            // 1. Обновяваме tooling_requests
+            const { error: reqErr } = await client
+                .from('tooling_requests')
+                .update({
+                    status: 'Осигурена',
+                    notes: appendNote,
+                    resolved_at: new Date().toISOString(),
+                    resolved_by: adminEmail
+                })
+                .eq('id', req.id);
+            if (reqErr) throw reqErr;
+
+            // 2. Увеличаваме наличността в tooling_inventory (както Склад Материали!)
+            if (invItem) {
+                const newStock = currentStock + receiveValues.qty;
+                const { error: invErr } = await client
+                    .from('tooling_inventory')
+                    .update({
+                        quantity: newStock,
+                        order_status: 'Налично'
+                    })
+                    .eq('id', invItem.id);
+                if (invErr) throw invErr;
+
+                // Записваме одит лог
+                try {
+                    await client.from('audit_logs').insert([{
+                        table_name: 'tooling_inventory',
+                        action_type: 'DELIVERY_RECEIPT',
+                        old_data: { quantity: currentStock },
+                        new_data: { quantity: newStock, item: req.tool_item, received_qty: receiveValues.qty }
+                    }]);
+                } catch(e) {}
+            }
+
+            if (window.invalidateAdminCache) window.invalidateAdminCache('tooling_sklad');
+            await fetchToolingRequests();
+            renderToolingRequestsTable();
+            if (typeof loadCurrentTableData === 'function' && currentTab === 'tooling_sklad') {
+                loadCurrentTableData(true);
+            }
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Успешно заприходено!',
+                html: `Добавени са <b>+${receiveValues.qty} бр.</b> за <b>${escapeHtml(req.tool_item)}</b>.<br>Нова наличност в склада: <b>${currentStock + receiveValues.qty} бр.</b>`,
+                timer: 2500,
+                showConfirmButton: false
+            });
+        } catch (err) {
+            Swal.fire('Грешка', 'Неуспешно заприходяване: ' + err.message, 'error');
+        }
+    }
+};
 
 window.updateToolingReqStatus = async function(reqId, newStatus) {
     try {

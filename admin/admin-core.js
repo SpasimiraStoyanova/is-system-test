@@ -517,6 +517,7 @@ function switchTab(tabKey, force = false) {
     const config = tableConfigs[tabKey]; const addBtn = document.getElementById('addNewBtn');
     const pdfBtn = document.getElementById('pdfBtn'); const mrpBtn = document.getElementById('mrpBtn'); const transBtn = document.getElementById('transformResolverBtn'); const sidebar = document.getElementById('personnelSidebar');
     const syncMacBtn = document.getElementById('syncMachinesBtn');
+    const toolReqBtn = document.getElementById('toolingRequestsBtn');
     const locCheckBtn = document.getElementById('silentLocationCheckBtn');
     const locHistBtn = document.getElementById('locationHistoryBtn');
 
@@ -526,6 +527,7 @@ function switchTab(tabKey, force = false) {
     if (mrpBtn) mrpBtn.style.display = (tabKey === 'porachki') ? 'flex' : 'none';
     if (transBtn) transBtn.style.display = (tabKey === 'sklad_inventory') ? 'flex' : 'none';
     if (syncMacBtn) syncMacBtn.style.display = (tabKey === 'workstations') ? 'flex' : 'none';
+    if (toolReqBtn) toolReqBtn.style.display = (tabKey === 'tooling_sklad') ? 'flex' : 'none';
     if (locCheckBtn) locCheckBtn.style.display = (tabKey === 'chekiraniya') ? 'flex' : 'none';
     if (locHistBtn) locHistBtn.style.display = (tabKey === 'chekiraniya') ? 'flex' : 'none';
 

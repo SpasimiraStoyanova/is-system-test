@@ -19,7 +19,7 @@
     <script src="admin/admin-notif.js?v=2" defer></script>
     <script src="admin/admin-personnel.js?v=11" defer></script>
     <script src="admin/admin-archives.js?v=4" defer></script>
-    <script src="admin/admin-core.js?v=36" defer></script>
+    <script src="admin/admin-core.js?v=37" defer></script>
     <script src="admin/admin-resolver.js?v=9" defer></script>
     <script src="admin/admin-salaries.js?v=4" defer></script>
     <script src="admin/admin-transform.js?v=3" defer></script>
@@ -31,7 +31,7 @@
     <script src="admin/admin-3s.js?v=1" defer></script>
     <script src="admin/admin-spotlight.js?v=1" defer></script>
     <script src="admin/admin-bulk.js?v=1" defer></script>
-    <script src="admin/admin-tooling.js?v=3" defer></script>
+    <script src="admin/admin-tooling.js?v=4" defer></script>
   </head>
   <body>
     <div id="appContent" style="display: none;">
@@ -139,6 +139,9 @@
 
                 <!-- Контекстен бутон Синхронизиране на Машини от Маршрути -->
                 <button type="button" class="btn-primary" id="syncMachinesBtn" onclick="syncMachinesFromRoutes()" style="display: none; background-color: #0284c7; box-shadow: 0 2px 4px rgba(2, 132, 199, 0.3); font-weight: 800;" title="Зареди автоматично всички машини от маршрутните карти">🔄 Зареди машини от Маршрути</button>
+
+                <!-- Контекстен бутон Заявки & Поръчки за Екипировка (само в таб Склад Инструментална Екипировка) -->
+                <button type="button" class="btn-primary" id="toolingRequestsBtn" onclick="openToolingRequestsModal()" style="display: none; background: linear-gradient(135deg, #d97706, #b45309); box-shadow: 0 2px 4px rgba(217, 119, 6, 0.3); font-weight: 800;" title="Дневник на заявките и поръчките за пластини и инструменти от цеха">🛠️ Заявки &amp; Поръчки от Цеха <span id="toolingBtnBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;">0</span></button>
 
                 <!-- Контекстен бутон за Дискретна проверка на локация (само в таб Чекирания) -->
                 <button type="button" class="btn-primary" id="silentLocationCheckBtn" onclick="openSilentLocationCheckModal()" style="display: none; background-color: #7c3aed; box-shadow: 0 2px 4px rgba(124, 58, 237, 0.3); font-weight: 800;" title="Дискретна проверка на локацията на служител в реално време">📍 Проверка локация</button>
