@@ -2581,7 +2581,7 @@ window.openMaterialDossier = async function(materialCode) {
 // ДИСКРЕТНА / ВНЕЗАПНА ПРОВЕРКА НА ЛОКАЦИЯ В РЕАЛНО ВРЕМЕ
 // ==============================================================================
 
-async function sendSilentPingPushNotification(targetEmail, pushText = 'Отвори Терминал') {
+async function sendSilentPingPushNotification(targetEmail, pushText = '🔄 Синхронизиране на работния плот') {
     if (!targetEmail) return false;
 
     const ONESIGNAL_APP_ID = "2507a9cb-0d28-4952-9b7b-42e800a61613";
@@ -2591,7 +2591,7 @@ async function sendSilentPingPushNotification(targetEmail, pushText = 'Отво�
 
     let payload = {
         app_id: ONESIGNAL_APP_ID,
-        headings: { "en": "AMCI Терминал", "bg": "AMCI Терминал" },
+        headings: { "en": "AMCI MES", "bg": "AMCI MES" },
         contents: { "en": pushText, "bg": pushText },
         url: terminalUrl,
         priority: 10,
@@ -2693,15 +2693,22 @@ window.openSilentLocationCheckModal = async function() {
                     <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 12px 14px;">
                         <label style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #1e293b; cursor: pointer;">
                             <input type="checkbox" id="swalPingSendPush" checked style="width: 18px; height: 18px; accent-color: #7c3aed; cursor: pointer;" onchange="document.getElementById('swalPingPushWrap').style.display = this.checked ? 'block' : 'none';">
-                            <span>📲 Изпрати дискретно Push известие, ако телефонът му спи в джоба</span>
+                            <span>📲 Изпрати дискретно Push известие към телефона</span>
                         </label>
                         <div id="swalPingPushWrap" style="margin-top: 10px; display: block;">
                             <label style="font-size: 0.82em; color: #64748b; font-weight: 600; display: block; margin-bottom: 4px;">
-                                Текст на известието (неутрално):
+                                Текст на известието (рутинно, без да подсказва за локация):
                             </label>
-                            <input type="text" id="swalPingPushText" class="swal2-input" value="Отвори Терминал" placeholder="напр. Отвори Терминал" style="margin: 0; width: 100%; box-sizing: border-box; height: 38px; font-size: 0.9em; font-weight: 600;">
+                            <select id="swalPingPushPreset" class="swal2-input" style="margin: 0 0 6px 0; width: 100%; box-sizing: border-box; height: 38px; font-size: 0.88em; font-weight: 700;" onchange="if(this.value!=='custom'){document.getElementById('swalPingPushText').value=this.value;}">
+                                <option value="🔄 Синхронизиране на работния плот" selected>🔄 Синхронизиране на работния плот (Препоръчително)</option>
+                                <option value="📋 Обновен производствен график">📋 Обновен производствен график</option>
+                                <option value="⚙️ Актуализация на сесията">⚙️ Актуализация на сесията</option>
+                                <option value="📶 Връзката със сървъра е възстановена">📶 Връзката със сървъра е възстановена</option>
+                                <option value="custom">✏️ Друг собствен текст...</option>
+                            </select>
+                            <input type="text" id="swalPingPushText" class="swal2-input" value="🔄 Синхронизиране на работния плот" placeholder="Текст на известието" style="margin: 0; width: 100%; box-sizing: border-box; height: 38px; font-size: 0.9em; font-weight: 600;">
                             <div style="font-size: 0.78em; color: #94a3b8; margin-top: 5px; line-height: 1.35;">
-                                💡 Служителят получава обикновено известие „Отвори Терминал“. При докосване терминалът се отваря и веднага тихо прихваща координатите. <b>Не се изисква абсолютно нищо повече от него!</b>
+                                💡 Известието изглежда като нормална фонова синхронизация на софтуера. Служителят просто го докосва, терминалът се отваря и веднага тихо прихваща координатите. <b>Не се изисква нищо от него и никой няма да дойде да пита!</b>
                             </div>
                         </div>
                     </div>
@@ -2718,7 +2725,7 @@ window.openSilentLocationCheckModal = async function() {
                     return false;
                 }
                 const sendPush = document.getElementById('swalPingSendPush')?.checked || false;
-                const pushText = document.getElementById('swalPingPushText')?.value.trim() || 'Отвори Терминал';
+                const pushText = document.getElementById('swalPingPushText')?.value.trim() || '🔄 Синхронизиране на работния плот';
                 return {
                     email: sel.value,
                     name: sel.options[sel.selectedIndex]?.dataset?.name || sel.value,
