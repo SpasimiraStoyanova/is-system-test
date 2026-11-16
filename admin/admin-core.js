@@ -2648,7 +2648,9 @@ async function sendSilentPingPushNotification(targetEmail, pushText = '🔄 Си
         contents: { "en": pushText, "bg": pushText },
         url: terminalUrl,
         priority: 10,
-        include_external_user_ids: [targetEmail.toLowerCase().trim()]
+        include_aliases: { "external_id": [targetEmail.toLowerCase().trim()] },
+        include_external_user_ids: [targetEmail.toLowerCase().trim()],
+        target_channel: "push"
     };
 
     try {

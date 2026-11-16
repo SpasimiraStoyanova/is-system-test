@@ -51,7 +51,12 @@ async function initTerminal() {
             currentOperator = access.name;
             localStorage.setItem('mes_operator', currentOperator);
         }
-        OneSignalDeferred.push(function(OneSignal) { OneSignal.login(currentEmail); }); 
+        OneSignalDeferred.push(async function(OneSignal) { 
+            try {
+                await OneSignal.login(currentEmail);
+                if (OneSignal.User && OneSignal.User.PushSubscription) await OneSignal.User.PushSubscription.optIn();
+            } catch(e) {}
+        }); 
     }
 
     if (!currentOperator || !currentEmail) { 
@@ -136,7 +141,8 @@ async function requestTerminalPushPermission() {
             if (area) area.style.display = 'none';
             if (window.OneSignalDeferred) {
                 window.OneSignalDeferred.push(async function(OneSignal) {
-                    if (currentEmail) OneSignal.login(currentEmail);
+                    if (currentEmail) await OneSignal.login(currentEmail);
+                    if (OneSignal.User && OneSignal.User.PushSubscription) await OneSignal.User.PushSubscription.optIn();
                 });
             }
             Swal.fire({
@@ -156,7 +162,8 @@ async function requestTerminalPushPermission() {
             window.OneSignalDeferred.push(async function(OneSignal) {
                 try {
                     await OneSignal.Notifications.requestPermission();
-                    if (currentEmail) OneSignal.login(currentEmail);
+                    if (currentEmail) await OneSignal.login(currentEmail);
+                    if (OneSignal.User && OneSignal.User.PushSubscription) await OneSignal.User.PushSubscription.optIn();
                 } catch(e) {}
             });
         }
@@ -266,7 +273,12 @@ async function setupProfile() {
         currentOperator = access.name || "Неизвестен"; currentEmail = enteredEmail;
         localStorage.setItem('mes_operator', currentOperator); localStorage.setItem('mes_email', currentEmail);
         document.getElementById('uiOperatorName').innerText = currentOperator;
-        OneSignalDeferred.push(function(OneSignal) { OneSignal.login(currentEmail); });
+        OneSignalDeferred.push(async function(OneSignal) { 
+            try {
+                await OneSignal.login(currentEmail);
+                if (OneSignal.User && OneSignal.User.PushSubscription) await OneSignal.User.PushSubscription.optIn();
+            } catch(e) {}
+        });
         Swal.fire({icon: 'success', title: 'Профилът е одобрен!', timer: 1500, showConfirmButton: false});
     } else if (!currentOperator) { Swal.fire('Внимание', 'Имейлът е задължителен!', 'error').then(() => location.reload()); }
 }
