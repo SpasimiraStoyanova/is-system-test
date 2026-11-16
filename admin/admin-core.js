@@ -2689,34 +2689,39 @@ window.openSilentLocationCheckModal = async function() {
             return;
         }
 
-        // 2. Днешни чекирания (кой е влязъл на смяна)
+        // 2. Днешни чекирания за смяна (гледаме само Влизане / Излизане, игнорираме 'Проверка локация' и съобщения)
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
         const { data: todayLogs } = await client
             .from('chekiraniya')
             .select('Имейл, Действие, Време')
             .gte('Време', todayStart.toISOString())
+            .in('Действие', ['Влизане', 'Излизане', 'Авто излизане'])
             .order('Време', { ascending: false });
 
         const statusMap = {};
         if (todayLogs) {
             todayLogs.forEach(log => {
-                if (!statusMap[log['Имейл']]) {
-                    statusMap[log['Имейл']] = log['Действие'];
+                const em = (log['Имейл'] || '').toLowerCase().trim();
+                if (!statusMap[em]) {
+                    statusMap[em] = log['Действие'];
                 }
             });
         }
 
-        // Подреждане: първо тези с 'Влизане' днес
+        // Подреждане: първо тези с 'Влизане' днес (на смяна)
         workers.sort((a, b) => {
-            let stA = statusMap[a['Имейл']] === 'Влизане' ? 1 : 0;
-            let stB = statusMap[b['Имейл']] === 'Влизане' ? 1 : 0;
+            const emA = (a['Имейл'] || '').toLowerCase().trim();
+            const emB = (b['Имейл'] || '').toLowerCase().trim();
+            let stA = statusMap[emA] === 'Влизане' ? 1 : 0;
+            let stB = statusMap[emB] === 'Влизане' ? 1 : 0;
             if (stA !== stB) return stB - stA;
             return (a['Име'] || '').localeCompare(b['Име'] || '', 'bg');
         });
 
         const optionsHtml = workers.map(w => {
-            const lastSt = statusMap[w['Имейл']];
+            const em = (w['Имейл'] || '').toLowerCase().trim();
+            const lastSt = statusMap[em];
             let badgeText = '⚪ Не е чекиран за днес';
             if (lastSt === 'Влизане') badgeText = '🟢 На смяна (Влязъл)';
             else if (lastSt === 'Излизане' || lastSt === 'Авто излизане') badgeText = '🔴 Изписан';
