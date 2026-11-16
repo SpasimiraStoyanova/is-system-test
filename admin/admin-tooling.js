@@ -292,6 +292,23 @@ window.openToolingOrderModal = async function(reqId) {
     let currentStock = 0;
     let invItemId = null;
 
+    // Интелигентно извличане на заявеното от оператора количество от бележката:
+    let defaultOrderQty = 10;
+    let initialNotes = req.notes || '';
+
+    if (/^\s*\d+(\.\d+)?\s*$/.test(initialNotes)) {
+        // Ако операторът е написал просто число (напр. "20"), това са бройките!
+        defaultOrderQty = parseFloat(initialNotes.trim()) || 10;
+        initialNotes = ''; // Изчистваме бележката, за да не се показва като "Забележка: 20"
+    } else if (initialNotes.match(/\[?Изискани:\s*([\d.]+)\s*бр\.?\]?/i)) {
+        const m = initialNotes.match(/\[?Изискани:\s*([\d.]+)\s*бр\.?\]?/i);
+        defaultOrderQty = parseFloat(m[1]) || 10;
+        initialNotes = initialNotes.replace(/\[?Изискани:\s*[\d.]+\s*бр\.?\]?/i, '').trim();
+    } else if (initialNotes.match(/([\d.]+)\s*бр/i)) {
+        const m = initialNotes.match(/([\d.]+)\s*бр/i);
+        defaultOrderQty = parseFloat(m[1]) || 10;
+    }
+
     try {
         const cleanTool = (req.tool_item || '').split(' - ')[0].trim();
         const { data: invList } = await client.from('tooling_inventory')
@@ -336,8 +353,8 @@ window.openToolingOrderModal = async function(reqId) {
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <div>
-                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Количество за поръчка: *</label>
-                        <input type="number" id="swalOrderQty" value="10" min="1" step="any" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; box-sizing: border-box;">
+                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Количество за поръчка (бр.): *</label>
+                        <input type="number" id="swalOrderQty" value="${defaultOrderQty}" min="1" step="any" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; color: #1e293b; box-sizing: border-box;">
                     </div>
                     <div>
                         <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Доставчик:</label>
@@ -351,14 +368,14 @@ window.openToolingOrderModal = async function(reqId) {
                 </div>
 
                 <div>
-                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Забележка / Номер на оферта:</label>
-                    <input type="text" id="swalOrderNotes" value="${escapeHtml(req.notes || '')}" placeholder="напр. оферта №12345" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Забележка / Номер на оферта (по избор):</label>
+                    <input type="text" id="swalOrderNotes" value="${escapeHtml(initialNotes)}" placeholder="напр. оферта №12345" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
                 </div>
 
                 <div style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 1.3em;">✉️</span>
                     <div style="font-size: 0.84em; color: #166534; line-height: 1.4;">
-                        При натискане на <b>„Запази като Поръчана“</b> автоматично ще се отвори <b>Gmail</b> с готова заредена бланка за поръчка!
+                        При натискане на <b>„Запази и Отвори Имейл“</b> автоматично ще се отвори <b>Gmail</b> с готова заредена бланка за поръчка!
                     </div>
                 </div>
             </div>
@@ -419,13 +436,21 @@ window.openToolingOrderModal = async function(reqId) {
                 await client.from('tooling_inventory').update(updPayload).ilike('item_code', cleanTool);
             }
 
-            // 3. АВТОМАТИЧНО отваряне на Gmail с предварително заредена бланка (точно както при Склад Материали!)
+            // 3. АВТОМАТИЧНО отваряне на Gmail с предварително заредена бланка
             const recipient = formValues.email || '';
             const toolName = req.tool_item || '';
             const orderQty = formValues.qty || 10;
             const workstation = req.workstation_name || 'Цех';
+            
+            // Забележка се показва в писмото САМО ако има реален текст (а не остатъчно число!)
+            let noteLine = '';
+            const trimNote = (formValues.notes || '').trim();
+            if (trimNote && !/^\d+(\.\d+)?$/.test(trimNote)) {
+                noteLine = `Забележка / Оферта: ${trimNote}\n`;
+            }
+
             const subject = encodeURIComponent("Поръчка на инструментална екипировка: " + toolName);
-            const body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция за нашето производство:\nАртикул / Пластина: ${toolName}\nКоличество: ${orderQty} бр.\nПредназначение: Машина ${workstation}\n${formValues.notes ? 'Забележка / Оферта: ' + formValues.notes + '\n' : ''}\nМоля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,\nAMCI`);
+            const body = encodeURIComponent(`Здравейте,\n\nБихме искали да поръчаме следната позиция за нашето производство:\nАртикул / Пластина: ${toolName}\nКоличество: ${orderQty} бр.\nПредназначение: Машина ${workstation}\n${noteLine}Моля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,\nAMCI`);
 
             const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipient)}&su=${subject}&body=${body}`;
             window.open(gmailUrl, 'GmailPopup', 'width=800,height=600,left=200,top=100,scrollbars=yes');

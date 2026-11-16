@@ -45,17 +45,23 @@ window.openTerminalToolingRequestModal = async function() {
                     <input type="text" id="swalToolItem" list="dl_tool_items" placeholder="напр. Пластина WNMG 080408, Фреза ф10..." style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 700; box-sizing: border-box;">
                     <datalist id="dl_tool_items">${toolOptionsHtml}</datalist>
                 </div>
-                <div>
-                    <label style="font-weight: 700; color: #475569;">⚠️ Спешност:</label>
-                    <select id="swalToolUrgency" style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 700; box-sizing: border-box;">
-                        <option value="Нормална">🟢 Нормална (има още бройки)</option>
-                        <option value="Спешна" selected>🟡 Спешна (свършва скоро)</option>
-                        <option value="Машината спира!">🔴 КРИТИЧНО: Машината спира / счупен инструмент</option>
-                    </select>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">⚠️ Спешност:</label>
+                        <select id="swalToolUrgency" style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 700; box-sizing: border-box;">
+                            <option value="Нормална">🟢 Нормална</option>
+                            <option value="Спешна" selected>🟡 Спешна</option>
+                            <option value="Машината спира!">🔴 КРИТИЧНО</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">🔢 Количество (бр.):</label>
+                        <input type="number" id="swalToolQty" value="10" min="1" step="any" placeholder="напр. 10 или 20" style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; color: #1e293b; box-sizing: border-box;">
+                    </div>
                 </div>
                 <div>
-                    <label style="font-weight: 700; color: #475569;">📝 Допълнителна бележка / бройки (по избор):</label>
-                    <input type="text" id="swalToolNotes" placeholder="напр. остана 1 кутийка, износена пластина" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
+                    <label style="font-weight: 700; color: #475569;">📝 Забележка (по избор):</label>
+                    <input type="text" id="swalToolNotes" placeholder="напр. износена пластина, спешна поръчка" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
                 </div>
             </div>
         `,
@@ -66,6 +72,8 @@ window.openTerminalToolingRequestModal = async function() {
         confirmButtonColor: '#d97706',
         preConfirm: () => {
             const item = document.getElementById('swalToolItem').value.trim();
+            const qty = parseFloat(document.getElementById('swalToolQty').value) || 10;
+            const notes = document.getElementById('swalToolNotes').value.trim();
             if (!item) {
                 Swal.showValidationMessage('Моля, въведете име или код на инструмента/пластината!');
                 return false;
@@ -73,7 +81,7 @@ window.openTerminalToolingRequestModal = async function() {
             return {
                 tool_item: item,
                 urgency: document.getElementById('swalToolUrgency').value,
-                notes: document.getElementById('swalToolNotes').value.trim()
+                notes: notes ? `[Изискани: ${qty} бр.] ${notes}` : `[Изискани: ${qty} бр.]`
             };
         }
     });
