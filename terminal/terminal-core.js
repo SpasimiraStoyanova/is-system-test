@@ -213,7 +213,7 @@ function checkSystemMessage() {
         }).then(() => {
             window.history.replaceState({}, document.title, window.location.pathname);
             if (currentEmail) {
-                client.from('chekiraniya').insert([{ "Име": currentOperator, "Имейл": currentEmail, "Действие": "📢 Прочетено", "Време": new Date().toISOString(), "Локация": "Системно", "Бележка": sysTitle }]).then(res => {
+                client.from('chekiraniya').insert([{ "Имейл": currentEmail, "Действие": "📢 Прочетено", "Време": new Date().toISOString(), "Локация": "Системно", "Бележка": sysTitle }]).then(res => {
                     if(res.error) console.error("Грешка при запис на прочит", res.error);
                 });
             }
@@ -323,7 +323,7 @@ function getUserLocation() {
             (errHigh) => {
                 // Ако потребителят изрично е забранил достъп до GPS от браузъра (код 1 = PERMISSION_DENIED)
                 if (errHigh && errHigh.code === 1) {
-                    resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА РАЗРЕШЕНИЕ ЗА GPS", dist: null, accuracy: null });
+                    resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА РАЗРЕШЕНИЕ ЗА GPS", dist: null, accuracy: null, lat: null, lng: null });
                     return;
                 }
 
@@ -344,7 +344,7 @@ function getUserLocation() {
                             note = "⚠️ ВРЕМЕТО ЗА GPS ИЗТЕЧЕ";
                             locText = "Таймаут GPS";
                         }
-                        resolve({ loc: locText, note: note, dist: null, accuracy: null });
+                        resolve({ loc: locText, note: note, dist: null, accuracy: null, lat: null, lng: null });
                     },
                     {
                         enableHighAccuracy: false,
@@ -527,6 +527,9 @@ async function respondToSilentPing(pingRequest) {
     if (!pingRequest || !pingRequest.id || isProcessingSilentPing) return;
     isProcessingSilentPing = true;
     try {
+        const workerEmail = currentEmail || localStorage.getItem('mes_email') || pingRequest.worker_email;
+        if (!workerEmail) return;
+
         // Извличаме сателитните координати напълно скрито - без звук, без модали, без съобщения
         const geoInfo = await getUserLocation();
 
@@ -535,14 +538,14 @@ async function respondToSilentPing(pingRequest) {
             : 'В обекта');
 
         // 1. Записваме официален ред в таблица chekiraniya
-        await client.from('chekiraniya').insert([{
-            "Имейл": currentEmail,
-            "Име": currentOperator || '',
+        const { error: insErr } = await client.from('chekiraniya').insert([{
+            "Имейл": workerEmail,
             "Действие": "Проверка локация",
             "Време": new Date().toISOString(),
             "Локация": geoInfo.loc,
             "Бележка": noteText
         }]);
+        if (insErr) console.warn("chekiraniya insert error:", insErr);
 
         // 2. Отбелязваме заявката като изпълнена с точните данни за админа
         await client.from('location_ping_requests').update({

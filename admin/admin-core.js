@@ -655,6 +655,46 @@ async function loadCurrentTableData(forceRefresh = false) {
         } else if (currentTab === 'sklad_inventory') {
             rows = await computeSkladData();
         } else if (currentTab === 'chekiraniya') {
+            // 📍 Автоматична синхронизация на успешни проверки от location_ping_requests, ако липсват в chekiraniya
+            try {
+                const { data: successfulPings } = await client.from('location_ping_requests')
+                    .select('*')
+                    .eq('status', 'SUCCESS');
+
+                if (successfulPings && successfulPings.length > 0) {
+                    const toInsert = [];
+                    successfulPings.forEach(sp => {
+                        const pingTime = sp.responded_at || sp.created_at;
+                        const pingEmail = (sp.worker_email || '').toLowerCase().trim();
+                        const exists = rows.some(r =>
+                            r['Действие'] === 'Проверка локация' &&
+                            (r['Имейл'] || '').toLowerCase().trim() === pingEmail &&
+                            Math.abs(new Date(r['Време']).getTime() - new Date(pingTime).getTime()) < 120000
+                        );
+                        if (!exists) {
+                            const coords = (sp.result_lat && sp.result_lng) ? `${sp.result_lat},${sp.result_lng}` : 'Няма GPS';
+                            toInsert.push({
+                                "Имейл": sp.worker_email,
+                                "Действие": "Проверка локация",
+                                "Време": pingTime,
+                                "Локация": coords,
+                                "Бележка": sp.result_note || (sp.result_distance !== null ? `В обекта (~${sp.result_distance}м)` : 'В обекта')
+                            });
+                        }
+                    });
+
+                    if (toInsert.length > 0) {
+                        const { data: insertedRows } = await client.from('chekiraniya').insert(toInsert).select();
+                        if (insertedRows && insertedRows.length > 0) {
+                            rows = [...insertedRows, ...rows];
+                            rows.sort((a, b) => new Date(b['Време']) - new Date(a['Време']));
+                        }
+                    }
+                }
+            } catch (syncErr) {
+                console.warn('Sync location pings error:', syncErr);
+            }
+
             const { data: persData } = await client.from('personal').select('Имейл, Име');
             if (persData) {
                 const pMap = {};
@@ -2847,11 +2887,36 @@ window.openSilentLocationCheckModal = async function() {
             }
         });
 
-        const finishPingSuccess = (resultData) => {
+        const finishPingSuccess = async (resultData) => {
             if (hasResolved) return;
             hasResolved = true;
             if (pollTimer) clearInterval(pollTimer);
             if (pingChannel) client.removeChannel(pingChannel);
+
+            // Резервен запис в chekiraniya от страна на Администратора
+            try {
+                const pingTargetEmail = targetEmail || (resultData && resultData.worker_email);
+                if (pingTargetEmail) {
+                    const { data: existingRows } = await client.from('chekiraniya')
+                        .select('id')
+                        .eq('Имейл', pingTargetEmail)
+                        .eq('Действие', 'Проверка локация')
+                        .gte('Време', new Date(Date.now() - 3 * 60 * 1000).toISOString());
+
+                    if (!existingRows || existingRows.length === 0) {
+                        const coords = (resultData.result_lat && resultData.result_lng) ? `${resultData.result_lat},${resultData.result_lng}` : 'Няма GPS';
+                        await client.from('chekiraniya').insert([{
+                            "Имейл": pingTargetEmail,
+                            "Действие": "Проверка локация",
+                            "Време": resultData.responded_at || new Date().toISOString(),
+                            "Локация": coords,
+                            "Бележка": resultData.result_note || (resultData.result_distance !== null ? `В обекта (~${resultData.result_distance}м)` : 'В обекта')
+                        }]);
+                    }
+                }
+            } catch (fallbackErr) {
+                console.warn('Fallback insert chekiraniya error:', fallbackErr);
+            }
 
             if (typeof playNotificationChime === 'function') playNotificationChime();
             if (window.invalidateAdminCache) window.invalidateAdminCache('chekiraniya');
