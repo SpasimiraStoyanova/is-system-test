@@ -309,6 +309,94 @@ document.addEventListener('click', (e) => {
     }
 });
 
+window.cachedFactoryMachines = [
+    { name: 'HAAS ST 10', code: '101' },
+    { name: 'HAAS Mini Mill', code: '102' },
+    { name: 'EMCO', code: '103' },
+    { name: 'EMCO (стар)', code: '104' },
+    { name: 'EMCOTURN E25', code: '105' },
+    { name: 'Фреза Deckel', code: '106' },
+    { name: 'Струг (УС 11.1)', code: '107' },
+    { name: 'Струг голям', code: '108' },
+    { name: 'Струг пресоване', code: '109' },
+    { name: 'Универсален струг', code: '110' },
+    { name: 'Шлайф (голям)', code: '111' },
+    { name: 'Шлайф (нов)', code: '112' },
+    { name: 'Хонинг', code: '113' },
+    { name: 'Заточна Машина', code: '114' },
+    { name: 'Голяма ножовка', code: '115' },
+    { name: 'Малка ножовка', code: '116' },
+    { name: 'Ножовка за процепване', code: '117' },
+    { name: 'Барабан', code: '118' },
+    { name: 'Бобинажна машина статорна', code: '201' },
+    { name: 'Бобиньорки', code: '202' },
+    { name: 'Машина за навиване на ротори', code: '203' },
+    { name: 'Машина за прахово боядисване', code: '204' },
+    { name: 'Машина за пудрене', code: '205' },
+    { name: 'Машина за търкане', code: '206' },
+    { name: 'Мивка', code: '207' },
+    { name: 'Монтаж 1', code: '301' },
+    { name: 'Монтаж 1 МПР', code: '302' },
+    { name: 'Монтаж 1 макари', code: '303' },
+    { name: 'Монтаж 2', code: '304' },
+    { name: 'Монтаж 2 + ТермоПреса', code: '305' }
+];
+
+async function loadFactoryMachinesList() {
+    try {
+        const macMap = new Map();
+        (window.cachedFactoryMachines || []).forEach(m => {
+            if (m && m.name) macMap.set(m.name.trim().toLowerCase(), { name: m.name.trim(), code: m.code || '' });
+        });
+
+        const [machRes, routeRes] = await Promise.allSettled([
+            client.from('factory_machines').select('name, code').order('name'),
+            client.from('marshruti').select('Машина').limit(10000)
+        ]);
+
+        if (machRes.status === 'fulfilled' && machRes.value && machRes.value.data) {
+            machRes.value.data.forEach(m => {
+                const name = String(m.name || '').trim();
+                if (name) {
+                    const key = name.toLowerCase();
+                    const existing = macMap.get(key);
+                    macMap.set(key, {
+                        name: name,
+                        code: m.code ? String(m.code).trim() : (existing ? existing.code : '')
+                    });
+                }
+            });
+        }
+
+        if (routeRes.status === 'fulfilled' && routeRes.value && routeRes.value.data) {
+            routeRes.value.data.forEach(r => {
+                const name = String(r['Машина'] || '').trim();
+                if (name) {
+                    const key = name.toLowerCase();
+                    if (!macMap.has(key)) {
+                        macMap.set(key, { name: name, code: '' });
+                    }
+                }
+            });
+        }
+
+        window.cachedFactoryMachines = Array.from(macMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'bg'));
+
+        const dl = document.getElementById('dl_machines');
+        if (dl) {
+            dl.innerHTML = '';
+            window.cachedFactoryMachines.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.name;
+                if (m.code) opt.label = `${m.name} (№ ${m.code})`;
+                dl.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.warn('loadFactoryMachinesList warning:', e);
+    }
+}
+
 function loadFormDatalists() {
     client.from('Номенклатура').select('"ID Детайл", "Вътрешно име"').limit(10000).then(res => {
         if (res.data) {
@@ -331,25 +419,7 @@ function loadFormDatalists() {
         }
     });
 
-    client.from('marshruti').select('Машина').limit(10000).then(res => {
-        if (res.data) {
-            const dl = document.getElementById('dl_machines');
-            if (dl) {
-                dl.innerHTML = '';
-                const machines = new Set();
-                res.data.forEach(item => {
-                    const m = String(item['Машина'] || '').trim();
-                    if (m) machines.add(m);
-                });
-                ['HAAS ST 10', 'EMCO', 'EMCO (стар)', 'Монтаж 1', 'Монтаж 2', 'Бобини'].forEach(m => machines.add(m));
-                Array.from(machines).sort().forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m;
-                    dl.appendChild(opt);
-                });
-            }
-        }
-    });
+    loadFactoryMachinesList();
 }
 
 function exportCurrentTableToExcel() {
@@ -421,6 +491,9 @@ window.invalidateAdminCache = function (tabKey = null) {
     } else {
         Object.keys(adminTabCache).forEach(k => delete adminTabCache[k]);
         Object.keys(adminCacheTimestamps).forEach(k => delete adminCacheTimestamps[k]);
+    }
+    if (!tabKey || tabKey === 'workstations' || tabKey === 'marshruti') {
+        if (typeof loadFactoryMachinesList === 'function') loadFactoryMachinesList();
     }
 };
 
@@ -1078,10 +1151,86 @@ function buildForm(data = null) {
     }
 
     fields.forEach(f => {
-        if (f.hideOnAdd && !isEditMode) return; const group = document.createElement('div'); group.className = 'form-group'; const label = document.createElement('label'); label.innerText = f.label || f.name; group.appendChild(label); let input;
-        if (f.type === 'select') { input = document.createElement('select'); f.options.forEach(opt => { const option = document.createElement('option'); option.value = opt; option.innerText = opt; input.appendChild(option); }); if (data && data[f.name]) input.value = data[f.name]; else if (f.def) input.value = f.def; }
-        else { input = document.createElement('input'); input.type = f.type === 'number' ? 'number' : 'text'; if (f.type === 'number') input.step = 'any'; if (data && data[f.name] !== undefined && data[f.name] !== null) input.value = data[f.name]; else if (f.def !== undefined) input.value = typeof f.def === 'function' ? f.def() : f.def; }
-        input.id = 'inp_' + f.name; if (f.required) input.required = true;
+        if (f.hideOnAdd && !isEditMode) return;
+        const group = document.createElement('div');
+        group.className = 'form-group';
+        const label = document.createElement('label');
+        label.innerText = f.label || f.name;
+        group.appendChild(label);
+        let input;
+
+        if (f.name === 'machine_name' || f.name === 'workstation_name') {
+            input = document.createElement('select');
+            input.id = 'inp_' + f.name;
+            input.className = 'form-input';
+
+            const isWorkstation = (f.name === 'workstation_name');
+            const defOpt = document.createElement('option');
+            defOpt.value = '';
+            defOpt.innerText = isWorkstation ? '-- Изберете работно място / машина --' : '-- Изберете машина / пост --';
+            input.appendChild(defOpt);
+
+            if (!isWorkstation) {
+                const allOpt = document.createElement('option');
+                allOpt.value = 'Общо';
+                allOpt.innerText = '🌐 Общо / Всички машини';
+                input.appendChild(allOpt);
+            } else {
+                const skladOpt = document.createElement('option');
+                skladOpt.value = 'Склад';
+                skladOpt.innerText = '📦 Склад (не е зачислено)';
+                input.appendChild(skladOpt);
+            }
+
+            const macList = window.cachedFactoryMachines || [];
+            macList.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.name;
+                opt.innerText = m.code ? `${m.name} (№ ${m.code})` : m.name;
+                input.appendChild(opt);
+            });
+
+            const currVal = (data && data[f.name] !== undefined && data[f.name] !== null) ? String(data[f.name]).trim() : (f.def || '');
+            if (currVal) {
+                let found = false;
+                for (let i = 0; i < input.options.length; i++) {
+                    if (input.options[i].value.toLowerCase() === currVal.toLowerCase()) {
+                        input.selectedIndex = i;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    const customOpt = document.createElement('option');
+                    customOpt.value = currVal;
+                    customOpt.innerText = `${currVal} (Текущо)`;
+                    input.appendChild(customOpt);
+                    input.value = currVal;
+                }
+            } else {
+                input.value = '';
+            }
+        } else if (f.type === 'select') {
+            input = document.createElement('select');
+            input.id = 'inp_' + f.name;
+            (f.options || []).forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.innerText = opt;
+                input.appendChild(option);
+            });
+            if (data && data[f.name]) input.value = data[f.name];
+            else if (f.def) input.value = f.def;
+        } else {
+            input = document.createElement('input');
+            input.type = f.type === 'number' ? 'number' : 'text';
+            input.id = 'inp_' + f.name;
+            if (f.type === 'number') input.step = 'any';
+            if (data && data[f.name] !== undefined && data[f.name] !== null) input.value = data[f.name];
+            else if (f.def !== undefined) input.value = typeof f.def === 'function' ? f.def() : f.def;
+        }
+
+        if (f.required) input.required = true;
         if (f.name === 'ID Детайл' || f.name === 'ID Родител' || f.name === 'ID Компонент' || f.name === 'Код на детайла') {
             input.setAttribute('list', 'dl_nomenklatura');
             input.setAttribute('autocomplete', 'off');
@@ -1093,8 +1242,15 @@ function buildForm(data = null) {
         } else if (f.name === 'Норма (мин/бр)') {
             input.placeholder = 'напр. 3.5 мин/бр';
         }
-        if (f.readonly || (isEditMode && f.readonlyOnEdit)) { input.readOnly = true; input.style.backgroundColor = '#f1f5f9'; input.style.color = '#64748b'; input.style.cursor = 'not-allowed'; if (f.type === 'select') input.disabled = true; }
-        group.appendChild(input); area.appendChild(group);
+        if (f.readonly || (isEditMode && f.readonlyOnEdit)) {
+            input.readOnly = true;
+            input.style.backgroundColor = '#f1f5f9';
+            input.style.color = '#64748b';
+            input.style.cursor = 'not-allowed';
+            if (input.tagName.toLowerCase() === 'select') input.disabled = true;
+        }
+        group.appendChild(input);
+        area.appendChild(group);
     });
 
     if (currentTab === 'sklad') {
