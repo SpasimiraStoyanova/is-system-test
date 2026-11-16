@@ -444,6 +444,7 @@ function switchTab(tabKey, force = false) {
     const config = tableConfigs[tabKey]; const addBtn = document.getElementById('addNewBtn');
     const pdfBtn = document.getElementById('pdfBtn'); const mrpBtn = document.getElementById('mrpBtn'); const transBtn = document.getElementById('transformResolverBtn'); const sidebar = document.getElementById('personnelSidebar');
     const syncMacBtn = document.getElementById('syncMachinesBtn');
+    const locCheckBtn = document.getElementById('silentLocationCheckBtn');
 
     addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`;
     addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_inventory') ? 'none' : 'flex';
@@ -451,6 +452,7 @@ function switchTab(tabKey, force = false) {
     if (mrpBtn) mrpBtn.style.display = (tabKey === 'porachki') ? 'flex' : 'none';
     if (transBtn) transBtn.style.display = (tabKey === 'sklad_inventory') ? 'flex' : 'none';
     if (syncMacBtn) syncMacBtn.style.display = (tabKey === 'workstations') ? 'flex' : 'none';
+    if (locCheckBtn) locCheckBtn.style.display = (tabKey === 'chekiraniya') ? 'flex' : 'none';
 
     // Тук прехвърлихме показването на папките само когато сме в менюто Персонал
     if (tabKey === 'personal') { sidebar.style.display = 'block'; loadPersonnelSidebar(); } else { sidebar.style.display = 'none'; }
@@ -732,6 +734,7 @@ function renderDynamicTable(itemsToRender = null) {
             let isLate = false; if (item['Действие'] === 'Влизане' && item['Време']) { let d = new Date(item['Време']); if (d.getHours() > 8 || (d.getHours() === 8 && d.getMinutes() > 0)) isLate = true; }
             if (isLate || (item['Бележка'] && item['Бележка'].includes('ИЗВЪН ОБЕКТА'))) { row.style.backgroundColor = '#fef2f2'; row.style.borderLeft = '5px solid #ef4444'; }
             else if (item['Действие'] === 'Авто излизане') { row.style.backgroundColor = '#fffbeb'; row.style.borderLeft = '5px solid #f59e0b'; }
+            else if (item['Действие'] === 'Проверка локация') { row.style.backgroundColor = '#faf5ff'; row.style.borderLeft = '5px solid #a855f7'; }
         }
         if (currentTab === 'personal') {
             if (item['Статус'] === 'Блокиран') { row.style.backgroundColor = '#fef2f2'; row.style.color = '#991b1b'; }
@@ -788,6 +791,7 @@ function renderDynamicTable(itemsToRender = null) {
                 if (val === 'Влизане') td.innerHTML = `<span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🟢 ${val}</span>`;
                 else if (val === 'Излизане') td.innerHTML = `<span style="background:#fee2e2; color:#b91c1c; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🔴 ${val}</span>`;
                 else if (val === 'Авто излизане') td.innerHTML = `<span style="background:#fef3c7; color:#b45309; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🕒 ${val}</span>`;
+                else if (val === 'Проверка локация') td.innerHTML = `<span style="background:#f3e8ff; color:#7e22ce; border:1px solid #d8b4fe; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">📍 ${val}</span>`;
                 else td.innerText = val; row.appendChild(td); return;
             }
             if (currentTab === 'chekiraniya' && f.name === 'Локация' && val && val.includes(',')) { let coords = val.replace(/\s/g, ''); td.innerHTML = `<a href="https://www.google.com/maps?q=${coords}" target="_blank" style="color:#2563eb; font-weight:bold; text-decoration:none;">📍 Карта</a>`; row.appendChild(td); return; }
@@ -2570,5 +2574,254 @@ window.openMaterialDossier = async function(materialCode) {
     } catch (err) {
         console.error('Error fetching material dossier:', err);
         Swal.fire('Грешка', 'Неуспешно зареждане на данните за картона: ' + err.message, 'error');
+    }
+};
+
+// ==============================================================================
+// ДИСКРЕТНА / ВНЕЗАПНА ПРОВЕРКА НА ЛОКАЦИЯ В РЕАЛНО ВРЕМЕ
+// ==============================================================================
+window.openSilentLocationCheckModal = async function() {
+    Swal.fire({ title: 'Зареждане на служителите...', didOpen: () => Swal.showLoading() });
+
+    try {
+        // 1. Всички активни служители от персонал
+        const { data: workers, error: wErr } = await client
+            .from('personal')
+            .select('Име, Имейл, Длъжност')
+            .eq('Статус', 'Активен')
+            .order('Име');
+
+        if (wErr) throw wErr;
+        if (!workers || workers.length === 0) {
+            Swal.fire('Информация', 'Няма намерени активни служители.', 'info');
+            return;
+        }
+
+        // 2. Днешни чекирания (кой е влязъл на смяна)
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const { data: todayLogs } = await client
+            .from('chekiraniya')
+            .select('Имейл, Действие, Време')
+            .gte('Време', todayStart.toISOString())
+            .order('Време', { ascending: false });
+
+        const statusMap = {};
+        if (todayLogs) {
+            todayLogs.forEach(log => {
+                if (!statusMap[log['Имейл']]) {
+                    statusMap[log['Имейл']] = log['Действие'];
+                }
+            });
+        }
+
+        // Подреждане: първо тези с 'Влизане' днес
+        workers.sort((a, b) => {
+            let stA = statusMap[a['Имейл']] === 'Влизане' ? 1 : 0;
+            let stB = statusMap[b['Имейл']] === 'Влизане' ? 1 : 0;
+            if (stA !== stB) return stB - stA;
+            return (a['Име'] || '').localeCompare(b['Име'] || '', 'bg');
+        });
+
+        const optionsHtml = workers.map(w => {
+            const lastSt = statusMap[w['Имейл']];
+            let badgeText = '⚪ Не е чекиран за днес';
+            if (lastSt === 'Влизане') badgeText = '🟢 На смяна (Влязъл)';
+            else if (lastSt === 'Излизане' || lastSt === 'Авто излизане') badgeText = '🔴 Изписан';
+            return `<option value="${escapeHtml(w['Имейл'])}" data-name="${escapeHtml(w['Име'] || w['Имейл'])}">${escapeHtml(w['Име'] || w['Имейл'])} — ${badgeText}</option>`;
+        }).join('');
+
+        const { value: selectedEmail } = await Swal.fire({
+            title: '🕵️ Дискретна проверка на локация',
+            width: 580,
+            html: `
+                <div style="text-align: left; font-size: 0.9em; display: flex; flex-direction: column; gap: 12px;">
+                    <div style="background: #fdf4ff; border: 1.5px solid #e9d5ff; border-radius: 10px; padding: 12px 14px; font-size: 0.88em; color: #6b21a8; line-height: 1.45;">
+                        🤫 <b>Напълно невидимо за служителя:</b><br>
+                        Терминалът на служителя ще измери спътниковите GPS координати <b>без звук, без известие и без съобщение на екрана</b>.
+                        Резултатът ще се отрази веднага като нов ред в таблица <b>„Хронология Чекирания“</b> с точен час, разстояние и линк към Google Maps.
+                    </div>
+
+                    <div>
+                        <label style="font-weight: 700; color: #334155; display: block; margin-bottom: 6px;">
+                            Изберете служител за измерване на координатите:
+                        </label>
+                        <select id="swalPingWorkerSelect" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; height: 42px; font-weight: 700;">
+                            ${optionsHtml}
+                        </select>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '📍 Измери локация сега',
+            cancelButtonText: 'Отказ',
+            confirmButtonColor: '#7c3aed',
+            preConfirm: () => {
+                const sel = document.getElementById('swalPingWorkerSelect');
+                if (!sel || !sel.value) {
+                    Swal.showValidationMessage('Моля, изберете служител!');
+                    return false;
+                }
+                return {
+                    email: sel.value,
+                    name: sel.options[sel.selectedIndex]?.dataset?.name || sel.value
+                };
+            }
+        });
+
+        if (!selectedEmail) return;
+
+        const { email: targetEmail, name: targetName } = selectedEmail;
+        const adminEmail = localStorage.getItem('last_admin_email') || 'Администрация';
+
+        // Създаваме заявката в таблица location_ping_requests
+        const { data: pingRow, error: pErr } = await client
+            .from('location_ping_requests')
+            .insert([{
+                worker_email: targetEmail,
+                worker_name: targetName,
+                requested_by: adminEmail,
+                status: 'PENDING'
+            }])
+            .select()
+            .single();
+
+        if (pErr) throw pErr;
+
+        let timeLeft = 12;
+        let pingChannel = null;
+        let pollTimer = null;
+        let hasResolved = false;
+
+        Swal.fire({
+            title: `📡 Извличане на GPS за ${escapeHtml(targetName)}`,
+            allowOutsideClick: false,
+            showConfirmButton: false,
+            showCancelButton: true,
+            cancelButtonText: 'Спри изчакването',
+            html: `
+                <div style="font-size: 0.95em; color: #475569; padding: 10px 0; line-height: 1.5;">
+                    Свързване със сателитния приемник на устройството...<br>
+                    <div style="font-size: 1.6em; font-weight: 900; color: #7c3aed; margin: 12px 0;">
+                        ⏱️ <span id="locPingTimer">${timeLeft}</span> сек
+                    </div>
+                    <div style="font-size: 0.82em; color: #94a3b8; font-style: italic;">
+                        (Служителят не вижда нищо на своя телефон/таблет)
+                    </div>
+                </div>
+            `,
+            didOpen: () => {
+                const timerSpan = document.getElementById('locPingTimer');
+
+                const checkDone = async () => {
+                    if (hasResolved) return;
+                    const { data: chk } = await client
+                        .from('location_ping_requests')
+                        .select('*')
+                        .eq('id', pingRow.id)
+                        .single();
+
+                    if (chk && chk.status === 'SUCCESS') {
+                        finishPingSuccess(chk);
+                    }
+                };
+
+                // Realtime абонамент
+                try {
+                    pingChannel = client.channel('loc-ping-' + pingRow.id)
+                        .on('postgres_changes', {
+                            event: 'UPDATE',
+                            schema: 'public',
+                            table: 'location_ping_requests',
+                            filter: `id=eq.${pingRow.id}`
+                        }, (payload) => {
+                            if (payload.new && payload.new.status === 'SUCCESS') {
+                                finishPingSuccess(payload.new);
+                            }
+                        })
+                        .subscribe();
+                } catch(e) {}
+
+                pollTimer = setInterval(async () => {
+                    timeLeft--;
+                    if (timerSpan) timerSpan.innerText = timeLeft;
+                    await checkDone();
+                    if (timeLeft <= 0 && !hasResolved) {
+                        finishPingTimeout();
+                    }
+                }, 1000);
+            },
+            willClose: () => {
+                if (pollTimer) clearInterval(pollTimer);
+                if (pingChannel) client.removeChannel(pingChannel);
+            }
+        });
+
+        const finishPingSuccess = (resultData) => {
+            if (hasResolved) return;
+            hasResolved = true;
+            if (pollTimer) clearInterval(pollTimer);
+            if (pingChannel) client.removeChannel(pingChannel);
+
+            if (typeof playNotificationChime === 'function') playNotificationChime();
+            if (window.invalidateAdminCache) window.invalidateAdminCache('chekiraniya');
+            loadCurrentTableData(true);
+
+            const isOutside = (resultData.result_note && resultData.result_note.includes('ИЗВЪН ОБЕКТА')) || (resultData.result_distance > 200);
+            const distStr = resultData.result_distance !== null ? `${resultData.result_distance} м` : 'Неизвестно';
+            const coordsStr = (resultData.result_lat && resultData.result_lng) ? `${resultData.result_lat}, ${resultData.result_lng}` : null;
+            const mapsBtn = coordsStr 
+                ? `<div style="margin-top: 14px;"><a href="https://www.google.com/maps?q=${coordsStr}" target="_blank" style="background:#2563eb; color:white; padding:8px 16px; border-radius:8px; font-weight:800; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">📍 Отвори точната локация в Google Maps</a></div>` 
+                : '';
+
+            Swal.fire({
+                icon: isOutside ? 'warning' : 'success',
+                title: isOutside ? '🚨 ИЗВЪН ОБЕКТА!' : '🟢 В ОБЕКТА',
+                width: 550,
+                html: `
+                    <div style="text-align: left; font-size: 0.95em; line-height: 1.5;">
+                        <div>Служител: <b>${escapeHtml(targetName)}</b> (${escapeHtml(targetEmail)})</div>
+                        <div style="margin-top: 4px;">Разстояние от цеха: <b style="color:${isOutside ? '#dc2626' : '#15803d'}; font-size:1.1em;">${distStr}</b></div>
+                        <div style="margin-top: 4px;">Час на засичане: <b>${new Date(resultData.responded_at || Date.now()).toLocaleTimeString('bg-BG')}</b></div>
+                        <div style="margin-top: 4px; font-size: 0.85em; color: #64748b;">Бележка: ${escapeHtml(resultData.result_note || '')}</div>
+                        ${mapsBtn}
+                        <div style="margin-top: 14px; padding: 8px 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; font-size: 0.85em; color: #166534; font-weight: 700;">
+                            ✅ Записът за проверката вече е добавен в таблица „Хронология Чекирания“!
+                        </div>
+                    </div>
+                `,
+                confirmButtonText: 'Разбрах',
+                confirmButtonColor: '#2563eb'
+            });
+        };
+
+        const finishPingTimeout = () => {
+            if (hasResolved) return;
+            hasResolved = true;
+            if (pollTimer) clearInterval(pollTimer);
+            if (pingChannel) client.removeChannel(pingChannel);
+
+            Swal.fire({
+                icon: 'info',
+                title: '⏳ Устройството в момента спи',
+                width: 580,
+                html: `
+                    <div style="text-align: left; font-size: 0.92em; line-height: 1.5; color: #334155;">
+                        <p style="margin-top: 0;">
+                            Телефонът на <b>${escapeHtml(targetName)}</b> не отговори мигновено (в рамките на 12 секунди).
+                            Най-често това означава, че телефонът е със <b>заключен / изгасен екран (в джоба)</b>.
+                        </p>
+                        <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; color: #475569;">
+                            ℹ️ <b>Какво ще стане:</b> Заявката остава активна във фонов режим. В момента, в който ${escapeHtml(targetName)} отключи екрана или погледне в терминала, системата <b>напълно скрито ще прихване GPS позицията му</b> и автоматично ще добави нов ред тук в таблица „Чекирания“.
+                        </div>
+                    </div>
+                `,
+                confirmButtonText: 'Разбрах',
+                confirmButtonColor: '#64748b'
+            });
+        };
+
+    } catch (err) {
+        Swal.fire('Грешка', 'Неуспешна проверка: ' + err.message, 'error');
     }
 };

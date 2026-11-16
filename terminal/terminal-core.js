@@ -71,6 +71,9 @@ async function initTerminal() {
     loadTasks();
     if (typeof loadHistoryFromDB === 'function') loadHistoryFromDB();
     setTimeout(checkAndPromptNotifications, 1000);
+    if (typeof initSilentLocationPingListener === 'function') {
+        initSilentLocationPingListener();
+    }
 
     setInterval(() => { 
         if (!activeTaskId && isUserCheckedIn) loadTasks(true); 
@@ -305,10 +308,12 @@ function getUserLocation() {
                     loc: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
                     note: note,
                     dist: dist,
-                    accuracy: accuracy
+                    accuracy: accuracy,
+                    lat: lat,
+                    lng: lng
                 });
             } catch (calcErr) {
-                resolve({ loc: "Грешка GPS", note: "⚠️ ГРЕШКА ЛОКАЦИЯ", dist: null, accuracy: null });
+                resolve({ loc: "Грешка GPS", note: "⚠️ ГРЕШКА ЛОКАЦИЯ", dist: null, accuracy: null, lat: null, lng: null });
             }
         };
 
@@ -443,6 +448,114 @@ async function fetchMessages() {
         list.innerHTML = html;
     } catch (e) {
         list.innerHTML = '<li class="history-item" style="color:red; text-align:center;">Грешка при зареждане</li>';
+    }
+}
+
+// ==============================================================================
+// ДИСКРЕТНА / ВНЕЗАПНА ПРОВЕРКА НА ЛОКАЦИЯ ОТ АДМИНИСТРАЦИЯТА (НАПЪЛНО СКРИТА)
+// ==============================================================================
+let silentLocationChannel = null;
+let isProcessingSilentPing = false;
+
+function initSilentLocationPingListener() {
+    if (!currentEmail) return;
+
+    // 1. Проверка веднага при зареждане или събуждане на екрана
+    checkPendingSilentPings();
+
+    // 2. Периодична фонова проверка на всеки 30 секунди
+    setInterval(checkPendingSilentPings, 30000);
+
+    // 3. При отключване на телефона или връщане към таба (focus / visibilitychange)
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkPendingSilentPings();
+    });
+    window.addEventListener('focus', () => {
+        checkPendingSilentPings();
+    });
+
+    // 4. Supabase Realtime абонамент за мигновена реакция
+    try {
+        if (silentLocationChannel) client.removeChannel(silentLocationChannel);
+        silentLocationChannel = client.channel('silent-loc-ping-' + currentEmail)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'location_ping_requests',
+                filter: `worker_email=eq.${currentEmail}`
+            }, (payload) => {
+                if (payload.new && payload.new.status === 'PENDING') {
+                    respondToSilentPing(payload.new);
+                }
+            })
+            .subscribe();
+    } catch (e) {
+        console.warn('Realtime silent ping error:', e);
+    }
+}
+
+async function checkPendingSilentPings() {
+    if (!currentEmail || isProcessingSilentPing) return;
+    try {
+        // Проверяваме за чакащи заявки от последните 30 минути
+        const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+        const { data, error } = await client
+            .from('location_ping_requests')
+            .select('*')
+            .eq('worker_email', currentEmail)
+            .eq('status', 'PENDING')
+            .gte('created_at', thirtyMinsAgo)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (error) {
+            if (error.code === '42P01') return; // Таблицата още не е създадена в DB
+            return;
+        }
+
+        if (data && data.length > 0) {
+            await respondToSilentPing(data[0]);
+        }
+    } catch (err) {
+        // Напълно тихо без грешки на екрана
+    }
+}
+
+async function respondToSilentPing(pingRequest) {
+    if (!pingRequest || !pingRequest.id || isProcessingSilentPing) return;
+    isProcessingSilentPing = true;
+    try {
+        // Извличаме сателитните координати напълно скрито - без звук, без модали, без съобщения
+        const geoInfo = await getUserLocation();
+
+        const noteText = geoInfo.note || (geoInfo.dist !== null 
+            ? (geoInfo.dist <= WORKSHOP_RADIUS ? `В обекта (~${geoInfo.dist}м)` : `⚠️ ИЗВЪН ОБЕКТА (${geoInfo.dist}м)`) 
+            : 'В обекта');
+
+        // 1. Записваме официален ред в таблица chekiraniya
+        await client.from('chekiraniya').insert([{
+            "Имейл": currentEmail,
+            "Име": currentOperator || '',
+            "Действие": "Проверка локация",
+            "Време": new Date().toISOString(),
+            "Локация": geoInfo.loc,
+            "Бележка": noteText
+        }]);
+
+        // 2. Отбелязваме заявката като изпълнена с точните данни за админа
+        await client.from('location_ping_requests').update({
+            status: 'SUCCESS',
+            result_lat: geoInfo.lat || null,
+            result_lng: geoInfo.lng || null,
+            result_distance: geoInfo.dist || null,
+            result_note: noteText,
+            responded_at: new Date().toISOString()
+        }).eq('id', pingRequest.id);
+
+    } catch (err) {
+        console.warn('Silent ping execution error:', err);
+    } finally {
+        isProcessingSilentPing = false;
     }
 }
 

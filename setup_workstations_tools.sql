@@ -166,11 +166,42 @@ CREATE POLICY "Allow all on factory_tool_calibrations" ON public.factory_tool_ca
 DROP POLICY IF EXISTS "Allow all on equipment_protocols" ON public.equipment_protocols;
 CREATE POLICY "Allow all on equipment_protocols" ON public.equipment_protocols FOR ALL USING (true) WITH CHECK (true);
 
+-- 10. Таблица за дискретни проверки на локация в реално време
+CREATE TABLE IF NOT EXISTS public.location_ping_requests (
+    id BIGSERIAL PRIMARY KEY,
+    worker_email TEXT NOT NULL,
+    worker_name TEXT,
+    requested_by TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    result_lat NUMERIC,
+    result_lng NUMERIC,
+    result_distance INTEGER,
+    result_note TEXT,
+    responded_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_loc_ping_worker_status ON public.location_ping_requests (worker_email, status);
+CREATE INDEX IF NOT EXISTS idx_loc_ping_created ON public.location_ping_requests (created_at DESC);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'location_ping_requests') THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.location_ping_requests;
+    END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+ALTER TABLE public.location_ping_requests ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on location_ping_requests" ON public.location_ping_requests;
+CREATE POLICY "Allow all on location_ping_requests" ON public.location_ping_requests FOR ALL USING (true) WITH CHECK (true);
+
 GRANT ALL ON public.factory_machines TO anon, authenticated;
 GRANT ALL ON public.factory_tools TO anon, authenticated;
 GRANT ALL ON public.tooling_inventory TO anon, authenticated;
 GRANT ALL ON public.tooling_requests TO anon, authenticated;
 GRANT ALL ON public.factory_tool_calibrations TO anon, authenticated;
 GRANT ALL ON public.equipment_protocols TO anon, authenticated;
+GRANT ALL ON public.location_ping_requests TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
