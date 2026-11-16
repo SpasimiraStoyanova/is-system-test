@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="icon.png">
     <link rel="stylesheet" href="terminal/terminal.css?v=25">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -17,13 +18,17 @@
       const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1) || '/';
       window.OneSignalDeferred = window.OneSignalDeferred || [];
       OneSignalDeferred.push(async function(OneSignal) {
-        await OneSignal.init({
-          appId: "2507a9cb-0d28-4952-9b7b-42e800a61613",
-          safari_web_id: "web.onesignal.auto.1cc5c601-0ab1-487a-96d1-0b685be1e018",
-          serviceWorkerParam: { scope: basePath },
-          serviceWorkerPath: basePath + "OneSignalSDKWorker.js",
-          notifyButton: { enable: false }
-        });
+        try {
+          await OneSignal.init({
+            appId: "2507a9cb-0d28-4952-9b7b-42e800a61613",
+            safari_web_id: "web.onesignal.auto.1cc5c601-0ab1-487a-96d1-0b685be1e018",
+            serviceWorkerParam: { scope: basePath },
+            serviceWorkerPath: basePath + "OneSignalSDKWorker.js",
+            notifyButton: { enable: false }
+          });
+        } catch(e) {
+          console.warn("OneSignal initialization (Expected on test domain):", e.message || e);
+        }
       });
     </script>
   </head>

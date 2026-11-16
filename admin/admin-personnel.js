@@ -3,7 +3,7 @@ const DOSIETA_STORAGE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdX
 
 // Dedicated client for file storage (dosieta bucket)
 const dosietaClient = (typeof supabase !== 'undefined' && supabase.createClient)
-    ? supabase.createClient(DOSIETA_STORAGE_URL, DOSIETA_STORAGE_KEY)
+    ? supabase.createClient(DOSIETA_STORAGE_URL, DOSIETA_STORAGE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
     : client;
 
 const DOC_CATEGORIES = {
