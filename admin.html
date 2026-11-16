@@ -31,6 +31,7 @@
     <script src="admin/admin-3s.js?v=1" defer></script>
     <script src="admin/admin-spotlight.js?v=1" defer></script>
     <script src="admin/admin-bulk.js?v=1" defer></script>
+    <script src="admin/admin-tooling.js?v=1" defer></script>
   </head>
   <body>
     <div id="appContent" style="display: none;">
@@ -79,6 +80,10 @@
                         <button type="button" class="admin-dropdown-item" onclick="openMaterialRequestsModal()" style="font-weight: 800; color: #ea580c; display: flex; justify-content: space-between; align-items: center;">
                             <span>🔔 Заявки за Заготовки от Цеха</span>
                             <span id="adminPlanningSubBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
+                        </button>
+                        <button type="button" class="admin-dropdown-item" onclick="openToolingRequestsModal()" style="font-weight: 800; color: #d97706; display: flex; justify-content: space-between; align-items: center;">
+                            <span>🛠️ Заявки за Инструменти &amp; Пластини</span>
+                            <span id="adminToolingReqBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
                         </button>
                         <div class="admin-dropdown-divider"></div>
                         <button type="button" class="admin-dropdown-item" onclick="openPlanValidatorModal()" style="font-weight: 800; color: #7c3aed;">🔍 Валидатор на План</button>
@@ -131,6 +136,9 @@
 
                 <!-- Контекстен бутон Трансформация на Резолвери (само в таб Склад) -->
                 <button type="button" class="btn-primary" id="transformResolverBtn" onclick="openTransformModal()" style="display: none; background-color: #6366f1; box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3); font-weight: 800;">🔄 Трансформация на Резолвери</button>
+
+                <!-- Контекстен бутон Синхронизиране на Машини от Маршрути -->
+                <button type="button" class="btn-primary" id="syncMachinesBtn" onclick="syncMachinesFromRoutes()" style="display: none; background-color: #0284c7; box-shadow: 0 2px 4px rgba(2, 132, 199, 0.3); font-weight: 800;" title="Зареди автоматично всички машини от маршрутните карти">🔄 Зареди машини от Маршрути</button>
 
                 <!-- Универсални постоянни действия: Експорт и Добавяне -->
                 <button type="button" class="btn-primary btn-excel" id="exportExcelBtn" onclick="exportCurrentTableToExcel()" title="Изтегли текущите данни в Excel файл">📥 Свали в Excel</button>

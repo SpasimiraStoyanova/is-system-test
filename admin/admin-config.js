@@ -26,7 +26,55 @@ const tableConfigs = {
   otcheti: { label: '📊 Отчети (Log)', table: 'otcheti', key: 'id', fields: [ { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, { name: 'ID План', type: 'text' }, { name: 'ID Детайл', type: 'text', required: true }, { name: 'Операция', type: 'text', required: true }, { name: 'Количество', type: 'number', def: 1, required: true }, { name: 'Статус', type: 'select', options: ['Отчетено', 'Брак', 'Изпратено'], required: true }, { name: 'Оператор', type: 'text', required: true }, { name: 'Време Старт', type: 'text', label: 'Време Старт' }, { name: 'Дата', type: 'text', label: 'Време Край (Дата)', def: () => new Date().toISOString() } ] },
   brak: { label: '🗑️ Папка БРАК', table: 'otcheti', key: 'id', readOnlyTab: true, fields: [ { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, { name: 'Дата', type: 'text' }, { name: 'ID Детайл', type: 'text' }, { name: 'Количество', type: 'number' }, { name: 'Операция', type: 'text' }, { name: 'Оператор', type: 'text' }, { name: 'Статус', type: 'text' } ] },
   porachki: { label: '🛒 Поръчки материали', table: 'porachki_materiali', key: 'id', fields: [ { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, { name: 'Материал', type: 'text', required: true }, { name: 'Дата на поръчка', type: 'date', def: () => new Date().toISOString().split('T')[0] }, { name: 'Доставчик', type: 'text' }, { name: 'Имейл на доставчик', type: 'text' }, { name: 'Количество', type: 'number', required: true, def: 1 }, { name: 'Дата на приемане', type: 'date' }, { name: 'Статус', type: 'select', options: ['Поръчано', 'Прието'], required: true, def: 'Поръчано' } ] },
-  archives: { label: '📁 Месечни Архиви', table: 'plan_archives', readOnlyTab: true, fields: [] }
+  archives: { label: '📁 Месечни Архиви', table: 'plan_archives', readOnlyTab: true, fields: [] },
+  tooling_sklad: { 
+    label: '🛠️ Склад Инструментална Екипировка', 
+    table: 'tooling_inventory', 
+    key: 'id', 
+    fields: [ 
+      { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, 
+      { name: 'item_code', label: 'Код / Тип на пластина / инструмент', type: 'text', required: true }, 
+      { name: 'name', label: 'Наименование / Описание', type: 'text', required: true }, 
+      { name: 'machine_name', label: 'За коя машина / пост', type: 'text' }, 
+      { name: 'quantity', label: 'Текуща наличност', type: 'number', def: 0 }, 
+      { name: 'min_quantity', label: 'Минимален буфер', type: 'number', def: 0 }, 
+      { name: 'unit', label: 'Мярка', type: 'text', def: 'бр.' }, 
+      { name: 'supplier', label: 'Доставчик', type: 'text' }, 
+      { name: 'order_status', label: 'Статус на доставка', type: 'select', options: ['Налично', 'Критично (за поръчка)', 'Поръчано', 'Чака доставка'], def: 'Налично' }, 
+      { name: 'notes', label: 'Забележки', type: 'text' } 
+    ] 
+  },
+  factory_tools: { 
+    label: '📐 Малки Инструменти & Уреди', 
+    table: 'factory_tools', 
+    key: 'id', 
+    fields: [ 
+      { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, 
+      { name: 'tool_code', label: 'Инвентарен № (напр. Ш-01, В-01)', type: 'text', required: true }, 
+      { name: 'tool_name', label: 'Име / Тип на уреда', type: 'text', required: true }, 
+      { name: 'category', label: 'Категория', type: 'select', options: ['Измервателен уред', 'Електрически инструмент', 'Ръчен инструмент', 'Калибър', 'Други'], def: 'Измервателен уред' }, 
+      { name: 'workstation_name', label: 'Зачислено към Работно място / Машина', type: 'text' }, 
+      { name: 'serial_number', label: 'Фабричен сериен №', type: 'text' }, 
+      { name: 'calibration_date', label: 'Последна проверка / калибрация', type: 'date' }, 
+      { name: 'calibration_due', label: 'Валидна до', type: 'date' }, 
+      { name: 'status', label: 'Статус', type: 'select', options: ['active', 'calibration', 'repair', 'broken', 'retired'], def: 'active' }, 
+      { name: 'notes', label: 'Забележки', type: 'text' } 
+    ] 
+  },
+  workstations: { 
+    label: '🏭 Работни Места & Машини', 
+    table: 'factory_machines', 
+    key: 'id', 
+    fields: [ 
+      { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, 
+      { name: 'code', label: 'Номер (напр. 101, 201, 301)', type: 'text', required: true }, 
+      { name: 'name', label: 'Име на машина / пост', type: 'text', required: true }, 
+      { name: 'floor', label: 'Етаж', type: 'select', options: ['Етаж 1', 'Етаж 2', 'Етаж 3'], def: 'Етаж 1' }, 
+      { name: 'department', label: 'Цех / Местоположение', type: 'text' }, 
+      { name: 'model', label: 'Модел / Производител', type: 'text' }, 
+      { name: 'status', label: 'Статус', type: 'select', options: ['active', 'maintenance'], def: 'active' } 
+    ] 
+  }
 };
 
 let currentTab = 'plan'; 

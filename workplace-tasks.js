@@ -26,6 +26,7 @@ let rawReports = [];
 let rawPriorities = [];
 let rawSklad = [];
 let hasOriginalMachineColumn = false;
+let machineMetaMap = {};
 
 // Calculated State: machineName -> [tasks...]
 let machineTasksMap = {};
@@ -77,7 +78,7 @@ async function loadAllData() {
     `;
 
     try {
-        const [plans, bom, routes, nom, inv, priorities, reports, sklad] = await Promise.all([
+        const [plans, bom, routes, nom, inv, priorities, reports, sklad, facMachines, facTools, toolReqs] = await Promise.all([
             fetchAllRows('plan', '*'),
             fetchAllRows('bom', '*'),
             fetchAllRows('marshruti', '*'),
@@ -85,7 +86,10 @@ async function loadAllData() {
             fetchAllRows('inventory', '*'),
             fetchAllRows('task_priorities', '*'),
             fetchAllRows('otcheti', '*', q => q.in('Статус', ['Отчетено', 'Готов продукт'])),
-            fetchAllRows('sklad', '*')
+            fetchAllRows('sklad', '*'),
+            fetchAllRows('factory_machines', '*').catch(() => []),
+            fetchAllRows('factory_tools', '*').catch(() => []),
+            fetchAllRows('tooling_requests', '*', q => q.eq('status', 'Чакаща')).catch(() => [])
         ]);
 
         rawPlans = plans || [];
@@ -100,13 +104,62 @@ async function loadAllData() {
         // Check if original_machine column exists
         hasOriginalMachineColumn = rawPriorities.length > 0 && ('original_machine' in rawPriorities[0]);
 
+        // Построяване на карта за метаданни на машините (номера, етаж, зачислени инструменти, чакащи заявки)
+        machineMetaMap = {};
+        (facMachines || []).forEach(fm => {
+            let n = normalize(fm.name);
+            machineMetaMap[n] = {
+                code: fm.code ? String(fm.code).trim() : '',
+                floor: fm.floor || (fm.code && String(fm.code).startsWith('1') ? 'Етаж 1' : (fm.code && String(fm.code).startsWith('2') ? 'Етаж 2' : (fm.code && String(fm.code).startsWith('3') ? 'Етаж 3' : ''))),
+                tools: [],
+                hasPendingToolingReq: false,
+                pendingReqItems: []
+            };
+        });
+
+        (facTools || []).forEach(ft => {
+            let ws = normalize(ft.workstation_name);
+            Object.keys(machineMetaMap).forEach(mKey => {
+                if (ws && (ws.includes(mKey) || mKey.includes(ws))) {
+                    machineMetaMap[mKey].tools.push(ft);
+                }
+            });
+        });
+
+        (toolReqs || []).forEach(tr => {
+            let ws = normalize(tr.workstation_name);
+            Object.keys(machineMetaMap).forEach(mKey => {
+                if (ws && (ws.includes(mKey) || mKey.includes(ws))) {
+                    machineMetaMap[mKey].hasPendingToolingReq = true;
+                    machineMetaMap[mKey].pendingReqItems.push(tr);
+                }
+            });
+        });
+
         // Extract all unique machine names
         let machineSet = new Set();
         rawRoutes.forEach(r => {
             let m = String(r['Машина'] || '').trim();
             if (m) machineSet.add(m);
         });
-        allUniqueMachines = Array.from(machineSet).sort((a,b) => a.localeCompare(b));
+
+        // Сортиране на машините: по Номер на машина (101, 102... 201, 202... 301), след това по азбучен ред
+        allUniqueMachines = Array.from(machineSet).sort((a,b) => {
+            let metaA = machineMetaMap[normalize(a)];
+            let metaB = machineMetaMap[normalize(b)];
+            let codeA = metaA && metaA.code ? metaA.code.trim() : null;
+            let codeB = metaB && metaB.code ? metaB.code.trim() : null;
+
+            if (codeA && codeB) {
+                let numA = parseFloat(codeA);
+                let numB = parseFloat(codeB);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                return codeA.localeCompare(codeB, undefined, { numeric: true });
+            }
+            if (codeA && !codeB) return -1;
+            if (!codeA && codeB) return 1;
+            return a.localeCompare(b);
+        });
 
         populatePeriodSelectors();
         calculateAllMachineTasks();
@@ -705,7 +758,15 @@ function renderAllMachines() {
     sortableInstances = [];
 
     let machinesToDisplay = allUniqueMachines.filter(m => {
-        if (machineFilterText && !normalize(m).includes(machineFilterText)) return false;
+        let meta = machineMetaMap[normalize(m)];
+        if (machineFilterText) {
+            let mNorm = normalize(m);
+            let codeNorm = meta && meta.code ? normalize(meta.code) : '';
+            let floorNorm = meta && meta.floor ? normalize(meta.floor) : '';
+            if (!mNorm.includes(machineFilterText) && !codeNorm.includes(machineFilterText) && !floorNorm.includes(machineFilterText)) {
+                return false;
+            }
+        }
         let tasks = machineTasksMap[m] || [];
         if (onlyWithTasks && tasks.length === 0) return false;
         return true;
@@ -763,11 +824,35 @@ function renderAllMachines() {
 
         let canCrossTransfer = isTransferAllowed(machineName);
 
+        let meta = machineMetaMap[normalize(machineName)] || { code: '', floor: '', tools: [], hasPendingToolingReq: false };
+        let code = meta.code || '';
+        let toolsCount = meta.tools ? meta.tools.length : 0;
+        let hasPendingReq = meta.hasPendingToolingReq === true;
+
+        // Определяне на цвят на баджа според етажа (1=син, 2=зелен/смарагд, 3=лилав)
+        let floorBadgeStyle = 'background: #334155; color: #f8fafc;';
+        if (code.startsWith('1') || (meta.floor && meta.floor.includes('1'))) {
+            floorBadgeStyle = 'background: #1d4ed8; color: #eff6ff;'; // Етаж 1: Син
+        } else if (code.startsWith('2') || (meta.floor && meta.floor.includes('2'))) {
+            floorBadgeStyle = 'background: #059669; color: #ecfdf5;'; // Етаж 2: Зелен
+        } else if (code.startsWith('3') || (meta.floor && meta.floor.includes('3'))) {
+            floorBadgeStyle = 'background: #7c3aed; color: #faf5ff;'; // Етаж 3: Лилав
+        }
+
+        let codeBadgeHtml = code ? `<span style="${floorBadgeStyle} font-size: 0.8em; font-weight: 900; padding: 2px 7px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.25);" title="Номер на машина: ${escapeHtml(code)} (${escapeHtml(meta.floor || '')})">№ ${escapeHtml(code)}</span>` : '';
+
+        let toolsBtnHtml = `<button type="button" onclick="showMachineAssignedToolsModal('${escapeHtml(machineName)}')" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35); color: white; padding: 2px 7px; border-radius: 6px; font-size: 0.72em; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Зачислени малки инструменти">${toolsCount > 0 ? `🧰 ${toolsCount}` : `🧰 +`}</button>`;
+
+        let toolingReqBadgeHtml = hasPendingReq ? `<span style="background: #dc2626; color: white; font-size: 0.68em; font-weight: 900; padding: 2px 6px; border-radius: 6px; cursor: pointer; box-shadow: 0 0 8px rgba(220, 38, 38, 0.7);" onclick="showMachineToolingReqAlert('${escapeHtml(machineName)}')" title="Спешен сигнал от цеха: свършват пластини / екипировка!">⚠️ Чака пластини</span>` : '';
+
         let machineHeaderHtml = `
             <div class="machine-header" style="${canCrossTransfer ? 'border-top: 4px solid #a855f7;' : ''}">
-                <div class="machine-title">
+                <div class="machine-title" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                     <i class="fas fa-microchip"></i>
+                    ${codeBadgeHtml}
                     <span>${escapeHtml(machineName)}</span>
+                    ${toolsBtnHtml}
+                    ${toolingReqBadgeHtml}
                     ${canCrossTransfer ? `<span class="badge" style="background:#7e22ce; color:#f3e8ff; font-size:0.65em; padding:2px 5px; border-radius:4px;" title="Може да приема и прехвърля операции с EMCO и HAAS ST 10">🔄 CNC група</span>` : ''}
                 </div>
                 <div class="machine-header-badges">
@@ -2558,5 +2643,78 @@ async function sendIdlePushFromAdmin({ workerName, workerEmail, machine, availab
         return false;
     }
 }
+
+// Показване на зачислените уреди (шублери, винтоверти) за машина
+window.showMachineAssignedToolsModal = function(machineName) {
+    let meta = machineMetaMap[normalize(machineName)] || { tools: [] };
+    let tools = meta.tools || [];
+    if (tools.length === 0) {
+        Swal.fire({
+            title: `🧰 Оборудване: ${escapeHtml(machineName)}`,
+            html: `Към това работно място все още няма зачислени уреди в регистъра.<br><small style="color:#64748b; margin-top:6px; display:block;">Могат да се зачислят от Административния панел в таб „Малки Инструменти & Уреди“.</small>`,
+            icon: 'info',
+            confirmButtonColor: '#0284c7'
+        });
+        return;
+    }
+
+    let rows = tools.map(t => `
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 8px 10px; font-weight:800; color:#2563eb;">${escapeHtml(t.tool_code)}</td>
+            <td style="padding: 8px 10px;">
+                <div style="font-weight:700; color:#1e293b;">${escapeHtml(t.tool_name)}</div>
+                <div style="font-size:0.8em; color:#64748b;">${escapeHtml(t.category)}</div>
+            </td>
+            <td style="padding: 8px 10px; font-size:0.85em; color:#15803d; font-weight:700;">${t.calibration_due ? 'Валиден до: ' + t.calibration_due : 'Без срок'}</td>
+        </tr>
+    `).join('');
+
+    Swal.fire({
+        title: `🧰 Зачислени уреди: ${escapeHtml(machineName)}`,
+        html: `
+            <div style="max-height: 350px; overflow-y: auto; text-align:left;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.88em;">
+                    <thead>
+                        <tr style="background:#f1f5f9; color:#475569; border-bottom:2px solid #cbd5e1;">
+                            <th style="padding:8px 10px;">Инв. №</th>
+                            <th style="padding:8px 10px;">Уред / Описание</th>
+                            <th style="padding:8px 10px;">Калибрация</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        `,
+        confirmButtonText: 'Затвори',
+        confirmButtonColor: '#0284c7'
+    });
+};
+
+// Изскачащо предупреждение за чакащи заявки за пластини
+window.showMachineToolingReqAlert = function(machineName) {
+    let meta = machineMetaMap[normalize(machineName)] || {};
+    let reqs = meta.pendingReqItems || [];
+    let itemsHtml = reqs.map(r => `
+        <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px; margin-bottom:8px; text-align:left;">
+            <div style="font-weight:800; color:#b45309;">👉 ${escapeHtml(r.tool_item)}</div>
+            <div style="font-size:0.85em; color:#475569;">Заявил: <b>${escapeHtml(r.operator_name || 'Оператор')}</b> | Спешност: <b style="color:#dc2626;">${r.urgency || 'Спешна'}</b></div>
+            ${r.notes ? `<div style="font-size:0.8em; color:#64748b; margin-top:4px;">Бележка: ${escapeHtml(r.notes)}</div>` : ''}
+        </div>
+    `).join('');
+
+    Swal.fire({
+        title: `⚠️ Чакащи заявки за пластини: ${escapeHtml(machineName)}`,
+        html: `
+            <div style="font-size:0.9em; margin-bottom:12px; color:#475569; text-align:left;">
+                На тази машина има активен сигнал за свършваща или повредена екипировка:
+            </div>
+            ${itemsHtml}
+        `,
+        icon: 'warning',
+        confirmButtonText: 'Разбрах',
+        confirmButtonColor: '#ea580c'
+    });
+};
+
 
 

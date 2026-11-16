@@ -56,6 +56,14 @@
           <div class="machine-bar" onclick="changeMachine()">
             <span>Работно място:</span> <span class="machine-title" id="uiMachineName">ВСИЧКИ</span> <span>✏️</span>
           </div>
+          <div style="display: flex; gap: 8px; margin-top: 8px;">
+            <button type="button" onclick="openTerminalToolingRequestModal()" style="flex: 1; padding: 10px 12px; background: #fff7ed; border: 1.5px solid #fed7aa; color: #c2410c; border-radius: 10px; font-weight: 800; font-size: 0.9em; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 4px rgba(234, 88, 12, 0.15); cursor: pointer;">
+              <span>🛠️</span> <span>Заявка за пластини / инструмент</span>
+            </button>
+            <button type="button" onclick="openTerminalAssignedToolsModal()" style="padding: 10px 14px; background: #eff6ff; border: 1.5px solid #bfdbfe; color: #1d4ed8; border-radius: 10px; font-weight: 800; font-size: 0.9em; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.15); cursor: pointer;" title="Зачислени уреди за това работно място">
+              <span>🧰</span> <span>Уреди</span>
+            </button>
+          </div>
         </div>
         
         <div id="terminalPushNoticeArea" style="display: none; padding: 0 15px; margin-top: 10px;"></div>
@@ -188,6 +196,7 @@
     <script src="terminal/terminal-dossier.js?v=6"></script>
     <script src="terminal/terminal-spot-audit.js?v=2"></script>
     <script src="terminal/terminal-idle-reminder.js?v=2"></script>
+    <script src="terminal/terminal-tooling.js?v=1"></script>
   </body>
 </html>
 
