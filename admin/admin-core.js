@@ -445,6 +445,7 @@ function switchTab(tabKey, force = false) {
     const pdfBtn = document.getElementById('pdfBtn'); const mrpBtn = document.getElementById('mrpBtn'); const transBtn = document.getElementById('transformResolverBtn'); const sidebar = document.getElementById('personnelSidebar');
     const syncMacBtn = document.getElementById('syncMachinesBtn');
     const locCheckBtn = document.getElementById('silentLocationCheckBtn');
+    const locHistBtn = document.getElementById('locationHistoryBtn');
 
     addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`;
     addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_inventory') ? 'none' : 'flex';
@@ -453,6 +454,7 @@ function switchTab(tabKey, force = false) {
     if (transBtn) transBtn.style.display = (tabKey === 'sklad_inventory') ? 'flex' : 'none';
     if (syncMacBtn) syncMacBtn.style.display = (tabKey === 'workstations') ? 'flex' : 'none';
     if (locCheckBtn) locCheckBtn.style.display = (tabKey === 'chekiraniya') ? 'flex' : 'none';
+    if (locHistBtn) locHistBtn.style.display = (tabKey === 'chekiraniya') ? 'flex' : 'none';
 
     // Тук прехвърлихме показването на папките само когато сме в менюто Персонал
     if (tabKey === 'personal') { sidebar.style.display = 'block'; loadPersonnelSidebar(); } else { sidebar.style.display = 'none'; }
@@ -652,6 +654,17 @@ async function loadCurrentTableData(forceRefresh = false) {
             }
         } else if (currentTab === 'sklad_inventory') {
             rows = await computeSkladData();
+        } else if (currentTab === 'chekiraniya') {
+            const { data: persData } = await client.from('personal').select('Имейл, Име');
+            if (persData) {
+                const pMap = {};
+                persData.forEach(p => { if (p['Имейл']) pMap[p['Имейл'].toLowerCase().trim()] = p['Име']; });
+                rows.forEach(r => {
+                    if (!r['Име'] && r['Имейл'] && pMap[r['Имейл'].toLowerCase().trim()]) {
+                        r['Име'] = pMap[r['Имейл'].toLowerCase().trim()];
+                    }
+                });
+            }
         }
 
         if (currentTab === 'sklad') {
@@ -2675,6 +2688,12 @@ window.openSilentLocationCheckModal = async function() {
             width: 580,
             html: `
                 <div style="text-align: left; font-size: 0.9em; display: flex; flex-direction: column; gap: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+                        <span style="font-weight: 800; color: #7c3aed; font-size: 0.95em;">📍 Нова проверка</span>
+                        <button type="button" onclick="openLocationChecksHistoryModal()" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 0.82em; cursor: pointer;">
+                            📜 Виж дневника на проверките ➔
+                        </button>
+                    </div>
                     <div style="background: #fdf4ff; border: 1.5px solid #e9d5ff; border-radius: 10px; padding: 12px 14px; font-size: 0.88em; color: #6b21a8; line-height: 1.45;">
                         🤫 <b>Напълно невидимо за служителя:</b><br>
                         Терминалът на служителя ще измери спътниковите GPS координати <b>без звук, без известие и без съобщение на екрана</b>.
@@ -2894,5 +2913,109 @@ window.openSilentLocationCheckModal = async function() {
 
     } catch (err) {
         Swal.fire('Грешка', 'Неуспешна проверка: ' + err.message, 'error');
+    }
+};
+
+// ==============================================================================
+// ДНЕВНИК / ИСТОРИЯ НА ИЗНЕЗАДВАЩИТЕ ПРОВЕРКИ НА ЛОКАЦИЯ
+// ==============================================================================
+window.openLocationChecksHistoryModal = async function() {
+    Swal.fire({ title: 'Зареждане на дневника...', didOpen: () => Swal.showLoading() });
+
+    try {
+        const { data: pings, error } = await client
+            .from('location_ping_requests')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+        if (error) {
+            if (error.code === '42P01') {
+                Swal.fire('Информация', 'Таблицата за проверки още не е създадена в базата данни.', 'info');
+                return;
+            }
+            throw error;
+        }
+
+        if (!pings || pings.length === 0) {
+            Swal.fire({
+                title: '📜 Дневник на проверките',
+                html: '<div style="padding: 25px; color: #64748b; font-size: 0.95em;">Все още няма регистрирани проверки на локация.</div>',
+                icon: 'info',
+                confirmButtonColor: '#7c3aed'
+            });
+            return;
+        }
+
+        let rowsHtml = pings.map((p) => {
+            const timeStr = p.responded_at 
+                ? new Date(p.responded_at).toLocaleString('bg-BG', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : (p.created_at ? new Date(p.created_at).toLocaleString('bg-BG', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-');
+
+            let statusBadge = '<span style="background:#fffbeb; color:#b45309; border:1px solid #fde68a; padding:2px 7px; border-radius:6px; font-weight:800; font-size:0.8em;">⏳ Чакаща (спи)</span>';
+            const isOutside = (p.result_note && p.result_note.includes('ИЗВЪН ОБЕКТА')) || (p.result_distance > 200);
+
+            if (p.status === 'SUCCESS') {
+                if (isOutside) {
+                    statusBadge = '<span style="background:#fef2f2; color:#dc2626; border:1.5px solid #fecaca; padding:2px 7px; border-radius:6px; font-weight:800; font-size:0.8em;">🚨 ИЗВЪН ОБЕКТА</span>';
+                } else {
+                    statusBadge = '<span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:2px 7px; border-radius:6px; font-weight:800; font-size:0.8em;">🟢 В обекта</span>';
+                }
+            }
+
+            const distStr = p.result_distance !== null ? `<b>${p.result_distance} м</b>` : '<span style="color:#94a3b8;">-</span>';
+            const coords = (p.result_lat && p.result_lng) ? `${p.result_lat},${p.result_lng}` : null;
+            const mapLink = coords 
+                ? `<a href="https://www.google.com/maps?q=${coords}" target="_blank" style="color:#2563eb; font-weight:bold; text-decoration:none; font-size:0.88em; background:#eff6ff; padding:2px 6px; border-radius:4px; border:1px solid #bfdbfe;">📍 Карта</a>` 
+                : '<span style="color:#94a3b8;">-</span>';
+
+            return `
+                <tr style="border-bottom: 1px solid #e2e8f0; font-size: 0.88em;">
+                    <td style="padding: 7px 8px; color: #475569;">${timeStr}</td>
+                    <td style="padding: 7px 8px;">
+                        <div style="font-weight: 800; color: #1e293b;">${escapeHtml(p.worker_name || p.worker_email)}</div>
+                        <div style="font-size: 0.78em; color: #64748b;">${escapeHtml(p.worker_email)}</div>
+                    </td>
+                    <td style="padding: 7px 8px; text-align: center;">${statusBadge}</td>
+                    <td style="padding: 7px 8px; text-align: center;">${distStr}</td>
+                    <td style="padding: 7px 8px; text-align: center;">${mapLink}</td>
+                    <td style="padding: 7px 8px; font-size: 0.8em; color: #64748b;">${escapeHtml(p.requested_by || 'Админ')}</td>
+                </tr>
+            `;
+        }).join('');
+
+        Swal.fire({
+            title: '📜 Дневник: Изненадващи проверки на локация',
+            width: 780,
+            html: `
+                <div style="text-align: left; max-height: 460px; overflow-y: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1; text-align: left; font-size: 0.82em; color: #475569;">
+                                <th style="padding: 8px;">Време</th>
+                                <th style="padding: 8px;">Служител</th>
+                                <th style="padding: 8px; text-align: center;">Резултат</th>
+                                <th style="padding: 8px; text-align: center;">Разстояние</th>
+                                <th style="padding: 8px; text-align: center;">Google Maps</th>
+                                <th style="padding: 8px;">Заявил</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '📍 Нова проверка сега',
+            cancelButtonText: 'Затвори',
+            confirmButtonColor: '#7c3aed',
+            cancelButtonColor: '#64748b'
+        }).then((res) => {
+            if (res.isConfirmed) {
+                openSilentLocationCheckModal();
+            }
+        });
+
+    } catch(err) {
+        Swal.fire('Грешка', err.message, 'error');
     }
 };
