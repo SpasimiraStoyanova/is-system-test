@@ -191,3 +191,321 @@ window.openTerminalAssignedToolsModal = async function() {
     }
 };
 
+// ==============================================================================
+// ПРИЕМО-ПРЕДАВАТЕЛНИ ПРОТОКОЛИ ЗА ЛПС И ОБОРУДВАНЕ (ПОДПИС С ПИН КОД)
+// ==============================================================================
+
+let termProtocolPollInterval = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    initTerminalEquipmentProtocols();
+});
+
+function initTerminalEquipmentProtocols() {
+    checkPendingEquipmentProtocols();
+    if (termProtocolPollInterval) clearInterval(termProtocolPollInterval);
+    termProtocolPollInterval = setInterval(checkPendingEquipmentProtocols, 20000);
+}
+
+// Проверка за чакащи приемо-предавателни протоколи за текущия работник
+window.checkPendingEquipmentProtocols = async function() {
+    try {
+        if (typeof client === 'undefined' || !client) return;
+        const email = (typeof currentEmail !== 'undefined' && currentEmail) ? currentEmail : localStorage.getItem('mes_email');
+        const alertArea = document.getElementById('terminalProtocolAlertArea');
+        if (!email) {
+            if (alertArea) alertArea.style.display = 'none';
+            return;
+        }
+
+        const { data, error } = await client
+            .from('equipment_protocols')
+            .select('*')
+            .eq('worker_email', email)
+            .eq('status', 'Чака подпис')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            if (error.code === '42P01' || (error.message && error.message.includes('relation'))) return;
+            console.warn('checkPendingEquipmentProtocols error:', error.message);
+            return;
+        }
+
+        if (!alertArea) return;
+
+        if (!data || data.length === 0) {
+            alertArea.style.display = 'none';
+            alertArea.innerHTML = '';
+            return;
+        }
+
+        // Показваме най-новия чакащ протокол с банер за подпис с ПИН
+        const proto = data[0];
+        const pendingCount = data.length;
+        const countBadge = pendingCount > 1 ? `<span style="background:#ea580c; color:white; padding:2px 8px; border-radius:10px; font-size:0.75em; margin-left:6px;">Общо ${pendingCount} протокола</span>` : '';
+        const itemsSummary = Array.isArray(proto.items) 
+            ? proto.items.map(i => `${escapeHtml(i.name)} (${i.qty || 1} бр)`).join(', ')
+            : 'зачислено оборудване';
+
+        alertArea.innerHTML = `
+            <div style="background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border: 2px solid #f97316; border-radius: 14px; padding: 14px 18px; box-shadow: 0 4px 14px rgba(249, 115, 22, 0.22); display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 14px; min-width: 250px; flex: 1;">
+                    <div style="font-size: 2.2em; line-height: 1; flex-shrink: 0;">🦺</div>
+                    <div>
+                        <div style="font-weight: 900; color: #9a3412; font-size: 1.05em; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                            <span>НОВ ПРИЕМО-ПРЕДАВАТЕЛЕН ПРОТОКОЛ</span>
+                            <span style="background: #ea580c; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.75em;">Чака подпис</span>
+                            ${countBadge}
+                        </div>
+                        <div style="font-size: 0.88em; color: #7c2d12; margin-top: 4px; line-height: 1.35;">
+                            Протокол № <b>${escapeHtml(proto.protocol_number)}</b> от <b>${escapeHtml(proto.handed_by || 'Администрация')}</b>:<br>
+                            <span style="color:#431407; font-weight:700;">${itemsSummary}</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" onclick="openTerminalSignProtocolModal(${proto.id})" style="background: #ea580c; color: white; border: none; padding: 11px 20px; border-radius: 10px; font-weight: 900; font-size: 0.95em; cursor: pointer; white-space: nowrap; box-shadow: 0 3px 8px rgba(234, 88, 12, 0.35); display: flex; align-items: center; gap: 6px;">
+                        <span>✍️</span> <span>Подпиши с ПИН код</span>
+                    </button>
+                </div>
+            </div>
+        `;
+        alertArea.style.display = 'block';
+
+    } catch (err) {
+        console.warn('Error checking pending protocols:', err);
+    }
+};
+
+// Отваряне на модала за преглед и подпис с личния ПИН код на работника
+window.openTerminalSignProtocolModal = async function(protocolId) {
+    Swal.fire({ title: 'Зареждане на протокола...', didOpen: () => Swal.showLoading() });
+    try {
+        const { data: proto, error } = await client
+            .from('equipment_protocols')
+            .select('*')
+            .eq('id', protocolId)
+            .single();
+
+        if (error) throw error;
+        if (!proto) return;
+
+        let itemsRows = '';
+        if (Array.isArray(proto.items)) {
+            itemsRows = proto.items.map((it, idx) => `
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                    <td style="padding: 8px 10px; font-weight: bold; color: #64748b;">${idx + 1}</td>
+                    <td style="padding: 8px 10px; font-weight: 800; color: #1e293b;">${escapeHtml(it.name)}</td>
+                    <td style="padding: 8px 10px;"><span style="background: #f1f5f9; padding: 2px 7px; border-radius: 4px; font-size: 0.85em; font-weight: 600;">${escapeHtml(it.category || 'ЛПС')}</span></td>
+                    <td style="padding: 8px 10px; font-weight: 900; color: #0284c7;">${it.qty || 1} бр.</td>
+                    <td style="padding: 8px 10px; color: #64748b; font-size: 0.85em;">${escapeHtml(it.code || '-')}</td>
+                </tr>
+            `).join('');
+        }
+
+        const createdDateStr = proto.created_at ? new Date(proto.created_at).toLocaleDateString('bg-BG') : '';
+
+        const { value: verified } = await Swal.fire({
+            title: `🦺 Протокол ${escapeHtml(proto.protocol_number)}`,
+            width: 650,
+            html: `
+                <div style="text-align: left; font-size: 0.9em; display: flex; flex-direction: column; gap: 12px;">
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; line-height: 1.4;">
+                        <div>Служител: <b>${escapeHtml(proto.worker_name)}</b></div>
+                        <div>Предал: <b>${escapeHtml(proto.handed_by || 'Администрация')}</b></div>
+                        <div>Дата: <b>${createdDateStr}</b></div>
+                    </div>
+
+                    <div style="font-weight: 800; color: #1e293b; font-size: 0.95em;">
+                        📦 Списък на зачисляваните вещи, ЛПС и инструменти:
+                    </div>
+
+                    <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; max-height: 220px; overflow-y: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                            <thead>
+                                <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1; text-align: left; color: #475569;">
+                                    <th style="padding: 8px 10px;">#</th>
+                                    <th style="padding: 8px 10px;">Наименование</th>
+                                    <th style="padding: 8px 10px;">Вид</th>
+                                    <th style="padding: 8px 10px;">Количество</th>
+                                    <th style="padding: 8px 10px;">Код / Сериен №</th>
+                                </tr>
+                            </thead>
+                            <tbody>${itemsRows}</tbody>
+                        </table>
+                    </div>
+
+                    <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 8px; padding: 10px 12px; font-size: 0.84em; color: #92400e; line-height: 1.4;">
+                        📜 <b>Декларация:</b> С въвеждане на личния си ПИН код удостоверявам, че получих описаните по-горе вещи и оборудване в изправно състояние и се задължавам да ги съхранявам и използвам по предназначение.
+                    </div>
+
+                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; text-align: center;">
+                        <label style="font-weight: 800; color: #1e293b; display: block; margin-bottom: 6px; font-size: 0.95em;">
+                            🔒 Въведете вашия ПИН код (паролата за досие/заплата):
+                        </label>
+                        <input type="password" id="swalProtoWorkerPin" class="swal2-input" placeholder="••••" maxlength="12" style="margin: 0 auto; width: 180px; text-align: center; font-size: 1.3em; letter-spacing: 5px; height: 42px;" autocomplete="off" autofocus>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '✍️ Потвърди и Подпиши',
+            cancelButtonText: 'Отказ',
+            confirmButtonColor: '#ea580c',
+            focusConfirm: false,
+            preConfirm: async () => {
+                const pinInput = document.getElementById('swalProtoWorkerPin');
+                const enteredPin = pinInput ? pinInput.value.trim() : '';
+                if (!enteredPin) {
+                    Swal.showValidationMessage('Моля, въведете вашия ПИН код!');
+                    return false;
+                }
+
+                // Проверка на ПИН кода спрямо таблицата personal
+                try {
+                    const { data: pData, error: pErr } = await client
+                        .from('personal')
+                        .select('password, Име')
+                        .eq('Имейл', proto.worker_email)
+                        .limit(1);
+
+                    if (pErr) throw pErr;
+                    if (!pData || pData.length === 0) {
+                        Swal.showValidationMessage('Грешка: Не е намерен профил за този имейл.');
+                        return false;
+                    }
+
+                    const expectedPassword = pData[0].password;
+                    if (!expectedPassword || enteredPin !== String(expectedPassword).trim()) {
+                        Swal.showValidationMessage('❌ Грешен ПИН код! Моля, опитайте отново.');
+                        return false;
+                    }
+
+                    return true;
+                } catch(err) {
+                    Swal.showValidationMessage('Грешка при проверка: ' + err.message);
+                    return false;
+                }
+            }
+        });
+
+        if (verified) {
+            Swal.fire({ title: 'Записване на подписа...', didOpen: () => Swal.showLoading() });
+            const { error: updErr } = await client
+                .from('equipment_protocols')
+                .update({
+                    status: 'Приет',
+                    signed_at: new Date().toISOString(),
+                    signed_by_pin: true
+                })
+                .eq('id', protocolId);
+
+            if (updErr) throw updErr;
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Протоколът е подписан успешно!',
+                html: `
+                    Протокол № <b>${escapeHtml(proto.protocol_number)}</b> е удостоверен с вашия ПИН код.<br>
+                    Вещите са зачислени към вашето лично досие.
+                `,
+                timer: 3000,
+                showConfirmButton: false
+            });
+
+            checkPendingEquipmentProtocols();
+            if (typeof loadTermEquipmentProtocols === 'function' && currentDossierEmail) {
+                loadTermEquipmentProtocols(currentDossierEmail);
+            }
+        }
+    } catch(err) {
+        Swal.fire('Грешка', err.message, 'error');
+    }
+};
+
+// Зареждане на зачисленото оборудване и протоколите в Личното Досие
+window.loadTermEquipmentProtocols = async function(email) {
+    const listDiv = document.getElementById('termProtocolsList');
+    const badge = document.getElementById('termProtocolsCountBadge');
+    if (!listDiv) return;
+
+    listDiv.innerHTML = '<div style="text-align: center; padding: 25px; color: #64748b;">⏳ Зареждане на протоколи и зачислени вещи...</div>';
+
+    try {
+        const { data, error } = await client
+            .from('equipment_protocols')
+            .select('*')
+            .eq('worker_email', email)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        const protocols = data || [];
+
+        if (badge) {
+            badge.innerText = `${protocols.length} протокола`;
+        }
+
+        if (protocols.length === 0) {
+            listDiv.innerHTML = `
+                <div style="text-align: center; padding: 40px 15px; color: #64748b;">
+                    <div style="font-size: 2.2em; margin-bottom: 8px;">🦺</div>
+                    <div style="font-weight: 700;">Все още нямате издадени приемо-предавателни протоколи.</div>
+                    <div style="font-size: 0.85em; color: #94a3b8; margin-top: 4px;">Когато администрацията ви зачисли работно облекло, ЛПС или уреди, те ще се появят тук.</div>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+        protocols.forEach(proto => {
+            let statusBadge = '<span style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; padding:3px 8px; border-radius:8px; font-weight:800; font-size:0.82em;">⏳ Чака подпис</span>';
+            let signActionBtn = `<button type="button" onclick="openTerminalSignProtocolModal(${proto.id})" style="background:#ea580c; color:white; border:none; padding:6px 12px; border-radius:6px; font-weight:800; font-size:0.82em; cursor:pointer;">✍️ Подпиши с ПИН</button>`;
+
+            if (proto.status === 'Приет') {
+                statusBadge = '<span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 8px; border-radius:8px; font-weight:800; font-size:0.82em;">🟢 Приет (Подписан)</span>';
+                signActionBtn = '';
+            } else if (proto.status === 'Върнат') {
+                statusBadge = '<span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 8px; border-radius:8px; font-weight:800; font-size:0.82em;">🔄 Върнат в склад</span>';
+                signActionBtn = '';
+            }
+
+            let itemsTable = '';
+            if (Array.isArray(proto.items)) {
+                itemsTable = proto.items.map(it => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding: 4px 0; border-bottom: 1px dashed #e2e8f0; font-size:0.88em;">
+                        <span style="font-weight:700; color:#1e293b;">• ${escapeHtml(it.name)} ${it.code ? `<small style="color:#64748b;">(${escapeHtml(it.code)})</small>` : ''}</span>
+                        <span style="font-weight:800; color:#0284c7;">${it.qty || 1} бр.</span>
+                    </div>
+                `).join('');
+            }
+
+            const dateStr = proto.created_at ? new Date(proto.created_at).toLocaleDateString('bg-BG') : '';
+            const signedStr = proto.signed_at ? `🔒 Подписан на ${new Date(proto.signed_at).toLocaleString('bg-BG')}` : '';
+
+            html += `
+                <div style="background: white; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div>
+                            <div style="font-weight:900; color:#1e293b; font-size:0.95em;">Протокол № ${escapeHtml(proto.protocol_number)}</div>
+                            <div style="font-size:0.8em; color:#64748b;">Дата: ${dateStr} | Предал: ${escapeHtml(proto.handed_by || 'Администрация')}</div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            ${statusBadge}
+                            ${signActionBtn}
+                        </div>
+                    </div>
+                    <div style="background:#f8fafc; border-radius:8px; padding:8px 12px; margin-top:6px;">
+                        ${itemsTable}
+                    </div>
+                    ${signedStr ? `<div style="font-size:0.78em; color:#166534; font-weight:700; margin-top:6px;">${signedStr}</div>` : ''}
+                </div>
+            `;
+        });
+        html += '</div>';
+
+        listDiv.innerHTML = html;
+    } catch(err) {
+        listDiv.innerHTML = `<div style="color:#dc2626; padding:20px; text-align:center;">Грешка при зареждане: ${err.message}</div>`;
+    }
+};
+
+

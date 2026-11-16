@@ -69,6 +69,7 @@
         <div id="terminalPushNoticeArea" style="display: none; padding: 0 15px; margin-top: 10px;"></div>
         <div id="terminalAndonAlertArea" style="display: none; padding: 0 15px; margin-top: 10px;"></div>
         <div id="terminalSpotAuditArea" style="display: none; padding: 0 15px; margin-top: 10px;"></div>
+        <div id="terminalProtocolAlertArea" style="display: none; padding: 0 15px; margin-top: 10px;"></div>
         
         <div class="task-filters-wrapper">
           <div class="task-filters">
@@ -129,6 +130,9 @@
           <button class="term-dossier-tab-btn" id="tabBtn_attendance" onclick="switchTermDossierTab('attendance')">
             🕒 Чекирания
           </button>
+          <button class="term-dossier-tab-btn" id="tabBtn_protocols" onclick="switchTermDossierTab('protocols')">
+            🦺 Зачислени вещи &amp; Протоколи
+          </button>
         </div>
 
         <!-- ТАБ 1: ДОКУМЕНТИ -->
@@ -177,6 +181,17 @@
           </div>
           <div id="termAttendanceList" style="padding: 14px; overflow-y: auto; flex: 1; background: #f8fafc; min-height: 220px;">
             <div style="text-align: center; color: #94a3b8; padding: 30px 10px;">Зареждане на чекирания...</div>
+          </div>
+        </div>
+
+        <!-- ТАБ 4: ЗАЧИСЛЕНО ОБОРОДВАНЕ & ПРОТОКОЛИ -->
+        <div id="termDossierTab_protocols" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+          <div style="padding: 10px 16px; background: #fff7ed; border-bottom: 1px solid #fed7aa; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: #9a3412;">
+            <span>🦺 <b>Зачислено работно облекло, ЛПС и инструменти</b></span>
+            <span id="termProtocolsCountBadge" style="font-weight: 800; background: #ffffff; padding: 3px 10px; border-radius: 12px; border: 1px solid #fdba74; color: #c2410c;">0 бр.</span>
+          </div>
+          <div id="termProtocolsList" style="padding: 14px; overflow-y: auto; flex: 1; background: #f8fafc; min-height: 220px;">
+            <div style="text-align: center; color: #94a3b8; padding: 30px 10px;">Зареждане на протоколи...</div>
           </div>
         </div>
 

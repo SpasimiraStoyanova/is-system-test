@@ -462,6 +462,10 @@ function switchTab(tabKey, force = false) {
         addBtn.style.display = 'flex';
         addBtn.innerText = '➕ Нова Проба';
         addBtn.onclick = () => { if (typeof openCreateProbaModal === 'function') openCreateProbaModal(); };
+    } else if (tabKey === 'equipment_protocols') {
+        addBtn.style.display = 'flex';
+        addBtn.innerText = '🦺 Нов Протокол за Зачисляване';
+        addBtn.onclick = () => { if (typeof openCreateEquipmentProtocolModal === 'function') openCreateEquipmentProtocolModal(); };
     } else {
         addBtn.onclick = () => openAddModal();
     }
@@ -581,6 +585,7 @@ async function loadCurrentTableData(forceRefresh = false) {
                 query = query.eq('Статус', 'Брак').order('Дата', { ascending: false });
             }
             if (currentTab === 'chekiraniya') query = query.order('Време', { ascending: false });
+            if (currentTab === 'equipment_protocols') query = query.order('created_at', { ascending: false });
         }
         const { data, error } = await query; if (error) throw error;
         let rows = data || [];
@@ -828,6 +833,38 @@ function renderDynamicTable(itemsToRender = null) {
                 }
                 row.appendChild(td); return;
             }
+            if (currentTab === 'equipment_protocols' && f.name === 'status') {
+                let stStyle = 'background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;';
+                let stIcon = '📄';
+                if (val === 'Чака подпис') {
+                    stStyle = 'background:#fff7ed; color:#c2410c; border:1.5px solid #fed7aa;';
+                    stIcon = '⏳';
+                } else if (val === 'Приет') {
+                    stStyle = 'background:#f0fdf4; color:#15803d; border:1.5px solid #bbf7d0;';
+                    stIcon = '🟢';
+                } else if (val === 'Върнат') {
+                    stStyle = 'background:#eff6ff; color:#1d4ed8; border:1.5px solid #bfdbfe;';
+                    stIcon = '🔄';
+                } else if (val === 'Бракуван') {
+                    stStyle = 'background:#fef2f2; color:#dc2626; border:1.5px solid #fecaca;';
+                    stIcon = '🗑️';
+                }
+                td.innerHTML = `<span style="${stStyle} padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.85em; display:inline-flex; align-items:center; gap:4px;">${stIcon} ${val}</span>`;
+                row.appendChild(td); return;
+            }
+            if (currentTab === 'equipment_protocols' && f.name === 'signed_at') {
+                if (!val) {
+                    td.innerHTML = '<span style="color:#94a3b8; font-style:italic; font-size:0.85em;">Не е подписан</span>';
+                } else {
+                    try {
+                        let pVal = val; if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z';
+                        td.innerHTML = `<span style="color:#15803d; font-weight:700; font-size:0.88em;">🔒 ${new Date(pVal).toLocaleString('bg-BG')}</span>`;
+                    } catch(e) {
+                        td.innerText = val;
+                    }
+                }
+                row.appendChild(td); return;
+            }
             td.innerText = val;
             if (currentTab === 'plan' && f.name === 'Вътрешно име' && item['__packaged_info']) {
                 td.innerHTML = val + item['__packaged_info'];
@@ -847,6 +884,11 @@ function renderDynamicTable(itemsToRender = null) {
                 extraActionBtns = `
                     <button type="button" class="action-btn" onclick="openToolCalibrationModal(${item.id || 'null'}, '${safeCode}', '${safeName}')" title="📏 Ново замерване с еталони / Проверка" style="background:#fef3c7; color:#b45309; border:1px solid #fde68a; margin-right:4px; font-weight:bold;">📏</button>
                     <button type="button" class="action-btn" onclick="openToolCalibrationHistoryModal('${safeCode}', '${safeName}')" title="📋 Метрологичен дневник / История на замерванията" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; margin-right:4px; font-weight:bold;">📋</button>
+                `;
+            }
+            if (currentTab === 'equipment_protocols') {
+                extraActionBtns = `
+                    <button type="button" class="action-btn" onclick="openEquipmentProtocolViewModal(${item.id})" title="👁️ Преглед на протокола и зачислените вещи" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; margin-right:4px; font-weight:bold;">👁️</button>
                 `;
             }
             tdActions.innerHTML = `${extraActionBtns}<button class="action-btn btn-edit" onclick="openEditModal(${trueIndex})" title="Редактирай">✏️</button><button class="action-btn btn-delete" onclick="deleteItem(${trueIndex})" title="Изтрий">🗑️</button>`;

@@ -91,15 +91,34 @@ CREATE TABLE IF NOT EXISTS public.factory_tool_calibrations (
     notes TEXT
 );
 
--- 6. Индекси за светкавично търсене
+-- 6. Таблица: Приемо-Предавателни Протоколи за ЛПС & Оборудване (equipment_protocols)
+-- (Зачисляване на уреди, манти, очила и подписване/потвърждаване с ПИН код от работника)
+CREATE TABLE IF NOT EXISTS public.equipment_protocols (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    protocol_number TEXT NOT NULL,
+    worker_email TEXT NOT NULL,
+    worker_name TEXT NOT NULL,
+    handed_by TEXT NOT NULL,
+    items JSONB NOT NULL DEFAULT '[]'::JSONB, -- [{"name": "Работна манта L", "category": "Работно облекло", "qty": 1, "code": "РО-01"}, ...]
+    status TEXT NOT NULL DEFAULT 'Чака подпис', -- 'Чака подпис', 'Приет', 'Върнат', 'Бракуван'
+    signed_at TIMESTAMP WITH TIME ZONE,
+    signed_by_pin BOOLEAN DEFAULT FALSE,
+    return_date TIMESTAMP WITH TIME ZONE,
+    notes TEXT
+);
+
+-- 7. Индекси за светкавично търсене
 CREATE INDEX IF NOT EXISTS idx_factory_machines_code ON public.factory_machines (code);
 CREATE INDEX IF NOT EXISTS idx_factory_tools_ws ON public.factory_tools (workstation_name);
 CREATE INDEX IF NOT EXISTS idx_tooling_inv_machine ON public.tooling_inventory (machine_name);
 CREATE INDEX IF NOT EXISTS idx_tooling_req_status ON public.tooling_requests (status);
 CREATE INDEX IF NOT EXISTS idx_tool_calib_code ON public.factory_tool_calibrations (tool_code);
 CREATE INDEX IF NOT EXISTS idx_tool_calib_date ON public.factory_tool_calibrations (check_date);
+CREATE INDEX IF NOT EXISTS idx_equip_prot_worker ON public.equipment_protocols (worker_email);
+CREATE INDEX IF NOT EXISTS idx_equip_prot_status ON public.equipment_protocols (status);
 
--- 7. Добавяне в Supabase Realtime (за живи нотификации и звук при заявка)
+-- 8. Добавяне в Supabase Realtime (за живи нотификации и звук при заявка)
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'tooling_requests') THEN
@@ -114,16 +133,20 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'factory_tool_calibrations') THEN
         ALTER PUBLICATION supabase_realtime ADD TABLE public.factory_tool_calibrations;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'equipment_protocols') THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.equipment_protocols;
+    END IF;
 EXCEPTION WHEN OTHERS THEN
     NULL;
 END $$;
 
--- 8. RLS Политики за пълен достъп
+-- 9. RLS Политики за пълен достъп
 ALTER TABLE public.factory_machines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.factory_tools ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tooling_inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tooling_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.factory_tool_calibrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.equipment_protocols ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all on factory_machines" ON public.factory_machines;
 CREATE POLICY "Allow all on factory_machines" ON public.factory_machines FOR ALL USING (true) WITH CHECK (true);
@@ -140,10 +163,14 @@ CREATE POLICY "Allow all on tooling_requests" ON public.tooling_requests FOR ALL
 DROP POLICY IF EXISTS "Allow all on factory_tool_calibrations" ON public.factory_tool_calibrations;
 CREATE POLICY "Allow all on factory_tool_calibrations" ON public.factory_tool_calibrations FOR ALL USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow all on equipment_protocols" ON public.equipment_protocols;
+CREATE POLICY "Allow all on equipment_protocols" ON public.equipment_protocols FOR ALL USING (true) WITH CHECK (true);
+
 GRANT ALL ON public.factory_machines TO anon, authenticated;
 GRANT ALL ON public.factory_tools TO anon, authenticated;
 GRANT ALL ON public.tooling_inventory TO anon, authenticated;
 GRANT ALL ON public.tooling_requests TO anon, authenticated;
 GRANT ALL ON public.factory_tool_calibrations TO anon, authenticated;
+GRANT ALL ON public.equipment_protocols TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 

@@ -74,6 +74,21 @@ const tableConfigs = {
       { name: 'model', label: 'Модел / Производител', type: 'text' }, 
       { name: 'status', label: 'Статус', type: 'select', options: ['active', 'maintenance'], def: 'active' } 
     ] 
+  },
+  equipment_protocols: { 
+    label: '🦺 Приемо-Предавателни Протоколи', 
+    table: 'equipment_protocols', 
+    key: 'id', 
+    fields: [ 
+      { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, 
+      { name: 'protocol_number', label: 'Протокол №', type: 'text', required: true }, 
+      { name: 'worker_name', label: 'Служител', type: 'text', required: true }, 
+      { name: 'worker_email', label: 'Имейл', type: 'text', required: true }, 
+      { name: 'handed_by', label: 'Предал', type: 'text', required: true }, 
+      { name: 'status', label: 'Статус', type: 'select', options: ['Чака подпис', 'Приет', 'Върнат', 'Бракуван'], def: 'Чака подпис' }, 
+      { name: 'signed_at', label: 'Подписан на', type: 'text', readonly: true }, 
+      { name: 'notes', label: 'Забележки', type: 'text' } 
+    ] 
   }
 };
 

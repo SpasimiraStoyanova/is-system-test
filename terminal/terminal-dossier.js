@@ -152,11 +152,13 @@ window.switchTermDossierTab = function(tabKey) {
     const tabSalary = document.getElementById('termDossierTab_salary');
     const tabWork = document.getElementById('termDossierTab_work');
     const tabAttendance = document.getElementById('termDossierTab_attendance');
+    const tabProtocols = document.getElementById('termDossierTab_protocols');
 
     if (tabDocs) tabDocs.style.display = (tabKey === 'docs') ? 'flex' : 'none';
     if (tabSalary) tabSalary.style.display = (tabKey === 'salary') ? 'flex' : 'none';
     if (tabWork) tabWork.style.display = (tabKey === 'work') ? 'flex' : 'none';
     if (tabAttendance) tabAttendance.style.display = (tabKey === 'attendance') ? 'flex' : 'none';
+    if (tabProtocols) tabProtocols.style.display = (tabKey === 'protocols') ? 'flex' : 'none';
 
     if (tabKey === 'docs') {
         loadTermDocs(currentDossierEmail);
@@ -166,6 +168,10 @@ window.switchTermDossierTab = function(tabKey) {
         loadTermWork(currentDossierEmail, currentDossierWorkerName);
     } else if (tabKey === 'attendance') {
         loadTermAttendance(currentDossierEmail);
+    } else if (tabKey === 'protocols') {
+        if (typeof loadTermEquipmentProtocols === 'function') {
+            loadTermEquipmentProtocols(currentDossierEmail);
+        }
     }
 };
 

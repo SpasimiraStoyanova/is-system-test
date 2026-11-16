@@ -726,4 +726,302 @@ window.openToolCalibrationHistoryModal = async function(toolCode, toolName) {
     }
 };
 
+// ==============================================================================
+// ПРИЕМО-ПРЕДАВАТЕЛНИ ПРОТОКОЛИ ЗА ЛПС, РАБОТНО ОБЛЕКЛО И ИНСТРУМЕНТИ
+// (С потвърждение чрез личен ПИН код на служителя)
+// ==============================================================================
+
+window.openCreateEquipmentProtocolModal = async function() {
+    Swal.fire({ title: 'Зареждане на служителите...', didOpen: () => Swal.showLoading() });
+    
+    let workers = [];
+    try {
+        const { data, error } = await client.from('personal').select('Име, Имейл').eq('Статус', 'Активен').order('Име');
+        if (error) throw error;
+        workers = data || [];
+    } catch(e) {
+        console.warn('Error loading workers:', e);
+    }
+
+    if (workers.length === 0) {
+        Swal.fire('Внимание', 'Няма намерени активни служители в таблицата с персонал.', 'warning');
+        return;
+    }
+
+    const workerOptions = workers.map(w => `<option value="${escapeHtml(w['Имейл'])}" data-name="${escapeHtml(w['Име'])}">${escapeHtml(w['Име'])} (${escapeHtml(w['Имейл'])})</option>`).join('');
+    const today = new Date().toISOString().split('T')[0];
+    const defaultHandedBy = localStorage.getItem('last_admin_email') || 'Администрация';
+    const protoNum = `ППП-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+
+    Swal.fire({
+        title: '🦺 Нов Приемо-Предавателен Протокол',
+        width: 760,
+        html: `
+            <div style="text-align: left; font-size: 0.9em; display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">📋 Протокол №:</label>
+                        <input type="text" id="swalProtoNum" class="swal2-input" value="${protoNum}" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; font-weight: 800; height: 38px;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">📅 Дата на предаване:</label>
+                        <input type="date" id="swalProtoDate" class="swal2-input" value="${today}" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 38px;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 10px;">
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">👤 Получател (Служител): *</label>
+                        <select id="swalProtoWorker" class="swal2-input" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 38px; font-weight: 700;">
+                            ${workerOptions}
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-weight: 700; color: #475569;">📤 Предадено от:</label>
+                        <input type="text" id="swalProtoHandedBy" class="swal2-input" value="${escapeHtml(defaultHandedBy)}" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 38px;">
+                    </div>
+                </div>
+
+                <!-- Списък с вещи за зачисляване -->
+                <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #fafaf9;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-weight: 800; color: #1e293b;">📦 Вещи, ЛПС и уреди за зачисляване:</span>
+                        <button type="button" onclick="addProtoItemRow()" style="padding: 4px 10px; background: #ea580c; color: white; border: none; border-radius: 6px; font-weight: 700; font-size: 0.85em; cursor: pointer;">➕ Добави вещ</button>
+                    </div>
+
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;" id="protoItemsTable">
+                        <thead>
+                            <tr style="background: #f1f5f9; text-align: left; border-bottom: 2px solid #cbd5e1; color: #475569;">
+                                <th style="padding: 6px;">Наименование на вещ / уред</th>
+                                <th style="padding: 6px; width: 130px;">Категория</th>
+                                <th style="padding: 6px; width: 65px;">Кол.</th>
+                                <th style="padding: 6px; width: 100px;">Инв. №/Код</th>
+                                <th style="padding: 6px; width: 30px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="protoItemsTbody">
+                            <tr class="proto-item-row">
+                                <td style="padding: 4px;"><input type="text" class="item-name" placeholder="напр. Работна манта (р-р L)" value="Работна манта" style="width: 100%; padding: 6px; border: 1.5px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-weight: 700;"></td>
+                                <td style="padding: 4px;">
+                                    <select class="item-cat" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+                                        <option value="Работно облекло" selected>Работно облекло</option>
+                                        <option value="ЛПС">ЛПС</option>
+                                        <option value="Инструмент">Инструмент</option>
+                                        <option value="Оборудване">Оборудване</option>
+                                    </select>
+                                </td>
+                                <td style="padding: 4px;"><input type="number" min="1" class="item-qty" value="1" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-weight: 800;"></td>
+                                <td style="padding: 4px;"><input type="text" class="item-code" placeholder="по избор" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;"></td>
+                                <td style="padding: 4px;"><button type="button" onclick="this.closest('tr').remove()" style="border:none; background:transparent; color:#ef4444; font-weight:bold; cursor:pointer;">✖</button></td>
+                            </tr>
+                            <tr class="proto-item-row">
+                                <td style="padding: 4px;"><input type="text" class="item-name" placeholder="напр. Предпазни очила" value="Предпазни очила UV" style="width: 100%; padding: 6px; border: 1.5px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-weight: 700;"></td>
+                                <td style="padding: 4px;">
+                                    <select class="item-cat" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+                                        <option value="Работно облекло">Работно облекло</option>
+                                        <option value="ЛПС" selected>ЛПС</option>
+                                        <option value="Инструмент">Инструмент</option>
+                                        <option value="Оборудване">Оборудване</option>
+                                    </select>
+                                </td>
+                                <td style="padding: 4px;"><input type="number" min="1" class="item-qty" value="1" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-weight: 800;"></td>
+                                <td style="padding: 4px;"><input type="text" class="item-code" placeholder="по избор" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;"></td>
+                                <td style="padding: 4px;"><button type="button" onclick="this.closest('tr').remove()" style="border:none; background:transparent; color:#ef4444; font-weight:bold; cursor:pointer;">✖</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #475569;">📝 Допълнителни бележки / указания:</label>
+                    <input type="text" id="swalProtoNotes" class="swal2-input" placeholder="напр. ново оборудване за пост Струг" style="margin: 4px 0 0; width: 100%; box-sizing: border-box; height: 38px;">
+                </div>
+
+                <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px 12px; font-size: 0.85em; color: #9a3412;">
+                    ℹ️ <b>Как се подписва:</b> При издаване, протоколът веднага ще излезе на Терминала на избрания служител. Той ще въведе своя <b>персонален ПИН код</b> (същия като за заплатите/досието), за да потвърди получаването.
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '🚀 Издай за подпис към Терминала',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#ea580c',
+        preConfirm: () => {
+            const protoNum = document.getElementById('swalProtoNum').value.trim();
+            const protoDate = document.getElementById('swalProtoDate').value;
+            const workerSel = document.getElementById('swalProtoWorker');
+            const workerEmail = workerSel.value;
+            const workerName = workerSel.options[workerSel.selectedIndex]?.dataset?.name || workerEmail;
+            const handedBy = document.getElementById('swalProtoHandedBy').value.trim();
+            const notes = document.getElementById('swalProtoNotes').value.trim();
+
+            if (!protoNum || !workerEmail) {
+                Swal.showValidationMessage('Моля, попълнете номер на протокол и изберете служител!');
+                return false;
+            }
+
+            const items = [];
+            document.querySelectorAll('.proto-item-row').forEach(row => {
+                const name = row.querySelector('.item-name')?.value.trim();
+                const cat = row.querySelector('.item-cat')?.value;
+                const qty = parseFloat(row.querySelector('.item-qty')?.value) || 1;
+                const code = row.querySelector('.item-code')?.value.trim();
+                if (name) {
+                    items.push({ name, category: cat, qty, code: code || null });
+                }
+            });
+
+            if (items.length === 0) {
+                Swal.showValidationMessage('Моля, въведете поне една вещ или инструмент за зачисляване!');
+                return false;
+            }
+
+            return {
+                protocol_number: protoNum,
+                worker_email: workerEmail,
+                worker_name: workerName,
+                handed_by: handedBy,
+                items: items,
+                status: 'Чака подпис',
+                notes: notes ? `${notes} (Издаден на ${protoDate})` : `Издаден на ${protoDate}`,
+                created_at: new Date().toISOString()
+            };
+        }
+    }).then(async (res) => {
+        if (res.isConfirmed && res.value) {
+            Swal.fire({ title: 'Издаване на протокола...', didOpen: () => Swal.showLoading() });
+            try {
+                const { error } = await client.from('equipment_protocols').insert([res.value]);
+                if (error) throw error;
+                if (window.invalidateAdminCache) window.invalidateAdminCache();
+                if (window.switchTab) switchTab(currentTab, true);
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Протоколът е издаден успешно!',
+                    html: `
+                        Протокол № <b>${escapeHtml(res.value.protocol_number)}</b><br>
+                        Служител: <b>${escapeHtml(res.value.worker_name)}</b><br>
+                        Статус: <b style="color:#ea580c;">⏳ Чака подпис с ПИН код в терминала</b>
+                    `,
+                    timer: 3000,
+                    showConfirmButton: false
+                });
+            } catch(err) {
+                Swal.fire('Грешка', 'Неуспешно издаване: ' + err.message, 'error');
+            }
+        }
+    });
+};
+
+window.addProtoItemRow = function() {
+    const tbody = document.getElementById('protoItemsTbody');
+    if (!tbody) return;
+    const tr = document.createElement('tr');
+    tr.className = 'proto-item-row';
+    tr.innerHTML = `
+        <td style="padding: 4px;"><input type="text" class="item-name" placeholder="напр. Шублер Ш-02, Винтоверт..." style="width: 100%; padding: 6px; border: 1.5px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-weight: 700;"></td>
+        <td style="padding: 4px;">
+            <select class="item-cat" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+                <option value="Инструмент">Инструмент</option>
+                <option value="ЛПС">ЛПС</option>
+                <option value="Работно облекло">Работно облекло</option>
+                <option value="Оборудване">Оборудване</option>
+            </select>
+        </td>
+        <td style="padding: 4px;"><input type="number" min="1" class="item-qty" value="1" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-weight: 800;"></td>
+        <td style="padding: 4px;"><input type="text" class="item-code" placeholder="по избор" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;"></td>
+        <td style="padding: 4px;"><button type="button" onclick="this.closest('tr').remove()" style="border:none; background:transparent; color:#ef4444; font-weight:bold; cursor:pointer;">✖</button></td>
+    `;
+    tbody.appendChild(tr);
+};
+
+window.openEquipmentProtocolViewModal = async function(protocolId) {
+    Swal.fire({ title: 'Зареждане на протокола...', didOpen: () => Swal.showLoading() });
+    try {
+        const { data, error } = await client.from('equipment_protocols').select('*').eq('id', protocolId).single();
+        if (error) throw error;
+        if (!data) return;
+
+        let statusBadge = '<span style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; padding:3px 8px; border-radius:6px; font-weight:800;">⏳ Чака подпис с ПИН</span>';
+        if (data.status === 'Приет') {
+            statusBadge = '<span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 8px; border-radius:6px; font-weight:800;">🟢 Приет (Подписан с ПИН)</span>';
+        } else if (data.status === 'Върнат') {
+            statusBadge = '<span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 8px; border-radius:6px; font-weight:800;">🔄 Върнат в склад</span>';
+        } else if (data.status === 'Бракуван') {
+            statusBadge = '<span style="background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; padding:3px 8px; border-radius:6px; font-weight:800;">🗑️ Бракуван</span>';
+        }
+
+        let itemsHtml = '';
+        if (Array.isArray(data.items)) {
+            itemsHtml = data.items.map((it, idx) => `
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                    <td style="padding: 8px;">${idx + 1}</td>
+                    <td style="padding: 8px; font-weight: 700; color: #1e293b;">${escapeHtml(it.name)}</td>
+                    <td style="padding: 8px;"><span style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.85em;">${escapeHtml(it.category || 'ЛПС')}</span></td>
+                    <td style="padding: 8px; font-weight: 800; color: #0284c7;">${it.qty || 1} бр.</td>
+                    <td style="padding: 8px; color: #64748b;">${escapeHtml(it.code || '-')}</td>
+                </tr>
+            `).join('');
+        }
+
+        const signedDateStr = data.signed_at ? new Date(data.signed_at).toLocaleString('bg-BG') : 'Още не е подписан';
+
+        Swal.fire({
+            title: `📋 Протокол ${escapeHtml(data.protocol_number)}`,
+            width: 700,
+            html: `
+                <div style="text-align: left; font-size: 0.9em; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 14px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                        <div>
+                            <div>Служител: <b>${escapeHtml(data.worker_name)}</b> (${escapeHtml(data.worker_email)})</div>
+                            <div style="font-size: 0.85em; color: #64748b; margin-top: 2px;">Предал: <b>${escapeHtml(data.handed_by)}</b></div>
+                        </div>
+                        <div>${statusBadge}</div>
+                    </div>
+
+                    <div style="font-size: 0.85em; color: #475569;">
+                        <b>Подпис / Валидация:</b> ${signedDateStr} ${data.signed_by_pin ? '🔒 <i>(Удостоверено с ПИН код)</i>' : ''}
+                    </div>
+
+                    <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                            <thead>
+                                <tr style="background: #f1f5f9; text-align: left; border-bottom: 2px solid #cbd5e1; color: #475569;">
+                                    <th style="padding: 8px;">#</th>
+                                    <th style="padding: 8px;">Вещ / Оборудване</th>
+                                    <th style="padding: 8px;">Категория</th>
+                                    <th style="padding: 8px;">Количество</th>
+                                    <th style="padding: 8px;">Код / Сериен №</th>
+                                </tr>
+                            </thead>
+                            <tbody>${itemsHtml}</tbody>
+                        </table>
+                    </div>
+
+                    ${data.notes ? `<div style="font-size: 0.85em; color: #64748b; font-style: italic;">Бележка: ${escapeHtml(data.notes)}</div>` : ''}
+                </div>
+            `,
+            showCancelButton: data.status === 'Приет',
+            cancelButtonText: 'Затвори',
+            confirmButtonText: (data.status === 'Приет') ? '🔄 Отбележи като върнати в склада' : 'Затвори',
+            confirmButtonColor: (data.status === 'Приет') ? '#2563eb' : '#64748b'
+        }).then(async (res) => {
+            if (res.isConfirmed && data.status === 'Приет') {
+                await client.from('equipment_protocols').update({
+                    status: 'Върнат',
+                    return_date: new Date().toISOString()
+                }).eq('id', protocolId);
+                if (window.invalidateAdminCache) window.invalidateAdminCache();
+                if (window.switchTab) switchTab(currentTab, true);
+                Swal.fire({ icon: 'success', title: 'Оборудването е отбелязано като върнато в склада!', timer: 2000, showConfirmButton: false });
+            }
+        });
+    } catch(err) {
+        Swal.fire('Грешка', err.message, 'error');
+    }
+};
+
+
 
