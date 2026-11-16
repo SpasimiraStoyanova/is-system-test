@@ -263,9 +263,12 @@ window.checkPendingEquipmentProtocols = async function() {
                         </div>
                     </div>
                 </div>
-                <div style="display: flex; gap: 8px; align-items: center;">
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <button type="button" onclick="openTerminalSignProtocolModal(${proto.id})" style="background: #ea580c; color: white; border: none; padding: 11px 20px; border-radius: 10px; font-weight: 900; font-size: 0.95em; cursor: pointer; white-space: nowrap; box-shadow: 0 3px 8px rgba(234, 88, 12, 0.35); display: flex; align-items: center; gap: 6px;">
                         <span>✍️</span> <span>Подпиши с ПИН код</span>
+                    </button>
+                    <button type="button" onclick="openTerminalDossier(); setTimeout(() => switchTermDossierTab('protocols'), 300);" style="background: white; color: #ea580c; border: 1.5px solid #ea580c; padding: 10px 16px; border-radius: 10px; font-weight: 800; font-size: 0.9em; cursor: pointer; white-space: nowrap;">
+                        <span>📁</span> <span>Всички зачислени</span>
                     </button>
                 </div>
             </div>

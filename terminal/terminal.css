@@ -126,6 +126,15 @@ body {
   flex-shrink: 0;
 }
 
+.btn-dossier {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.25);
+}
+
+.btn-dossier:active {
+  transform: scale(0.96);
+}
+
 .btn-monitor {
   background: linear-gradient(135deg, #0284c7, #0369a1);
   box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);
@@ -158,7 +167,16 @@ body {
     display: none !important;
   }
   .btn-terminal-calendar,
-  .btn-monitor {
+  .btn-dossier {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.25);
+}
+
+.btn-dossier:active {
+  transform: scale(0.96);
+}
+
+.btn-monitor {
     padding: 7px 11px !important;
     min-width: 38px;
     justify-content: center;
@@ -195,7 +213,16 @@ body {
     font-size: 0.78em;
   }
   .btn-terminal-calendar,
-  .btn-monitor {
+  .btn-dossier {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.25);
+}
+
+.btn-dossier:active {
+  transform: scale(0.96);
+}
+
+.btn-monitor {
     padding: 6px 9px !important;
     min-width: 34px;
   }

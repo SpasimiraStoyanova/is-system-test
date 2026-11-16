@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="terminal/terminal.css?v=23">
+    <link rel="stylesheet" href="terminal/terminal.css?v=24">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
@@ -37,6 +37,7 @@
         </div>
       </div>
       <div class="action-buttons" style="flex-shrink: 0;">
+        <button class="btn-check btn-dossier" onclick="openTerminalDossier()" title="Лично Досие (Фишове, Оборудване, Чекирания)"><span style="font-size: 1.15em; line-height: 1;">📁</span><span class="btn-text"> ДОСИЕ</span></button>
         <button class="btn-check btn-monitor" onclick="window.location.href='index.html'" title="Монитор на цеха"><span style="font-size: 1.15em; line-height: 1;">📺</span><span class="btn-text"> МОНИТОР</span></button>
         <button class="btn-check btn-out" onclick="processCheckIn('Излизане')" title="Край на смяна / Изход">🔴 ИЗХОД</button>
       </div>
@@ -124,14 +125,14 @@
           <button class="term-dossier-tab-btn" id="tabBtn_salary" onclick="switchTermDossierTab('salary')">
             💰 Бонуси &amp; Фиш
           </button>
+          <button class="term-dossier-tab-btn" id="tabBtn_protocols" onclick="switchTermDossierTab('protocols')">
+            🦺 Зачислено Оборудване
+          </button>
           <button class="term-dossier-tab-btn" id="tabBtn_work" onclick="switchTermDossierTab('work')">
             🛠️ Свършена работа
           </button>
           <button class="term-dossier-tab-btn" id="tabBtn_attendance" onclick="switchTermDossierTab('attendance')">
             🕒 Чекирания
-          </button>
-          <button class="term-dossier-tab-btn" id="tabBtn_protocols" onclick="switchTermDossierTab('protocols')">
-            🦺 Зачислени вещи &amp; Протоколи
           </button>
         </div>
 
@@ -208,10 +209,10 @@
     <script src="terminal/terminal-tasks.js?v=4.48"></script>
     <script src="terminal/terminal-actions.js?v=24"></script>
     <script src="terminal/terminal-calendar.js?v=3" defer></script>
-    <script src="terminal/terminal-dossier.js?v=6"></script>
+    <script src="terminal/terminal-dossier.js?v=7"></script>
     <script src="terminal/terminal-spot-audit.js?v=2"></script>
     <script src="terminal/terminal-idle-reminder.js?v=2"></script>
-    <script src="terminal/terminal-tooling.js?v=1"></script>
+    <script src="terminal/terminal-tooling.js?v=2"></script>
   </body>
 </html>
 
