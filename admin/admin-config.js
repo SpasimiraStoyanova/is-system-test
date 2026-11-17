@@ -70,11 +70,19 @@ const tableConfigs = {
       { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, 
       { name: 'code', label: 'Номер (напр. 101, 201, 301)', type: 'text', required: true }, 
       { name: 'name', label: 'Име на машина / пост', type: 'text', required: true }, 
+      { name: 'room_number', label: 'Стая № (напр. 11, 21, 22)', type: 'text' },
       { name: 'floor', label: 'Етаж', type: 'select', options: ['Етаж 1', 'Етаж 2', 'Етаж 3'], def: 'Етаж 1' }, 
       { name: 'department', label: 'Цех / Местоположение', type: 'text' }, 
       { name: 'model', label: 'Модел / Производител', type: 'text' }, 
       { name: 'status', label: 'Статус', type: 'select', options: ['active', 'maintenance'], def: 'active' } 
     ] 
+  },
+  rooms_inventory: {
+    label: '🏢 Опис по стаи / Инвентаризация',
+    table: 'factory_rooms',
+    key: 'id',
+    readOnlyTab: true,
+    fields: []
   },
   equipment_protocols: { 
     label: '🦺 Приемо-Предавателни Протоколи', 

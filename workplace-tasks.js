@@ -110,6 +110,8 @@ async function loadAllData() {
             let n = normalize(fm.name);
             machineMetaMap[n] = {
                 code: fm.code ? String(fm.code).trim() : '',
+                room_number: fm.room_number ? String(fm.room_number).trim() : '',
+                room_name: fm.room_name || '',
                 floor: fm.floor || (fm.code && String(fm.code).startsWith('1') ? 'Етаж 1' : (fm.code && String(fm.code).startsWith('2') ? 'Етаж 2' : (fm.code && String(fm.code).startsWith('3') ? 'Етаж 3' : ''))),
                 tools: [],
                 hasPendingToolingReq: false,
@@ -763,7 +765,8 @@ function renderAllMachines() {
             let mNorm = normalize(m);
             let codeNorm = meta && meta.code ? normalize(meta.code) : '';
             let floorNorm = meta && meta.floor ? normalize(meta.floor) : '';
-            if (!mNorm.includes(machineFilterText) && !codeNorm.includes(machineFilterText) && !floorNorm.includes(machineFilterText)) {
+            let roomNorm = meta && meta.room_number ? normalize(meta.room_number) : '';
+            if (!mNorm.includes(machineFilterText) && !codeNorm.includes(machineFilterText) && !floorNorm.includes(machineFilterText) && !roomNorm.includes(machineFilterText)) {
                 return false;
             }
         }
@@ -841,6 +844,15 @@ function renderAllMachines() {
 
         let codeBadgeHtml = code ? `<span style="${floorBadgeStyle} font-size: 0.8em; font-weight: 900; padding: 2px 7px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.25);" title="Номер на машина: ${escapeHtml(code)} (${escapeHtml(meta.floor || '')})">№ ${escapeHtml(code)}</span>` : '';
 
+        let roomBadgeHtml = '';
+        if (meta.room_number) {
+            let rNum = meta.room_number;
+            let roomColor = '#1d4ed8'; // Етаж 1
+            if (rNum.startsWith('2')) roomColor = '#059669'; // Етаж 2
+            else if (rNum.startsWith('3')) roomColor = '#7c3aed'; // Етаж 3
+            roomBadgeHtml = `<span style="background: ${roomColor}; color: white; font-size: 0.78em; font-weight: 900; padding: 2px 7px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.25);" title="Разположена в Стая ${escapeHtml(rNum)} ${escapeHtml(meta.room_name || '')}">🚪 Стая ${escapeHtml(rNum)}</span>`;
+        }
+
         let toolsBtnHtml = `<button type="button" onclick="showMachineAssignedToolsModal('${escapeHtml(machineName)}')" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35); color: white; padding: 2px 7px; border-radius: 6px; font-size: 0.72em; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Зачислени малки инструменти">${toolsCount > 0 ? `🧰 ${toolsCount}` : `🧰 +`}</button>`;
 
         let toolingReqBadgeHtml = hasPendingReq ? `<span style="background: #dc2626; color: white; font-size: 0.68em; font-weight: 900; padding: 2px 6px; border-radius: 6px; cursor: pointer; box-shadow: 0 0 8px rgba(220, 38, 38, 0.7);" onclick="showMachineToolingReqAlert('${escapeHtml(machineName)}')" title="Спешен сигнал от цеха: свършват пластини / екипировка!">⚠️ Чака пластини</span>` : '';
@@ -850,6 +862,7 @@ function renderAllMachines() {
                 <div class="machine-title" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                     <i class="fas fa-microchip"></i>
                     ${codeBadgeHtml}
+                    ${roomBadgeHtml}
                     <span>${escapeHtml(machineName)}</span>
                     ${toolsBtnHtml}
                     ${toolingReqBadgeHtml}

@@ -539,6 +539,8 @@ function switchTab(tabKey, force = false) {
     if (probiContainer) { probiContainer.style.display = (tabKey === 'probi') ? 'block' : 'none'; }
     const audit3sContainer = document.getElementById('audit3sContainer');
     if (audit3sContainer) { audit3sContainer.style.display = (tabKey === 'audit_3s') ? 'block' : 'none'; }
+    const roomsContainer = document.getElementById('roomsInventoryContainer');
+    if (roomsContainer) { roomsContainer.style.display = (tabKey === 'rooms_inventory') ? 'block' : 'none'; }
     if (tabKey === 'probi') {
         addBtn.style.display = 'flex';
         addBtn.innerText = '➕ Нова Проба';
@@ -610,6 +612,23 @@ async function loadCurrentTableData(forceRefresh = false) {
             if (typeof render3sTab === 'function') render3sTab(forceRefresh);
             return;
         }
+        if (currentTab === 'rooms_inventory') {
+            document.getElementById('mainTable').style.display = 'none';
+            document.getElementById('tableHead').innerHTML = '';
+            document.getElementById('loadingLayout').style.display = 'none';
+            const addNewBtn = document.getElementById('addNewBtn');
+            if (addNewBtn) addNewBtn.style.display = 'none';
+            const probiContainer = document.getElementById('probiContainer');
+            if (probiContainer) probiContainer.style.display = 'none';
+            const audit3sContainer = document.getElementById('audit3sContainer');
+            if (audit3sContainer) audit3sContainer.style.display = 'none';
+            const salariesContainer = document.getElementById('salariesContainer');
+            if (salariesContainer) salariesContainer.style.display = 'none';
+            const roomsContainer = document.getElementById('roomsInventoryContainer');
+            if (roomsContainer) roomsContainer.style.display = 'block';
+            if (typeof renderRoomsTab === 'function') renderRoomsTab(forceRefresh);
+            return;
+        }
         if (currentTab === 'salaries') {
             document.getElementById('mainTable').style.display = 'none';
             document.getElementById('tableHead').innerHTML = '';
@@ -631,6 +650,8 @@ async function loadCurrentTableData(forceRefresh = false) {
         if (audit3sContainer) audit3sContainer.style.display = 'none';
         const salariesContainer = document.getElementById('salariesContainer');
         if (salariesContainer) salariesContainer.style.display = 'none';
+        const roomsContainer = document.getElementById('roomsInventoryContainer');
+        if (roomsContainer) roomsContainer.style.display = 'none';
         const archiveToolbar = document.getElementById('archiveToolbar');
         if (archiveToolbar) archiveToolbar.style.display = (currentTab === 'archives') ? 'flex' : 'none';
 
