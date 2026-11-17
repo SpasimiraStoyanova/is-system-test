@@ -85,6 +85,7 @@
             const params = new URLSearchParams(window.location.search);
             const month = params.get('month');
             const year = params.get('year');
+            const targetBox = params.get('box');
 
             if (!month || !year) {
                 document.getElementById('content').innerHTML = "<div style='color:red; text-align:center;'>Липсват месец и година!</div>";
@@ -168,7 +169,25 @@
 
                 let html = '';
                 
-                let sortedBoxes = Object.keys(boxes).sort((a,b) => parseInt(a) - parseInt(b));
+                let sortedBoxes = Object.keys(boxes).sort((a, b) => {
+                    let numA = parseInt(a);
+                    let numB = parseInt(b);
+                    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                    return a.localeCompare(b, undefined, { numeric: true });
+                });
+
+                if (targetBox) {
+                    sortedBoxes = sortedBoxes.filter(bNum => String(bNum).trim().toLowerCase() === String(targetBox).trim().toLowerCase());
+                    if (sortedBoxes.length === 0) {
+                        document.getElementById('content').innerHTML = `<div style='text-align:center; padding: 40px; color:#dc2626; font-size:1.2em; font-weight:bold;'>Няма намерени записи за Кашон № ${targetBox} (${month} ${year}).</div>`;
+                        return;
+                    }
+                    document.title = `Packing List - Box ${targetBox} (${month} ${year})`;
+                    let printBtn = document.querySelector('#controls button');
+                    if (printBtn) printBtn.innerHTML = `🖨️ Принтирай Кашон № ${targetBox}`;
+                } else {
+                    document.title = `Packing List - ${month} ${year}`;
+                }
                 
                 sortedBoxes.forEach(bNum => {
                     let items = boxes[bNum];

@@ -383,6 +383,40 @@ async function executeBoxAssignment(btn) {
 // 5. Управление на готови кашони (по индекс от window.__boxedCartonList)
 // -------------------------------------------------------------
 
+function printBoxByIndex(idx) {
+    let boxNum = window.__boxedCartonList && window.__boxedCartonList[idx];
+    if (!boxNum) return;
+
+    let month = window.currentActiveMonth || (typeof currentActiveMonth !== 'undefined' ? currentActiveMonth : '');
+    let year = window.currentActiveYear || (typeof currentActiveYear !== 'undefined' ? currentActiveYear : '');
+
+    // Резервно извличане от данните на кашона, ако липсват в глобалните променливи
+    if ((!month || !year) && typeof globalBoxedCartons !== 'undefined' && globalBoxedCartons[boxNum]) {
+        let box = globalBoxedCartons[boxNum];
+        if (box.items) {
+            for (let k in box.items) {
+                let it = box.items[k];
+                if (it.plan_name) {
+                    let parts = it.plan_name.trim().split(/\s+/);
+                    if (parts.length >= 2) {
+                        month = parts[0];
+                        year = parts[1];
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if (!month || !year) {
+        Swal.fire('Липсва период', 'Не може да бъде определен месецът и годината на плана за този кашон.', 'warning');
+        return;
+    }
+
+    let url = `packing-list.html?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}&box=${encodeURIComponent(boxNum)}`;
+    window.open(url, '_blank');
+}
+
 async function renameBoxByIndex(idx) {
     let oldBoxNum = window.__boxedCartonList && window.__boxedCartonList[idx];
     if (!oldBoxNum) return;

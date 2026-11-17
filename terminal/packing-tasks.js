@@ -96,6 +96,8 @@ async function loadTasks(isSilent = false) {
             if (plan['Месец'] && plan['Година'] && !currentActiveMonth) {
                 currentActiveMonth = plan['Месец'];
                 currentActiveYear = plan['Година'];
+                window.currentActiveMonth = currentActiveMonth;
+                window.currentActiveYear = currentActiveYear;
             }
 
             let groupKey = planId; 
@@ -535,7 +537,10 @@ function renderDoneBoxes() {
                     ${itemsListHtml}
                 </div>
 
-                <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 10px;">
+                <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 10px; flex-wrap: wrap;">
+                    <button type="button" onclick="printBoxByIndex(${idx})" style="background: #eff6ff; border: 1.5px solid #93c5fd; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; color: #1d4ed8; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                        🖨️ Принт
+                    </button>
                     <button type="button" onclick="renameBoxByIndex(${idx})" style="background: #f8fafc; border: 1.5px solid #cbd5e1; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; color: #334155; cursor: pointer;">
                         ✏️ Промени №
                     </button>
