@@ -421,7 +421,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         let key = code + '_' + String(r['Операция']).trim().toLowerCase();
         let qty = parseFloat(r['Количество']) || 0;
         
-        if (op.startsWith('опаковане - кашон') && r['Статус'] === 'Отчетено') {
+        if (op.startsWith('опаковане') && r['Статус'] === 'Отчетено') {
             let rawPId = String(r['ID План'] || '').trim();
             let pId = planNameToId[rawPId] || rawPId;
             let packKey = pId ? (code + '_' + pId) : code;

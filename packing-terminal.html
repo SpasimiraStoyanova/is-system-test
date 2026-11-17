@@ -10,6 +10,13 @@
       .box-input {
           width: 100%; padding: 12px; font-size: 1.2em; font-weight: bold; border: 2px solid #cbd5e1; border-radius: 8px; margin-bottom: 15px; box-sizing: border-box; text-align: center;
       }
+      .box-input:focus {
+          border-color: #2563eb; outline: none; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+      }
+      .t-filter-btn {
+          font-size: 0.85em;
+          padding: 10px 4px;
+      }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -53,10 +60,26 @@
     <div id="mainAppContent" style="display: none;">
         <div class="machine-bar" style="cursor: default;">Работно място: <span class="machine-title">ОПАКОВАНЕ</span><span id="uiMachineName" style="display:none;"></span></div>
         
+        <div class="task-filters-wrapper" style="width: 100%; max-width: 580px; margin: 10px auto 0 auto; padding: 0 14px; box-sizing: border-box;">
+          <div class="task-filters">
+            <button class="t-filter-btn active" id="tabBtn_tasks" onclick="switchPackingTab('tasks')">
+              🟢 Опаковане (<span id="badgeTasksCount">0</span>)
+            </button>
+            <button class="t-filter-btn" id="tabBtn_boxes" onclick="switchPackingTab('boxes')">
+              📦 За кашони (<span id="badgeUnboxedCount">0</span>)
+            </button>
+            <button class="t-filter-btn" id="tabBtn_doneBoxes" onclick="switchPackingTab('doneBoxes')">
+              📋 Кашони (<span id="badgeBoxesCount">0</span>)
+            </button>
+          </div>
+        </div>
+
         <div class="container">
             <div id="tasksContainer">
                 <div id="loadingMsg" style="text-align:center; padding: 40px; font-weight:bold; color:#64748b; font-size: 1.2em;">Търсене на задачи... 🔄</div>
             </div>
+            <div id="boxesContainer" style="display: none; width: 100%; max-width: 580px; margin: 0 auto 90px auto; flex-direction: column; gap: 16px;"></div>
+            <div id="doneBoxesContainer" style="display: none; width: 100%; max-width: 580px; margin: 0 auto 90px auto; flex-direction: column; gap: 16px;"></div>
         </div>
 
         <button class="history-toggle-btn" onclick="toggleHistory()">🕒</button>
@@ -75,7 +98,7 @@
     </div>
 
     <script src="terminal/terminal-core.js?v=7"></script>
-    <script src="terminal/packing-tasks.js?v=3"></script>
-    <script src="terminal/packing-actions.js?v=3"></script>
+    <script src="terminal/packing-tasks.js?v=4"></script>
+    <script src="terminal/packing-actions.js?v=4"></script>
   </body>
 </html>

@@ -1523,7 +1523,11 @@ async function computeSkladData() {
             if (reservedQty > 0) {
                 let boxTexts = [];
                 Object.keys(packedDetailsByBox[code]).forEach(b => {
-                    boxTexts.push(`${packedDetailsByBox[code][b]} бр в Кашон №${b}`);
+                    if (b !== 'Неизвестен') {
+                        boxTexts.push(`${packedDetailsByBox[code][b]} бр в Кашон №${b}`);
+                    } else {
+                        boxTexts.push(`${packedDetailsByBox[code][b]} бр опаковани (чакащи кашон)`);
+                    }
                 });
                 reservedStr = boxTexts.join(', ');
             }
