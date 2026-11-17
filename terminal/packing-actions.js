@@ -173,7 +173,7 @@ async function handlePackingSubmit(taskId, btn) {
                         if (navRes.isConfirmed) {
                             switchPackingTab('boxes');
                         }
-                        loadTasks(true);
+                        loadTasks(false);
                     });
                 } catch(err) { 
                     Swal.fire('❌ Грешка при запис', err.message, 'error'); 
@@ -226,7 +226,7 @@ async function handlePackingSubmit(taskId, btn) {
                         timer: 2000,
                         showConfirmButton: false
                     }).then(() => {
-                        loadTasks(true);
+                        loadTasks(false);
                     });
                 } catch(err) { 
                     Swal.fire('❌ Грешка при запис', err.message, 'error'); 
@@ -342,21 +342,38 @@ async function executeBoxAssignment(btn) {
                     addLogToHistory('КАШОН ' + boxNum, a.qty, item.name);
                 }
 
+                // Изчистваме полетата в UI преди презареждане
+                let masterBoxInput = document.getElementById('masterBoxNumber');
+                if (masterBoxInput) masterBoxInput.value = '';
+                document.querySelectorAll('.assign-qty-input').forEach(i => i.value = 0);
+
+                // Връщаме бутона в нормално начално състояние
+                btn.disabled = true;
+                btn.innerHTML = `📦 ПРИБЕРИ В КАШОНА`;
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+
                 Swal.fire({
                     icon: 'success',
-                    title: 'Готово!',
+                    title: 'Кашонът е записан!',
                     html: `Кашон <b>№ ${escapeHtml(boxNum)}</b> беше оформен успешно с общо <b>${totalQty} бр.</b>!`,
-                    confirmButtonText: 'ОК',
-                    confirmButtonColor: '#2563eb'
-                }).then(() => {
-                    loadTasks(true);
+                    showCancelButton: true,
+                    confirmButtonText: '📋 ВИЖ КАШОНИТЕ',
+                    cancelButtonText: 'Остани тук',
+                    confirmButtonColor: '#2563eb',
+                    cancelButtonColor: '#64748b'
+                }).then(async (navRes) => {
+                    await loadTasks(false);
+                    if (navRes.isConfirmed) {
+                        switchPackingTab('doneBoxes');
+                    }
                 });
 
             } catch (err) {
                 console.error("Box assignment error:", err);
                 Swal.fire('❌ Грешка при запис', err.message, 'error');
                 btn.disabled = false;
-                btn.innerHTML = `📦 ПРИБЕРИ ${totalQty} бр. В КАШОН № ${escapeHtml(boxNum)}`;
+                updateBoxAssignmentSummary();
             }
         }
     });
@@ -400,7 +417,7 @@ async function renameBoxByIndex(idx) {
             if (updErr) throw updErr;
 
             Swal.fire('Успешно!', `Кашон № ${escapeHtml(oldBoxNum)} беше преименуван на № ${escapeHtml(cleanNewBox)}.`, 'success').then(() => {
-                loadTasks(true);
+                loadTasks(false);
             });
         } catch (err) {
             Swal.fire('Грешка при преименуване', err.message, 'error');
@@ -436,7 +453,7 @@ async function unpackBoxByIndex(idx) {
                 if (updErr) throw updErr;
 
                 Swal.fire('Разопакован!', `Детайлите от Кашон № ${escapeHtml(boxNum)} бяха върнати в чакащи за кашон.`, 'success').then(() => {
-                    loadTasks(true);
+                    loadTasks(false);
                 });
             } catch (err) {
                 Swal.fire('Грешка при разопаковане', err.message, 'error');

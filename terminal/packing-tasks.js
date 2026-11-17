@@ -222,18 +222,17 @@ async function loadTasks(isSilent = false) {
         // 3. Обновяваме броячите в табовете
         updateTabBadges();
 
-        // 4. Рендерираме активния изглед (без да прекъсваме писането на потребителя)
+        // 4. Рендерираме активния изглед
         if (currentPackingTab === 'tasks') {
             let activeEl = document.activeElement;
-            let isUserEditing = activeEl && activeEl.tagName === 'INPUT' && activeEl.id && (activeEl.id.startsWith('qty_') || activeEl.id.startsWith('box_'));
-            if (!isSilent || !isUserEditing) {
+            let isUserEditing = isSilent && activeEl && activeEl.tagName === 'INPUT' && activeEl.id && (activeEl.id.startsWith('qty_') || activeEl.id.startsWith('box_'));
+            if (!isUserEditing) {
                 renderTasks(globalTasks);
             }
         } else if (currentPackingTab === 'boxes') {
             let activeEl = document.activeElement;
-            let isUserEditing = activeEl && activeEl.tagName === 'INPUT';
-            let masterBoxVal = document.getElementById('masterBoxNumber') ? document.getElementById('masterBoxNumber').value.trim() : '';
-            if (!isSilent || (!isUserEditing && !masterBoxVal)) {
+            let isUserEditing = isSilent && activeEl && activeEl.tagName === 'INPUT';
+            if (!isUserEditing) {
                 renderUnboxedBoxDistribution();
             }
         } else if (currentPackingTab === 'doneBoxes') {
