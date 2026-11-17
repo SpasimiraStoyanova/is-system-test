@@ -518,13 +518,15 @@ function switchTab(tabKey, force = false) {
     const pdfBtn = document.getElementById('pdfBtn'); const mrpBtn = document.getElementById('mrpBtn'); const transBtn = document.getElementById('transformResolverBtn'); const sidebar = document.getElementById('personnelSidebar');
     const syncMacBtn = document.getElementById('syncMachinesBtn');
     const toolReqBtn = document.getElementById('toolingRequestsBtn');
+    const matOrdersBtn = document.getElementById('materialOrdersBtn');
     const locCheckBtn = document.getElementById('silentLocationCheckBtn');
     const locHistBtn = document.getElementById('locationHistoryBtn');
 
     addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`;
     addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_inventory') ? 'none' : 'flex';
     if (pdfBtn) pdfBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
-    if (mrpBtn) mrpBtn.style.display = (tabKey === 'porachki') ? 'flex' : 'none';
+    if (mrpBtn) mrpBtn.style.display = (tabKey === 'sklad' || tabKey === 'porachki') ? 'flex' : 'none';
+    if (matOrdersBtn) matOrdersBtn.style.display = (tabKey === 'sklad') ? 'flex' : 'none';
     if (transBtn) transBtn.style.display = (tabKey === 'sklad_inventory') ? 'flex' : 'none';
     if (syncMacBtn) syncMacBtn.style.display = (tabKey === 'workstations') ? 'flex' : 'none';
     if (toolReqBtn) toolReqBtn.style.display = (tabKey === 'tooling_sklad') ? 'flex' : 'none';
@@ -1036,7 +1038,10 @@ function renderDynamicTable(itemsToRender = null) {
             let extraActionBtns = '';
             if (currentTab === 'sklad') {
                 let safeCode = String(item['ID Детайл'] || '').replace(/"/g, '&quot;').replace(/'/g, '\\\'');
-                extraActionBtns = `<button class="action-btn" onclick="openMaterialDossier('${safeCode}')" title="📜 Картон на материала (История на движенията)" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; margin-right:4px;">📜</button>`;
+                extraActionBtns = `
+                    <button type="button" class="action-btn" onclick="openCreateMaterialOrderModal('${safeCode}')" title="🛒 Поръчай материал (бърза поръчка &amp; бланка)" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; margin-right:4px; font-weight:bold;">🛒</button>
+                    <button type="button" class="action-btn" onclick="openMaterialDossier('${safeCode}')" title="📜 Картон на материала (История на движенията)" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; margin-right:4px;">📜</button>
+                `;
             }
             if (currentTab === 'factory_tools') {
                 let safeCode = String(item['tool_code'] || '').replace(/"/g, '&quot;').replace(/'/g, '\\\'');
@@ -2344,24 +2349,27 @@ window.createOrderForDeficit = function (item, recommendedQty) {
     const mrpModal = document.getElementById('mrpModalBackdrop');
     if (mrpModal) mrpModal.style.display = 'none';
 
-    if (typeof switchTab === 'function' && currentTab !== 'porachki') {
-        switchTab('porachki');
+    if (typeof openCreateMaterialOrderModal === 'function') {
+        openCreateMaterialOrderModal(item, recommendedQty);
+    } else {
+        if (typeof switchTab === 'function' && currentTab !== 'porachki') {
+            switchTab('porachki');
+        }
+        if (typeof openAddModal === 'function') {
+            openAddModal();
+        }
+
+        const fillInputs = () => {
+            const itemInput = document.getElementById('inp_Материал');
+            const qtyInput = document.getElementById('inp_Количество');
+            if (itemInput) itemInput.value = item || '';
+            if (qtyInput) qtyInput.value = (recommendedQty !== undefined && recommendedQty !== null) ? recommendedQty : '';
+        };
+
+        fillInputs();
+        setTimeout(fillInputs, 50);
+        setTimeout(fillInputs, 200);
     }
-
-    if (typeof openAddModal === 'function') {
-        openAddModal();
-    }
-
-    const fillInputs = () => {
-        const itemInput = document.getElementById('inp_Материал');
-        const qtyInput = document.getElementById('inp_Количество');
-        if (itemInput) itemInput.value = item || '';
-        if (qtyInput) qtyInput.value = (recommendedQty !== undefined && recommendedQty !== null) ? recommendedQty : '';
-    };
-
-    fillInputs();
-    setTimeout(fillInputs, 50);
-    setTimeout(fillInputs, 200);
 };
 
 function openAuditModal() {
