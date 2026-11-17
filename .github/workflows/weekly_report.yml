@@ -2,9 +2,9 @@ name: Weekly Executive Report
 
 on:
   schedule:
-    # Runs Monday morning at 04:30 UTC (06:30 EET Bulgarian Time in winter / 07:30 EEST in summer)
-    # Running early morning completely avoids GitHub Actions peak queue delays so the report is guaranteed in your inbox before 08:30 AM
-    - cron: '30 4 * * 1'
+    # Runs early Monday morning at 03:15 UTC (05:15 EET Bulgarian Time in winter / 06:15 EEST in summer)
+    # Running early morning completely avoids GitHub Actions queue delays so the report is guaranteed in your inbox ready for your 08:30 AM workday start
+    - cron: '15 3 * * 1'
   workflow_dispatch: # Allows manual trigger anytime from GitHub Actions tab
 
 jobs:
