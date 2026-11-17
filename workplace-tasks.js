@@ -942,7 +942,7 @@ function renderAllMachines() {
                                     ${drawingBtn}
                                     <button type="button" class="btn-drawing" style="width:22px; height:22px; font-size:0.75em; background:#7c3aed; color:white; border:none; border-radius:4px; cursor:pointer;" 
                                         title="Пусни изненадваща ревизия за този детайл на ${escapeHtml(machineName)}" 
-                                        onclick="quickTriggerSpotAudit('${escapeHtml(machineName)}', '${escapeHtml(t.detail_id)}', '${escapeHtml(t.op_name)}', ${t.available_prev || t.remain_qty || 0})">
+                                        onclick="quickTriggerSpotAudit('${escapeHtml(machineName)}', '${escapeHtml(t.detail_id)}', '${escapeHtml(t.op_name)}')">
                                         <i class="fas fa-clipboard-check"></i>
                                     </button>
                                 </div>
@@ -1530,7 +1530,13 @@ function openSpotAuditModal(prefillMachine = '', prefillPart = '', prefillOp = '
         document.getElementById('auditOpInput').value = prefillOp;
     }
     if (prefillQty !== '' && prefillQty !== null && prefillQty !== undefined) {
-        document.getElementById('auditExpectedInput').value = prefillQty;
+        let q = parseFloat(prefillQty);
+        if (q > 0) {
+            document.getElementById('auditExpectedInput').value = q;
+        } else {
+            document.getElementById('auditExpectedInput').value = '';
+            document.getElementById('auditExpectedInput').placeholder = '0 (Няма налични на склад)';
+        }
     }
 
     if (prefillMachine) {
@@ -1583,6 +1589,24 @@ function populateAuditMachineSelect() {
     if (currentVal) select.value = currentVal;
 }
 
+function getRealInventoryStock(detailId, opName) {
+    if (!rawInventory || !detailId) return 0;
+    let normCode = normalize(detailId);
+    let normOp = normalize(opName);
+
+    let match = rawInventory.find(inv => {
+        let iCode = normalize(inv['ID Детайл']);
+        let iOp = normalize(inv['Операция']);
+        return iCode === normCode && (iOp === normOp || iOp.includes(normOp) || normOp.includes(iOp));
+    });
+
+    if (match) {
+        let q = parseFloat(match['Общо'] !== undefined && match['Общо'] !== null ? match['Общо'] : match['Количество']);
+        return isNaN(q) ? 0 : q;
+    }
+    return 0;
+}
+
 function onAuditMachineChange() {
     const mSelect = document.getElementById('auditMachineSelect');
     const pSelect = document.getElementById('auditPartSelect');
@@ -1593,34 +1617,64 @@ function onAuditMachineChange() {
 
     let uniqueParts = {};
     tasks.forEach(t => {
-        if (!uniqueParts[t.detail_id]) uniqueParts[t.detail_id] = t;
+        let key = t.detail_id + '||' + t.op_name;
+        if (!uniqueParts[key]) uniqueParts[key] = t;
     });
 
     let html = '<option value="">-- Изберете детайл --</option>';
     Object.values(uniqueParts).forEach(t => {
-        html += `<option value="${escapeHtml(t.detail_id)}" data-op="${escapeHtml(t.op_name)}" data-qty="${t.available_prev || t.remain_qty || 0}">${escapeHtml(t.detail_id)} (${escapeHtml(t.detail_name)})</option>`;
+        let stock = getRealInventoryStock(t.detail_id, t.op_name);
+        let stockBadge = stock > 0 ? `📦 ${stock} бр. в склад` : `0 бр. в склад`;
+        html += `<option value="${escapeHtml(t.detail_id)}" data-op="${escapeHtml(t.op_name)}" data-stock="${stock}" data-plan="${t.remain_qty || 0}">${escapeHtml(t.detail_id)} (${escapeHtml(t.detail_name)}) — оп. ${escapeHtml(t.op_name)} [${stockBadge}]</option>`;
     });
 
     pSelect.innerHTML = html;
     document.getElementById('auditOpInput').value = '';
     document.getElementById('auditExpectedInput').value = '';
+    const stockNote = document.getElementById('auditStockInfoNote');
+    if (stockNote) stockNote.innerHTML = '';
 }
 
 function onAuditPartChange() {
     const pSelect = document.getElementById('auditPartSelect');
     const opInput = document.getElementById('auditOpInput');
     const expInput = document.getElementById('auditExpectedInput');
+    const stockNote = document.getElementById('auditStockInfoNote');
     if (!pSelect || !opInput || !expInput) return;
 
     const opt = pSelect.options[pSelect.selectedIndex];
     if (opt && opt.value) {
-        opInput.value = opt.getAttribute('data-op') || '';
-        expInput.value = opt.getAttribute('data-qty') || '0';
+        let opName = opt.getAttribute('data-op') || '';
+        opInput.value = opName;
+        let stock = parseFloat(opt.getAttribute('data-stock')) || 0;
+        let planQty = parseFloat(opt.getAttribute('data-plan')) || 0;
+
+        if (stock > 0) {
+            expInput.value = stock;
+        } else {
+            // Ако на склад е 0, полето остава празно, точно както поиска потребителят!
+            expInput.value = '';
+            expInput.placeholder = '0 (Няма налични на склад)';
+        }
+
+        if (stockNote) {
+            stockNote.innerHTML = `
+                <div style="font-size: 0.85em; background: ${stock > 0 ? '#f0fdf4' : '#fffbeb'}; border: 1px solid ${stock > 0 ? '#bbf7d0' : '#fde68a'}; border-radius: 6px; padding: 6px 10px; margin-top: 6px; color: ${stock > 0 ? '#166534' : '#b45309'}; font-weight: 700;">
+                    📦 Наличност по склад: <b>${stock} бр.</b>
+                    ${planQty > 0 ? `<span style="margin-left: 10px; color: #64748b; font-weight: normal;">| 🎯 Задание по план: ${planQty} бр.</span>` : ''}
+                </div>
+            `;
+        }
+    } else {
+        opInput.value = '';
+        expInput.value = '';
+        if (stockNote) stockNote.innerHTML = '';
     }
 }
 
-function quickTriggerSpotAudit(machine, detailId, opName, qty) {
-    openSpotAuditModal(machine, detailId, opName, qty);
+function quickTriggerSpotAudit(machine, detailId, opName) {
+    let stock = getRealInventoryStock(detailId, opName);
+    openSpotAuditModal(machine, detailId, opName, stock);
 }
 
 async function loadCheckedInWorkers() {
@@ -1776,8 +1830,8 @@ async function submitNewSpotAudit() {
 
     const partCode = (document.getElementById('auditPartSelect').value || '').trim();
     const op = (document.getElementById('auditOpInput').value || '').trim();
-    const expVal = document.getElementById('auditExpectedInput').value;
-    const expQty = parseFloat(expVal);
+    const expVal = (document.getElementById('auditExpectedInput').value || '').trim();
+    const expQty = (expVal === '' || expVal === null) ? 0 : parseFloat(expVal);
 
     if (!machine) {
         Swal.fire('Липсва машина', 'Моля, изберете работно място (машина)!', 'warning');
@@ -1792,7 +1846,7 @@ async function submitNewSpotAudit() {
         return;
     }
     if (isNaN(expQty) || expQty < 0) {
-        Swal.fire('Невалидно количество', 'Моля, въведете валидно очаквано количество!', 'warning');
+        Swal.fire('Невалидно количество', 'Моля, въведете валидно очаквано количество (0 или повече)!', 'warning');
         return;
     }
 
@@ -1805,7 +1859,7 @@ async function submitNewSpotAudit() {
         html: `Ще изпратите изненадваща проверка към <b>${escapeHtml(machine)}</b>:<br><br>
                Детайл: <b>${escapeHtml(partCode)}</b><br>
                Операция: <b>${escapeHtml(op)}</b><br>
-               Очаквани: <b style="color:#7c3aed; font-size:1.15em;">${expQty} бр.</b>
+               Очаквани по склад: <b style="color:#7c3aed; font-size:1.15em;">${expQty === 0 ? '0 бр. (Няма налични в склад)' : expQty + ' бр.'}</b>
                ${workerTargetDesc}`,
         icon: 'question',
         showCancelButton: true,

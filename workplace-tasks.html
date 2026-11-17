@@ -200,9 +200,10 @@
 
               <div>
                 <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 6px; font-size: 0.9em;">
-                  🔢 Очаквани бройки (по система):
+                  🔢 Очаквани бройки (по склад):
                 </label>
-                <input type="number" id="auditExpectedInput" min="0" placeholder="напр. 20" style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; font-size: 1.1em; color: #7e22ce; box-sizing: border-box;">
+                <input type="number" id="auditExpectedInput" min="0" placeholder="0 (Няма налични в склад)" style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; font-size: 1.1em; color: #7e22ce; box-sizing: border-box;">
+                <div id="auditStockInfoNote"></div>
               </div>
             </div>
 
@@ -311,6 +312,6 @@
       </div>
     </div>
 
-    <script src="workplace-tasks.js?v=15"></script>
+    <script src="workplace-tasks.js?v=16"></script>
 </body>
 </html>

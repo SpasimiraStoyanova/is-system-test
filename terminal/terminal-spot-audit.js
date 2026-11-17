@@ -132,66 +132,129 @@ function renderSpotAuditBanners(audits) {
                     </div>
                 </div>
 
-                <div style="font-size: 1.02em; font-weight: 700; color: #3b0764; margin-bottom: 14px; line-height: 1.4;">
-                    💬 По система пред машината трябва да има: <b style="font-size: 1.25em; color: #7e22ce; background: white; padding: 2px 8px; border-radius: 6px; border: 1px solid #d8b4fe;">${expQty} бр.</b>
-                    <br><span style="font-size: 0.92em; color: #581c87; font-weight: 600;">Моля, проверете бройките пред вас и потвърдете:</span>
-                </div>
+                ${expQty === 0 ? `
+                    <div style="font-size: 1.02em; font-weight: 700; color: #3b0764; margin-bottom: 14px; line-height: 1.4;">
+                        💬 В склада за тази операция се водят: <b style="font-size: 1.15em; color: #b45309; background: #fffbeb; padding: 2px 8px; border-radius: 6px; border: 1px solid #fde68a;">0 бр. (Няма налични)</b>
+                        <br><span style="font-size: 0.92em; color: #581c87; font-weight: 600;">Моля, проверете и потвърдете колко бройки физически има пред машината:</span>
+                    </div>
 
-                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch;">
-                    <button type="button" onclick="submitSpotAuditResponse(${audit.id}, ${expQty}, ${expQty})" style="
-                        flex: 1 1 200px;
-                        background: #16a34a;
-                        color: white;
-                        border: none;
-                        border-radius: 10px;
-                        padding: 13px 16px;
-                        font-size: 1.02em;
-                        font-weight: 900;
-                        cursor: pointer;
-                        box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        gap: 8px;
-                        transition: transform 0.1s;
-                    ">
-                        <span>👍 ДА, ТОЧНО ${expQty} БР.</span>
-                    </button>
-
-                    <div style="
-                        flex: 1 1 240px;
-                        display: flex;
-                        gap: 6px;
-                        background: white;
-                        border: 2px solid #d8b4fe;
-                        border-radius: 10px;
-                        padding: 4px;
-                    ">
-                        <input type="number" id="spot_input_${audit.id}" min="0" placeholder="Друг брой..." inputmode="numeric" style="
-                            flex: 1;
-                            min-width: 0;
-                            border: none;
-                            outline: none;
-                            font-size: 1.05em;
-                            font-weight: 800;
-                            padding: 8px 10px;
-                            color: #1e293b;
-                        ">
-                        <button type="button" onclick="submitSpotAuditCustom(${audit.id}, ${expQty})" style="
-                            background: #ea580c;
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch;">
+                        <button type="button" onclick="submitSpotAuditResponse(${audit.id}, 0, 0)" style="
+                            flex: 1 1 200px;
+                            background: #16a34a;
                             color: white;
                             border: none;
-                            border-radius: 8px;
-                            padding: 8px 14px;
-                            font-size: 0.92em;
-                            font-weight: 800;
+                            border-radius: 10px;
+                            padding: 13px 16px;
+                            font-size: 1.02em;
+                            font-weight: 900;
                             cursor: pointer;
-                            white-space: nowrap;
+                            box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            gap: 8px;
+                            transition: transform 0.1s;
                         ">
-                            ✏️ ПОТВЪРДИ
+                            <span>👍 ПОТВЪРЖДАВАМ: 0 БР. (Няма налични)</span>
                         </button>
+
+                        <div style="
+                            flex: 1 1 240px;
+                            display: flex;
+                            gap: 6px;
+                            background: white;
+                            border: 2px solid #d8b4fe;
+                            border-radius: 10px;
+                            padding: 4px;
+                        ">
+                            <input type="number" id="spot_input_${audit.id}" min="0" placeholder="Ако има бройки, въведете тук..." inputmode="numeric" style="
+                                flex: 1;
+                                min-width: 0;
+                                border: none;
+                                outline: none;
+                                font-size: 1.05em;
+                                font-weight: 800;
+                                padding: 8px 10px;
+                                color: #1e293b;
+                            ">
+                            <button type="button" onclick="submitSpotAuditCustom(${audit.id}, 0)" style="
+                                background: #ea580c;
+                                color: white;
+                                border: none;
+                                border-radius: 8px;
+                                padding: 8px 14px;
+                                font-size: 0.92em;
+                                font-weight: 800;
+                                cursor: pointer;
+                                white-space: nowrap;
+                            ">
+                                ✏️ ОТЧЕТИ
+                            </button>
+                        </div>
                     </div>
-                </div>
+                ` : `
+                    <div style="font-size: 1.02em; font-weight: 700; color: #3b0764; margin-bottom: 14px; line-height: 1.4;">
+                        💬 По склад за тази операция се водят: <b style="font-size: 1.25em; color: #7e22ce; background: white; padding: 2px 8px; border-radius: 6px; border: 1px solid #d8b4fe;">${expQty} бр.</b>
+                        <br><span style="font-size: 0.92em; color: #581c87; font-weight: 600;">Моля, проверете бройките пред вас и потвърдете:</span>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch;">
+                        <button type="button" onclick="submitSpotAuditResponse(${audit.id}, ${expQty}, ${expQty})" style="
+                            flex: 1 1 200px;
+                            background: #16a34a;
+                            color: white;
+                            border: none;
+                            border-radius: 10px;
+                            padding: 13px 16px;
+                            font-size: 1.02em;
+                            font-weight: 900;
+                            cursor: pointer;
+                            box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            gap: 8px;
+                            transition: transform 0.1s;
+                        ">
+                            <span>👍 ДА, ТОЧНО ${expQty} БР.</span>
+                        </button>
+
+                        <div style="
+                            flex: 1 1 240px;
+                            display: flex;
+                            gap: 6px;
+                            background: white;
+                            border: 2px solid #d8b4fe;
+                            border-radius: 10px;
+                            padding: 4px;
+                        ">
+                            <input type="number" id="spot_input_${audit.id}" min="0" placeholder="Друг брой..." inputmode="numeric" style="
+                                flex: 1;
+                                min-width: 0;
+                                border: none;
+                                outline: none;
+                                font-size: 1.05em;
+                                font-weight: 800;
+                                padding: 8px 10px;
+                                color: #1e293b;
+                            ">
+                            <button type="button" onclick="submitSpotAuditCustom(${audit.id}, ${expQty})" style="
+                                background: #ea580c;
+                                color: white;
+                                border: none;
+                                border-radius: 8px;
+                                padding: 8px 14px;
+                                font-size: 0.92em;
+                                font-weight: 800;
+                                cursor: pointer;
+                                white-space: nowrap;
+                            ">
+                                ✏️ ПОТВЪРДИ
+                            </button>
+                        </div>
+                    </div>
+                `}
             </div>
         `;
     });
@@ -220,9 +283,18 @@ async function submitSpotAuditResponse(auditId, expectedQty, reportedQty) {
     let diff = reportedQty - expectedQty;
     let isDiscrepancy = (diff !== 0);
 
-    let confirmMsg = isDiscrepancy 
-        ? `Ще отчетете разлика: преброени <b style="color:#dc2626; font-size:1.2em;">${reportedQty} бр.</b> (очаквани ${expectedQty} бр. | разлика: ${diff > 0 ? '+' : ''}${diff} бр.).<br><br>Потвърждавате ли, че физически сте преброили точно толкова?`
-        : `Потвърждавате, че пред машината има точно <b style="color:#16a34a; font-size:1.2em;">${reportedQty} бр.</b>`;
+    let confirmMsg = '';
+    if (isDiscrepancy) {
+        if (expectedQty === 0) {
+            confirmMsg = `В склада се водят <b>0 бр.</b>, а отчитате намерени пред машината <b style="color:#dc2626; font-size:1.2em;">${reportedQty} бр.</b><br><br>Потвърждавате ли, че физически има толкова бройки?`;
+        } else {
+            confirmMsg = `Ще отчетете разлика: преброени <b style="color:#dc2626; font-size:1.2em;">${reportedQty} бр.</b> (в склада се водят: ${expectedQty} бр. | разлика: ${diff > 0 ? '+' : ''}${diff} бр.).<br><br>Потвърждавате ли, че физически сте преброили точно толкова?`;
+        }
+    } else {
+        confirmMsg = (expectedQty === 0)
+            ? `Потвърждавате, че пред машината <b>няма налични бройки (0 бр.)</b>, както се води и по склад.`
+            : `Потвърждавате, че пред машината има точно <b style="color:#16a34a; font-size:1.2em;">${reportedQty} бр.</b>, както се води по склад.`;
+    }
 
     const confirmRes = await Swal.fire({
         title: isDiscrepancy ? '⚠️ Разминаване в бройките' : 'Потвърждение на ревизия',
