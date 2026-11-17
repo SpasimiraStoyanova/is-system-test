@@ -1,6 +1,6 @@
 /**
  * AMCI Automated Weekly Executive Report
- * Sends every Monday at 10:00 AM to sstoyanova.amci@gmail.com
+ * Sends every Monday morning by 08:30 AM to sstoyanova.amci@gmail.com
  */
 
 const SUPABASE_URL = 'https://zdythzcgcjxwbxufunuh.supabase.co';
@@ -151,7 +151,7 @@ async function run() {
                   </td>
                   <td align="right">
                     <span style="background:rgba(13, 148, 136, 0.2); color:#2dd4bf; border:1px solid #0d9488; padding:6px 14px; border-radius:20px; font-size:12px; font-weight:700;">
-                      Понеделник 10:00 ч.
+                      Понеделник 08:30 ч.
                     </span>
                   </td>
                 </tr>
@@ -297,7 +297,7 @@ async function run() {
           <tr>
             <td style="background:#f8fafc; padding:20px 32px; border-top:1px solid #e2e8f0; font-size:12px; color:#94a3b8; text-align:center;">
               Този имейл е генериран автоматично за <b>${RECIPIENT_EMAIL}</b> от облачната система AMCI MES/ERP.<br>
-              График на изпращане: Всеки понеделник в 10:00 ч.
+              График на изпращане: Всеки понеделник сутрин до 08:30 ч.
             </td>
           </tr>
 
