@@ -1,15 +1,33 @@
 // packing-actions.js - Действия за Опаковане (Отчитане на опаковани детайли & Разпределяне в кашони)
 
 // -------------------------------------------------------------
-// 1. Помощни функции за интерфейса
+// 1. Помощни функции за интерфейса в Таб 1 (Опаковане)
 // -------------------------------------------------------------
 
-function updateTaskBtnQty(taskId) {
-    let inp = document.getElementById('qty_' + taskId);
+function updateTaskBtn(taskId) {
+    let qtyInp = document.getElementById('qty_' + taskId);
+    let boxInp = document.getElementById('box_' + taskId);
+    let btn = document.getElementById('btn_' + taskId);
     let span = document.getElementById('btnQtySpan_' + taskId);
-    if (inp && span) {
-        let v = parseFloat(inp.value) || 0;
-        span.innerText = v;
+    let hint = document.getElementById('btnHint_' + taskId);
+
+    let qty = parseFloat(qtyInp ? qtyInp.value : 0) || 0;
+    let box = boxInp ? boxInp.value.trim() : '';
+
+    if (span) span.innerText = qty;
+
+    if (btn) {
+        if (box) {
+            btn.style.backgroundColor = '#2563eb';
+            btn.style.boxShadow = '0 4px 8px rgba(37, 99, 235, 0.3)';
+            btn.innerHTML = `📦 ЗАПИШИ В КАШОН № ${escapeHtml(box)} (${qty} бр.)`;
+            if (hint) hint.innerHTML = `ℹ️ Детайлите ще се запишат директно в <b>Кашон № ${escapeHtml(box)}</b>`;
+        } else {
+            btn.style.backgroundColor = '#16a34a';
+            btn.style.boxShadow = '0 4px 8px rgba(22, 163, 74, 0.3)';
+            btn.innerHTML = `✅ ОТЧЕТИ КАТО ОПАКОВАНИ (${qty} бр.)`;
+            if (hint) hint.innerHTML = `ℹ️ Кашонът е празен — детайлите ще отидат в таб <b>„За кашони“</b>`;
+        }
     }
 }
 
@@ -17,27 +35,24 @@ function setTaskQtyMax(taskId, maxVal) {
     let inp = document.getElementById('qty_' + taskId);
     if (inp) {
         inp.value = maxVal;
-        updateTaskBtnQty(taskId);
+        updateTaskBtn(taskId);
     }
 }
 
-function toggleQuickBoxInput(taskId) {
-    let area = document.getElementById('quickBoxArea_' + taskId);
-    if (area) {
-        area.style.display = (area.style.display === 'none' || area.style.display === '') ? 'block' : 'none';
-    }
-}
+// -------------------------------------------------------------
+// 2. Помощни функции за интерфейса в Таб 2 (За кашони)
+// -------------------------------------------------------------
 
-function setAssignMaxQty(key, maxVal) {
-    let inp = document.getElementById('assign_qty_' + key);
+function setAssignMaxQty(safeId, maxVal) {
+    let inp = document.getElementById('assign_qty_' + safeId);
     if (inp) {
         inp.value = maxVal;
         updateBoxAssignmentSummary();
     }
 }
 
-function setAssignZeroQty(key) {
-    let inp = document.getElementById('assign_qty_' + key);
+function setAssignZeroQty(safeId) {
+    let inp = document.getElementById('assign_qty_' + safeId);
     if (inp) {
         inp.value = 0;
         updateBoxAssignmentSummary();
@@ -67,7 +82,7 @@ function updateBoxAssignmentSummary() {
             btn.disabled = false;
             btn.style.opacity = '1';
             btn.style.cursor = 'pointer';
-            btn.innerHTML = `📦 ПРИБЕРИ ${totalQty} бр. В КАШОН № ${boxNum}`;
+            btn.innerHTML = `📦 ПРИБЕРИ ${totalQty} бр. В КАШОН № ${escapeHtml(boxNum)}`;
         } else {
             btn.disabled = true;
             btn.style.opacity = '0.5';
@@ -78,10 +93,11 @@ function updateBoxAssignmentSummary() {
 }
 
 // -------------------------------------------------------------
-// 2. СТЪПКА 1: Отчитане на опаковани детайли (без кашон)
+// 3. Единен бутон в Таб 1: Отчитане на опаковане
+// (Ако кашонът е празен -> отива в За кашони; ако е попълнен -> директно в кашона)
 // -------------------------------------------------------------
 
-async function reportPackedWithoutBox(taskId, btn) {
+async function handlePackingSubmit(taskId, btn) {
     let taskData = globalTasks.find(t => t.id === taskId);
     if (!taskData) {
         Swal.fire('Грешка', 'Задачата не е намерена в паметта! (ID: ' + taskId + ')', 'error');
@@ -89,12 +105,16 @@ async function reportPackedWithoutBox(taskId, btn) {
     }
 
     let qtyInput = document.getElementById('qty_' + taskId);
+    let boxInput = document.getElementById('box_' + taskId);
+
     if (!qtyInput) {
         Swal.fire('Грешка', 'Полето за количество не е намерено!', 'error');
         return;
     }
 
     let val = parseFloat(qtyInput.value);
+    let boxNum = boxInput ? boxInput.value.trim() : '';
+
     if (isNaN(val) || val <= 0) { 
         Swal.fire('Грешка', 'Въведете валидна бройка за опаковане!', 'error'); 
         return; 
@@ -104,145 +124,122 @@ async function reportPackedWithoutBox(taskId, btn) {
         return; 
     }
 
-    Swal.fire({ 
-        title: 'Потвърждаване на опаковане', 
-        html: `Ще отчетете <b style="color:#16a34a; font-size:1.3em;">${val} бр.</b> опаковани от:<br><b style="font-size:1.1em; color:#1e293b;">${taskData.name}</b><br><span style="color:#64748b; font-size:0.9em;">(План: ${taskData.plan_name})</span><br><br><div style="background:#e0f2fe; color:#0369a1; padding:8px 12px; border-radius:8px; font-size:0.88em; text-align:left; line-height:1.4;">ℹ️ Детайлите ще се запишат като <b>опаковани</b> и ще се наредят в таб <b>„За кашони“</b>, откъдето можете да ги сложите в кашон когато решите.</div>`, 
-        icon: 'question', 
-        showCancelButton: true, 
-        confirmButtonColor: '#16a34a', 
-        confirmButtonText: '✅ ДА, ОТЧЕТИ ОПАКОВАНИ', 
-        cancelButtonText: 'Отказ'
-    }).then(async (result) => {
-        if (result.isConfirmed) {
-            btn.disabled = true; 
-            btn.innerHTML = "ЗАПИС..."; 
-            Swal.fire({ title: 'Запис на отчета...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
-            
-            try {
-                let inserts = [{ 
-                    "ID План": taskData.plan_id, 
-                    "ID Детайл": taskData.name, 
-                    "Оператор": currentOperator, 
-                    "Количество": val, 
-                    "Операция": "Опаковане", 
-                    "Статус": "Отчетено", 
-                    "Дата": new Date().toISOString(), 
-                    "Време Старт": new Date().toISOString() 
-                }];
-
-                const { error } = await client.from('otcheti').insert(inserts);
-                if (error) throw error;
-                
-                if (val >= taskData.target) {
-                    await client.from('plan').update({ 'Статус': '📦 Опакован' }).eq('id', taskData.plan_id);
-                }
-                
-                addLogToHistory('ОПАКОВАНИ (без кашон)', val, taskData.name); 
-                
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Успешно!',
-                    html: `Опаковани: <b>${val} бр.</b> от ${taskData.name}.<br><br>Искате ли да преминете към разпределяне по кашони или да продължите с опаковане?`,
-                    showCancelButton: true,
-                    confirmButtonText: '📦 КЪМ КАШОНИТЕ',
-                    cancelButtonText: 'Остани тук',
-                    confirmButtonColor: '#2563eb'
-                }).then((navRes) => {
-                    if (navRes.isConfirmed) {
-                        switchPackingTab('boxes');
-                    }
-                    loadTasks(true);
-                });
-            } catch(err) { 
-                Swal.fire('❌ Грешка при запис', err.message, 'error'); 
-                btn.disabled = false; 
-                btn.innerHTML = "✅ ОТЧЕТИ КАТО ОПАКОВАНИ"; 
-            }
-        }
-    });
-}
-
-// -------------------------------------------------------------
-// 3. Бързо опаковане с директно избран кашон (по избор от таб 1)
-// -------------------------------------------------------------
-
-async function finishPackingTaskWithBox(taskId, btn) {
-    let taskData = globalTasks.find(t => t.id === taskId);
-    if (!taskData) {
-        Swal.fire('Грешка', 'Задачата не е намерена!', 'error');
-        return;
-    }
-
-    let qtyInput = document.getElementById('qty_' + taskId);
-    let boxInput = document.getElementById('quick_box_' + taskId);
-
-    if (!qtyInput || !boxInput) {
-        Swal.fire('Грешка', 'Полетата за въвеждане липсват!', 'error');
-        return;
-    }
-
-    let val = parseFloat(qtyInput.value);
-    let boxNum = boxInput.value.trim();
-
-    if (isNaN(val) || val <= 0) { 
-        Swal.fire('Грешка', 'Въведете валидна бройка!', 'error'); 
-        return; 
-    }
-    if (val > taskData.available) { 
-        Swal.fire('Невъзможно', `Разполагате само с ${taskData.available} бр. готови за опаковане!`, 'error'); 
-        return; 
-    }
     if (boxNum === '') {
-        Swal.fire('Грешка', 'Въведете номер на кашон!', 'error'); 
-        return; 
-    }
-
-    Swal.fire({ 
-        title: 'Запис в кашон', 
-        html: `Ще отчетете <b style="color:#16a34a; font-size:1.25em;">${val} бр.</b> от <b>${taskData.name}</b><br>в кашон: <b style="color:#0369a1; font-size:1.25em;">${boxNum}</b>.`, 
-        icon: 'question', 
-        showCancelButton: true, 
-        confirmButtonColor: '#0284c7', 
-        confirmButtonText: '📦 ДА, ЗАПИШИ В ТОЗИ КАШОН', 
-        cancelButtonText: 'Отказ'
-    }).then(async (result) => {
-        if (result.isConfirmed) {
-            btn.disabled = true; 
-            btn.innerHTML = "ЗАПИС..."; 
-            Swal.fire({ title: 'Запис на отчета...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
-            
-            try {
-                let inserts = [{ 
-                    "ID План": taskData.plan_id, 
-                    "ID Детайл": taskData.name, 
-                    "Оператор": currentOperator, 
-                    "Количество": val, 
-                    "Операция": "Опаковане - Кашон № " + boxNum, 
-                    "Статус": "Отчетено", 
-                    "Дата": new Date().toISOString(), 
-                    "Време Старт": new Date().toISOString() 
-                }];
-
-                const { error } = await client.from('otcheti').insert(inserts);
-                if (error) throw error;
+        // Кашонът е ПРАЗЕН -> Опаковане без кашон (отиват в таб "За кашони")
+        Swal.fire({ 
+            title: 'Потвърждаване на опаковане', 
+            html: `Ще отчетете <b style="color:#16a34a; font-size:1.3em;">${val} бр.</b> опаковани от:<br><b style="font-size:1.15em; color:#0f172a;">${escapeHtml(taskData.name)}</b><br><span style="color:#64748b; font-size:0.9em;">(План: ${escapeHtml(taskData.plan_name)})</span><br><br><div style="background:#e0f2fe; color:#0369a1; padding:10px 14px; border-radius:10px; font-size:0.9em; text-align:left; line-height:1.4;">ℹ️ Полето за кашон е празно. Детайлите ще се отчетат като <b>опаковани</b> и ще отидат в таб <b>„За кашони“</b>, откъдето колегата може да ги разпредели в кашон по-късно.</div>`, 
+            icon: 'question', 
+            showCancelButton: true, 
+            confirmButtonColor: '#16a34a', 
+            confirmButtonText: '✅ ДА, ОТЧЕТИ ОПАКОВАНИ', 
+            cancelButtonText: 'Отказ'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                btn.disabled = true; 
+                btn.innerHTML = "ЗАПИС..."; 
+                Swal.fire({ title: 'Запис на отчета...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
                 
-                if (val >= taskData.target) {
-                    await client.from('plan').update({ 'Статус': '📦 Опакован' }).eq('id', taskData.plan_id);
+                try {
+                    let inserts = [{ 
+                        "ID План": taskData.plan_id, 
+                        "ID Детайл": taskData.name, 
+                        "Оператор": currentOperator, 
+                        "Количество": val, 
+                        "Операция": "Опаковане", 
+                        "Статус": "Отчетено", 
+                        "Дата": new Date().toISOString(), 
+                        "Време Старт": new Date().toISOString() 
+                    }];
+
+                    const { error } = await client.from('otcheti').insert(inserts);
+                    if (error) throw error;
+                    
+                    if (val >= taskData.target) {
+                        await client.from('plan').update({ 'Статус': '📦 Опакован' }).eq('id', taskData.plan_id);
+                    }
+                    
+                    addLogToHistory('ОПАКОВАНИ (без кашон)', val, taskData.name); 
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Успешно отчетени!',
+                        html: `Опаковани: <b>${val} бр.</b> от ${escapeHtml(taskData.name)}.<br><br>Детайлите преминаха в таб <b>„За кашони“</b>.`,
+                        showCancelButton: true,
+                        confirmButtonText: '📦 КЪМ ТАБ ЗА КАШОНИ',
+                        cancelButtonText: 'Остани тук',
+                        confirmButtonColor: '#2563eb'
+                    }).then((navRes) => {
+                        if (navRes.isConfirmed) {
+                            switchPackingTab('boxes');
+                        }
+                        loadTasks(true);
+                    });
+                } catch(err) { 
+                    Swal.fire('❌ Грешка при запис', err.message, 'error'); 
+                    btn.disabled = false; 
+                    updateTaskBtn(taskId);
                 }
-                
-                addLogToHistory('КАШОН ' + boxNum, val, taskData.name); 
-                Swal.fire({ icon: 'success', title: 'Успешно!', text: 'Опаковани: ' + val + ' бр. в Кашон № ' + boxNum, timer: 2000, showConfirmButton: false }).then(() => { loadTasks(true); });
-            } catch(err) { 
-                Swal.fire('❌ Грешка при запис', err.message, 'error'); 
-                btn.disabled = false; 
-                btn.innerHTML = "📦 Запиши директно в този кашон"; 
             }
-        }
-    });
+        });
+    } else {
+        // Кашонът е ПОПЪЛНЕН -> Директен запис в съответния кашон
+        Swal.fire({ 
+            title: `Запис в Кашон № ${boxNum}`, 
+            html: `Ще отчетете <b style="color:#2563eb; font-size:1.3em;">${val} бр.</b> от:<br><b style="font-size:1.15em; color:#0f172a;">${escapeHtml(taskData.name)}</b><br><span style="color:#64748b; font-size:0.9em;">(План: ${escapeHtml(taskData.plan_name)})</span><br><br>директно в <b style="color:#0369a1; font-size:1.25em;">Кашон № ${escapeHtml(boxNum)}</b>.`, 
+            icon: 'question', 
+            showCancelButton: true, 
+            confirmButtonColor: '#2563eb', 
+            confirmButtonText: '📦 ДА, ЗАПИШИ В ТОЗИ КАШОН', 
+            cancelButtonText: 'Отказ'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                btn.disabled = true; 
+                btn.innerHTML = "ЗАПИС..."; 
+                Swal.fire({ title: 'Запис на отчета...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+                
+                try {
+                    let inserts = [{ 
+                        "ID План": taskData.plan_id, 
+                        "ID Детайл": taskData.name, 
+                        "Оператор": currentOperator, 
+                        "Количество": val, 
+                        "Операция": "Опаковане - Кашон № " + boxNum, 
+                        "Статус": "Отчетено", 
+                        "Дата": new Date().toISOString(), 
+                        "Време Старт": new Date().toISOString() 
+                    }];
+
+                    const { error } = await client.from('otcheti').insert(inserts);
+                    if (error) throw error;
+                    
+                    if (val >= taskData.target) {
+                        await client.from('plan').update({ 'Статус': '📦 Опакован' }).eq('id', taskData.plan_id);
+                    }
+                    
+                    addLogToHistory('КАШОН ' + boxNum, val, taskData.name); 
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Успешно!',
+                        html: `Записани: <b>${val} бр.</b> в <b>Кашон № ${escapeHtml(boxNum)}</b>.`,
+                        timer: 2000,
+                        showConfirmButton: false
+                    }).then(() => {
+                        loadTasks(true);
+                    });
+                } catch(err) { 
+                    Swal.fire('❌ Грешка при запис', err.message, 'error'); 
+                    btn.disabled = false; 
+                    updateTaskBtn(taskId);
+                }
+            }
+        });
+    }
 }
 
 // -------------------------------------------------------------
-// 4. СТЪПКА 2: Разпределяне на вече опаковани детайли по кашони
+// 4. Разпределяне на детайли от Таб 2 (За кашони)
 // -------------------------------------------------------------
 
 async function executeBoxAssignment(btn) {
@@ -257,15 +254,14 @@ async function executeBoxAssignment(btn) {
     let assignments = [];
     let totalQty = 0;
 
-    globalUnboxedItems.forEach(item => {
-        let inp = document.getElementById('assign_qty_' + item.key);
-        if (inp) {
-            let v = parseFloat(inp.value) || 0;
-            if (v > 0) {
-                assignments.push({
-                    item: item,
-                    qty: v
-                });
+    let inputs = document.querySelectorAll('.assign-qty-input');
+    inputs.forEach(inp => {
+        let v = parseFloat(inp.value) || 0;
+        if (v > 0) {
+            let idx = parseInt(inp.dataset.index);
+            let item = globalUnboxedItems[idx];
+            if (item) {
+                assignments.push({ item, qty: v });
                 totalQty += v;
             }
         }
@@ -276,11 +272,11 @@ async function executeBoxAssignment(btn) {
         return;
     }
 
-    let itemsSummaryHtml = assignments.map(a => `• <b>${a.item.name}</b>: <b style="color:#0284c7;">${a.qty} бр.</b> <span style="color:#64748b; font-size:0.85em;">(${a.item.plan_name})</span>`).join('<br>');
+    let itemsSummaryHtml = assignments.map(a => `• <b>${escapeHtml(a.item.name)}</b>: <b style="color:#0284c7;">${a.qty} бр.</b> <span style="color:#64748b; font-size:0.85em;">(${escapeHtml(a.item.plan_name)})</span>`).join('<br>');
 
     Swal.fire({
         title: `Кашон № ${boxNum}`,
-        html: `Сигурни ли сте, че поставяте в <b style="color:#0369a1; font-size:1.2em;">Кашон № ${boxNum}</b>:<br><br><div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:12px; text-align:left; font-size:0.95em;">${itemsSummaryHtml}<br><hr style="border:none; border-top:1px dashed #cbd5e1; margin:8px 0;"><div style="font-weight:900; color:#0f172a; text-align:right;">Общо за кашона: ${totalQty} бр.</div></div>`,
+        html: `Сигурни ли сте, че поставяте в <b style="color:#0369a1; font-size:1.2em;">Кашон № ${escapeHtml(boxNum)}</b>:<br><br><div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:12px; text-align:left; font-size:0.95em;">${itemsSummaryHtml}<br><hr style="border:none; border-top:1px dashed #cbd5e1; margin:8px 0;"><div style="font-weight:900; color:#0f172a; text-align:right;">Общо за кашона: ${totalQty} бр.</div></div>`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#2563eb',
@@ -293,12 +289,10 @@ async function executeBoxAssignment(btn) {
             Swal.fire({ title: 'Разпределяне в кашона...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
             try {
-                // Изпълняваме преразпределението за всеки избран детайл
                 for (let a of assignments) {
                     let remainingToAssign = a.qty;
                     let item = a.item;
 
-                    // Сортираме отчетите за този детайл по дата (най-старите първо)
                     let reports = [...item.reports].sort((r1, r2) => {
                         let t1 = new Date(r1['Време Старт'] || r1['Дата']).getTime();
                         let t2 = new Date(r2['Време Старт'] || r2['Дата']).getTime();
@@ -310,7 +304,6 @@ async function executeBoxAssignment(btn) {
                         let rQty = parseFloat(r['Количество']) || 0;
 
                         if (rQty <= remainingToAssign) {
-                            // Целият ред отива в този кашон
                             const { error: updErr } = await client
                                 .from('otcheti')
                                 .update({ "Операция": "Опаковане - Кашон № " + boxNum })
@@ -319,18 +312,15 @@ async function executeBoxAssignment(btn) {
 
                             remainingToAssign -= rQty;
                         } else {
-                            // Част от реда отива в този кашон, остатъкът остава чакащ
                             let keepInUnboxed = rQty - remainingToAssign;
                             let assignToBox = remainingToAssign;
 
-                            // 1. Намаляваме съществуващия ред (остава без кашон)
                             const { error: updErr } = await client
                                 .from('otcheti')
                                 .update({ "Количество": keepInUnboxed })
                                 .eq('id', r.id);
                             if (updErr) throw updErr;
 
-                            // 2. Вмъкваме нов ред с номера на кашона
                             const { error: insErr } = await client
                                 .from('otcheti')
                                 .insert([{
@@ -355,7 +345,7 @@ async function executeBoxAssignment(btn) {
                 Swal.fire({
                     icon: 'success',
                     title: 'Готово!',
-                    html: `Кашон <b>№ ${boxNum}</b> беше оформен успешно с общо <b>${totalQty} бр.</b>!`,
+                    html: `Кашон <b>№ ${escapeHtml(boxNum)}</b> беше оформен успешно с общо <b>${totalQty} бр.</b>!`,
                     confirmButtonText: 'ОК',
                     confirmButtonColor: '#2563eb'
                 }).then(() => {
@@ -366,17 +356,20 @@ async function executeBoxAssignment(btn) {
                 console.error("Box assignment error:", err);
                 Swal.fire('❌ Грешка при запис', err.message, 'error');
                 btn.disabled = false;
-                btn.innerHTML = `📦 ПРИБЕРИ ${totalQty} бр. В КАШОН № ${boxNum}`;
+                btn.innerHTML = `📦 ПРИБЕРИ ${totalQty} бр. В КАШОН № ${escapeHtml(boxNum)}`;
             }
         }
     });
 }
 
 // -------------------------------------------------------------
-// 5. Управление на готови кашони (Преименуване & Разопаковане)
+// 5. Управление на готови кашони (по индекс от window.__boxedCartonList)
 // -------------------------------------------------------------
 
-async function renameBoxNumber(oldBoxNum) {
+async function renameBoxByIndex(idx) {
+    let oldBoxNum = window.__boxedCartonList && window.__boxedCartonList[idx];
+    if (!oldBoxNum) return;
+
     const { value: newBoxNum } = await Swal.fire({
         title: 'Промяна на номер на кашон',
         input: 'text',
@@ -399,24 +392,14 @@ async function renameBoxNumber(oldBoxNum) {
         Swal.fire({ title: 'Преименуване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
         try {
-            // Търсим всички отчети с този кашон
-            const { data: rowsToUpdate, error: fetchErr } = await client
+            const { error: updErr } = await client
                 .from('otcheti')
-                .select('id, Операция')
+                .update({ "Операция": "Опаковане - Кашон № " + cleanNewBox })
                 .eq('Операция', 'Опаковане - Кашон № ' + oldBoxNum);
             
-            if (fetchErr) throw fetchErr;
+            if (updErr) throw updErr;
 
-            if (rowsToUpdate && rowsToUpdate.length > 0) {
-                const { error: updErr } = await client
-                    .from('otcheti')
-                    .update({ "Операция": "Опаковане - Кашон № " + cleanNewBox })
-                    .eq('Операция', 'Опаковане - Кашон № ' + oldBoxNum);
-                
-                if (updErr) throw updErr;
-            }
-
-            Swal.fire('Успешно!', `Кашон № ${oldBoxNum} беше преименуван на № ${cleanNewBox}.`, 'success').then(() => {
+            Swal.fire('Успешно!', `Кашон № ${escapeHtml(oldBoxNum)} беше преименуван на № ${escapeHtml(cleanNewBox)}.`, 'success').then(() => {
                 loadTasks(true);
             });
         } catch (err) {
@@ -425,13 +408,16 @@ async function renameBoxNumber(oldBoxNum) {
     }
 }
 
-async function unpackBox(boxNum) {
+async function unpackBoxByIndex(idx) {
+    let boxNum = window.__boxedCartonList && window.__boxedCartonList[idx];
+    if (!boxNum) return;
+
     let box = globalBoxedCartons[boxNum];
     let countInfo = box ? `с общо <b>${box.totalQty} бр.</b>` : '';
 
     Swal.fire({
         title: 'Разопаковане на кашон?',
-        html: `Сигурни ли сте, че искате да разопаковате <b style="color:#dc2626;">Кашон № ${boxNum}</b> ${countInfo}?<br><br><span style="font-size:0.9em; color:#475569;">Детайлите от този кашон ще се върнат в таб <b>„За кашони“</b> и ще можете да ги разпределите наново.</span>`,
+        html: `Сигурни ли сте, че искате да разопаковате <b style="color:#dc2626;">Кашон № ${escapeHtml(boxNum)}</b> ${countInfo}?<br><br><span style="font-size:0.9em; color:#475569;">Детайлите от този кашон ще се върнат в таб <b>„За кашони“</b> и ще можете да ги разпределите наново.</span>`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#dc2626',
@@ -449,7 +435,7 @@ async function unpackBox(boxNum) {
                 
                 if (updErr) throw updErr;
 
-                Swal.fire('Разопакован!', `Детайлите от Кашон № ${boxNum} бяха върнати в чакащи за кашон.`, 'success').then(() => {
+                Swal.fire('Разопакован!', `Детайлите от Кашон № ${escapeHtml(boxNum)} бяха върнати в чакащи за кашон.`, 'success').then(() => {
                     loadTasks(true);
                 });
             } catch (err) {
@@ -480,8 +466,8 @@ function updateHistoryUI() {
 
         html += `<li class="history-item">
             <span class="h-time">${h.time}</span>
-            <span class="h-type" style="background:${bg}; color:${color};">${h.type}</span>
-            <span class="h-name">${h.name}</span>
+            <span class="h-type" style="background:${bg}; color:${color};">${escapeHtml(h.type)}</span>
+            <span class="h-name">${escapeHtml(h.name)}</span>
             <span class="h-qty">${h.qty} бр.</span>
         </li>`;
     });

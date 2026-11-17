@@ -5,6 +5,7 @@ let globalUnboxedItems = [];     // Опаковани детайли, чака�
 let globalBoxedCartons = {};     // Оформени кашони с техните детайли
 let currentActiveMonth = '';
 let currentActiveYear = '';
+window.__boxedCartonList = [];   // Безопасен масив за кашоните
 
 function switchPackingTab(tabName) {
     currentPackingTab = tabName;
@@ -171,7 +172,6 @@ async function loadTasks(isSilent = false) {
                     let unboxedKey = code + '___' + rawPId;
                     if (!unboxedMap[unboxedKey]) {
                         unboxedMap[unboxedKey] = {
-                            key: unboxedKey,
                             code: code,
                             name: code.toUpperCase(),
                             internalName: namesMap[code] || '',
@@ -222,10 +222,10 @@ async function loadTasks(isSilent = false) {
         // 3. Обновяваме броячите в табовете
         updateTabBadges();
 
-        // 4. Рендерираме активния изглед
+        // 4. Рендерираме активния изглед (без да прекъсваме писането на потребителя)
         if (currentPackingTab === 'tasks') {
             let activeEl = document.activeElement;
-            let isUserEditing = activeEl && activeEl.tagName === 'INPUT' && activeEl.id && activeEl.id.startsWith('qty_');
+            let isUserEditing = activeEl && activeEl.tagName === 'INPUT' && activeEl.id && (activeEl.id.startsWith('qty_') || activeEl.id.startsWith('box_'));
             if (!isSilent || !isUserEditing) {
                 renderTasks(globalTasks);
             }
@@ -334,37 +334,30 @@ function renderTasks(tasks) {
             ${unboxedNoticeHtml}
             
             <div style="background-color: #f8fafc; padding: 16px; border-radius: 14px; border: 2px solid #bae6fd;">
-                <p style="color: #0369a1; font-weight: 900; text-align:center; margin-top:0; margin-bottom: 12px; font-size: 1.1em; letter-spacing: 0.3px;">
+                <p style="color: #0369a1; font-weight: 900; text-align:center; margin-top:0; margin-bottom: 14px; font-size: 1.1em; letter-spacing: 0.3px;">
                     📦 ОПАКОВАЙ ДЕТАЙЛИ
                 </p>
                 
-                <label style="font-weight: 800; color: #475569; display: block; margin-bottom: 6px; font-size: 0.9em;">
-                    Брой детайли за опаковане:
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 6px; font-size: 0.9em;">
+                    Брой детайли за опаковане: <span style="color:#dc2626;">*</span>
                 </label>
                 <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 14px;">
-                    <input type="number" id="qty_${t.id}" min="1" max="${t.available}" value="${maxCanPack}" class="box-input" inputmode="numeric" style="margin-bottom: 0; font-size: 1.25em;" oninput="updateTaskBtnQty('${t.id}')">
+                    <input type="number" id="qty_${t.id}" min="1" max="${t.available}" value="${maxCanPack}" class="box-input" inputmode="numeric" style="margin-bottom: 0; font-size: 1.25em;" oninput="updateTaskBtn('${t.id}')">
                     <button type="button" onclick="setTaskQtyMax('${t.id}', ${t.available})" style="background: #e2e8f0; border: none; border-radius: 8px; padding: 12px 14px; font-weight: 900; color: #334155; cursor: pointer; white-space: nowrap;">
                         MAX
                     </button>
                 </div>
-                
-                <button class="btn" id="btn_${t.id}" onclick="reportPackedWithoutBox('${t.id}', this)" style="background-color: #16a34a; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 900; box-shadow: 0 4px 8px rgba(22, 163, 74, 0.3); border-radius: 12px;">
-                    ✅ ОТЧЕТИ КАТО ОПАКОВАНИ (<span id="btnQtySpan_${t.id}">${maxCanPack}</span> бр.)
-                </button>
 
-                <div style="margin-top: 12px; text-align: center;">
-                    <a href="javascript:void(0)" onclick="toggleQuickBoxInput('${t.id}')" style="color: #64748b; font-size: 0.85em; font-weight: 700; text-decoration: underline;">
-                        Или въведи номер на кашон още сега (по избор) ▾
-                    </a>
-                    <div id="quickBoxArea_${t.id}" style="display:none; margin-top: 10px; padding: 12px; background: #e0f2fe; border-radius: 10px; border: 1.5px solid #7dd3fc; text-align: left;">
-                        <label style="font-weight: 800; color: #0369a1; display: block; margin-bottom: 4px; font-size: 0.85em;">
-                            Номер на кашон:
-                        </label>
-                        <input type="text" id="quick_box_${t.id}" class="box-input" placeholder="Въведи номер на кашон" style="margin-bottom: 10px; font-size: 1.05em; background: white;">
-                        <button type="button" class="btn" onclick="finishPackingTaskWithBox('${t.id}', this)" style="background-color: #0284c7; width: 100%; font-size: 0.95em; padding: 11px; border-radius: 8px;">
-                            📦 Запиши директно в този кашон
-                        </button>
-                    </div>
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 6px; font-size: 0.9em;">
+                    Кашон №: <span style="font-weight: 600; color: #64748b; font-size: 0.88em;">(по избор — оставете празно, ако още не е в кашон)</span>
+                </label>
+                <input type="text" id="box_${t.id}" class="box-input" placeholder="Въведи номер на кашон (или остави празно)" style="margin-bottom: 12px; font-size: 1.1em; background: white;" oninput="updateTaskBtn('${t.id}')">
+                
+                <button class="btn" id="btn_${t.id}" onclick="handlePackingSubmit('${t.id}', this)" style="background-color: #16a34a; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 900; box-shadow: 0 4px 8px rgba(22, 163, 74, 0.3); border-radius: 12px; transition: all 0.2s ease;">
+                    ✅ ОТЧЕТИ ОПАКОВАНИ (<span id="btnQtySpan_${t.id}">${maxCanPack}</span> бр.)
+                </button>
+                <div id="btnHint_${t.id}" style="font-size: 0.82em; color: #64748b; text-align: center; margin-top: 6px; font-weight: 600;">
+                    ℹ️ Кашонът е празен — детайлите ще отидат в таб <b>„За кашони“</b>
                 </div>
             </div>
           </div>`;
@@ -382,7 +375,7 @@ function renderUnboxedBoxDistribution() {
                 <div style="font-size: 4em; margin-bottom: 10px;">📦</div>
                 <h3 style="color: #1e293b; margin-top: 0; font-size: 1.4em;">Няма детайли, чакащи кашон</h3>
                 <p style="color: #64748b; font-size: 1em; line-height: 1.5; margin-bottom: 25px;">
-                    Когато опаковате детайли от таб <b>„Опаковане“</b>, те автоматично се появяват тук. След това можете да изберете кои детайли в кой номер кашон да поставите.
+                    Когато опаковате детайли от таб <b>„Опаковане“</b> без номер на кашон, те автоматично се появяват тук. След това можете да изберете кои детайли в кой номер кашон да поставите.
                 </p>
                 <button type="button" class="btn" onclick="switchPackingTab('tasks')" style="background-color: #16a34a; padding: 14px 24px; font-size: 1.1em; font-weight: 800; border-radius: 12px;">
                     🟢 Отиди към Опаковане
@@ -392,14 +385,15 @@ function renderUnboxedBoxDistribution() {
     }
 
     let itemsHtml = '';
-    globalUnboxedItems.forEach(item => {
+    globalUnboxedItems.forEach((item, index) => {
+        let safeId = 'ub_' + index;
         itemsHtml += `
             <div class="unboxed-row" style="background: white; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                     <div>
-                        <div style="font-weight: 900; color: #0f172a; font-size: 1.15em;">${item.name}</div>
-                        ${item.internalName ? `<div style="font-size: 0.88em; color: #64748b; font-weight: 700;">${item.internalName}</div>` : ''}
-                        <div style="font-size: 0.8em; color: #d97706; font-weight: 800; margin-top: 2px;">ПЛАН: ${item.plan_name}</div>
+                        <div style="font-weight: 900; color: #0f172a; font-size: 1.15em;">${escapeHtml(item.name)}</div>
+                        ${item.internalName ? `<div style="font-size: 0.88em; color: #64748b; font-weight: 700;">${escapeHtml(item.internalName)}</div>` : ''}
+                        <div style="font-size: 0.8em; color: #d97706; font-weight: 800; margin-top: 2px;">ПЛАН: ${escapeHtml(item.plan_name)}</div>
                     </div>
                     <div style="text-align: right;">
                         <span class="qty-badge" style="background: #0284c7; font-size: 0.88em; padding: 4px 10px; font-weight: 900;">
@@ -410,11 +404,11 @@ function renderUnboxedBoxDistribution() {
 
                 <div style="display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap;">
                     <span style="font-size: 0.9em; font-weight: 800; color: #334155; white-space: nowrap;">Слагам в кашона:</span>
-                    <input type="number" id="assign_qty_${item.key}" min="0" max="${item.availableQty}" value="0" class="box-input assign-qty-input" style="padding: 10px; font-size: 1.15em; margin-bottom: 0; width: 95px; text-align: center; flex: 0 0 95px;" oninput="updateBoxAssignmentSummary()" data-max="${item.availableQty}" data-key="${item.key}" inputmode="numeric">
-                    <button type="button" onclick="setAssignMaxQty('${item.key}', ${item.availableQty})" style="background: #f1f5f9; border: 1.5px solid #cbd5e1; padding: 10px 14px; border-radius: 8px; font-weight: 900; font-size: 0.85em; color: #1e293b; cursor: pointer; white-space: nowrap;">
+                    <input type="number" id="assign_qty_${safeId}" min="0" max="${item.availableQty}" value="0" class="box-input assign-qty-input" style="padding: 10px; font-size: 1.15em; margin-bottom: 0; width: 95px; text-align: center; flex: 0 0 95px;" oninput="updateBoxAssignmentSummary()" data-max="${item.availableQty}" data-index="${index}" inputmode="numeric">
+                    <button type="button" onclick="setAssignMaxQty('${safeId}', ${item.availableQty})" style="background: #f1f5f9; border: 1.5px solid #cbd5e1; padding: 10px 14px; border-radius: 8px; font-weight: 900; font-size: 0.85em; color: #1e293b; cursor: pointer; white-space: nowrap;">
                         Всички (${item.availableQty})
                     </button>
-                    <button type="button" onclick="setAssignZeroQty('${item.key}')" style="background: transparent; border: 1px solid #cbd5e1; padding: 10px 12px; border-radius: 8px; font-weight: bold; font-size: 0.85em; color: #94a3b8; cursor: pointer;">
+                    <button type="button" onclick="setAssignZeroQty('${safeId}')" style="background: transparent; border: 1px solid #cbd5e1; padding: 10px 12px; border-radius: 8px; font-weight: bold; font-size: 0.85em; color: #94a3b8; cursor: pointer;">
                         0
                     </button>
                 </div>
@@ -431,7 +425,7 @@ function renderUnboxedBoxDistribution() {
             </p>
 
             <label style="font-weight: 900; color: #1e293b; display: block; margin-bottom: 6px; font-size: 1em;">
-                Кашон №:
+                Кашон №: <span style="color:#dc2626;">*</span>
             </label>
             <input type="text" id="masterBoxNumber" class="box-input" placeholder="Въведи номер на кашон (напр. 1, 2, 3...)" style="font-size: 1.35em; margin-bottom: 16px; border: 2.5px solid #3b82f6; background: white;" oninput="updateBoxAssignmentSummary()">
 
@@ -468,7 +462,7 @@ function renderDoneBoxes() {
                 <div style="font-size: 4em; margin-bottom: 10px;">📋</div>
                 <h3 style="color: #1e293b; margin-top: 0; font-size: 1.4em;">Все още няма оформени кашони</h3>
                 <p style="color: #64748b; font-size: 1em; line-height: 1.5; margin-bottom: 25px;">
-                    Когато разпределите детайли в кашон от таб <b>„За кашони“</b>, те ще се появят тук с пълен списък на съдържанието.
+                    Когато разпределите детайли в кашон, те ще се появят тук с пълен списък на съдържанието.
                 </p>
                 <button type="button" class="btn" onclick="switchPackingTab('boxes')" style="background-color: #2563eb; padding: 14px 24px; font-size: 1.1em; font-weight: 800; border-radius: 12px;">
                     📦 Отиди към За кашони
@@ -484,28 +478,30 @@ function renderDoneBoxes() {
         return a.localeCompare(b, undefined, { numeric: true });
     });
 
+    window.__boxedCartonList = boxKeys;
+
     let printPackingListBtn = '';
     if (currentActiveMonth && currentActiveYear) {
         printPackingListBtn = `
             <div style="margin-bottom: 16px; text-align: center;">
                 <button type="button" class="btn" onclick="window.open('packing-list.html?month=${encodeURIComponent(currentActiveMonth)}&year=${encodeURIComponent(currentActiveYear)}', '_blank')" style="background-color: #0f172a; width: 100%; padding: 15px; font-size: 1.05em; font-weight: 800; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 10px rgba(15, 23, 42, 0.25);">
-                    <span>🖨️</span> <span>Отвори Packing List за ${currentActiveMonth} ${currentActiveYear}</span>
+                    <span>🖨️</span> <span>Отвори Packing List за ${escapeHtml(currentActiveMonth)} ${escapeHtml(currentActiveYear)}</span>
                 </button>
             </div>`;
     }
 
     let html = printPackingListBtn;
 
-    boxKeys.forEach(boxNum => {
+    boxKeys.forEach((boxNum, idx) => {
         let box = globalBoxedCartons[boxNum];
         let itemsListHtml = '';
         Object.values(box.items).forEach(item => {
             itemsListHtml += `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
                     <div>
-                        <div style="font-weight: 800; color: #1e293b; font-size: 1.05em;">${item.name}</div>
-                        ${item.internalName ? `<div style="font-size: 0.85em; color: #64748b; font-weight: 600;">${item.internalName}</div>` : ''}
-                        <div style="font-size: 0.78em; color: #94a3b8; font-weight: 600;">${item.plan_name}</div>
+                        <div style="font-weight: 800; color: #1e293b; font-size: 1.05em;">${escapeHtml(item.name)}</div>
+                        ${item.internalName ? `<div style="font-size: 0.85em; color: #64748b; font-weight: 600;">${escapeHtml(item.internalName)}</div>` : ''}
+                        <div style="font-size: 0.78em; color: #94a3b8; font-weight: 600;">${escapeHtml(item.plan_name)}</div>
                     </div>
                     <div style="font-weight: 900; color: #0284c7; font-size: 1.2em;">
                         ${item.qty} бр.
@@ -517,7 +513,7 @@ function renderDoneBoxes() {
             <div class="card" style="border-left: 6px solid #0284c7; margin-bottom: 16px; padding: 18px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">
                     <div>
-                        <span style="font-size: 1.3em; font-weight: 900; color: #0f172a;">📦 Кашон № ${boxNum}</span>
+                        <span style="font-size: 1.3em; font-weight: 900; color: #0f172a;">📦 Кашон № ${escapeHtml(boxNum)}</span>
                     </div>
                     <div>
                         <span class="qty-badge" style="background: #0284c7; font-size: 0.95em; padding: 5px 12px; font-weight: 900;">
@@ -531,10 +527,10 @@ function renderDoneBoxes() {
                 </div>
 
                 <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 10px;">
-                    <button type="button" onclick="renameBoxNumber('${boxNum}')" style="background: #f8fafc; border: 1.5px solid #cbd5e1; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; color: #334155; cursor: pointer;">
+                    <button type="button" onclick="renameBoxByIndex(${idx})" style="background: #f8fafc; border: 1.5px solid #cbd5e1; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; color: #334155; cursor: pointer;">
                         ✏️ Промени №
                     </button>
-                    <button type="button" onclick="unpackBox('${boxNum}')" style="background: #fee2e2; border: 1.5px solid #fca5a5; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; color: #b91c1c; cursor: pointer;">
+                    <button type="button" onclick="unpackBoxByIndex(${idx})" style="background: #fee2e2; border: 1.5px solid #fca5a5; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; color: #b91c1c; cursor: pointer;">
                         ↩️ Разопаковай
                     </button>
                 </div>
@@ -544,7 +540,16 @@ function renderDoneBoxes() {
     container.innerHTML = html;
 }
 
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function setTaskFilter(filterType) { 
-    // Запазваме съвместимост
     renderTasks(globalTasks); 
 }
