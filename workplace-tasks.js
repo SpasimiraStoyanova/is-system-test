@@ -961,7 +961,9 @@ function renderAllMachines() {
                             <div class="task-note-box">
                                 <input type="text" class="task-note-input" placeholder="Бележка към оператора..." 
                                     value="${escapeHtml(t.notes || '')}" 
-                                    onchange="updateTaskNotes('${escapeHtml(machineName)}', '${escapeHtml(t.detail_id)}', ${t.op_num}, this.value)">
+                                    oninput="updateTaskNotes('${escapeHtml(machineName)}', '${escapeHtml(t.detail_id)}', ${t.op_num}, this.value)"
+                                    onchange="updateTaskNotes('${escapeHtml(machineName)}', '${escapeHtml(t.detail_id)}', ${t.op_num}, this.value)"
+                                    onkeydown="if(event.key==='Enter'){ this.blur(); }">
                             </div>
                         </div>
                     </div>

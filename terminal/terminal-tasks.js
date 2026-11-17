@@ -5,6 +5,16 @@ function normalizeStr(str) {
     return String(str).replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
 }
 
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 async function fetchAllRows(table, select = '*', extraFilter = null, orderBy = null, maxRows = Infinity) {
     let result = [];
     let start = 0;
@@ -823,6 +833,7 @@ async function loadTasks(isSilent = false) {
                       let isTransferred = false;
                       let origMachineDisplay = origMachine;
 
+                      let taskCustomNote = '';
                       if (prioRes && prioRes.data) {
                           let matchingPrios = prioRes.data
                               .filter(p => normalizeStr(p.detail_id) === taskDetailCode && parseInt(p.op_num) === taskOpNumber)
@@ -847,6 +858,10 @@ async function loadTasks(isSilent = false) {
                                   effectiveMachine = assignedM;
                                   isTransferred = true;
                                   origMachineDisplay = origM;
+                              }
+
+                              if (overrideRec.notes) {
+                                  taskCustomNote = overrideRec.notes.replace(/\[ORIG:.*?\]\s*/g, '').trim();
                               }
                           }
                       }
@@ -977,6 +992,7 @@ async function loadTasks(isSilent = false) {
                               }
 
                               globalTasks.push({
+                                  notes: taskCustomNote || '',
                                   globalMonthlyTarget: globalMonthlyTarget,
                                   globalMonthlyDone: globalMonthlyDone,
                                   isTransferred: isTransferred,
@@ -1378,8 +1394,10 @@ async function loadTasks(isSilent = false) {
                                       let isBlocked = hasLimit && maxAllowed <= 0;
                                       let safeCode = normalizeStr(partCode).replace(/[^a-z0-9]/gi, '_');
 
+                                      let probaTaskNotes = (proba.notes ? proba.notes.replace(/\[СПЕШНА\]/gi, '').trim() : '');
                                       globalTasks.push({
                                           isProba: true,
+                                          notes: probaTaskNotes,
                                           isUrgent: isUrgentProba,
                                           probaId: proba.id,
                                           probaName: proba.name,
@@ -1696,11 +1714,22 @@ function renderTasks(tasks) {
     let freeStateStyle = isFocused ? 'display: none;' : 'display: block;';
     let focusStateStyle = isFocused ? 'display: block;' : 'display: none;';
 
+    let noteHtml = '';
+    if (t.notes && t.notes.trim()) {
+      noteHtml = `
+        <div style="background: #eff6ff; border: 1.5px solid #60a5fa; border-radius: 8px; padding: 7px 11px; margin: 8px 0; color: #1e40af; font-size: 0.95em; font-weight: 700; display: flex; align-items: center; gap: 8px; box-shadow: 0 1px 3px rgba(37,99,235,0.12);">
+          <span style="font-size: 1.15em;">💬</span>
+          <span>Бележка: <b style="color: #1d4ed8;">${escapeHtml(t.notes)}</b></span>
+        </div>
+      `;
+    }
+
     html += `
       <div class="card" id="card_${t.id}" style="${borderStyle}">
         <div class="task-header">${labelHtml}<div style="display:flex; gap: 6px;">${displayNeedHtml}</div></div>
         <div class="detail-info"><div class="internal-name">${linkHtml}</div>${internalNameHtml}</div>
         <div class="route-flow"><span class="op-active">▶ ${t.op}</span><span class="route-arrow">➔</span><span class="op-pending">${t.next_op}</span></div>
+        ${noteHtml}
         ${progressBarHtml}
         ${t.isBlocked ? bomBadgeHtml : ''}
         <div id="free_state_${t.id}" style="${freeStateStyle}">${actionButtonHtml}</div>
