@@ -337,20 +337,30 @@ function renderTasks(tasks) {
                     📦 ОПАКОВАЙ ДЕТАЙЛИ
                 </p>
                 
-                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 6px; font-size: 0.9em;">
-                    Брой детайли за опаковане: <span style="color:#dc2626;">*</span>
-                </label>
-                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 14px;">
-                    <input type="number" id="qty_${t.id}" min="1" max="${t.available}" value="${maxCanPack}" class="box-input" inputmode="numeric" style="margin-bottom: 0; font-size: 1.25em;" oninput="updateTaskBtn('${t.id}')">
-                    <button type="button" onclick="setTaskQtyMax('${t.id}', ${t.available})" style="background: #e2e8f0; border: none; border-radius: 8px; padding: 12px 14px; font-weight: 900; color: #334155; cursor: pointer; white-space: nowrap;">
-                        MAX
-                    </button>
-                </div>
+                <div style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                    <!-- Поле 1: Брой детайли за опаковане -->
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: flex; align-items: flex-end; min-height: 34px; margin-bottom: 6px; font-size: 0.88em; line-height: 1.25;">
+                            <span>Брой детайли за опаковане: <span style="color:#dc2626;">*</span></span>
+                        </label>
+                        <div style="display: flex; gap: 6px; align-items: stretch; height: 48px;">
+                            <input type="number" id="qty_${t.id}" min="1" max="${t.available}" value="${maxCanPack}" class="box-input" inputmode="numeric" style="margin-bottom: 0; font-size: 1.25em; height: 48px; flex: 1; padding: 6px 8px; text-align: center;" oninput="updateTaskBtn('${t.id}')">
+                            <button type="button" onclick="setTaskQtyMax('${t.id}', ${t.available})" style="background: #e2e8f0; border: none; border-radius: 8px; padding: 0 12px; font-weight: 900; color: #334155; cursor: pointer; white-space: nowrap; height: 48px; transition: background 0.2s ease;">
+                                MAX
+                            </button>
+                        </div>
+                    </div>
 
-                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 6px; font-size: 0.9em;">
-                    Кашон №: <span style="font-weight: 600; color: #64748b; font-size: 0.88em;">(по избор — оставете празно, ако още не е в кашон)</span>
-                </label>
-                <input type="text" id="box_${t.id}" class="box-input" placeholder="Въведи номер на кашон (или остави празно)" style="margin-bottom: 12px; font-size: 1.1em; background: white;" oninput="updateTaskBtn('${t.id}')">
+                    <!-- Поле 2: Кашон № -->
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: flex; align-items: flex-end; min-height: 34px; margin-bottom: 6px; font-size: 0.88em; line-height: 1.25;">
+                            <span>Кашон №: <span style="font-weight: 600; color: #64748b; font-size: 0.85em;">(по избор)</span></span>
+                        </label>
+                        <div style="height: 48px;">
+                            <input type="text" id="box_${t.id}" class="box-input" placeholder="Въведи № (или празно)" style="margin-bottom: 0; font-size: 1.1em; background: white; height: 48px; width: 100%; padding: 6px 10px; text-align: center;" oninput="updateTaskBtn('${t.id}')">
+                        </div>
+                    </div>
+                </div>
                 
                 <button class="btn" id="btn_${t.id}" onclick="handlePackingSubmit('${t.id}', this)" style="background-color: #16a34a; width: 100%; padding: 16px; font-size: 1.15em; font-weight: 900; box-shadow: 0 4px 8px rgba(22, 163, 74, 0.3); border-radius: 12px; transition: all 0.2s ease;">
                     ✅ ОТЧЕТИ ОПАКОВАНИ (<span id="btnQtySpan_${t.id}">${maxCanPack}</span> бр.)
