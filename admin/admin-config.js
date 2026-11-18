@@ -49,6 +49,7 @@ const tableConfigs = {
     label: '📐 Малки Инструменти & Уреди', 
     table: 'factory_tools', 
     key: 'id', 
+    hiddenTab: true,
     fields: [ 
       { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, 
       { name: 'tool_code', label: 'Инвентарен № (напр. Ш-01, В-01)', type: 'text', required: true }, 
@@ -66,6 +67,7 @@ const tableConfigs = {
     label: '🏭 Работни Места & Машини', 
     table: 'factory_machines', 
     key: 'id', 
+    hiddenTab: true,
     fields: [ 
       { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, 
       { name: 'code', label: 'Номер (напр. 101, 201, 301)', type: 'text', required: true }, 

@@ -59,3 +59,4 @@ CREATE POLICY "Allow all on factory_rooms" ON public.factory_rooms FOR ALL USING
 
 GRANT ALL ON public.factory_rooms TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+

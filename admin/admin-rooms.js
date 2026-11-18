@@ -1,14 +1,14 @@
-// admin/admin-rooms.js - Модул за Опис по стаи & Инвентаризация на оборудването (AMCI)
+// admin/admin-rooms.js - Единен модул за Опис по стаи, Машини, Уреди & Инвентаризация (AMCI)
 
 let globalRoomsCache = [];
 let globalMachinesCache = [];
 let globalToolsCache = [];
-let activeFloorFilter = 'all'; // 'all', 'Етаж 1', 'Етаж 2', 'Етаж 3'
+let activeFloorFilter = 'all'; // 'all', 'Етаж 1', 'Етаж 2', 'Етаж 3', 'warehouse'
 let roomSearchQuery = '';
 
-// Каталог със съкращения за автоматично кодиране на уреди
+// Каталог за уреди и инструменти
 const TOOL_TYPE_CATALOG = [
-    // 📏 Измервателни уреди
+    // 📏 Измервателни уреди (подлежащи на периодична калибрация)
     { code: 'Ш', name: 'Шублер (дигитален / механичен)', category: 'Измервателен уред', calib: true },
     { code: 'МИК', name: 'Микрометър гладък', category: 'Измервателен уред', calib: true },
     { code: 'ЧАС', name: 'Индикаторен часовник', category: 'Измервателен уред', calib: true },
@@ -58,7 +58,9 @@ const TOOL_TYPE_CATALOG = [
     { code: 'ШАБ', name: 'Шаблон (запояване/монтаж)', category: 'Оснастка & Приспособления', calib: false }
 ];
 
-// Инициализиране и рендериране на таб „Опис по стаи / Инвентаризация“
+// --------------------------------------------------------------------------
+// 1. Инициализиране и рендериране на главния таб
+// --------------------------------------------------------------------------
 window.renderRoomsTab = async function(forceRefresh = false) {
     const mainTable = document.getElementById('mainTable');
     const addNewBtn = document.getElementById('addNewBtn');
@@ -79,7 +81,7 @@ window.renderRoomsTab = async function(forceRefresh = false) {
         container.innerHTML = `
             <div style="padding: 40px; text-align: center; color: #64748b; font-size: 1.15em;">
                 <div style="font-size: 2.2em; margin-bottom: 8px;">🏢</div>
-                Зареждане на данни за стаите и оборудването...
+                Зареждане на регистъра по стаи, машини и оборудване...
             </div>`;
         await loadRoomsData();
     }
@@ -87,7 +89,6 @@ window.renderRoomsTab = async function(forceRefresh = false) {
     renderRoomsLayout();
 };
 
-// Зареждане на данни от Supabase
 async function loadRoomsData() {
     try {
         const [roomsRes, machinesRes, toolsRes] = await Promise.all([
@@ -112,7 +113,6 @@ async function loadRoomsData() {
     }
 }
 
-// Показване на предупреждение при липсваща таблица в базата
 function showSqlMissingNotice() {
     const alertBanner = document.getElementById('adminGlobalAlertBanner');
     if (alertBanner) {
@@ -120,8 +120,8 @@ function showSqlMissingNotice() {
         alertBanner.innerHTML = `
             <div style="background:#fef2f2; border:1.5px solid #f87171; border-radius:10px; padding:12px 16px; color:#991b1b; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
-                    <b>⚠️ Таблицата "factory_rooms" все още не е създадена в Supabase!</b><br>
-                    <span style="font-size:0.88em; color:#7f1d1d;">Моля изпълнете файла <code>setup_factory_rooms.sql</code> в SQL Editor на Supabase за постоянна синхронизация.</span>
+                    <b>⚠️ Таблицата "factory_rooms" все още не е създадена в базата!</b><br>
+                    <span style="font-size:0.88em; color:#7f1d1d;">Моля изпълнете файла <code>setup_factory_rooms.sql</code> в Supabase SQL Editor.</span>
                 </div>
                 <button type="button" onclick="copyRoomsSqlToClipboard()" style="background:#b91c1c; color:white; border:none; padding:8px 14px; border-radius:6px; font-weight:bold; cursor:pointer;">
                     📋 Копирай SQL кода
@@ -156,29 +156,35 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;`;
     });
 };
 
-// Главен изглед на таба
+// --------------------------------------------------------------------------
+// 2. Главен изглед на таба
+// --------------------------------------------------------------------------
 function renderRoomsLayout() {
     const container = document.getElementById('roomsInventoryContainer');
     if (!container) return;
 
-    // Преброяване на статистики
     let totalRooms = globalRoomsCache.length;
     let totalMachinesAssigned = globalMachinesCache.filter(m => m.room_number).length;
     let totalMachinesUnassigned = globalMachinesCache.length - totalMachinesAssigned;
     let totalTools = globalToolsCache.length;
 
-    // Филтриране на стаите по етаж и търсене
+    // Филтриране на стаите
     let filteredRooms = globalRoomsCache.filter(r => {
         if (activeFloorFilter !== 'all') {
-            let floorNum = activeFloorFilter.replace(/\D/g, '');
-            if (!String(r.room_number).startsWith(floorNum) && r.floor !== activeFloorFilter) return false;
+            if (activeFloorFilter === 'warehouse') {
+                let nameLower = String(r.room_name || '').toLowerCase();
+                let isWh = nameLower.includes('склад') || String(r.room_number).toLowerCase().includes('склад') || String(r.room_number) === '10' || String(r.room_number) === '20';
+                if (!isWh) return false;
+            } else {
+                let floorNum = activeFloorFilter.replace(/\D/g, '');
+                if (!String(r.room_number).startsWith(floorNum) && r.floor !== activeFloorFilter) return false;
+            }
         }
         if (roomSearchQuery) {
             let q = roomSearchQuery.toLowerCase();
             let matchRoom = String(r.room_number).toLowerCase().includes(q) || String(r.room_name || '').toLowerCase().includes(q) || String(r.supervisor || '').toLowerCase().includes(q);
             if (matchRoom) return true;
-            // Проверка дали съдържа търсена машина или инструмент
-            let hasMachine = globalMachinesCache.some(m => String(m.room_number) === String(r.room_number) && m.name.toLowerCase().includes(q));
+            let hasMachine = globalMachinesCache.some(m => String(m.room_number) === String(r.room_number) && (m.name.toLowerCase().includes(q) || String(m.code || '').toLowerCase().includes(q)));
             let hasTool = globalToolsCache.some(t => String(t.room_number) === String(r.room_number) && (t.tool_name.toLowerCase().includes(q) || t.tool_code.toLowerCase().includes(q)));
             return hasMachine || hasTool;
         }
@@ -190,9 +196,9 @@ function renderRoomsLayout() {
         roomsHtml = `
             <div style="background: white; border: 2px dashed #cbd5e1; border-radius: 16px; padding: 50px 20px; text-align: center; color: #64748b; margin-top: 20px;">
                 <div style="font-size: 3em; margin-bottom: 10px;">🚪</div>
-                <h3 style="margin-top: 0; color: #1e293b; font-size: 1.3em;">Все още няма въведени стаи ${activeFloorFilter !== 'all' ? 'за ' + activeFloorFilter : ''}</h3>
+                <h3 style="margin-top: 0; color: #1e293b; font-size: 1.3em;">Няма въведени стаи / помещения ${activeFloorFilter !== 'all' ? 'за ' + activeFloorFilter : ''}</h3>
                 <p style="margin-bottom: 20px; font-size: 0.95em;">
-                    Натиснете бутона <b>„➕ Нова Стая“</b> по-горе, за да добавите първото помещение (напр. Стая 11, Стая 21...) и да зачислите машини към него.
+                    Натиснете бутона <b>„➕ Нова Стая / Локация“</b>, за да въведете помещение (напр. Стая 11, Стая 21, Склад, Коридор 2А...).
                 </p>
                 <button type="button" class="btn" onclick="openCreateRoomModal()" style="background:#2563eb; color:white; padding:12px 22px; font-weight:800; border-radius:10px; border:none; cursor:pointer;">
                     ➕ Добави първата стая
@@ -215,19 +221,22 @@ function renderRoomsLayout() {
                         <span>🏢</span> Опис по стаи & Инвентаризация
                     </h2>
                     <div style="font-size: 0.88em; color: #64748b; margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap;">
-                        <span>Стаи: <b>${totalRooms}</b></span> &bull;
+                        <span>Стаи / Помещения: <b>${totalRooms}</b></span> &bull;
                         <span>Зачислени машини: <b style="color:#16a34a;">${totalMachinesAssigned}</b></span> &bull;
-                        ${totalMachinesUnassigned > 0 ? `<span>Незачислени машини: <b style="color:#ea580c;">${totalMachinesUnassigned}</b></span> &bull;` : ''}
+                        ${totalMachinesUnassigned > 0 ? `<span>Неразпределени машини: <b style="color:#ea580c;">${totalMachinesUnassigned}</b></span> &bull;` : ''}
                         <span>Инструменти & уреди: <b style="color:#0284c7;">${totalTools}</b></span>
                     </div>
                 </div>
 
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" class="btn" onclick="openCreateRoomModal()" style="background: #2563eb; color: white; padding: 10px 18px; font-weight: 800; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.25);">
+                    <button type="button" class="btn" onclick="openCreateRoomModal()" style="background: #2563eb; color: white; padding: 10px 16px; font-weight: 800; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.25);">
                         ➕ Нова Стая
                     </button>
-                    <button type="button" class="btn" onclick="openUnassignedMachinesModal()" style="background: #f8fafc; color: #334155; border: 1.5px solid #cbd5e1; padding: 10px 14px; font-weight: 800; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                        🏭 Незачислени машини (${totalMachinesUnassigned})
+                    <button type="button" class="btn" onclick="openAddMachineModal()" style="background: #0f766e; color: white; padding: 10px 16px; font-weight: 800; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(15,118,110,0.25);">
+                        🏭 Добави машина
+                    </button>
+                    <button type="button" class="btn" onclick="openAddToolGlobalModal()" style="background: #16a34a; color: white; padding: 10px 16px; font-weight: 800; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(22,163,74,0.25);">
+                        📏 Добави уред / инструмент
                     </button>
                     <button type="button" class="btn" onclick="renderRoomsTab(true)" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 10px 14px; font-weight: 800; border-radius: 8px; cursor: pointer;">
                         🔄 Опресни
@@ -235,11 +244,11 @@ function renderRoomsLayout() {
                 </div>
             </div>
 
-            <!-- Филтри по етаж и бързо търсене -->
+            <!-- Филтри и бързо търсене -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9; flex-wrap: wrap; gap: 10px;">
-                <div style="display: flex; gap: 6px;">
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                     <button type="button" onclick="setFloorFilter('all')" style="padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; ${activeFloorFilter === 'all' ? 'background: #0f172a; color: white;' : 'background: #e2e8f0; color: #475569;'}">
-                        Всички етажи (${totalRooms})
+                        Всички локации (${totalRooms})
                     </button>
                     <button type="button" onclick="setFloorFilter('Етаж 1')" style="padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; ${activeFloorFilter === 'Етаж 1' ? 'background: #1d4ed8; color: white;' : 'background: #dbeafe; color: #1e40af;'}">
                         Етаж 1 (11, 12...)
@@ -249,6 +258,9 @@ function renderRoomsLayout() {
                     </button>
                     <button type="button" onclick="setFloorFilter('Етаж 3')" style="padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; ${activeFloorFilter === 'Етаж 3' ? 'background: #7c3aed; color: white;' : 'background: #ede9fe; color: #5b21b6;'}">
                         Етаж 3 (31, 32...)
+                    </button>
+                    <button type="button" onclick="setFloorFilter('warehouse')" style="padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; ${activeFloorFilter === 'warehouse' ? 'background: #ea580c; color: white;' : 'background: #ffedd5; color: #9a3412;'}">
+                        📦 Складове & Коридори
                     </button>
                 </div>
 
@@ -262,25 +274,27 @@ function renderRoomsLayout() {
     `;
 }
 
-// Построяване на карта за отделна стая
+// --------------------------------------------------------------------------
+// 3. Карта на конкретна стая
+// --------------------------------------------------------------------------
 function buildRoomCardHtml(room) {
     let rNum = String(room.room_number || '').trim();
     let floor = room.floor || (rNum.startsWith('1') ? 'Етаж 1' : (rNum.startsWith('2') ? 'Етаж 2' : (rNum.startsWith('3') ? 'Етаж 3' : 'Етаж 1')));
     
-    // Цветова схема според етажа
-    let badgeBg = '#1d4ed8'; // Етаж 1: Син
+    let badgeBg = '#1d4ed8'; // Етаж 1
     let borderColor = '#93c5fd';
     if (floor.includes('2') || rNum.startsWith('2')) {
-        badgeBg = '#059669'; // Етаж 2: Зелен
+        badgeBg = '#059669'; // Етаж 2
         borderColor = '#86efac';
     } else if (floor.includes('3') || rNum.startsWith('3')) {
-        badgeBg = '#7c3aed'; // Етаж 3: Лилав
+        badgeBg = '#7c3aed'; // Етаж 3
         borderColor = '#c4b5fd';
+    } else if (rNum.toLowerCase().includes('склад') || String(room.room_name).toLowerCase().includes('склад')) {
+        badgeBg = '#ea580c'; // Склад
+        borderColor = '#fed7aa';
     }
 
-    // Машини в тази стая
     let machines = globalMachinesCache.filter(m => String(m.room_number).trim() === rNum);
-    // Инструменти и уреди в тази стая
     let tools = globalToolsCache.filter(t => String(t.room_number).trim() === rNum);
 
     let machinesListHtml = '';
@@ -289,15 +303,20 @@ function buildRoomCardHtml(room) {
     } else {
         machinesListHtml = `<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">`;
         machines.forEach(m => {
+            let statusDot = m.status === 'maintenance' ? '🟠' : '🟢';
             machinesListHtml += `
-                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px;">
-                    <div>
-                        <span style="font-weight: 800; color: #1e293b; font-size: 0.95em;">🏭 ${escapeHtml(m.name)}</span>
-                        ${m.code ? `<span style="background: #e2e8f0; color: #475569; padding: 1px 6px; border-radius: 4px; font-size: 0.75em; font-weight: 800; margin-left: 6px;">№ ${escapeHtml(m.code)}</span>` : ''}
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 10px; cursor: pointer; transition: background 0.15s ease;" onclick="openMachinePassportModal(${m.id})" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
+                    <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+                        <span>${statusDot}</span>
+                        <span style="font-weight: 800; color: #1e293b; font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(m.name)}</span>
+                        ${m.code ? `<span style="background: #e2e8f0; color: #475569; padding: 1px 6px; border-radius: 4px; font-size: 0.75em; font-weight: 800;">№ ${escapeHtml(m.code)}</span>` : ''}
                     </div>
-                    <button type="button" onclick="unassignMachineFromRoom(${m.id}, '${escapeHtml(m.name)}')" title="Премахни от тази стая" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 1em; padding: 2px 6px; border-radius: 4px; transition: color 0.15s ease;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
-                        ✕
-                    </button>
+                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                        <span style="font-size: 0.75em; color: #0284c7; font-weight: 800; background: #e0f2fe; padding: 2px 6px; border-radius: 4px;">Паспорт ➔</span>
+                        <button type="button" onclick="event.stopPropagation(); unassignMachineFromRoom(${m.id}, '${escapeHtml(m.name)}')" title="Отчисли от тази стая" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 1em; padding: 2px 4px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
+                            ✕
+                        </button>
+                    </div>
                 </div>`;
         });
         machinesListHtml += `</div>`;
@@ -315,24 +334,25 @@ function buildRoomCardHtml(room) {
                 let due = new Date(t.calibration_due); due.setHours(0,0,0,0);
                 let diffDays = Math.round((due - today) / (1000 * 60 * 60 * 24));
                 if (diffDays < 0) {
-                    calibBadge = `<span style="background:#fee2e2; color:#b91c1c; font-size:0.7em; padding:2px 6px; border-radius:4px; font-weight:800;" title="Калибрацията е изтекла!">🔴 Изтекъл</span>`;
+                    calibBadge = `<span style="background:#fee2e2; color:#b91c1c; font-size:0.7em; padding:2px 6px; border-radius:4px; font-weight:800;">🔴 Изтекъл</span>`;
                 } else if (diffDays <= 30) {
-                    calibBadge = `<span style="background:#fef3c7; color:#b45309; font-size:0.7em; padding:2px 6px; border-radius:4px; font-weight:800;" title="Остават ${diffDays} дни">🟡 Наближава (${diffDays} д.)</span>`;
+                    calibBadge = `<span style="background:#fef3c7; color:#b45309; font-size:0.7em; padding:2px 6px; border-radius:4px; font-weight:800;">🟡 ${diffDays} д.</span>`;
                 } else {
                     calibBadge = `<span style="background:#dcfce7; color:#166534; font-size:0.7em; padding:2px 6px; border-radius:4px; font-weight:800;">🟢 Годен</span>`;
                 }
             }
 
             toolsListHtml += `
-                <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; font-size: 0.88em;">
-                    <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 10px; font-size: 0.88em; cursor: pointer; transition: background 0.15s ease;" onclick="openToolPassportModal(${t.id})" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#ffffff'">
+                    <div style="min-width: 0; display: flex; align-items: center; gap: 6px;">
                         <span style="font-weight: 900; color: #0284c7; background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${escapeHtml(t.tool_code)}</span>
-                        <span style="font-weight: 700; color: #334155; margin-left: 4px;">${escapeHtml(t.tool_name)}</span>
-                        ${t.location_detail ? `<small style="color: #64748b; margin-left: 4px;">(${escapeHtml(t.location_detail)})</small>` : ''}
+                        <span style="font-weight: 700; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(t.tool_name)}</span>
+                        ${t.location_detail ? `<small style="color: #64748b;">(${escapeHtml(t.location_detail)})</small>` : ''}
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px;">
+                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
                         ${calibBadge}
-                        <button type="button" onclick="deleteTool(${t.id}, '${escapeHtml(t.tool_code)}')" title="Изтрий от описа" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px 4px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
+                        <span style="font-size: 0.75em; color: #0284c7; font-weight: 800; background: #e0f2fe; padding: 2px 6px; border-radius: 4px;">Паспорт ➔</span>
+                        <button type="button" onclick="event.stopPropagation(); deleteTool(${t.id}, '${escapeHtml(t.tool_code)}')" title="Изтрий от описа" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px 4px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
                             ✕
                         </button>
                     </div>
@@ -343,7 +363,7 @@ function buildRoomCardHtml(room) {
 
     return `
         <div class="card" style="border-radius: 14px; border: 1.5px solid ${borderColor}; padding: 16px; background: white; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; flex-direction: column;">
-            <!-- Заглавна част на стаята -->
+            <!-- Заглавна част -->
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px;">
                 <div>
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -364,7 +384,7 @@ function buildRoomCardHtml(room) {
                 </div>
 
                 <div style="display: flex; gap: 4px;">
-                    <button type="button" onclick="printRoomPassport('${escapeHtml(rNum)}')" title="🖨️ Печат на Паспорт/Опис на стаята" style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: 800;">
+                    <button type="button" onclick="printRoomPassport('${escapeHtml(rNum)}')" title="🖨️ Печат на Опис за вратата" style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: 800;">
                         🖨️ Опис
                     </button>
                     <button type="button" onclick="openEditRoomModal(${room.id})" title="Редактирай данни на стаята" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #475569; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
@@ -376,11 +396,11 @@ function buildRoomCardHtml(room) {
                 </div>
             </div>
 
-            <!-- Секция: Машини & Работни места -->
+            <!-- Секция: Машини -->
             <div style="margin-bottom: 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-weight: 800; color: #334155; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
-                        🏭 Машини & Работни места (${machines.length})
+                        🏭 Машини (${machines.length})
                     </span>
                     <button type="button" onclick="openAssignMachineModal('${escapeHtml(rNum)}', '${escapeHtml(room.room_name)}')" style="background: #e0f2fe; color: #0369a1; border: none; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.78em; cursor: pointer;">
                         ➕ Зачисли машина
@@ -389,7 +409,7 @@ function buildRoomCardHtml(room) {
                 ${machinesListHtml}
             </div>
 
-            <!-- Секция: Измервателни уреди & Инструменти -->
+            <!-- Секция: Инструменти & Уреди -->
             <div style="margin-top: auto; border-top: 1px dashed #e2e8f0; padding-top: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-weight: 800; color: #334155; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
@@ -406,44 +426,765 @@ function buildRoomCardHtml(room) {
 }
 
 // --------------------------------------------------------------------------
-// Филтри и Търсене
+// 4. ПАСПОРТ НА МАШИНА (Клик на машина в стаята)
 // --------------------------------------------------------------------------
-window.setFloorFilter = function(floor) {
-    activeFloorFilter = floor;
-    renderRoomsLayout();
+window.openMachinePassportModal = function(machineId) {
+    let machine = globalMachinesCache.find(m => m.id === machineId);
+    if (!machine) return;
+
+    let roomText = machine.room_number ? `Стая ${machine.room_number} ${machine.room_name ? '(' + machine.room_name + ')' : ''}` : '⚠️ Незачислена към стая';
+    let statusText = machine.status === 'maintenance' 
+        ? '<span style="color:#ea580c; font-weight:bold;">🟠 В профилактика / Ремонт</span>' 
+        : '<span style="color:#16a34a; font-weight:bold;">🟢 В експлоатация (Активна)</span>';
+
+    Swal.fire({
+        title: `🏭 Паспорт на Машина`,
+        html: `
+            <div style="text-align: left; font-size: 0.92em; line-height: 1.6;">
+                <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px;">
+                    <div style="font-size: 1.25em; font-weight: 900; color: #0f172a;">${escapeHtml(machine.name)}</div>
+                    <div style="color: #64748b; font-weight: 700;">Инвентарен №: <b>${escapeHtml(machine.code || 'Няма въведен')}</b></div>
+                </div>
+
+                <table style="width:100%; border-collapse:collapse; font-size:0.95em;">
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold; width:40%;">📍 Локация / Стая:</td>
+                        <td style="padding:6px 0; font-weight:bold; color:#1e293b;">${escapeHtml(roomText)}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">🏢 Етаж:</td>
+                        <td style="padding:6px 0; color:#1e293b;">${escapeHtml(machine.floor || '-')}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">⚙️ Модел / Производител:</td>
+                        <td style="padding:6px 0; color:#1e293b;">${escapeHtml(machine.model || '-')}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">🔢 Сериен номер:</td>
+                        <td style="padding:6px 0; font-family:monospace; color:#1e293b;">${escapeHtml(machine.serial_number || '-')}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">📅 Година производство:</td>
+                        <td style="padding:6px 0; color:#1e293b;">${escapeHtml(machine.year_manufactured || '-')}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">⚡ Статус:</td>
+                        <td style="padding:6px 0;">${statusText}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">📝 Забележки:</td>
+                        <td style="padding:6px 0; color:#475569; font-style:italic;">${escapeHtml(machine.notes || 'Няма')}</td>
+                    </tr>
+                </table>
+            </div>
+        `,
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: '✏️ Редактирай',
+        denyButtonText: '🚪 Премести в друга стая',
+        cancelButtonText: 'Затвори',
+        confirmButtonColor: '#2563eb',
+        denyButtonColor: '#0f766e',
+        cancelButtonColor: '#64748b'
+    }).then((res) => {
+        if (res.isConfirmed) {
+            openEditMachineModal(machineId);
+        } else if (res.isDenied) {
+            openMoveMachineModal(machineId);
+        }
+    });
 };
 
-window.onRoomSearchInput = function(val) {
-    roomSearchQuery = String(val || '').trim();
-    renderRoomsLayout();
-};
+window.openEditMachineModal = async function(machineId) {
+    let m = globalMachinesCache.find(x => x.id === machineId);
+    if (!m) return;
 
-// --------------------------------------------------------------------------
-// Управление на Стаи (Създаване, Редакция, Изтриване)
-// --------------------------------------------------------------------------
-window.openCreateRoomModal = async function() {
+    let roomOptions = globalRoomsCache.map(r => `
+        <option value="${r.room_number}" ${String(m.room_number) === String(r.room_number) ? 'selected' : ''}>
+            Стая ${r.room_number} - ${escapeHtml(r.room_name)}
+        </option>
+    `).join('');
+
     const { value: formValues } = await Swal.fire({
-        title: '➕ Добавяне на нова стая',
+        title: `✏️ Редакция на машина`,
+        html: `
+            <div style="text-align: left; font-size: 0.9em;">
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Име на машина / пост: <span style="color:#dc2626;">*</span></label>
+                <input id="swalEditMacName" class="swal2-input" value="${escapeHtml(m.name)}" style="width: 100%; margin: 0 0 10px 0;">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Инвентарен №:</label>
+                        <input id="swalEditMacCode" class="swal2-input" value="${escapeHtml(m.code || '')}" style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Статус:</label>
+                        <select id="swalEditMacStatus" class="swal2-select" style="width: 100%; margin: 0;">
+                            <option value="active" ${m.status === 'active' ? 'selected' : ''}>🟢 В експлоатация (Активна)</option>
+                            <option value="maintenance" ${m.status === 'maintenance' ? 'selected' : ''}>🟠 В профилактика / Ремонт</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Стая / Помещение: <span style="color:#dc2626;">*</span></label>
+                <select id="swalEditMacRoom" class="swal2-select" style="width: 100%; margin: 0 0 10px 0;">
+                    <option value="">-- Изберете стая --</option>
+                    ${roomOptions}
+                </select>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Модел / Производител:</label>
+                        <input id="swalEditMacModel" class="swal2-input" value="${escapeHtml(m.model || '')}" style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Сериен номер:</label>
+                        <input id="swalEditMacSerial" class="swal2-input" value="${escapeHtml(m.serial_number || '')}" style="width: 100%; margin: 0;">
+                    </div>
+                </div>
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Забележки:</label>
+                <input id="swalEditMacNotes" class="swal2-input" value="${escapeHtml(m.notes || '')}" style="width: 100%; margin: 0;">
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: '💾 Запази промените',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#2563eb',
+        preConfirm: () => {
+            const name = document.getElementById('swalEditMacName').value.trim();
+            const code = document.getElementById('swalEditMacCode').value.trim();
+            const roomNum = document.getElementById('swalEditMacRoom').value;
+            const status = document.getElementById('swalEditMacStatus').value;
+            const model = document.getElementById('swalEditMacModel').value.trim();
+            const serial = document.getElementById('swalEditMacSerial').value.trim();
+            const notes = document.getElementById('swalEditMacNotes').value.trim();
+
+            if (!name) { Swal.showValidationMessage('Името на машината е задължително!'); return false; }
+            if (!roomNum) { Swal.showValidationMessage('Задължително изберете стая / локация!'); return false; }
+
+            let roomObj = globalRoomsCache.find(r => String(r.room_number) === String(roomNum));
+            let floor = roomObj ? roomObj.floor : (roomNum.startsWith('1') ? 'Етаж 1' : (roomNum.startsWith('2') ? 'Етаж 2' : 'Етаж 3'));
+
+            return {
+                name: name,
+                code: code || null,
+                room_number: roomNum,
+                room_name: roomObj ? roomObj.room_name : null,
+                floor: floor,
+                status: status,
+                model: model || null,
+                serial_number: serial || null,
+                notes: notes || null
+            };
+        }
+    });
+
+    if (formValues) {
+        Swal.fire({ title: 'Обновяване...', didOpen: () => Swal.showLoading() });
+        try {
+            const { error } = await client.from('factory_machines').update(formValues).eq('id', machineId);
+            if (error) throw error;
+            Swal.fire('Успех!', 'Данните на машината са обновени.', 'success');
+            await loadRoomsData();
+            renderRoomsLayout();
+        } catch (err) {
+            Swal.fire('Грешка', err.message, 'error');
+        }
+    }
+};
+
+window.openMoveMachineModal = async function(machineId) {
+    let m = globalMachinesCache.find(x => x.id === machineId);
+    if (!m) return;
+
+    let roomOptions = globalRoomsCache.map(r => `
+        <option value="${r.room_number}" ${String(m.room_number) === String(r.room_number) ? 'selected' : ''}>
+            Стая ${r.room_number} (${escapeHtml(r.room_name)})
+        </option>
+    `).join('');
+
+    const { value: newRoomNum } = await Swal.fire({
+        title: `🚪 Преместване на ${escapeHtml(m.name)}`,
+        html: `
+            <p style="color:#64748b; font-size:0.9em;">Текущо разположение: <b>Стая ${escapeHtml(m.room_number || 'Няма')}</b></p>
+            <label style="font-weight:bold; display:block; margin-bottom:6px;">Изберете нова стая / локация:</label>
+            <select id="swalMoveRoomSelect" class="swal2-select" style="width:100%;">
+                ${roomOptions}
+            </select>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Премести тук',
+        cancelButtonText: 'Отказ',
+        preConfirm: () => document.getElementById('swalMoveRoomSelect').value
+    });
+
+    if (newRoomNum) {
+        let rObj = globalRoomsCache.find(r => String(r.room_number) === String(newRoomNum));
+        try {
+            await client.from('factory_machines').update({
+                room_number: String(newRoomNum),
+                room_name: rObj ? rObj.room_name : null,
+                floor: rObj ? rObj.floor : null
+            }).eq('id', machineId);
+            Swal.fire('Преместена!', `Машината беше преместена в Стая ${newRoomNum}.`, 'success');
+            await loadRoomsData();
+            renderRoomsLayout();
+        } catch (err) {
+            Swal.fire('Грешка', err.message, 'error');
+        }
+    }
+};
+
+// --------------------------------------------------------------------------
+// 5. ПАСПОРТ НА ИНСТРУМЕНТ / УРЕД (Клик на уред в стаята)
+// --------------------------------------------------------------------------
+window.openToolPassportModal = function(toolId) {
+    let tool = globalToolsCache.find(t => t.id === toolId);
+    if (!tool) return;
+
+    let calibStatusHtml = '<span style="color:#64748b;">Не се изисква</span>';
+    if (tool.calibration_due) {
+        let today = new Date(); today.setHours(0,0,0,0);
+        let due = new Date(tool.calibration_due); due.setHours(0,0,0,0);
+        let diffDays = Math.round((due - today) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) {
+            calibStatusHtml = `<span style="background:#fee2e2; color:#b91c1c; font-size:0.85em; padding:3px 8px; border-radius:6px; font-weight:800;">🔴 Изтекла (${escapeHtml(tool.calibration_due)})</span>`;
+        } else if (diffDays <= 30) {
+            calibStatusHtml = `<span style="background:#fef3c7; color:#b45309; font-size:0.85em; padding:3px 8px; border-radius:6px; font-weight:800;">🟡 Изтича скоро (остават ${diffDays} дни)</span>`;
+        } else {
+            calibStatusHtml = `<span style="background:#dcfce7; color:#166534; font-size:0.85em; padding:3px 8px; border-radius:6px; font-weight:800;">🟢 Годен (до ${escapeHtml(tool.calibration_due)})</span>`;
+        }
+    }
+
+    Swal.fire({
+        title: `📐 Паспорт на Инструмент / Уред`,
+        html: `
+            <div style="text-align: left; font-size: 0.92em; line-height: 1.6;">
+                <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size: 1.3em; font-weight: 900; color: #0284c7; font-family: monospace;">${escapeHtml(tool.tool_code)}</span>
+                        <span style="background: #dbeafe; color: #1e40af; font-size: 0.75em; font-weight: 800; padding: 2px 8px; border-radius: 12px;">${escapeHtml(tool.category || 'Уред')}</span>
+                    </div>
+                    <div style="font-size: 1.15em; font-weight: 800; color: #0f172a; margin-top: 4px;">${escapeHtml(tool.tool_name)}</div>
+                </div>
+
+                <table style="width:100%; border-collapse:collapse; font-size:0.95em;">
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold; width:45%;">📍 Стая / Локация:</td>
+                        <td style="padding:6px 0; font-weight:bold; color:#1e293b;">Стая ${escapeHtml(tool.room_number || '-')} ${tool.room_name ? '(' + escapeHtml(tool.room_name) + ')' : ''}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">🗄️ Точно място в стаята:</td>
+                        <td style="padding:6px 0; color:#1e293b;">${escapeHtml(tool.location_detail || 'Общо в стаята')}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">🔢 Сериен номер:</td>
+                        <td style="padding:6px 0; font-family:monospace; color:#1e293b;">${escapeHtml(tool.serial_number || '-')}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">📅 Последна проверка:</td>
+                        <td style="padding:6px 0; color:#1e293b;">${escapeHtml(tool.calibration_date || 'Няма данни')}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">⏳ Срок на годност:</td>
+                        <td style="padding:6px 0;">${calibStatusHtml}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">📝 Забележки:</td>
+                        <td style="padding:6px 0; color:#475569; font-style:italic;">${escapeHtml(tool.notes || 'Няма')}</td>
+                    </tr>
+                </table>
+
+                <div style="display: flex; gap: 8px; margin-top: 14px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
+                    <button type="button" onclick="triggerToolCalibrationModal(${tool.id}, '${escapeHtml(tool.tool_code)}', '${escapeHtml(tool.tool_name)}')" style="flex:1; background:#fef3c7; border:1px solid #fde68a; color:#b45309; padding:8px 10px; border-radius:6px; font-weight:800; font-size:0.85em; cursor:pointer;">
+                        📏 Ново замерване
+                    </button>
+                    <button type="button" onclick="triggerToolCalibHistoryModal('${escapeHtml(tool.tool_code)}', '${escapeHtml(tool.tool_name)}')" style="flex:1; background:#e0f2fe; border:1px solid #bae6fd; color:#0369a1; padding:8px 10px; border-radius:6px; font-weight:800; font-size:0.85em; cursor:pointer;">
+                        📋 Дневник проверки
+                    </button>
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: '✏️ Редактирай',
+        denyButtonText: '🚪 Премести в друга стая',
+        cancelButtonText: 'Затвори',
+        confirmButtonColor: '#2563eb',
+        denyButtonColor: '#0f766e',
+        cancelButtonColor: '#64748b'
+    }).then((res) => {
+        if (res.isConfirmed) {
+            openEditToolModal(toolId);
+        } else if (res.isDenied) {
+            openMoveToolModal(toolId);
+        }
+    });
+};
+
+window.triggerToolCalibrationModal = function(id, code, name) {
+    Swal.close();
+    if (typeof openToolCalibrationModal === 'function') {
+        openToolCalibrationModal(id, code, name);
+    }
+};
+
+window.triggerToolCalibHistoryModal = function(code, name) {
+    Swal.close();
+    if (typeof openToolCalibrationHistoryModal === 'function') {
+        openToolCalibrationHistoryModal(code, name);
+    }
+};
+
+window.openEditToolModal = async function(toolId) {
+    let t = globalToolsCache.find(x => x.id === toolId);
+    if (!t) return;
+
+    let roomOptions = globalRoomsCache.map(r => `
+        <option value="${r.room_number}" ${String(t.room_number) === String(r.room_number) ? 'selected' : ''}>
+            Стая ${r.room_number} - ${escapeHtml(r.room_name)}
+        </option>
+    `).join('');
+
+    const { value: formValues } = await Swal.fire({
+        title: `✏️ Редакция на уред ${escapeHtml(t.tool_code)}`,
+        html: `
+            <div style="text-align: left; font-size: 0.9em;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Код на уред: <span style="color:#dc2626;">*</span></label>
+                        <input id="swalEditToolCode" class="swal2-input" value="${escapeHtml(t.tool_code)}" style="width: 100%; margin: 0; font-family:monospace; font-weight:800;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Категория:</label>
+                        <select id="swalEditToolCat" class="swal2-select" style="width: 100%; margin: 0;">
+                            <option value="Измервателен уред" ${t.category === 'Измервателен уред' ? 'selected' : ''}>Измервателен уред</option>
+                            <option value="Електрически инструмент" ${t.category === 'Електрически инструмент' ? 'selected' : ''}>Електрически инструмент</option>
+                            <option value="Ръчен инструмент" ${t.category === 'Ръчен инструмент' ? 'selected' : ''}>Ръчен инструмент</option>
+                            <option value="Машина / Работно място" ${t.category === 'Машина / Работно място' ? 'selected' : ''}>Машина / Работно място</option>
+                            <option value="Оснастка & Приспособления" ${t.category === 'Оснастка & Приспособления' ? 'selected' : ''}>Оснастка & Приспособления</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Наименование: <span style="color:#dc2626;">*</span></label>
+                <input id="swalEditToolName" class="swal2-input" value="${escapeHtml(t.tool_name)}" style="width: 100%; margin: 0 0 10px 0;">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Стая / Помещение: <span style="color:#dc2626;">*</span></label>
+                        <select id="swalEditToolRoom" class="swal2-select" style="width: 100%; margin: 0;">
+                            ${roomOptions}
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Място в стаята:</label>
+                        <input id="swalEditToolLoc" class="swal2-input" value="${escapeHtml(t.location_detail || '')}" placeholder="Шкаф 1 / Маса 2" style="width: 100%; margin: 0;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Сериен №:</label>
+                        <input id="swalEditToolSerial" class="swal2-input" value="${escapeHtml(t.serial_number || '')}" style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Статус:</label>
+                        <select id="swalEditToolStatus" class="swal2-select" style="width: 100%; margin: 0;">
+                            <option value="active" ${t.status === 'active' ? 'selected' : ''}>active (Годен)</option>
+                            <option value="calibration" ${t.status === 'calibration' ? 'selected' : ''}>calibration (В проверка)</option>
+                            <option value="repair" ${t.status === 'repair' ? 'selected' : ''}>repair (В ремонт)</option>
+                            <option value="broken" ${t.status === 'broken' ? 'selected' : ''}>broken (Брак)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; background:#f8fafc; padding:8px; border-radius:8px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Последна проверка:</label>
+                        <input type="date" id="swalEditToolCalibDate" class="swal2-input" value="${t.calibration_date || ''}" style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Валидна до:</label>
+                        <input type="date" id="swalEditToolCalibDue" class="swal2-input" value="${t.calibration_due || ''}" style="width: 100%; margin: 0;">
+                    </div>
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: '💾 Запази',
+        cancelButtonText: 'Отказ',
+        preConfirm: () => {
+            const code = document.getElementById('swalEditToolCode').value.trim();
+            const name = document.getElementById('swalEditToolName').value.trim();
+            const roomNum = document.getElementById('swalEditToolRoom').value;
+            const loc = document.getElementById('swalEditToolLoc').value.trim();
+            const cat = document.getElementById('swalEditToolCat').value;
+            const serial = document.getElementById('swalEditToolSerial').value.trim();
+            const status = document.getElementById('swalEditToolStatus').value;
+            const cDate = document.getElementById('swalEditToolCalibDate').value;
+            const cDue = document.getElementById('swalEditToolCalibDue').value;
+
+            if (!code) { Swal.showValidationMessage('Кодът е задължителен!'); return false; }
+            if (!name) { Swal.showValidationMessage('Името е задължително!'); return false; }
+            if (!roomNum) { Swal.showValidationMessage('Стаята е задължителна!'); return false; }
+
+            let rObj = globalRoomsCache.find(r => String(r.room_number) === String(roomNum));
+
+            return {
+                tool_code: code,
+                tool_name: name,
+                category: cat,
+                room_number: roomNum,
+                room_name: rObj ? rObj.room_name : null,
+                location_detail: loc || null,
+                serial_number: serial || null,
+                status: status,
+                calibration_date: cDate || null,
+                calibration_due: cDue || null
+            };
+        }
+    });
+
+    if (formValues) {
+        Swal.fire({ title: 'Обновяване...', didOpen: () => Swal.showLoading() });
+        try {
+            const { error } = await client.from('factory_tools').update(formValues).eq('id', toolId);
+            if (error) throw error;
+            Swal.fire('Успех!', 'Данните на уреда са обновени.', 'success');
+            await loadRoomsData();
+            renderRoomsLayout();
+        } catch (err) {
+            Swal.fire('Грешка', err.message, 'error');
+        }
+    }
+};
+
+window.openMoveToolModal = async function(toolId) {
+    let t = globalToolsCache.find(x => x.id === toolId);
+    if (!t) return;
+
+    let roomOptions = globalRoomsCache.map(r => `
+        <option value="${r.room_number}" ${String(t.room_number) === String(r.room_number) ? 'selected' : ''}>
+            Стая ${r.room_number} (${escapeHtml(r.room_name)})
+        </option>
+    `).join('');
+
+    const { value: newRoomNum } = await Swal.fire({
+        title: `🚪 Преместване на ${escapeHtml(t.tool_code)}`,
+        html: `
+            <p style="color:#64748b; font-size:0.9em;">Текущо разположение: <b>Стая ${escapeHtml(t.room_number || 'Няма')}</b></p>
+            <label style="font-weight:bold; display:block; margin-bottom:6px;">Изберете нова стая / локация:</label>
+            <select id="swalMoveToolSelect" class="swal2-select" style="width:100%;">
+                ${roomOptions}
+            </select>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Премести тук',
+        cancelButtonText: 'Отказ',
+        preConfirm: () => document.getElementById('swalMoveToolSelect').value
+    });
+
+    if (newRoomNum) {
+        let rObj = globalRoomsCache.find(r => String(r.room_number) === String(newRoomNum));
+        try {
+            await client.from('factory_tools').update({
+                room_number: String(newRoomNum),
+                room_name: rObj ? rObj.room_name : null
+            }).eq('id', toolId);
+            Swal.fire('Преместен!', `Уредът беше преместен в Стая ${newRoomNum}.`, 'success');
+            await loadRoomsData();
+            renderRoomsLayout();
+        } catch (err) {
+            Swal.fire('Грешка', err.message, 'error');
+        }
+    }
+};
+
+// --------------------------------------------------------------------------
+// 6. ДОБАВЯНЕ НА НОВА МАШИНА (СЪС ЗАДЪЛЖИТЕЛНА СТАЯ)
+// --------------------------------------------------------------------------
+window.openAddMachineModal = async function(defaultRoomNum = '') {
+    if (globalRoomsCache.length === 0) {
+        Swal.fire('Внимание', 'Първо добавете поне една стая / локация (напр. Стая 11 или Склад)!', 'warning');
+        return;
+    }
+
+    let roomOptions = globalRoomsCache.map(r => `
+        <option value="${r.room_number}" ${String(r.room_number) === String(defaultRoomNum) ? 'selected' : ''}>
+            Стая ${r.room_number} - ${escapeHtml(r.room_name)}
+        </option>
+    `).join('');
+
+    const { value: formValues } = await Swal.fire({
+        title: `🏭 Добавяне на нова машина`,
         html: `
             <div style="text-align: left; font-size: 0.9em;">
                 <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                    Номер на стая: <span style="color: #dc2626;">*</span>
-                    <small style="color: #64748b; font-weight: normal;">(първата цифра е етажът: напр. 11, 21, 22...)</small>
+                    Име на машина / пост: <span style="color:#dc2626;">*</span>
                 </label>
-                <input id="swalRoomNum" class="swal2-input" placeholder="напр. 21" style="width: 100%; margin: 0 0 12px 0; font-weight: 800; font-size: 1.1em;" oninput="autoSelectFloorFromNum(this.value)">
+                <input id="swalNewMacName" class="swal2-input" placeholder="напр. Бобинажна машина 1, Струг HAAS..." style="width: 100%; margin: 0 0 10px 0;">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Инвентарен №:</label>
+                        <input id="swalNewMacCode" class="swal2-input" placeholder="напр. 101, 201" style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Статус:</label>
+                        <select id="swalNewMacStatus" class="swal2-select" style="width: 100%; margin: 0;">
+                            <option value="active">🟢 В експлоатация (Активна)</option>
+                            <option value="maintenance">🟠 В профилактика / Ремонт</option>
+                        </select>
+                    </div>
+                </div>
 
                 <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                    Наименование / Предназначение: <span style="color: #dc2626;">*</span>
+                    Стая / Помещение: <span style="color:#dc2626;">*</span>
                 </label>
-                <input id="swalRoomName" class="swal2-input" placeholder="напр. Бобиновъчен участък" style="width: 100%; margin: 0 0 12px 0;">
+                <select id="swalNewMacRoom" class="swal2-select" style="width: 100%; margin: 0 0 10px 0;">
+                    <option value="">-- Изберете стая / локация --</option>
+                    ${roomOptions}
+                </select>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Модел / Производител:</label>
+                        <input id="swalNewMacModel" class="swal2-input" placeholder="HAAS, CNC..." style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Сериен номер:</label>
+                        <input id="swalNewMacSerial" class="swal2-input" placeholder="SN..." style="width: 100%; margin: 0;">
+                    </div>
+                </div>
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Забележки:</label>
+                <input id="swalNewMacNotes" class="swal2-input" placeholder="Бележки за машината" style="width: 100%; margin: 0;">
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '💾 Добави машина',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#0f766e',
+        preConfirm: () => {
+            const name = document.getElementById('swalNewMacName').value.trim();
+            const code = document.getElementById('swalNewMacCode').value.trim();
+            const roomNum = document.getElementById('swalNewMacRoom').value;
+            const status = document.getElementById('swalNewMacStatus').value;
+            const model = document.getElementById('swalNewMacModel').value.trim();
+            const serial = document.getElementById('swalNewMacSerial').value.trim();
+            const notes = document.getElementById('swalNewMacNotes').value.trim();
+
+            if (!name) { Swal.showValidationMessage('Името на машината е задължително!'); return false; }
+            if (!roomNum) { Swal.showValidationMessage('Задължително изберете стая / локация!'); return false; }
+
+            let roomObj = globalRoomsCache.find(r => String(r.room_number) === String(roomNum));
+            let floor = roomObj ? roomObj.floor : (roomNum.startsWith('1') ? 'Етаж 1' : (roomNum.startsWith('2') ? 'Етаж 2' : 'Етаж 3'));
+
+            return {
+                name: name,
+                code: code || null,
+                room_number: roomNum,
+                room_name: roomObj ? roomObj.room_name : null,
+                floor: floor,
+                status: status,
+                model: model || null,
+                serial_number: serial || null,
+                notes: notes || null
+            };
+        }
+    });
+
+    if (formValues) {
+        Swal.fire({ title: 'Запис на машина...', didOpen: () => Swal.showLoading() });
+        try {
+            const { error } = await client.from('factory_machines').insert([formValues]);
+            if (error) throw error;
+            Swal.fire('Добавена!', `Машина "${formValues.name}" беше заведена в Стая ${formValues.room_number}.`, 'success');
+            await loadRoomsData();
+            renderRoomsLayout();
+        } catch (err) {
+            Swal.fire('Грешка', err.message, 'error');
+        }
+    }
+};
+
+// --------------------------------------------------------------------------
+// 7. ДОБАВЯНЕ НА НОВ УРЕД (ОБЩ БУТОН С ИЗБОР НА СТАЯ)
+// --------------------------------------------------------------------------
+window.openAddToolGlobalModal = async function() {
+    if (globalRoomsCache.length === 0) {
+        Swal.fire('Внимание', 'Първо добавете поне една стая / локация!', 'warning');
+        return;
+    }
+
+    let roomOptions = globalRoomsCache.map(r => `
+        <option value="${r.room_number}">Стая ${r.room_number} - ${escapeHtml(r.room_name)}</option>
+    `).join('');
+
+    let catalogOptions = TOOL_TYPE_CATALOG.map((t, idx) => `
+        <option value="${idx}">[${t.code}] ${escapeHtml(t.name)} (${t.category})</option>
+    `).join('');
+
+    const { value: formValues } = await Swal.fire({
+        title: `📏 Добавяне на уред / инструмент`,
+        html: `
+            <div style="text-align: left; font-size: 0.9em;">
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
+                    1. Изберете Стая / Локация: <span style="color:#dc2626;">*</span>
+                </label>
+                <select id="swalGlobalToolRoom" class="swal2-select" style="width: 100%; margin: 0 0 10px 0;" onchange="recalcGlobalToolCode()">
+                    <option value="">-- Изберете стая --</option>
+                    ${roomOptions}
+                </select>
 
                 <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                    Етаж:
+                    2. Тип уред / инструмент: <span style="color:#dc2626;">*</span>
+                </label>
+                <select id="swalGlobalToolCatalog" class="swal2-select" style="width: 100%; margin: 0 0 10px 0;" onchange="recalcGlobalToolCode()">
+                    <option value="">-- Изберете от списъка --</option>
+                    ${catalogOptions}
+                </select>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Код: <span style="color:#dc2626;">*</span></label>
+                        <input id="swalGlobalToolCode" class="swal2-input" placeholder="напр. 21-Ш-01" style="width: 100%; margin: 0; font-family:monospace; font-weight:900; color:#0284c7;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Наименование: <span style="color:#dc2626;">*</span></label>
+                        <input id="swalGlobalToolName" class="swal2-input" placeholder="Шублер 150mm" style="width: 100%; margin: 0;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Сериен номер:</label>
+                        <input id="swalGlobalToolSerial" class="swal2-input" placeholder="SN..." style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Място в стаята:</label>
+                        <input id="swalGlobalToolLoc" class="swal2-input" placeholder="Шкаф 1 / Маса 2" style="width: 100%; margin: 0;">
+                    </div>
+                </div>
+
+                <div id="globalCalibContainer" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background:#f8fafc; padding:8px; border-radius:8px; margin-bottom:10px;">
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Последна проверка:</label>
+                        <input type="date" id="swalGlobalToolCalibDate" class="swal2-input" style="width: 100%; margin: 0;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Валидна до:</label>
+                        <input type="date" id="swalGlobalToolCalibDue" class="swal2-input" style="width: 100%; margin: 0;">
+                    </div>
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: '💾 Добави в инвентара',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#16a34a',
+        preConfirm: () => {
+            const roomNum = document.getElementById('swalGlobalToolRoom').value;
+            const code = document.getElementById('swalGlobalToolCode').value.trim();
+            const name = document.getElementById('swalGlobalToolName').value.trim();
+            const serial = document.getElementById('swalGlobalToolSerial').value.trim();
+            const loc = document.getElementById('swalGlobalToolLoc').value.trim();
+            const cDate = document.getElementById('swalGlobalToolCalibDate').value;
+            const cDue = document.getElementById('swalGlobalToolCalibDue').value;
+
+            if (!roomNum) { Swal.showValidationMessage('Задължително изберете стая / локация!'); return false; }
+            if (!code) { Swal.showValidationMessage('Кодът на уреда е задължителен!'); return false; }
+            if (!name) { Swal.showValidationMessage('Наименованието е задължително!'); return false; }
+
+            const catIdx = document.getElementById('swalGlobalToolCatalog').value;
+            const catItem = catIdx !== '' ? TOOL_TYPE_CATALOG[parseInt(catIdx)] : null;
+            const category = catItem ? catItem.category : 'Измервателен уред';
+
+            let rObj = globalRoomsCache.find(r => String(r.room_number) === String(roomNum));
+
+            return {
+                tool_code: code,
+                tool_name: name,
+                category: category,
+                room_number: String(roomNum),
+                room_name: rObj ? rObj.room_name : null,
+                workstation_name: `Стая ${roomNum}`,
+                location_detail: loc || null,
+                serial_number: serial || null,
+                calibration_date: cDate || null,
+                calibration_due: cDue || null,
+                status: 'active'
+            };
+        }
+    });
+
+    if (formValues) {
+        Swal.fire({ title: 'Запис на уреда...', didOpen: () => Swal.showLoading() });
+        try {
+            const { error } = await client.from('factory_tools').insert([formValues]);
+            if (error) throw error;
+            Swal.fire('Добавен!', `Уредът ${formValues.tool_code} беше зачислен към Стая ${formValues.room_number}.`, 'success');
+            await loadRoomsData();
+            renderRoomsLayout();
+        } catch (err) {
+            Swal.fire('Грешка', err.message, 'error');
+        }
+    }
+};
+
+window.recalcGlobalToolCode = function() {
+    let roomNum = document.getElementById('swalGlobalToolRoom')?.value;
+    let catIdx = document.getElementById('swalGlobalToolCatalog')?.value;
+    if (!roomNum || catIdx === '') return;
+
+    let item = TOOL_TYPE_CATALOG[parseInt(catIdx)];
+    if (!item) return;
+
+    let prefix = `${roomNum}-${item.code}-`;
+    let existingNums = globalToolsCache
+        .filter(t => String(t.room_number) === String(roomNum) && String(t.tool_code).startsWith(prefix))
+        .map(t => parseInt(t.tool_code.replace(prefix, '')) || 0);
+
+    let nextNum = existingNums.length > 0 ? (Math.max(...existingNums) + 1) : 1;
+    let nextNumStr = String(nextNum).padStart(2, '0');
+
+    document.getElementById('swalGlobalToolCode').value = `${roomNum}-${item.code}-${nextNumStr}`;
+    document.getElementById('swalGlobalToolName').value = item.name;
+
+    let calibContainer = document.getElementById('globalCalibContainer');
+    if (calibContainer) calibContainer.style.opacity = item.calib ? '1' : '0.4';
+};
+
+// --------------------------------------------------------------------------
+// 8. Управление на стаи и печат на опис
+// --------------------------------------------------------------------------
+window.openCreateRoomModal = async function() {
+    const { value: formValues } = await Swal.fire({
+        title: '➕ Добавяне на нова стая / локация',
+        html: `
+            <div style="text-align: left; font-size: 0.9em;">
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
+                    Номер / Код на стая: <span style="color: #dc2626;">*</span>
+                    <small style="color: #64748b; font-weight: normal;">(напр. 11, 21, 2А, Склад...)</small>
+                </label>
+                <input id="swalRoomNum" class="swal2-input" placeholder="напр. 21, 2А или Склад" style="width: 100%; margin: 0 0 12px 0; font-weight: 800; font-size: 1.1em;" oninput="autoSelectFloorFromNum(this.value)">
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
+                    Наименование: <span style="color: #dc2626;">*</span>
+                </label>
+                <input id="swalRoomName" class="swal2-input" placeholder="напр. Бобиновъчен участък, Склад..." style="width: 100%; margin: 0 0 12px 0;">
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
+                    Етаж / Зона:
                 </label>
                 <select id="swalRoomFloor" class="swal2-select" style="width: 100%; margin: 0 0 12px 0;">
                     <option value="Етаж 1">Етаж 1</option>
                     <option value="Етаж 2">Етаж 2</option>
                     <option value="Етаж 3">Етаж 3</option>
+                    <option value="Склад">Склад / Обща площ</option>
                 </select>
 
                 <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
@@ -454,12 +1195,12 @@ window.openCreateRoomModal = async function() {
                 <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
                     Описание / Забележки:
                 </label>
-                <input id="swalRoomDesc" class="swal2-input" placeholder="Специфични бележки за стаята" style="width: 100%; margin: 0;">
+                <input id="swalRoomDesc" class="swal2-input" placeholder="Бележки" style="width: 100%; margin: 0;">
             </div>
         `,
         focusConfirm: false,
         showCancelButton: true,
-        confirmButtonText: '💾 Създай стая',
+        confirmButtonText: '💾 Създай',
         cancelButtonText: 'Отказ',
         confirmButtonColor: '#2563eb',
         preConfirm: () => {
@@ -469,10 +1210,9 @@ window.openCreateRoomModal = async function() {
             const supervisor = document.getElementById('swalRoomSupervisor').value.trim();
             const desc = document.getElementById('swalRoomDesc').value.trim();
 
-            if (!num) { Swal.showValidationMessage('Моля въведете номер на стая!'); return false; }
+            if (!num) { Swal.showValidationMessage('Моля въведете номер/код на стая!'); return false; }
             if (!name) { Swal.showValidationMessage('Моля въведете име на стаята!'); return false; }
 
-            // Проверка за дубликат
             let exists = globalRoomsCache.some(r => String(r.room_number).trim() === num);
             if (exists) { Swal.showValidationMessage(`Стая с номер ${num} вече съществува!`); return false; }
 
@@ -483,25 +1223,24 @@ window.openCreateRoomModal = async function() {
     if (formValues) {
         Swal.fire({ title: 'Запазване...', didOpen: () => Swal.showLoading() });
         try {
-            const { data, error } = await client.from('factory_rooms').insert([formValues]).select();
+            const { error } = await client.from('factory_rooms').insert([formValues]);
             if (error) {
-                // Ако таблицата още не съществува в Supabase, записваме временно локално
                 if (error.message.includes('relation "public.factory_rooms" does not exist')) {
                     formValues.id = Date.now();
                     globalRoomsCache.push(formValues);
                     localStorage.setItem('temp_factory_rooms', JSON.stringify(globalRoomsCache));
-                    Swal.fire('Записано локално!', 'Стаята е създадена локално. За да се синхронизира трайно, моля изпълнете setup_factory_rooms.sql в Supabase.', 'warning');
+                    Swal.fire('Записано локално!', 'Стаята е създадена локално. Изпълнете setup_factory_rooms.sql в Supabase.', 'warning');
                     renderRoomsLayout();
                     return;
                 }
                 throw error;
             }
 
-            Swal.fire('Успех!', `Стая № ${formValues.room_number} беше създадена успешно!`, 'success');
+            Swal.fire('Успех!', `Стая № ${formValues.room_number} беше създадена!`, 'success');
             await loadRoomsData();
             renderRoomsLayout();
         } catch (err) {
-            Swal.fire('Грешка при запис', err.message, 'error');
+            Swal.fire('Грешка', err.message, 'error');
         }
     }
 };
@@ -513,6 +1252,7 @@ window.autoSelectFloorFromNum = function(val) {
     if (clean.startsWith('1')) select.value = 'Етаж 1';
     else if (clean.startsWith('2')) select.value = 'Етаж 2';
     else if (clean.startsWith('3')) select.value = 'Етаж 3';
+    else if (clean.toLowerCase().includes('склад')) select.value = 'Склад';
 };
 
 window.openEditRoomModal = async function(roomId) {
@@ -523,17 +1263,18 @@ window.openEditRoomModal = async function(roomId) {
         title: `✏️ Редакция на Стая № ${escapeHtml(room.room_number)}`,
         html: `
             <div style="text-align: left; font-size: 0.9em;">
-                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Номер на стая:</label>
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Номер / Код на стая:</label>
                 <input id="swalEditRoomNum" class="swal2-input" value="${escapeHtml(room.room_number)}" style="width: 100%; margin: 0 0 12px 0; font-weight: 800;">
 
                 <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Наименование:</label>
                 <input id="swalEditRoomName" class="swal2-input" value="${escapeHtml(room.room_name || '')}" style="width: 100%; margin: 0 0 12px 0;">
 
-                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Етаж:</label>
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Етаж / Зона:</label>
                 <select id="swalEditRoomFloor" class="swal2-select" style="width: 100%; margin: 0 0 12px 0;">
                     <option value="Етаж 1" ${room.floor === 'Етаж 1' ? 'selected' : ''}>Етаж 1</option>
                     <option value="Етаж 2" ${room.floor === 'Етаж 2' ? 'selected' : ''}>Етаж 2</option>
                     <option value="Етаж 3" ${room.floor === 'Етаж 3' ? 'selected' : ''}>Етаж 3</option>
+                    <option value="Склад" ${room.floor === 'Склад' ? 'selected' : ''}>Склад / Обща площ</option>
                 </select>
 
                 <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Отговорник:</label>
@@ -544,7 +1285,7 @@ window.openEditRoomModal = async function(roomId) {
             </div>
         `,
         showCancelButton: true,
-        confirmButtonText: 'Запази промените',
+        confirmButtonText: 'Запази',
         cancelButtonText: 'Отказ',
         preConfirm: () => {
             return {
@@ -562,7 +1303,7 @@ window.openEditRoomModal = async function(roomId) {
         try {
             const { error } = await client.from('factory_rooms').update(formValues).eq('id', roomId);
             if (error) throw error;
-            Swal.fire('Обновено!', 'Данните на стаята бяха променени.', 'success');
+            Swal.fire('Обновено!', 'Данните са записани.', 'success');
             await loadRoomsData();
             renderRoomsLayout();
         } catch (err) {
@@ -574,23 +1315,18 @@ window.openEditRoomModal = async function(roomId) {
 window.deleteRoom = async function(roomId, roomNumber) {
     const res = await Swal.fire({
         title: `Изтриване на Стая № ${roomNumber}?`,
-        html: `Сигурни ли сте? Машините и инструментите в тази стая няма да бъдат изтрити, а ще останат <b>незачислени</b>.`,
+        html: `Сигурни ли сте? Машините и инструментите в тази стая няма да се изтрият, а ще останат <b>незачислени</b>.`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#dc2626',
-        confirmButtonText: 'Да, изтрий я',
-        cancelButtonText: 'Отказ'
+        confirmButtonText: 'Да, изтрий'
     });
 
     if (res.isConfirmed) {
-        Swal.fire({ title: 'Изтриване...', didOpen: () => Swal.showLoading() });
         try {
             await client.from('factory_machines').update({ room_number: null, room_name: null }).eq('room_number', roomNumber);
             await client.from('factory_tools').update({ room_number: null, room_name: null }).eq('room_number', roomNumber);
-            const { error } = await client.from('factory_rooms').delete().eq('id', roomId);
-            if (error) throw error;
-
-            Swal.fire('Изтрита!', `Стая № ${roomNumber} беше премахната.`, 'success');
+            await client.from('factory_rooms').delete().eq('id', roomId);
             await loadRoomsData();
             renderRoomsLayout();
         } catch (err) {
@@ -599,9 +1335,6 @@ window.deleteRoom = async function(roomId, roomNumber) {
     }
 };
 
-// --------------------------------------------------------------------------
-// Зачисляване на Машини към Стая
-// --------------------------------------------------------------------------
 window.openAssignMachineModal = async function(roomNumber, roomName) {
     let optionsHtml = '<option value="">-- Изберете машина от списъка --</option>';
     globalMachinesCache.forEach(m => {
@@ -616,15 +1349,10 @@ window.openAssignMachineModal = async function(roomNumber, roomName) {
         title: `🏭 Зачисляване на машина към Стая № ${roomNumber}`,
         html: `
             <div style="text-align: left; font-size: 0.9em;">
-                <p style="color: #475569; margin-top: 0;">
-                    Изберете коя машина да бъде разположена в <b>Стая ${roomNumber} (${escapeHtml(roomName)})</b>:
-                </p>
+                <p style="color: #475569; margin-top: 0;">Изберете машина за <b>Стая ${roomNumber} (${escapeHtml(roomName)})</b>:</p>
                 <select id="swalSelectMachine" class="swal2-select" style="width: 100%; margin: 10px 0;">
                     ${optionsHtml}
                 </select>
-                <small style="color: #64748b; display: block; margin-top: 6px;">
-                    Ако машината е била в друга стая, тя ще бъде преместена в Стая ${roomNumber}.
-                </small>
             </div>
         `,
         showCancelButton: true,
@@ -639,13 +1367,10 @@ window.openAssignMachineModal = async function(roomNumber, roomName) {
     });
 
     if (selectedMachineId) {
-        Swal.fire({ title: 'Зачисляване...', didOpen: () => Swal.showLoading() });
         try {
-            const { error } = await client.from('factory_machines')
+            await client.from('factory_machines')
                 .update({ room_number: String(roomNumber), room_name: roomName })
                 .eq('id', selectedMachineId);
-            if (error) throw error;
-
             Swal.fire('Готово!', 'Машината беше зачислена към стаята.', 'success');
             await loadRoomsData();
             renderRoomsLayout();
@@ -657,11 +1382,11 @@ window.openAssignMachineModal = async function(roomNumber, roomName) {
 
 window.unassignMachineFromRoom = async function(machineId, machineName) {
     const res = await Swal.fire({
-        title: 'Премахване на машина от стаята?',
-        text: `Искате ли да отчислите машина "${machineName}" от тази стая? Тя ще остане в списъка като незачислена.`,
+        title: 'Отчисляване от стаята?',
+        text: `Искате ли да отчислите машина "${machineName}" от тази стая?`,
         icon: 'question',
         showCancelButton: true,
-        confirmButtonText: 'Да, отчисли я',
+        confirmButtonText: 'Да, отчисли',
         cancelButtonText: 'Отказ'
     });
 
@@ -673,178 +1398,6 @@ window.unassignMachineFromRoom = async function(machineId, machineName) {
         } catch (err) {
             Swal.fire('Грешка', err.message, 'error');
         }
-    }
-};
-
-window.openUnassignedMachinesModal = function() {
-    let unassigned = globalMachinesCache.filter(m => !m.room_number);
-    if (unassigned.length === 0) {
-        Swal.fire('Всичко е подредено!', 'Всички машини в завода са зачислени към стаи.', 'success');
-        return;
-    }
-
-    let listHtml = unassigned.map(m => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid #e2e8f0;">
-            <span style="font-weight:700; color:#1e293b;">🏭 ${escapeHtml(m.name)}</span>
-            <span style="color:#ea580c; font-size:0.85em; font-weight:800;">Незачислена</span>
-        </div>
-    `).join('');
-
-    Swal.fire({
-        title: `🏭 Незачислени машини (${unassigned.length})`,
-        html: `<div style="max-height:350px; overflow-y:auto; text-align:left;">${listHtml}</div>`,
-        confirmButtonText: 'Разбрах',
-        confirmButtonColor: '#2563eb'
-    });
-};
-
-// --------------------------------------------------------------------------
-// Добавяне на Инструменти и Уреди към Стая (с Автоматично Кодиране)
-// --------------------------------------------------------------------------
-window.openAddToolToRoomModal = async function(roomNumber, roomName) {
-    // Построяване на опции от каталога със съкращения
-    let catalogOptions = TOOL_TYPE_CATALOG.map((t, idx) => `
-        <option value="${idx}">[${t.code}] ${escapeHtml(t.name)} (${t.category})</option>
-    `).join('');
-
-    const { value: formValues } = await Swal.fire({
-        title: `📏 Добавяне на уред към Стая № ${roomNumber}`,
-        html: `
-            <div style="text-align: left; font-size: 0.9em;">
-                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                    1. Изберете тип уред / инструмент от каталога:
-                </label>
-                <select id="swalToolCatalogSelect" class="swal2-select" style="width: 100%; margin: 0 0 12px 0;" onchange="onToolTypeSelected('${roomNumber}', this.value)">
-                    <option value="">-- Изберете от списъка --</option>
-                    ${catalogOptions}
-                </select>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-                    <div>
-                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                            Генериран Код: <span style="color:#dc2626;">*</span>
-                        </label>
-                        <input id="swalToolCode" class="swal2-input" placeholder="напр. ${roomNumber}-Ш-01" style="width: 100%; margin: 0; font-weight: 900; font-family: monospace; color: #0284c7;">
-                    </div>
-                    <div>
-                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                            Точно наименование: <span style="color:#dc2626;">*</span>
-                        </label>
-                        <input id="swalToolName" class="swal2-input" placeholder="Шублер 150mm дигитален" style="width: 100%; margin: 0;">
-                    </div>
-                </div>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-                    <div>
-                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                            Фабричен сериен №:
-                        </label>
-                        <input id="swalToolSerial" class="swal2-input" placeholder="SN123456" style="width: 100%; margin: 0;">
-                    </div>
-                    <div>
-                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                            Локация в стаята:
-                        </label>
-                        <input id="swalToolLocDetail" class="swal2-input" placeholder="Шкаф 1 / Маса 2 / Стелаж" style="width: 100%; margin: 0;">
-                    </div>
-                </div>
-
-                <div id="calibFieldsContainer" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
-                    <div>
-                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                            Последна калибрация:
-                        </label>
-                        <input type="date" id="swalToolCalibDate" class="swal2-input" style="width: 100%; margin: 0;">
-                    </div>
-                    <div>
-                        <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                            Валидна до:
-                        </label>
-                        <input type="date" id="swalToolCalibDue" class="swal2-input" style="width: 100%; margin: 0;">
-                    </div>
-                </div>
-            </div>
-        `,
-        focusConfirm: false,
-        showCancelButton: true,
-        confirmButtonText: '💾 Добави в описа',
-        cancelButtonText: 'Отказ',
-        confirmButtonColor: '#16a34a',
-        preConfirm: () => {
-            const code = document.getElementById('swalToolCode').value.trim();
-            const name = document.getElementById('swalToolName').value.trim();
-            const serial = document.getElementById('swalToolSerial').value.trim();
-            const loc = document.getElementById('swalToolLocDetail').value.trim();
-            const calibDate = document.getElementById('swalToolCalibDate').value;
-            const calibDue = document.getElementById('swalToolCalibDue').value;
-
-            if (!code) { Swal.showValidationMessage('Моля въведете код на уреда!'); return false; }
-            if (!name) { Swal.showValidationMessage('Моля въведете наименование!'); return false; }
-
-            // Извличане на категория от избрания каталог
-            const catIdx = document.getElementById('swalToolCatalogSelect').value;
-            const catItem = catIdx !== '' ? TOOL_TYPE_CATALOG[parseInt(catIdx)] : null;
-            const category = catItem ? catItem.category : 'Измервателен уред';
-
-            return {
-                tool_code: code,
-                tool_name: name,
-                category: category,
-                room_number: String(roomNumber),
-                room_name: roomName,
-                workstation_name: `Стая ${roomNumber}`,
-                serial_number: serial || null,
-                location_detail: loc || null,
-                calibration_date: calibDate || null,
-                calibration_due: calibDue || null,
-                status: 'active'
-            };
-        }
-    });
-
-    if (formValues) {
-        Swal.fire({ title: 'Запис на уреда...', didOpen: () => Swal.showLoading() });
-        try {
-            const { error } = await client.from('factory_tools').insert([formValues]);
-            if (error) throw error;
-
-            Swal.fire('Добавен!', `Уредът ${formValues.tool_code} беше зачислен към Стая ${roomNumber}.`, 'success');
-            await loadRoomsData();
-            renderRoomsLayout();
-        } catch (err) {
-            Swal.fire('Грешка при запис', err.message, 'error');
-        }
-    }
-};
-
-// Функция за автоматично генериране на код при избор на тип уред
-window.onToolTypeSelected = function(roomNumber, catalogIndex) {
-    if (catalogIndex === '') return;
-    let item = TOOL_TYPE_CATALOG[parseInt(catalogIndex)];
-    if (!item) return;
-
-    // Преброяване колко уреда с този код вече съществуват в тази стая
-    let prefix = `${roomNumber}-${item.code}-`;
-    let existingNums = globalToolsCache
-        .filter(t => String(t.room_number) === String(roomNumber) && String(t.tool_code).startsWith(prefix))
-        .map(t => {
-            let numPart = t.tool_code.replace(prefix, '');
-            return parseInt(numPart) || 0;
-        });
-
-    let nextNum = 1;
-    if (existingNums.length > 0) {
-        nextNum = Math.max(...existingNums) + 1;
-    }
-    let nextNumStr = String(nextNum).padStart(2, '0');
-
-    document.getElementById('swalToolCode').value = `${roomNumber}-${item.code}-${nextNumStr}`;
-    document.getElementById('swalToolName').value = item.name;
-
-    // Ако не подлежи на калибрация, скриваме/заглушаваме датите
-    let calibContainer = document.getElementById('calibFieldsContainer');
-    if (calibContainer) {
-        calibContainer.style.opacity = item.calib ? '1' : '0.4';
     }
 };
 
@@ -869,8 +1422,29 @@ window.deleteTool = async function(toolId, toolCode) {
     }
 };
 
+window.openAddToolToRoomModal = function(roomNumber, roomName) {
+    window.openAddToolGlobalModal();
+    setTimeout(() => {
+        let select = document.getElementById('swalGlobalToolRoom');
+        if (select) {
+            select.value = roomNumber;
+            recalcGlobalToolCode();
+        }
+    }, 200);
+};
+
+window.setFloorFilter = function(floor) {
+    activeFloorFilter = floor;
+    renderRoomsLayout();
+};
+
+window.onRoomSearchInput = function(val) {
+    roomSearchQuery = String(val || '').trim();
+    renderRoomsLayout();
+};
+
 // --------------------------------------------------------------------------
-// 🖨️ Разпечатване на Паспорт / Опис за конкретна стая
+// 9. Разпечатване на Паспорт / Опис за вратата
 // --------------------------------------------------------------------------
 window.printRoomPassport = function(roomNumber) {
     let room = globalRoomsCache.find(r => String(r.room_number).trim() === String(roomNumber).trim());
