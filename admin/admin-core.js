@@ -312,7 +312,6 @@ document.addEventListener('click', (e) => {
 window.cachedFactoryMachines = [
     { name: 'HAAS ST 10', code: '101' },
     { name: 'HAAS Mini Mill', code: '102' },
-    { name: 'EMCO', code: '103' },
     { name: 'EMCO (стар)', code: '104' },
     { name: 'EMCOTURN E25', code: '105' },
     { name: 'Фреза Deckel', code: '106' },

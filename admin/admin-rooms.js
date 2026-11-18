@@ -70,7 +70,6 @@ const MACHINE_TYPE_CATALOG = [
     { name: 'Струг голям', code: '13.4', model: '', status: 'active' },
     { name: 'Струг пресоване', code: '109', model: '', status: 'active' },
     { name: 'Универсален струг', code: '15.3', model: '', status: 'active' },
-    { name: 'EMCO', code: '103', model: '', status: 'active' },
     { name: 'EMCO (стар)', code: '104', model: '', status: 'active' },
     { name: 'EMCOTURN E25', code: '105', model: '', status: 'active' },
     { name: 'HAAS Mini Mill', code: '15.2', model: 'HAAS', status: 'active' },
