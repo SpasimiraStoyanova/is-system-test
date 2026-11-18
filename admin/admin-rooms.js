@@ -34,7 +34,7 @@ const TOOL_TYPE_CATALOG = [
     { code: 'ЧАС', name: 'Индикаторен часовник', category: 'Измервателен уред', calib: true },
     { code: 'ВЪТР', name: 'Комплект вътромер', category: 'Измервателен уред', calib: true },
     { code: 'ВОЛТ', name: 'Волтметър', category: 'Измервателен уред', calib: true },
-    { code: 'RCL', name: 'RCL метър (R, C, L)', category: 'Измервателен уред', calib: true },
+    { code: 'LCR', name: 'LCR Meter', category: 'Измервателен уред', calib: true },
     { code: 'ОСЦ', name: 'Осцилоскоп', category: 'Измервателен уред', calib: true },
     { code: 'МЕГ', name: 'Мегаомметър (Мегер)', category: 'Измервателен уред', calib: true },
     { code: 'ТРЕЗ', name: 'Тестер за измерване на резолвери', category: 'Измервателен уред', calib: true },
