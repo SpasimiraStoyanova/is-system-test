@@ -135,88 +135,158 @@ window.openTerminalToolingRequestModal = async function() {
 };
 
 window.openTerminalAssignedToolsModal = async function() {
-    let mach = (typeof currentMachine !== 'undefined' && currentMachine) ? currentMachine : (localStorage.getItem('mes_machine') || '');
-    if (!mach || mach === 'ВСИЧКИ' || mach === 'Всички') {
-        Swal.fire('Работно място', 'Моля, изберете конкретна машина/пост, за да видите зачислените ѝ инструменти.', 'info');
-        return;
-    }
-
-    Swal.fire({ title: 'Зареждане на оборудването...', didOpen: () => Swal.showLoading() });
+    Swal.fire({ title: 'Зареждане на регистъра по стаи и уреди...', didOpen: () => Swal.showLoading() });
+    
     try {
-        const { data, error } = await client.from('factory_tools')
-            .select('*')
-            .ilike('workstation_name', `%${mach}%`);
-        
-        if (error && !error.message.includes('relation')) throw error;
-        const tools = data || [];
+        const [roomsRes, machinesRes, toolsRes] = await Promise.all([
+            client.from('factory_rooms').select('*').order('room_number'),
+            client.from('factory_machines').select('*').order('name'),
+            client.from('factory_tools').select('*').order('tool_code')
+        ]);
 
-        if (tools.length === 0) {
-            Swal.fire({
-                title: `🧰 Оборудване: ${escapeHtml(mach)}`,
-                html: `
-                    <div style="padding: 15px; color: #64748b; font-size: 0.95em;">
-                        Към това работно място все още няма зачислени малки инструменти в регистъра.<br>
-                        <small style="color: #94a3b8; display: block; margin-top: 8px;">(Могат да се зачислят от Административния панел в таб „Малки Инструменти & Уреди“)</small>
-                    </div>
-                `,
-                icon: 'info',
-                confirmButtonColor: '#2563eb'
-            });
-            return;
-        }
+        const allRooms = roomsRes.data || [];
+        const allMachines = machinesRes.data || [];
+        const allTools = toolsRes.data || [];
 
-        let listHtml = `
-            <div style="text-align: left; max-height: 350px; overflow-y: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
-                    <thead>
-                        <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1; color: #475569;">
-                            <th style="padding: 8px;">№</th>
-                            <th style="padding: 8px;">Уред / Инструмент</th>
-                            <th style="padding: 8px;">Калибрация / Статус</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
+        // Определяме машината/машините на оператора
+        let rawMach = (typeof currentMachine !== 'undefined' && currentMachine) ? currentMachine : (localStorage.getItem('mes_machine') || '');
+        let selectedMachineList = rawMach.split(',')
+            .map(m => m.trim())
+            .filter(m => m && m.toUpperCase() !== 'ВСИЧКИ');
 
-        tools.forEach(t => {
-            let calStatusHtml = '<span style="color:#64748b; font-size:0.85em;">Без срок</span>';
-            if (t.calibration_due) {
-                let today = new Date(); today.setHours(0,0,0,0);
-                let due = new Date(t.calibration_due); due.setHours(0,0,0,0);
-                let diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
-                if (diffDays < 0) {
-                    calStatusHtml = `<span style="color:#dc2626; font-weight:800; background:#fef2f2; border:1px solid #fecaca; padding:2px 6px; border-radius:4px; font-size:0.82em;">🚨 ИЗТЕКЛА (${t.calibration_due})</span>`;
-                } else if (diffDays <= 30) {
-                    calStatusHtml = `<span style="color:#d97706; font-weight:700; background:#fffbeb; border:1px solid #fde68a; padding:2px 6px; border-radius:4px; font-size:0.82em;">⚠️ До ${t.calibration_due} (${diffDays} дни)</span>`;
-                } else {
-                    calStatusHtml = `<span style="color:#15803d; font-weight:700; background:#f0fdf4; border:1px solid #bbf7d0; padding:2px 6px; border-radius:4px; font-size:0.82em;">🟢 До ${t.calibration_due}</span>`;
+        // Намираме стаите, свързани с избраните машини
+        let matchedRoomNums = new Set();
+        let matchedMachineNames = [];
+
+        selectedMachineList.forEach(sName => {
+            let foundMac = allMachines.find(m => m.name && m.name.toLowerCase() === sName.toLowerCase());
+            if (foundMac) {
+                matchedMachineNames.push(foundMac.name);
+                if (foundMac.room_number) {
+                    matchedRoomNums.add(String(foundMac.room_number).trim());
                 }
             }
-            if (t.calibration_date) {
-                calStatusHtml += `<div style="font-size:0.75em; color:#64748b; margin-top:3px;">Последна проверка: <b>${t.calibration_date}</b></div>`;
+        });
+
+        // По подразбиране избираме стаята на първата избрана машина, или първата налична стая
+        let defaultRoomNum = matchedRoomNums.size > 0 ? Array.from(matchedRoomNums)[0] : (allRooms.length > 0 ? allRooms[0].room_number : '');
+
+        // Функция за рендериране на модала за конкретна стая
+        function renderRoomToolsModal(currentRoomNum) {
+            let curRoom = allRooms.find(r => String(r.room_number).trim() === String(currentRoomNum).trim());
+            let roomTitle = curRoom ? `Стая ${curRoom.room_number} - ${escapeHtml(curRoom.room_name)}` : `Стая ${currentRoomNum}`;
+            let roomFloor = curRoom ? curRoom.floor : '';
+
+            // Машини в тази стая
+            let roomMachines = allMachines.filter(m => String(m.room_number).trim() === String(currentRoomNum).trim());
+            let macBadges = roomMachines.map(m => `<span style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:6px; font-size:0.82em; font-weight:700;">🏭 ${escapeHtml(m.name)}${m.code ? ' (№' + escapeHtml(m.code) + ')' : ''}</span>`).join(' ');
+
+            // Уреди в тази стая (от factory_tools с room_number, или workstation_name matching room machines)
+            let roomTools = allTools.filter(t => {
+                if (String(t.room_number).trim() === String(currentRoomNum).trim()) return true;
+                if (t.workstation_name) {
+                    let wsNorm = t.workstation_name.toLowerCase();
+                    return roomMachines.some(m => wsNorm.includes(m.name.toLowerCase()));
+                }
+                return false;
+            });
+
+            // Опции за падащото меню на стаите
+            let roomOptions = allRooms.map(r => `
+                <option value="${r.room_number}" ${String(r.room_number).trim() === String(currentRoomNum).trim() ? 'selected' : ''}>
+                    🏢 Стая ${r.room_number} - ${escapeHtml(r.room_name)} (${r.floor})
+                </option>
+            `).join('');
+
+            let toolsHtml = '';
+            if (roomTools.length === 0) {
+                toolsHtml = `
+                    <div style="padding: 25px 15px; text-align: center; color: #64748b; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 8px; margin-top: 10px;">
+                        <div style="font-size: 1.8em; margin-bottom: 4px;">📏</div>
+                        <b>В ${roomTitle} все още няма заведени инструменти в регистъра.</b>
+                        <small style="color: #94a3b8; display: block; margin-top: 6px;">(Инструментите се зачисляват от Административния панел в таб „🏢 Опис по стаи / Инвентаризация“)</small>
+                    </div>
+                `;
+            } else {
+                toolsHtml = `
+                    <div style="text-align: left; max-height: 340px; overflow-y: auto; margin-top: 10px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                            <thead>
+                                <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1; color: #475569; position: sticky; top: 0;">
+                                    <th style="padding: 8px 10px; text-align: left;">Код</th>
+                                    <th style="padding: 8px 10px; text-align: left;">Уред / Инструмент</th>
+                                    <th style="padding: 8px 10px; text-align: left;">Място</th>
+                                    <th style="padding: 8px 10px; text-align: left;">Проверка / Калибрация</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                roomTools.forEach(t => {
+                    let calStatusHtml = '<span style="color:#64748b; font-size:0.85em;">Без срок</span>';
+                    if (t.calibration_due) {
+                        let today = new Date(); today.setHours(0,0,0,0);
+                        let due = new Date(t.calibration_due); due.setHours(0,0,0,0);
+                        let diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+                        if (diffDays < 0) {
+                            calStatusHtml = `<span style="color:#dc2626; font-weight:800; background:#fef2f2; border:1px solid #fecaca; padding:2px 6px; border-radius:4px; font-size:0.82em;">🚨 ИЗТЕКЛА (${t.calibration_due})</span>`;
+                        } else if (diffDays <= 30) {
+                            calStatusHtml = `<span style="color:#d97706; font-weight:700; background:#fffbeb; border:1px solid #fde68a; padding:2px 6px; border-radius:4px; font-size:0.82em;">⚠️ До ${t.calibration_due} (${diffDays} дни)</span>`;
+                        } else {
+                            calStatusHtml = `<span style="color:#15803d; font-weight:700; background:#f0fdf4; border:1px solid #bbf7d0; padding:2px 6px; border-radius:4px; font-size:0.82em;">🟢 До ${t.calibration_due}</span>`;
+                        }
+                    }
+                    if (t.calibration_date) {
+                        calStatusHtml += `<div style="font-size:0.75em; color:#64748b; margin-top:3px;">Последна: <b>${t.calibration_date}</b></div>`;
+                    }
+
+                    let locText = t.location_detail || t.workstation_name || 'В стаята';
+
+                    toolsHtml += `
+                        <tr style="border-bottom: 1px solid #e2e8f0;">
+                            <td style="padding: 8px 10px; font-weight: 800; color: #2563eb; font-family: monospace;">${escapeHtml(t.tool_code)}</td>
+                            <td style="padding: 8px 10px;">
+                                <div style="font-weight: 700; color: #1e293b;">${escapeHtml(t.tool_name)}</div>
+                                <div style="font-size: 0.78em; color: #64748b;">${escapeHtml(t.category || 'Уред')}</div>
+                            </td>
+                            <td style="padding: 8px 10px; color: #475569; font-size: 0.85em;">${escapeHtml(locText)}</td>
+                            <td style="padding: 8px 10px;">${calStatusHtml}</td>
+                        </tr>
+                    `;
+                });
+
+                toolsHtml += `</tbody></table></div>`;
             }
 
-            listHtml += `
-                <tr style="border-bottom: 1px solid #e2e8f0;">
-                    <td style="padding: 8px; font-weight: 800; color: #2563eb;">${escapeHtml(t.tool_code)}</td>
-                    <td style="padding: 8px;">
-                        <div style="font-weight: 700; color: #1e293b;">${escapeHtml(t.tool_name)}</div>
-                        <div style="font-size: 0.8em; color: #64748b;">${escapeHtml(t.category)}</div>
-                    </td>
-                    <td style="padding: 8px;">${calStatusHtml}</td>
-                </tr>
-            `;
-        });
+            Swal.fire({
+                title: `🧰 Налични уреди & инструменти`,
+                html: `
+                    <div style="text-align: left; font-size: 0.9em;">
+                        <div style="margin-bottom: 8px;">
+                            <label style="font-weight: 800; color: #334155; font-size: 0.88em; display: block; margin-bottom: 4px;">
+                                📍 Изберете стая / цехова локация:
+                            </label>
+                            <select id="swalTermRoomFilter" class="swal2-select" style="width: 100%; margin: 0; padding: 8px 12px; font-weight: 700;" onchange="window._switchTermRoomTools(this.value)">
+                                ${roomOptions}
+                            </select>
+                        </div>
+                        ${macBadges ? `<div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;"><span style="color:#64748b; font-size:0.8em; font-weight:bold;">Машини:</span> ${macBadges}</div>` : ''}
+                        ${toolsHtml}
+                    </div>
+                `,
+                width: 650,
+                confirmButtonText: 'Затвори',
+                confirmButtonColor: '#2563eb'
+            });
+        }
 
-        listHtml += `</tbody></table></div>`;
+        window._switchTermRoomTools = function(newRoomNum) {
+            renderRoomToolsModal(newRoomNum);
+        };
 
-        Swal.fire({
-            title: `🧰 Зачислени уреди: ${escapeHtml(mach)}`,
-            html: listHtml,
-            confirmButtonText: 'Разбрах',
-            confirmButtonColor: '#2563eb'
-        });
-    } catch(err) {
+        renderRoomToolsModal(defaultRoomNum);
+
+    } catch (err) {
         Swal.fire('Грешка', err.message, 'error');
     }
 };

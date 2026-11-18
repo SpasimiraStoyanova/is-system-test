@@ -121,8 +121,10 @@ async function loadAllData() {
 
         (facTools || []).forEach(ft => {
             let ws = normalize(ft.workstation_name);
+            let ftRoom = ft.room_number ? String(ft.room_number).trim() : '';
             Object.keys(machineMetaMap).forEach(mKey => {
-                if (ws && (ws.includes(mKey) || mKey.includes(ws))) {
+                let mRoom = machineMetaMap[mKey].room_number;
+                if ((ftRoom && mRoom && ftRoom === mRoom) || (ws && (ws.includes(mKey) || mKey.includes(ws)))) {
                     machineMetaMap[mKey].tools.push(ft);
                 }
             });
@@ -2782,10 +2784,11 @@ async function sendIdlePushFromAdmin({ workerName, workerEmail, machine, availab
 window.showMachineAssignedToolsModal = function(machineName) {
     let meta = machineMetaMap[normalize(machineName)] || { tools: [] };
     let tools = meta.tools || [];
+    let roomInfo = meta.room_number ? ` (Стая ${meta.room_number})` : '';
     if (tools.length === 0) {
         Swal.fire({
-            title: `🧰 Оборудване: ${escapeHtml(machineName)}`,
-            html: `Към това работно място все още няма зачислени уреди в регистъра.<br><small style="color:#64748b; margin-top:6px; display:block;">Могат да се зачислят от Административния панел в таб „Малки Инструменти & Уреди“.</small>`,
+            title: `🧰 Оборудване: ${escapeHtml(machineName)}${roomInfo}`,
+            html: `Към това работно място / стая все още няма зачислени уреди в регистъра.<br><small style="color:#64748b; margin-top:6px; display:block;">Могат да се зачислят от Административния панел в таб „🏢 Опис по стаи & Инвентаризация“.</small>`,
             icon: 'info',
             confirmButtonColor: '#0284c7'
         });
