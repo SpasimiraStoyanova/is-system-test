@@ -159,13 +159,13 @@ window.openTerminalAssignedToolsModal = async function() {
         let matchedMachineNames = [];
 
         selectedMachineList.forEach(sName => {
-            let foundMac = allMachines.find(m => m.name && m.name.toLowerCase() === sName.toLowerCase());
-            if (foundMac) {
+            let matchingMacs = allMachines.filter(m => m.name && m.name.toLowerCase() === sName.toLowerCase());
+            matchingMacs.forEach(foundMac => {
                 matchedMachineNames.push(foundMac.name);
                 if (foundMac.room_number) {
                     matchedRoomNums.add(String(foundMac.room_number).trim());
                 }
-            }
+            });
         });
 
         // По подразбиране избираме стаята на първата избрана машина, или първата налична стая

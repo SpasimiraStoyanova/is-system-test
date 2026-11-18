@@ -1458,10 +1458,17 @@ window.openAssignMachineModal = async function(roomNumber, roomName) {
         title: `🏭 Зачисляване на машина към Стая № ${roomNumber}`,
         html: `
             <div style="text-align: left; font-size: 0.9em;">
-                <p style="color: #475569; margin-top: 0;">Изберете машина за <b>Стая ${roomNumber} (${escapeHtml(roomName)})</b>:</p>
+                <p style="color: #475569; margin-top: 0;">Изберете съществуваща машина за <b>Стая ${roomNumber} (${escapeHtml(roomName)})</b>:</p>
                 <select id="swalSelectMachine" class="swal2-select" style="width: 100%; margin: 10px 0;">
                     ${optionsHtml}
                 </select>
+
+                <div style="margin-top: 14px; text-align: center; border-top: 1px dashed #cbd5e1; padding-top: 10px;">
+                    <span style="font-size: 0.85em; color: #64748b;">Имате още една бройка от същия тип машина (напр. Бобинажна, Шлайф)?</span><br>
+                    <button type="button" class="btn" onclick="Swal.close(); openAddMachineModal('${escapeHtml(roomNumber)}');" style="margin-top: 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 6px 14px; font-weight: 800; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
+                        ➕ Регистрирай нова бройка машина за Стая ${escapeHtml(roomNumber)}
+                    </button>
+                </div>
             </div>
         `,
         showCancelButton: true,
