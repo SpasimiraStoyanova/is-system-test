@@ -241,7 +241,7 @@ function renderRoomsLayout() {
                 </button>
             </div>`;
     } else {
-        roomsHtml = `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 18px; margin-top: 18px; align-items: start;">`;
+        roomsHtml = `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 18px; align-items: stretch;">`;
         filteredRooms.forEach(room => {
             roomsHtml += buildRoomCardHtml(room);
         });
@@ -315,7 +315,7 @@ function renderRoomsLayout() {
 }
 
 // --------------------------------------------------------------------------
-// 3. Карта на конкретна стая
+// 3. Компактна карта на стая (за главното табло)
 // --------------------------------------------------------------------------
 function buildRoomCardHtml(room) {
     let rNum = String(room.room_number || '').trim();
@@ -338,64 +338,173 @@ function buildRoomCardHtml(room) {
     let workstations = allRoomItems.filter(m => isWorkstationItem(m));
     let machines = allRoomItems.filter(m => !isWorkstationItem(m));
     let tools = globalToolsCache.filter(t => String(t.room_number).trim() === rNum);
+    let totalAssets = workstations.length + machines.length + tools.length;
 
-    // Секция 1: Работни постове (Бобиньорки, Монтаж, Мивка...)
-    let workstationsListHtml = '';
-    if (workstations.length === 0) {
-        workstationsListHtml = `<div style="color: #94a3b8; font-size: 0.82em; font-style: italic; padding: 4px 0;">Няма зачислени работни постове.</div>`;
-    } else {
-        workstationsListHtml = `<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">`;
-        workstations.forEach(w => {
-            workstationsListHtml += `
-                <div style="display: flex; justify-content: space-between; align-items: center; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 7px 10px; cursor: pointer; transition: background 0.15s ease;" onclick="openWorkstationDetailsModal(${w.id})" onmouseover="this.style.background='#f3e8ff'" onmouseout="this.style.background='#faf5ff'">
-                    <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
-                        <span style="font-size: 1.1em;">👥</span>
-                        <span style="font-weight: 800; color: #581c87; font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(w.name)}</span>
-                        ${w.notes ? `<span style="background: #f3e8ff; color: #6b21a8; padding: 1px 6px; border-radius: 4px; font-size: 0.75em; font-weight: 700;">${escapeHtml(w.notes)}</span>` : ''}
+    // Проверка за изтекли/изтичащи калибрации
+    let today = new Date(); today.setHours(0,0,0,0);
+    let expiredCount = 0;
+    let expiringCount = 0;
+    tools.forEach(t => {
+        if (t.calibration_due) {
+            let due = new Date(t.calibration_due); due.setHours(0,0,0,0);
+            let diffDays = Math.round((due - today) / (1000 * 60 * 60 * 24));
+            if (diffDays < 0) expiredCount++;
+            else if (diffDays <= 30) expiringCount++;
+        }
+    });
+
+    let calibAlertHtml = '';
+    if (expiredCount > 0) {
+        calibAlertHtml = `<span style="background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 2px 7px; border-radius: 6px; font-weight: 800; font-size: 0.74em;" title="Има уреди с изтекла калибрация!">🚨 ${expiredCount} изтекли</span>`;
+    } else if (expiringCount > 0) {
+        calibAlertHtml = `<span style="background: #fffbeb; border: 1px solid #fde68a; color: #d97706; padding: 2px 7px; border-radius: 6px; font-weight: 800; font-size: 0.74em;" title="Уреди с изтичаща калибрация до 30 дни">⚠️ ${expiringCount} изтичащи</span>`;
+    }
+
+    return `
+        <div class="card room-summary-card" 
+             onclick="openRoomDetailsModal('${escapeHtml(rNum)}')" 
+             style="border-radius: 14px; border: 1.5px solid ${borderColor}; padding: 16px; background: white; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: all 0.2s ease; min-height: 175px;"
+             onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 18px rgba(0,0,0,0.08)';"
+             onmouseout="this.style.transform='none'; this.style.boxShadow='0 2px 6px rgba(0,0,0,0.04)';">
+             
+            <!-- Заглавна част -->
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="background: ${badgeBg}; color: white; padding: 3px 10px; border-radius: 8px; font-size: 0.92em; font-weight: 900; letter-spacing: 0.5px;">
+                            🚪 Стая ${escapeHtml(rNum)}
+                        </span>
+                        <span style="font-size: 0.78em; font-weight: 700; color: #64748b; background: #f1f5f9; padding: 3px 8px; border-radius: 6px;">
+                            ${escapeHtml(floor)}
+                        </span>
+                        ${calibAlertHtml}
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                        <span style="font-size: 0.75em; color: #7e22ce; font-weight: 800; background: #f3e8ff; padding: 2px 6px; border-radius: 4px;">Пост ➔</span>
-                        <button type="button" onclick="event.stopPropagation(); unassignMachineFromRoom(${w.id}, '${escapeHtml(w.name)}')" title="Отчисли от тази стая" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 1em; padding: 2px 4px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
+
+                    <div style="display: flex; gap: 4px;" onclick="event.stopPropagation();">
+                        <button type="button" onclick="printRoomPassport('${escapeHtml(rNum)}')" title="🖨️ Печат на Опис за вратата" style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 0.82em; font-weight: 800;">
+                            🖨️
+                        </button>
+                        <button type="button" onclick="openEditRoomModal(${room.id})" title="Редактирай данни на стаята" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #475569; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 0.82em;">
+                            ✏️
+                        </button>
+                        <button type="button" onclick="deleteRoom(${room.id}, '${escapeHtml(rNum)}')" title="Изтрий стаята" style="background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 0.82em;">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+
+                <h3 style="margin: 4px 0 3px 0; font-size: 1.22em; color: #0f172a; font-weight: 800; line-height: 1.3;">
+                    ${escapeHtml(room.room_name || 'Без наименование')}
+                </h3>
+                
+                <div style="font-size: 0.82em; color: #64748b; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                    <span>👤</span>
+                    <span>${room.supervisor ? escapeHtml(room.supervisor) : '<span style="color:#94a3b8; font-style:italic;">Няма отговорник</span>'}</span>
+                    ${room.description ? ` &bull; <span style="font-style:italic; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px;">${escapeHtml(room.description)}</span>` : ''}
+                </div>
+            </div>
+
+            <!-- Статистика / Баджове -->
+            <div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
+                    <span style="background: #faf5ff; border: 1px solid #e9d5ff; color: #6b21a8; padding: 3px 8px; border-radius: 6px; font-size: 0.8em; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;">
+                        <span>👥</span> ${workstations.length} поста
+                    </span>
+                    <span style="background: #f0fdfa; border: 1px solid #ccfbf1; color: #0f766e; padding: 3px 8px; border-radius: 6px; font-size: 0.8em; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;">
+                        <span>🏭</span> ${machines.length} машини
+                    </span>
+                    <span style="background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 3px 8px; border-radius: 6px; font-size: 0.8em; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;">
+                        <span>📏</span> ${tools.length} уреда
+                    </span>
+                </div>
+
+                <div style="border-top: 1px solid #f1f5f9; padding-top: 8px; display: flex; justify-content: space-between; align-items: center; color: #2563eb; font-weight: 800; font-size: 0.86em;">
+                    <span>🔍 Преглед на стаята (${totalAssets})</span>
+                    <span style="font-size: 1.1em;">➔</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// --------------------------------------------------------------------------
+// 3.1 Детайлен модален прозорец за стая (Опис на оборудването)
+// --------------------------------------------------------------------------
+window.openRoomDetailsModal = function(roomNumber, initialTab = 'all') {
+    let room = globalRoomsCache.find(r => String(r.room_number).trim() === String(roomNumber).trim());
+    if (!room) return;
+
+    let rNum = String(room.room_number || '').trim();
+    let floor = room.floor || (rNum.startsWith('1') ? 'Етаж 1' : (rNum.startsWith('2') ? 'Етаж 2' : (rNum.startsWith('3') ? 'Етаж 3' : 'Етаж 1')));
+    
+    let badgeBg = '#1d4ed8'; // Етаж 1
+    if (floor.includes('2') || rNum.startsWith('2')) badgeBg = '#059669'; // Етаж 2
+    else if (floor.includes('3') || rNum.startsWith('3')) badgeBg = '#7c3aed'; // Етаж 3
+    else if (rNum.toLowerCase().includes('склад') || String(room.room_name).toLowerCase().includes('склад')) badgeBg = '#ea580c'; // Склад
+
+    let allRoomItems = globalMachinesCache.filter(m => String(m.room_number).trim() === rNum);
+    let workstations = allRoomItems.filter(m => isWorkstationItem(m));
+    let machines = allRoomItems.filter(m => !isWorkstationItem(m));
+    let tools = globalToolsCache.filter(t => String(t.room_number).trim() === rNum);
+    let totalAssets = workstations.length + machines.length + tools.length;
+
+    // Секция 1: Работни постове
+    let wsListHtml = '';
+    if (workstations.length === 0) {
+        wsListHtml = `<div style="color: #94a3b8; font-size: 0.88em; font-style: italic; padding: 12px; background: #faf5ff; border: 1px dashed #e9d5ff; border-radius: 8px; text-align: center;">Няма зачислени работни постове в тази стая.</div>`;
+    } else {
+        wsListHtml = `<div style="display: flex; flex-direction: column; gap: 6px;">`;
+        workstations.forEach(w => {
+            wsListHtml += `
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 8px 12px; cursor: pointer; transition: background 0.15s ease;" onclick="openWorkstationDetailsModal(${w.id})" onmouseover="this.style.background='#f3e8ff'" onmouseout="this.style.background='#faf5ff'">
+                    <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                        <span style="font-size: 1.15em;">👥</span>
+                        <span style="font-weight: 800; color: #581c87; font-size: 0.95em;">${escapeHtml(w.name)}</span>
+                        ${w.notes ? `<span style="background: #f3e8ff; color: #6b21a8; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 700;">${escapeHtml(w.notes)}</span>` : ''}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                        <span style="font-size: 0.78em; color: #7e22ce; font-weight: 800; background: #ede9fe; padding: 3px 8px; border-radius: 4px;">Пост ➔</span>
+                        <button type="button" onclick="event.stopPropagation(); unassignMachineFromRoom(${w.id}, '${escapeHtml(w.name)}', '${escapeHtml(rNum)}')" title="Отчисли от тази стая" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 1.1em; padding: 2px 6px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
                             ✕
                         </button>
                     </div>
                 </div>`;
         });
-        workstationsListHtml += `</div>`;
+        wsListHtml += `</div>`;
     }
 
     // Секция 2: Стационарни машини
-    let machinesListHtml = '';
+    let macListHtml = '';
     if (machines.length === 0) {
-        machinesListHtml = `<div style="color: #94a3b8; font-size: 0.85em; font-style: italic; padding: 6px 0;">Няма зачислени машини в тази стая.</div>`;
+        macListHtml = `<div style="color: #94a3b8; font-size: 0.88em; font-style: italic; padding: 12px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; text-align: center;">Няма зачислени машини в тази стая.</div>`;
     } else {
-        machinesListHtml = `<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">`;
+        macListHtml = `<div style="display: flex; flex-direction: column; gap: 6px;">`;
         machines.forEach(m => {
             let statusDot = m.status === 'maintenance' ? '🟠' : '🟢';
-            machinesListHtml += `
-                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 10px; cursor: pointer; transition: background 0.15s ease;" onclick="openMachinePassportModal(${m.id})" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
-                    <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+            macListHtml += `
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; cursor: pointer; transition: background 0.15s ease;" onclick="openMachinePassportModal(${m.id})" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
+                    <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                         <span>${statusDot}</span>
-                        <span style="font-weight: 800; color: #1e293b; font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(m.name)}</span>
-                        ${m.code ? `<span style="background: #e2e8f0; color: #475569; padding: 1px 6px; border-radius: 4px; font-size: 0.75em; font-weight: 800;">№ ${escapeHtml(m.code)}</span>` : ''}
+                        <span style="font-weight: 800; color: #1e293b; font-size: 0.95em;">${escapeHtml(m.name)}</span>
+                        ${m.code ? `<span style="background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 800;">№ ${escapeHtml(m.code)}</span>` : ''}
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                        <span style="font-size: 0.75em; color: #0284c7; font-weight: 800; background: #e0f2fe; padding: 2px 6px; border-radius: 4px;">Паспорт ➔</span>
-                        <button type="button" onclick="event.stopPropagation(); unassignMachineFromRoom(${m.id}, '${escapeHtml(m.name)}')" title="Отчисли от тази стая" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 1em; padding: 2px 4px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                        <span style="font-size: 0.78em; color: #0284c7; font-weight: 800; background: #e0f2fe; padding: 3px 8px; border-radius: 4px;">Паспорт ➔</span>
+                        <button type="button" onclick="event.stopPropagation(); unassignMachineFromRoom(${m.id}, '${escapeHtml(m.name)}', '${escapeHtml(rNum)}')" title="Отчисли от тази стая" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 1.1em; padding: 2px 6px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
                             ✕
                         </button>
                     </div>
                 </div>`;
         });
-        machinesListHtml += `</div>`;
+        macListHtml += `</div>`;
     }
 
-    // Секция 3: Инструменти и уреди
+    // Секция 3: Инструменти & Уреди
     let toolsListHtml = '';
     if (tools.length === 0) {
-        toolsListHtml = `<div style="color: #94a3b8; font-size: 0.85em; font-style: italic; padding: 6px 0;">Няма зачислени инструменти/уреди в тази стая.</div>`;
+        toolsListHtml = `<div style="color: #94a3b8; font-size: 0.88em; font-style: italic; padding: 12px; background: #f0fdf4; border: 1px dashed #bbf7d0; border-radius: 8px; text-align: center;">Няма зачислени инструменти/уреди в тази стая.</div>`;
     } else {
-        toolsListHtml = `<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">`;
+        toolsListHtml = `<div id="swalModalToolsList" style="display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; padding-right: 4px;">`;
         tools.forEach(t => {
             let calibBadge = '';
             if (t.calibration_due) {
@@ -403,25 +512,25 @@ function buildRoomCardHtml(room) {
                 let due = new Date(t.calibration_due); due.setHours(0,0,0,0);
                 let diffDays = Math.round((due - today) / (1000 * 60 * 60 * 24));
                 if (diffDays < 0) {
-                    calibBadge = `<span style="background:#fee2e2; color:#b91c1c; font-size:0.7em; padding:2px 6px; border-radius:4px; font-weight:800;">🔴 Изтекъл</span>`;
+                    calibBadge = `<span style="background:#fee2e2; color:#b91c1c; font-size:0.74em; padding:2px 8px; border-radius:4px; font-weight:800;">🔴 Изтекъл (${t.calibration_due})</span>`;
                 } else if (diffDays <= 30) {
-                    calibBadge = `<span style="background:#fef3c7; color:#b45309; font-size:0.7em; padding:2px 6px; border-radius:4px; font-weight:800;">🟡 ${diffDays} д.</span>`;
+                    calibBadge = `<span style="background:#fef3c7; color:#b45309; font-size:0.74em; padding:2px 8px; border-radius:4px; font-weight:800;">🟡 ${diffDays} дни</span>`;
                 } else {
-                    calibBadge = `<span style="background:#dcfce7; color:#166534; font-size:0.7em; padding:2px 6px; border-radius:4px; font-weight:800;">🟢 Годен</span>`;
+                    calibBadge = `<span style="background:#dcfce7; color:#166534; font-size:0.74em; padding:2px 8px; border-radius:4px; font-weight:800;">🟢 Годен</span>`;
                 }
             }
 
             toolsListHtml += `
-                <div style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 10px; font-size: 0.88em; cursor: pointer; transition: background 0.15s ease;" onclick="openToolPassportModal(${t.id})" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#ffffff'">
-                    <div style="min-width: 0; display: flex; align-items: center; gap: 6px;">
-                        <span style="font-weight: 900; color: #0284c7; background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${escapeHtml(t.tool_code)}</span>
-                        <span style="font-weight: 700; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(t.tool_name)}</span>
-                        ${t.location_detail ? `<small style="color: #64748b;">(${escapeHtml(t.location_detail)})</small>` : ''}
+                <div class="modal-tool-row" style="display: flex; justify-content: space-between; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 0.9em; cursor: pointer; transition: background 0.15s ease;" onclick="openToolPassportModal(${t.id})" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#ffffff'">
+                    <div style="min-width: 0; display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 900; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 0.95em;">${escapeHtml(t.tool_code)}</span>
+                        <span style="font-weight: 700; color: #334155;">${escapeHtml(t.tool_name)}</span>
+                        ${t.location_detail ? `<small style="color: #64748b; background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">📍 ${escapeHtml(t.location_detail)}</small>` : ''}
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
                         ${calibBadge}
-                        <span style="font-size: 0.75em; color: #0284c7; font-weight: 800; background: #e0f2fe; padding: 2px 6px; border-radius: 4px;">Паспорт ➔</span>
-                        <button type="button" onclick="event.stopPropagation(); deleteTool(${t.id}, '${escapeHtml(t.tool_code)}')" title="Изтрий от описа" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px 4px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
+                        <span style="font-size: 0.78em; color: #0284c7; font-weight: 800; background: #e0f2fe; padding: 3px 8px; border-radius: 4px;">Паспорт ➔</span>
+                        <button type="button" onclick="event.stopPropagation(); deleteTool(${t.id}, '${escapeHtml(t.tool_code)}', '${escapeHtml(rNum)}')" title="Изтрий от описа" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px 6px; font-size: 1.1em;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
                             ✕
                         </button>
                     </div>
@@ -430,74 +539,86 @@ function buildRoomCardHtml(room) {
         toolsListHtml += `</div>`;
     }
 
-    return `
-        <div class="card" style="border-radius: 14px; border: 1.5px solid ${borderColor}; padding: 16px; background: white; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; flex-direction: column;">
-            <!-- Заглавна част -->
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px;">
-                <div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="background: ${badgeBg}; color: white; padding: 3px 10px; border-radius: 8px; font-size: 0.95em; font-weight: 900; letter-spacing: 0.5px;">
-                            🚪 Стая ${escapeHtml(rNum)}
-                        </span>
-                        <span style="font-size: 0.8em; font-weight: 700; color: #64748b; background: #f1f5f9; padding: 3px 8px; border-radius: 6px;">
-                            ${escapeHtml(floor)}
-                        </span>
-                    </div>
-                    <h3 style="margin: 6px 0 2px 0; font-size: 1.18em; color: #0f172a; font-weight: 800;">
-                        ${escapeHtml(room.room_name || 'Без наименование')}
-                    </h3>
-                    <div style="font-size: 0.82em; color: #64748b;">
-                        👤 Отговорник: <b>${escapeHtml(room.supervisor || 'Няма посочен')}</b>
-                        ${room.description ? ` &bull; <span style="font-style:italic;">${escapeHtml(room.description)}</span>` : ''}
+    const modalHtml = `
+        <div style="text-align: left; font-size: 0.92em;">
+            <!-- Заглавна лента на стаята -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="background: ${badgeBg}; color: white; padding: 4px 12px; border-radius: 8px; font-size: 1.05em; font-weight: 900;">
+                        🚪 Стая ${escapeHtml(rNum)}
+                    </span>
+                    <div>
+                        <div style="font-size: 1.3em; font-weight: 900; color: #0f172a;">${escapeHtml(room.room_name || 'Без наименование')}</div>
+                        <div style="font-size: 0.85em; color: #64748b;">
+                            ${escapeHtml(floor)} &bull; 👤 Отговорник: <b>${escapeHtml(room.supervisor || 'Няма посочен')}</b>
+                            ${room.description ? ` &bull; <i>${escapeHtml(room.description)}</i>` : ''}
+                        </div>
                     </div>
                 </div>
-
-                <div style="display: flex; gap: 4px;">
-                    <button type="button" onclick="printRoomPassport('${escapeHtml(rNum)}')" title="🖨️ Печат на Опис за вратата" style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: 800;">
-                        🖨️ Опис
+                <div style="display: flex; gap: 6px;">
+                    <button type="button" onclick="printRoomPassport('${escapeHtml(rNum)}')" title="🖨️ Печат на Опис за вратата" style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 0.88em; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;">
+                        🖨️ Опис за врата
                     </button>
-                    <button type="button" onclick="openEditRoomModal(${room.id})" title="Редактирай данни на стаята" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #475569; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                        ✏️
-                    </button>
-                    <button type="button" onclick="deleteRoom(${room.id}, '${escapeHtml(rNum)}')" title="Изтрий стаята" style="background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                        🗑️
+                    <button type="button" onclick="openEditRoomModal(${room.id})" title="Редактирай данни на стаята" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #475569; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 0.88em; font-weight: 700;">
+                        ✏️ Редакция
                     </button>
                 </div>
             </div>
 
-            <!-- Секция 1: Работни постове / Зони -->
-            <div style="margin-bottom: 14px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: 800; color: #581c87; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
+            <!-- Табове за превключване между секциите -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; justify-content: flex-start; overflow-x: auto;">
+                <button type="button" id="tabBtnAll" onclick="window._switchRoomModalTab('all')" style="padding: 7px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; background: #0f172a; color: white;">
+                    📋 Всичко (${totalAssets})
+                </button>
+                <button type="button" id="tabBtnWs" onclick="window._switchRoomModalTab('workstations')" style="padding: 7px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; background: #f1f5f9; color: #475569;">
+                    👥 Постове (${workstations.length})
+                </button>
+                <button type="button" id="tabBtnMac" onclick="window._switchRoomModalTab('machines')" style="padding: 7px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; background: #f1f5f9; color: #475569;">
+                    🏭 Машини (${machines.length})
+                </button>
+                <button type="button" id="tabBtnTools" onclick="window._switchRoomModalTab('tools')" style="padding: 7px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; background: #f1f5f9; color: #475569;">
+                    📏 Уреди & Инструменти (${tools.length})
+                </button>
+            </div>
+
+            <!-- Секция 1: Работни постове -->
+            <div id="modalSecWorkstations" style="margin-bottom: 18px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #581c87; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.3px;">
                         👥 Работни постове (${workstations.length})
                     </span>
-                    <button type="button" onclick="openAssignWorkstationModal('${escapeHtml(rNum)}', '${escapeHtml(room.room_name)}')" style="background: #f3e8ff; color: #7e22ce; border: none; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.78em; cursor: pointer;">
+                    <button type="button" onclick="openAssignWorkstationModal('${escapeHtml(rNum)}', '${escapeHtml(room.room_name)}')" style="background: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 0.8em; cursor: pointer;">
                         ➕ Зачисли пост
                     </button>
                 </div>
-                ${workstationsListHtml}
+                ${wsListHtml}
             </div>
 
-            <!-- Секция 2: Стационарни Машини -->
-            <div style="margin-bottom: 14px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: 800; color: #0f766e; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
+            <!-- Секция 2: Стационарни машини -->
+            <div id="modalSecMachines" style="margin-bottom: 18px; border-top: 1px dashed #e2e8f0; padding-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-weight: 800; color: #0f766e; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.3px;">
                         🏭 Стационарни Машини (${machines.length})
                     </span>
-                    <button type="button" onclick="openAssignMachineModal('${escapeHtml(rNum)}', '${escapeHtml(room.room_name)}')" style="background: #e0f2fe; color: #0369a1; border: none; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.78em; cursor: pointer;">
+                    <button type="button" onclick="openAssignMachineModal('${escapeHtml(rNum)}', '${escapeHtml(room.room_name)}')" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 0.8em; cursor: pointer;">
                         ➕ Зачисли машина
                     </button>
                 </div>
-                ${machinesListHtml}
+                ${macListHtml}
             </div>
 
             <!-- Секция 3: Инструменти & Уреди -->
-            <div style="margin-top: 14px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: 800; color: #166534; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
-                        📏 Инструменти & Уреди (${tools.length})
-                    </span>
-                    <button type="button" onclick="openAddToolToRoomModal('${escapeHtml(rNum)}', '${escapeHtml(room.room_name)}')" style="background: #dcfce7; color: #166534; border: none; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.78em; cursor: pointer;">
+            <div id="modalSecTools" style="margin-top: 14px; border-top: 1px dashed #e2e8f0; padding-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: 800; color: #166534; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.3px;">
+                            📏 Уреди & Инструменти (${tools.length})
+                        </span>
+                        ${tools.length > 3 ? `
+                            <input type="text" id="swalModalToolSearch" placeholder="🔍 Филтрирай уредите..." oninput="window._filterModalTools(this.value)" style="margin: 0; padding: 5px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.82em; width: 200px; box-sizing: border-box;">
+                        ` : ''}
+                    </div>
+                    <button type="button" onclick="openAddToolToRoomModal('${escapeHtml(rNum)}', '${escapeHtml(room.room_name)}')" style="background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 0.8em; cursor: pointer;">
                         ➕ Добави уред
                     </button>
                 </div>
@@ -505,7 +626,81 @@ function buildRoomCardHtml(room) {
             </div>
         </div>
     `;
-}
+
+    Swal.fire({
+        html: modalHtml,
+        width: 920,
+        showConfirmButton: true,
+        confirmButtonText: 'Затвори',
+        confirmButtonColor: '#64748b',
+        focusConfirm: false,
+        didOpen: () => {
+            window._switchRoomModalTab(initialTab);
+        }
+    });
+};
+
+window._switchRoomModalTab = function(tabName) {
+    const secWs = document.getElementById('modalSecWorkstations');
+    const secMac = document.getElementById('modalSecMachines');
+    const secTools = document.getElementById('modalSecTools');
+    const btnAll = document.getElementById('tabBtnAll');
+    const btnWs = document.getElementById('tabBtnWs');
+    const btnMac = document.getElementById('tabBtnMac');
+    const btnTools = document.getElementById('tabBtnTools');
+
+    if (!secWs || !secMac || !secTools) return;
+
+    if (btnAll) { btnAll.style.background = '#f1f5f9'; btnAll.style.color = '#475569'; }
+    if (btnWs) { btnWs.style.background = '#f1f5f9'; btnWs.style.color = '#475569'; }
+    if (btnMac) { btnMac.style.background = '#f1f5f9'; btnMac.style.color = '#475569'; }
+    if (btnTools) { btnTools.style.background = '#f1f5f9'; btnTools.style.color = '#475569'; }
+
+    if (tabName === 'workstations') {
+        secWs.style.display = 'block';
+        secMac.style.display = 'none';
+        secTools.style.display = 'none';
+        secWs.style.borderTop = 'none';
+        secWs.style.paddingTop = '0';
+        if (btnWs) { btnWs.style.background = '#7e22ce'; btnWs.style.color = 'white'; }
+    } else if (tabName === 'machines') {
+        secWs.style.display = 'none';
+        secMac.style.display = 'block';
+        secTools.style.display = 'none';
+        secMac.style.borderTop = 'none';
+        secMac.style.paddingTop = '0';
+        if (btnMac) { btnMac.style.background = '#0f766e'; btnMac.style.color = 'white'; }
+    } else if (tabName === 'tools') {
+        secWs.style.display = 'none';
+        secMac.style.display = 'none';
+        secTools.style.display = 'block';
+        secTools.style.borderTop = 'none';
+        secTools.style.paddingTop = '0';
+        if (btnTools) { btnTools.style.background = '#16a34a'; btnTools.style.color = 'white'; }
+    } else { // 'all'
+        secWs.style.display = 'block';
+        secMac.style.display = 'block';
+        secTools.style.display = 'block';
+        secWs.style.borderTop = 'none';
+        secWs.style.paddingTop = '0';
+        secMac.style.borderTop = '1px dashed #e2e8f0';
+        secMac.style.paddingTop = '14px';
+        secTools.style.borderTop = '1px dashed #e2e8f0';
+        secTools.style.paddingTop = '14px';
+        if (btnAll) { btnAll.style.background = '#0f172a'; btnAll.style.color = 'white'; }
+    }
+};
+
+window._filterModalTools = function(query) {
+    let q = (query || '').toLowerCase().trim();
+    let container = document.getElementById('swalModalToolsList');
+    if (!container) return;
+    let items = container.querySelectorAll('.modal-tool-row');
+    items.forEach(el => {
+        let text = el.innerText.toLowerCase();
+        el.style.display = (!q || text.includes(q)) ? 'flex' : 'none';
+    });
+};
 
 // --------------------------------------------------------------------------
 // 4. ПАСПОРТ НА МАШИНА (Клик на машина в стаята)
@@ -1110,9 +1305,13 @@ window.openAddMachineModal = async function(defaultRoomNum = '') {
         try {
             const { error } = await client.from('factory_machines').insert([formValues]);
             if (error) throw error;
-            Swal.fire('Добавена!', `Машина "${formValues.name}" беше заведена в Стая ${formValues.room_number}.`, 'success');
             await loadRoomsData();
             renderRoomsLayout();
+            if (formValues && formValues.room_number) {
+                openRoomDetailsModal(formValues.room_number, 'machines');
+            } else {
+                Swal.fire('Добавена!', `Машина "${formValues.name}" беше заведена в Стая ${formValues.room_number}.`, 'success');
+            }
         } catch (err) {
             Swal.fire('Грешка', err.message, 'error');
         }
@@ -1234,9 +1433,13 @@ window.openAddToolGlobalModal = async function() {
         try {
             const { error } = await client.from('factory_tools').insert([formValues]);
             if (error) throw error;
-            Swal.fire('Добавен!', `Уредът ${formValues.tool_code} беше зачислен към Стая ${formValues.room_number}.`, 'success');
             await loadRoomsData();
             renderRoomsLayout();
+            if (formValues && formValues.room_number) {
+                openRoomDetailsModal(formValues.room_number, 'tools');
+            } else {
+                Swal.fire('Добавен!', `Уредът ${formValues.tool_code} беше зачислен към Стая ${formValues.room_number}.`, 'success');
+            }
         } catch (err) {
             Swal.fire('Грешка', err.message, 'error');
         }
@@ -1487,9 +1690,9 @@ window.openAssignMachineModal = async function(roomNumber, roomName) {
             await client.from('factory_machines')
                 .update({ room_number: String(roomNumber), room_name: roomName })
                 .eq('id', selectedMachineId);
-            Swal.fire('Готово!', 'Машината беше зачислена към стаята.', 'success');
             await loadRoomsData();
             renderRoomsLayout();
+            openRoomDetailsModal(roomNumber, 'machines');
         } catch (err) {
             Swal.fire('Грешка', err.message, 'error');
         }
@@ -1566,9 +1769,9 @@ window.openAssignWorkstationModal = async function(roomNumber, roomName) {
                 .eq('id', formValues.workstationId);
             if (error) throw error;
 
-            Swal.fire('Готово!', `Работният пост беше зачислен към Стая ${roomNumber}.`, 'success');
             await loadRoomsData();
             renderRoomsLayout();
+            openRoomDetailsModal(roomNumber, 'workstations');
         } catch (err) {
             Swal.fire('Грешка', err.message, 'error');
         }
@@ -1638,9 +1841,13 @@ window.openAddWorkstationModal = async function(defaultRoomNum = '') {
         try {
             const { error } = await client.from('factory_machines').insert([formValues]);
             if (error) throw error;
-            Swal.fire('Успех!', `Работният пост "${formValues.name}" беше заведен в Стая ${formValues.room_number}.`, 'success');
             await loadRoomsData();
             renderRoomsLayout();
+            if (formValues && formValues.room_number) {
+                openRoomDetailsModal(formValues.room_number, 'workstations');
+            } else {
+                Swal.fire('Успех!', `Работният пост "${formValues.name}" беше заведен в Стая ${formValues.room_number}.`, 'success');
+            }
         } catch (err) {
             Swal.fire('Грешка', err.message, 'error');
         }
@@ -1760,10 +1967,10 @@ window.openEditWorkstationModal = async function(wsId) {
     }
 };
 
-window.unassignMachineFromRoom = async function(machineId, machineName) {
+window.unassignMachineFromRoom = async function(machineId, machineName, roomNumber = '') {
     const res = await Swal.fire({
         title: 'Отчисляване от стаята?',
-        text: `Искате ли да отчислите машина "${machineName}" от тази стая?`,
+        text: `Искате ли да отчислите "${machineName}" от тази стая?`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Да, отчисли',
@@ -1775,20 +1982,28 @@ window.unassignMachineFromRoom = async function(machineId, machineName) {
             await client.from('factory_machines').update({ room_number: null, room_name: null }).eq('id', machineId);
             await loadRoomsData();
             renderRoomsLayout();
+            if (roomNumber) {
+                openRoomDetailsModal(roomNumber);
+            } else {
+                Swal.fire('Готово!', 'Машината беше отчислена.', 'success');
+            }
         } catch (err) {
             Swal.fire('Грешка', err.message, 'error');
         }
+    } else if (roomNumber) {
+        openRoomDetailsModal(roomNumber);
     }
 };
 
-window.deleteTool = async function(toolId, toolCode) {
+window.deleteTool = async function(toolId, toolCode, roomNumber = '') {
     const res = await Swal.fire({
         title: `Изтриване на ${toolCode}?`,
         text: 'Сигурни ли сте, че искате да премахнете този уред от инвентарния опис?',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#dc2626',
-        confirmButtonText: 'Да, изтрий'
+        confirmButtonText: 'Да, изтрий',
+        cancelButtonText: 'Отказ'
     });
 
     if (res.isConfirmed) {
@@ -1796,9 +2011,16 @@ window.deleteTool = async function(toolId, toolCode) {
             await client.from('factory_tools').delete().eq('id', toolId);
             await loadRoomsData();
             renderRoomsLayout();
+            if (roomNumber) {
+                openRoomDetailsModal(roomNumber, 'tools');
+            } else {
+                Swal.fire('Изтрит!', `Уредът ${toolCode} беше премахнат.`, 'success');
+            }
         } catch (err) {
             Swal.fire('Грешка', err.message, 'error');
         }
+    } else if (roomNumber) {
+        openRoomDetailsModal(roomNumber, 'tools');
     }
 };
 
