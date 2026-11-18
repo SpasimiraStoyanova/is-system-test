@@ -692,9 +692,15 @@ async function loadCurrentTableData(forceRefresh = false) {
         const { data, error } = await query; if (error) throw error;
         let rows = data || [];
         if (currentTab === 'plan') {
-            const nomRes = await client.from('Номенклатура').select('*');
+            const [nomRes, routeRes, otchetiRes, invRes] = await Promise.all([
+                client.from('Номенклатура').select('*').limit(10000),
+                client.from('marshruti').select('*').limit(10000),
+                client.from('otcheti').select('"id", "ID План", "ID Детайл", "Операция", "Количество", "Статус", "Дата"').in('Статус', ['Отчетено', 'Готов продукт', 'Изпратено']).limit(50000),
+                client.from('inventory').select('*').limit(10000)
+            ]);
+
+            const nomMap = {};
             if (!nomRes.error && nomRes.data) {
-                const nomMap = {};
                 nomRes.data.forEach(n => {
                     if (n['Вътрешно име']) nomMap[n['Вътрешно име']] = n['ID Детайл'];
                     if (n['ID Детайл']) nomMap[n['ID Детайл']] = n['ID Детайл'];
@@ -703,27 +709,138 @@ async function loadCurrentTableData(forceRefresh = false) {
                     r['ID Детайл'] = nomMap[r['Вътрешно име']] || r['Вътрешно име'];
                 });
             }
-            const packRes = await client.from('otcheti').select('*').ilike('Операция', 'Опаковане - Кашон №%').in('Статус', ['Отчетено', 'Изпратено']);
-            if (!packRes.error && packRes.data) {
-                const packMap = {};
-                packRes.data.forEach(p => {
+
+            // Build route map & find last operation per detail
+            const routesByCode = {};
+            (routeRes?.data || []).forEach(m => {
+                let c = String(m['Код на детайла'] || '').trim().toLowerCase();
+                if (!routesByCode[c]) routesByCode[c] = [];
+                routesByCode[c].push(m);
+            });
+            const lastOpByCode = {};
+            Object.keys(routesByCode).forEach(c => {
+                let list = routesByCode[c];
+                list.sort((a, b) => (parseInt(a['№ Операция']) || 0) - (parseInt(b['№ Операция']) || 0));
+                lastOpByCode[c] = String(list[list.length - 1]['Име на операция'] || '').trim().toLowerCase();
+            });
+
+            // Packaging map
+            const packMap = {};
+            (otchetiRes?.data || []).forEach(p => {
+                let op = String(p['Операция'] || '');
+                if (/Опаковане - Кашон №/i.test(op)) {
                     let pId = String(p['ID План'] || '').trim();
-                    let code = String(p['ID Детайл']).trim().toUpperCase();
+                    let code = String(p['ID Детайл'] || '').trim().toUpperCase();
                     let key = pId + '_' + code;
                     if (!packMap[key]) packMap[key] = {};
-                    let boxMatch = p['Операция'].match(/Опаковане - Кашон №\s*(.+)/i);
+                    let boxMatch = op.match(/Опаковане - Кашон №\s*(.+)/i);
                     let boxNum = boxMatch ? boxMatch[1] : '?';
                     packMap[key][boxNum] = (packMap[key][boxNum] || 0) + (parseFloat(p['Количество']) || 0);
-                });
-                rows.forEach(r => {
-                    let key = String(r.id).trim() + '_' + String(r['ID Детайл']).trim().toUpperCase();
-                    if (packMap[key]) {
-                        let boxTexts = Object.keys(packMap[key]).map(b => `${packMap[key][b]} бр в кашон № ${b}`);
-                        r['__packaged_info'] = ` <span style="color:#d97706; font-size:0.85em; font-weight:bold;">(${boxTexts.join(', ')})</span>`;
-                        r['__total_packed'] = Object.values(packMap[key]).reduce((a, b) => a + b, 0);
+                }
+            });
+
+            // Inventory Finished Products map
+            const invGpByCode = {};
+            (invRes?.data || []).forEach(inv => {
+                let c = String(inv['ID Детайл'] || '').trim().toLowerCase();
+                let op = String(inv['Операция'] || '').trim().toLowerCase();
+                if (op === 'готов продукт' || op === 'готов детайл') {
+                    let q = parseFloat(inv['Количество']) || parseFloat(inv['Общо']) || 0;
+                    invGpByCode[c] = (invGpByCode[c] || 0) + q;
+                }
+            });
+
+            const bgMonthMap = {
+                'януари': 0, 'февруари': 1, 'март': 2, 'април': 3, 'май': 4, 'юни': 5,
+                'юли': 6, 'август': 7, 'септември': 8, 'октомври': 9, 'ноември': 10, 'декември': 11
+            };
+
+            rows.forEach(r => {
+                let key = String(r.id).trim() + '_' + String(r['ID Детайл']).trim().toUpperCase();
+                if (packMap[key]) {
+                    let boxTexts = Object.keys(packMap[key]).map(b => `${packMap[key][b]} бр в кашон № ${b}`);
+                    r['__packaged_info'] = ` <span style="color:#d97706; font-size:0.85em; font-weight:bold;">(${boxTexts.join(', ')})</span>`;
+                    r['__total_packed'] = Object.values(packMap[key]).reduce((a, b) => a + b, 0);
+                }
+
+                let planIdStr = String(r.id || '').trim();
+                let code = String(r['ID Детайл'] || '').trim().toLowerCase();
+                let name = String(r['Вътрешно име'] || '').trim().toLowerCase();
+                let targetQty = parseFloat(r['Целево количество']) || 0;
+                let planMonth = String(r['Месец'] || '').trim().toLowerCase();
+                let planMonthIdx = bgMonthMap[planMonth];
+                let planYear = parseInt(r['Година']) || 0;
+                let lastOp = lastOpByCode[code] || lastOpByCode[name] || '';
+
+                let reportedDone = 0;
+                (otchetiRes?.data || []).forEach(p => {
+                    let pPlanId = String(p['ID План'] || '').trim();
+                    let pCode = String(p['ID Детайл'] || '').trim().toLowerCase();
+                    let pOp = String(p['Операция'] || '').trim().toLowerCase();
+                    let pQty = parseFloat(p['Количество']) || 0;
+                    if (pQty <= 0) return;
+
+                    let matchesPlan = false;
+                    if (pPlanId && planIdStr && pPlanId === planIdStr) {
+                        matchesPlan = true;
+                    } else if (!pPlanId || pPlanId === 'null') {
+                        if (pCode === code || pCode === name) {
+                            if (p['Дата']) {
+                                let d = new Date(p['Дата']);
+                                let repYear = d.getFullYear();
+                                let repMonthIdx = d.getMonth();
+                                if (planYear === 0 || repYear === planYear) {
+                                    if (planMonthIdx === undefined || repMonthIdx === planMonthIdx) {
+                                        matchesPlan = true;
+                                    }
+                                }
+                            } else {
+                                matchesPlan = true;
+                            }
+                        }
+                    }
+
+                    if (!matchesPlan) return;
+
+                    let isCompletionOp = false;
+                    if (lastOp && pOp === lastOp) {
+                        isCompletionOp = true;
+                    } else if (pOp === 'готов продукт' || pOp === 'готов детайл') {
+                        isCompletionOp = true;
+                    } else if (!lastOp && (pOp.includes('сглобяване') || pOp.includes('монтаж') || pOp.startsWith('опаковане'))) {
+                        isCompletionOp = true;
+                    }
+
+                    if (isCompletionOp) {
+                        reportedDone += pQty;
                     }
                 });
-            }
+
+                if (r['__total_packed'] && r['__total_packed'] > reportedDone) {
+                    reportedDone = r['__total_packed'];
+                }
+                if (reportedDone === 0 && invGpByCode[code]) {
+                    reportedDone = Math.min(targetQty, invGpByCode[code]);
+                }
+
+                let actualDone = reportedDone;
+                let st = String(r['Статус'] || '').trim().toLowerCase();
+                if ((st === 'завършен' || st.includes('изпратен')) && actualDone === 0) {
+                    actualDone = targetQty;
+                }
+
+                let remain = Math.max(0, targetQty - actualDone);
+                let pct = targetQty > 0 ? Math.round((actualDone / targetQty) * 100) : (actualDone > 0 ? 100 : 0);
+
+                r['__targetQty'] = targetQty;
+                r['__doneQty'] = actualDone;
+                r['__remainQty'] = remain;
+                r['__pct'] = pct;
+                r['__lastOp'] = lastOp;
+                r['produced_info'] = `${actualDone} / ${remain}`;
+                r['progress_bar'] = `${pct}%`;
+            });
+
             rows.sort((a, b) => {
                 const statusWeight = (status) => {
                     let s = String(status || '').trim().toLowerCase();
@@ -910,6 +1027,87 @@ function renderDynamicTable(itemsToRender = null) {
             if (currentTab === 'personal' && f.name === 'Статус') {
                 if (val === 'Активен') td.innerHTML = `<span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🟢 ${val}</span>`;
                 else td.innerHTML = `<span style="background:#fee2e2; color:#b91c1c; padding:4px 10px; border-radius:12px; font-weight:800; font-size:0.9em;">🛑 ${val}</span>`;
+                row.appendChild(td); return;
+            }
+
+            if (currentTab === 'plan' && f.name === 'produced_info') {
+                let done = item['__doneQty'] !== undefined ? item['__doneQty'] : 0;
+                let target = item['__targetQty'] !== undefined ? item['__targetQty'] : (parseFloat(item['Целево количество']) || 0);
+                let remain = item['__remainQty'] !== undefined ? item['__remainQty'] : Math.max(0, target - done);
+                
+                let badge = '';
+                if (done > target) {
+                    let surplus = done - target;
+                    badge = `<span style="color:#15803d; font-weight:800; background:#f0fdf4; border:1px solid #bbf7d0; padding:2px 7px; border-radius:8px; font-size:0.82em;" title="Свръхизпълнение с ${surplus} бр.">🟢 +${surplus} свръх</span>`;
+                } else if (remain > 0) {
+                    badge = `<span style="color:#ea580c; font-weight:800; background:#fff7ed; border:1px solid #fed7aa; padding:2px 7px; border-radius:8px; font-size:0.82em;" title="Остават ${remain} бр. за изработка">⏳ -${remain} ост.</span>`;
+                } else {
+                    badge = `<span style="color:#15803d; font-weight:800; background:#f0fdf4; border:1px solid #bbf7d0; padding:2px 7px; border-radius:8px; font-size:0.82em;" title="Планът е изпълнен на 100%">✅ Изпълнен</span>`;
+                }
+
+                td.innerHTML = `
+                    <div style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap;">
+                        <span style="font-weight:800; color:#1e293b; font-size:1.02em;">${done}</span>
+                        <span style="color:#94a3b8; font-size:0.85em;">/</span>
+                        <span style="color:#64748b; font-size:0.9em; font-weight:600;">${target} бр.</span>
+                        ${badge}
+                    </div>
+                `;
+                td.style.minWidth = '170px';
+                row.appendChild(td); return;
+            }
+
+            if (currentTab === 'plan' && f.name === 'progress_bar') {
+                let pct = item['__pct'] !== undefined ? item['__pct'] : 0;
+                let done = item['__doneQty'] !== undefined ? item['__doneQty'] : 0;
+                let target = item['__targetQty'] !== undefined ? item['__targetQty'] : (parseFloat(item['Целево количество']) || 0);
+                let lastOp = item['__lastOp'] ? ` | Последна оп.: ${item['__lastOp']}` : '';
+
+                let barColor = 'linear-gradient(90deg, #10b981, #059669)';
+                let badgeBg = '#dcfce7';
+                let badgeColor = '#15803d';
+                let badgeBorder = '#bbf7d0';
+
+                if (pct >= 100) {
+                    barColor = 'linear-gradient(90deg, #10b981, #059669)';
+                    badgeBg = '#dcfce7';
+                    badgeColor = '#15803d';
+                    badgeBorder = '#bbf7d0';
+                } else if (pct >= 70) {
+                    barColor = 'linear-gradient(90deg, #3b82f6, #2563eb)';
+                    badgeBg = '#dbeafe';
+                    badgeColor = '#1d4ed8';
+                    badgeBorder = '#bfdbfe';
+                } else if (pct >= 35) {
+                    barColor = 'linear-gradient(90deg, #f59e0b, #d97706)';
+                    badgeBg = '#fef3c7';
+                    badgeColor = '#b45309';
+                    badgeBorder = '#fde68a';
+                } else if (pct > 0) {
+                    barColor = 'linear-gradient(90deg, #f97316, #ea580c)';
+                    badgeBg = '#ffedd5';
+                    badgeColor = '#c2410c';
+                    badgeBorder = '#fed7aa';
+                } else {
+                    barColor = '#e2e8f0';
+                    badgeBg = '#f1f5f9';
+                    badgeColor = '#64748b';
+                    badgeBorder = '#e2e8f0';
+                }
+
+                let fillWidth = Math.min(100, Math.max(0, pct));
+
+                td.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:8px; min-width:130px; max-width:180px;" title="Цел: ${target} бр. | Изработени: ${done} бр. (${pct}%)${lastOp}">
+                        <div style="flex:1; background:#e2e8f0; border-radius:10px; height:12px; position:relative; overflow:hidden; box-shadow:inset 0 1px 2px rgba(0,0,0,0.08);">
+                            <div style="width:${fillWidth}%; height:100%; background:${barColor}; border-radius:10px; transition:width 0.3s ease;"></div>
+                        </div>
+                        <span style="background:${badgeBg}; color:${badgeColor}; border:1px solid ${badgeBorder}; font-weight:800; font-size:0.82em; padding:2px 7px; border-radius:12px; min-width:44px; text-align:center; display:inline-block;">
+                            ${pct}%
+                        </span>
+                    </div>
+                `;
+                td.style.minWidth = '140px';
                 row.appendChild(td); return;
             }
 
@@ -1207,7 +1405,7 @@ function buildForm(data = null) {
     }
 
     fields.forEach(f => {
-        if (f.hideOnAdd && !isEditMode) return;
+        if (f.hideInForm || (f.hideOnAdd && !isEditMode)) return;
         const group = document.createElement('div');
         group.className = 'form-group';
         const label = document.createElement('label');

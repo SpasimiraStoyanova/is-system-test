@@ -12,7 +12,22 @@ const client = supabase.createClient(
 );
 
 const tableConfigs = {
-  plan: { label: '📅 Месечен План', table: 'plan', key: 'id', fields: [ { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, { name: 'ID Детайл', type: 'text', readonly: true }, { name: 'Вътрешно име', type: 'text', required: true }, { name: 'Целево количество', type: 'number', required: true }, { name: 'Месец', type: 'text', required: true }, { name: 'Година', type: 'number', required: true }, { name: 'Статус', type: 'select', options: ['Активен', 'Завършен', '📦 Опакован', '🚚 Изпратен'], required: true } ] },
+  plan: { 
+    label: '📅 Месечен План', 
+    table: 'plan', 
+    key: 'id', 
+    fields: [ 
+      { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, 
+      { name: 'ID Детайл', type: 'text', readonly: true }, 
+      { name: 'Вътрешно име', type: 'text', required: true }, 
+      { name: 'Целево количество', type: 'number', required: true }, 
+      { name: 'produced_info', label: 'Изработени / Остават', type: 'text', readonly: true, hideInForm: true }, 
+      { name: 'progress_bar', label: '% Изпълнение', type: 'text', readonly: true, hideInForm: true }, 
+      { name: 'Месец', type: 'text', required: true }, 
+      { name: 'Година', type: 'number', required: true }, 
+      { name: 'Статус', type: 'select', options: ['Активен', 'Завършен', '📦 Опакован', '🚚 Изпратен'], required: true } 
+    ] 
+  },
   probi: { label: '🧪 Проби', table: 'probi', key: 'id', readOnlyTab: true, fields: [] },
   audit_3s: { label: '🧹 3S Одити & Настройки', table: 'audit_3s_logs', key: 'id', readOnlyTab: true, fields: [] },
   personal: { label: '👥 Персонал & Досиета', table: 'personal', key: 'id', fields: [ { name: 'id', type: 'number', readonly: true, hideOnAdd: true }, { name: 'Имейл', type: 'text', required: true }, { name: 'Име', type: 'text' }, { name: 'Длъжност', type: 'text' }, { name: 'Базов бонус', type: 'number', def: 0 }, { name: 'Статус', type: 'select', options: ['Активен', 'Блокиран'], required: true, def: 'Активен' } ] },
