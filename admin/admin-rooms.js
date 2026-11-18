@@ -26,7 +26,7 @@ window.isWorkstationItem = function(item) {
     return MANUAL_WORKSTATION_NAMES.includes(nameNorm);
 };
 
-// Каталог за уреди и инструменти
+// Каталог за уреди и инструменти (САМО измервателни уреди, контролни уреди и електроинструменти)
 const TOOL_TYPE_CATALOG = [
     // 📏 Измервателни уреди (подлежащи на периодична калибрация)
     { code: 'Ш', name: 'Шублер (дигитален / механичен)', category: 'Измервателен уред', calib: true },
@@ -41,32 +41,6 @@ const TOOL_TYPE_CATALOG = [
     { code: 'ГЕН', name: 'Генератор (сигнален)', category: 'Измервателен уред', calib: true },
     { code: 'УСИЛ', name: 'Усилвател за генератор', category: 'Измервателен уред', calib: true },
 
-    // 🏭 Машини / Работни места
-    { code: 'БОБ', name: 'Бобинажна машина', category: 'Машина / Работно място', calib: false },
-    { code: 'БРЕД', name: 'Бобинажна + редачна машина', category: 'Машина / Работно място', calib: false },
-    { code: 'РБОБ', name: 'Ръчна бобинажна машина', category: 'Машина / Работно място', calib: false },
-    { code: 'ЗАЧ', name: 'Машина за зачистване', category: 'Машина / Работно място', calib: false },
-    { code: 'ПУД', name: 'Машина за пудрене', category: 'Машина / Работно място', calib: false },
-    { code: 'ПБОЯ', name: 'Машина за прахово боядисване', category: 'Машина / Работно място', calib: false },
-    { code: 'ПРЕС', name: 'Преса (хидравлична/механична)', category: 'Машина / Работно място', calib: false },
-    { code: 'ТПРЕС', name: 'Термопреса', category: 'Машина / Работно място', calib: true },
-    { code: 'ГИЛ', name: 'Гилотина', category: 'Машина / Работно място', calib: false },
-    { code: 'ШМИР', name: 'Шмиргел', category: 'Машина / Работно място', calib: false },
-    { code: 'АСП-ХОН', name: 'Аспирация за хонинг', category: 'Машина / Работно място', calib: false },
-    { code: 'СТР', name: 'Струг', category: 'Машина / Работно място', calib: false },
-    { code: 'ФРЕЗ', name: 'Фреза / Обработващ център', category: 'Машина / Работно място', calib: false },
-    { code: 'ШЛАЙФ', name: 'Шлайф (плосък/кръгъл)', category: 'Машина / Работно място', calib: false },
-    { code: 'МОНТ', name: 'Монтажна маса / Пост', category: 'Машина / Работно място', calib: false },
-    { code: 'ОПАК', name: 'Пост Опаковане', category: 'Машина / Работно място', calib: false },
-    { code: 'БТК', name: 'Контролен пост БТК', category: 'Машина / Работно място', calib: false },
-
-    // 🧪 Термично / Камерно
-    { code: 'ПЕЩ', name: 'Пещ (сушилна/термична)', category: 'Термично / Камерно', calib: true },
-    { code: 'ПЕЩ-ЗАК', name: 'Пещ за закаляване', category: 'Термично / Камерно', calib: true },
-    { code: 'КАМ-ЛАМ', name: 'Камера за пръскане на ламели', category: 'Термично / Камерно', calib: false },
-    { code: 'КАМ-БОЯ', name: 'Камера за прахово боядисване', category: 'Термично / Камерно', calib: false },
-    { code: 'УЗВ', name: 'Ултразвукова вана (ултразвук)', category: 'Термично / Камерно', calib: false },
-
     // 🔧 Електроинструменти
     { code: 'ОТВ', name: 'Автоматична отвертка', category: 'Електроинструмент', calib: true },
     { code: 'ПОЯЛ', name: 'Поялна станция / Поялник', category: 'Електроинструмент', calib: false },
@@ -76,6 +50,46 @@ const TOOL_TYPE_CATALOG = [
     { code: 'ПРИС', name: 'Специална оснастка / Дорник', category: 'Оснастка & Приспособления', calib: true },
     { code: 'МАТ', name: 'Матрица / Щанца', category: 'Оснастка & Приспособления', calib: true },
     { code: 'ШАБ', name: 'Шаблон (запояване/монтаж)', category: 'Оснастка & Приспособления', calib: false }
+];
+
+// Каталог за предварително дефинирани типове машини (Шаблони за бързо въвеждане)
+const MACHINE_TYPE_CATALOG = [
+    { name: 'Бобинажна машина', code: '208', model: '', status: 'active' },
+    { name: 'Бобинажна+редачна', code: '209', model: '', status: 'active' },
+    { name: 'Бобинажна машина статорна', code: '201', model: '', status: 'active' },
+    { name: 'Машина за навиване на ротори', code: '203', model: '', status: 'active' },
+    { name: 'Ръчна бобинажна машина', code: '', model: '', status: 'active' },
+    { name: 'Машина за зачистване', code: '', model: '', status: 'active' },
+    { name: 'Машина за пудрене', code: '205', model: '', status: 'active' },
+    { name: 'Машина за прахово боядисване', code: '204', model: '', status: 'active' },
+    { name: 'Машина за търкане', code: '206', model: '', status: 'active' },
+    { name: 'Шмиргел (малък)', code: '16.1', model: '', status: 'active' },
+    { name: 'Шмиргел (голям)', code: '16.2', model: '', status: 'active' },
+    { name: 'Струг HAAS ST 10', code: '13.5', model: 'HAAS ST 10', status: 'active' },
+    { name: 'Струг (УС 11.1)', code: '11.1', model: '', status: 'active' },
+    { name: 'Струг голям', code: '13.4', model: '', status: 'active' },
+    { name: 'Струг пресоване', code: '109', model: '', status: 'active' },
+    { name: 'Универсален струг', code: '15.3', model: '', status: 'active' },
+    { name: 'EMCO', code: '103', model: '', status: 'active' },
+    { name: 'EMCO (стар)', code: '104', model: '', status: 'active' },
+    { name: 'EMCOTURN E25', code: '105', model: '', status: 'active' },
+    { name: 'HAAS Mini Mill', code: '15.2', model: 'HAAS', status: 'active' },
+    { name: 'Фреза Deckel', code: '15.1', model: 'Deckel', status: 'active' },
+    { name: 'Шлайф (нов)', code: '12.1', model: '', status: 'active' },
+    { name: 'Шлайф (голям)', code: '12.3', model: '', status: 'active' },
+    { name: 'Хонинг', code: '113', model: '', status: 'active' },
+    { name: 'Заточна Машина', code: '12.2', model: '', status: 'active' },
+    { name: 'Голяма ножовка', code: '13.1', model: '', status: 'active' },
+    { name: 'Средна (зелена) ножовка', code: '13.2', model: '', status: 'active' },
+    { name: 'Малка (синя) ножовка', code: '13.3', model: '', status: 'active' },
+    { name: 'Преса (хидравлична/механична)', code: '', model: '', status: 'active' },
+    { name: 'Термопреса', code: '', model: '', status: 'active' },
+    { name: 'Гилотина', code: '', model: '', status: 'active' },
+    { name: 'Пещ (сушилна/термична)', code: '', model: '', status: 'active' },
+    { name: 'Пещ за закаляване', code: '', model: '', status: 'active' },
+    { name: 'Камера за пръскане на ламели', code: '', model: '', status: 'active' },
+    { name: 'Камера за прахово боядисване', code: '', model: '', status: 'active' },
+    { name: 'Ултразвукова вана (ултразвук)', code: '', model: '', status: 'active' }
 ];
 
 // --------------------------------------------------------------------------
@@ -985,14 +999,40 @@ window.openAddMachineModal = async function(defaultRoomNum = '') {
         </option>
     `).join('');
 
+    let machinePresetOptions = MACHINE_TYPE_CATALOG.map((m, idx) => `
+        <option value="${idx}">${escapeHtml(m.name)}${m.code ? ' (№ ' + escapeHtml(m.code) + ')' : ''}</option>
+    `).join('');
+
     const { value: formValues } = await Swal.fire({
         title: `🏭 Добавяне на нова машина`,
         html: `
             <div style="text-align: left; font-size: 0.9em;">
                 <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
-                    Име на машина / пост: <span style="color:#dc2626;">*</span>
+                    Шаблон / Избор от списъка на машините:
                 </label>
-                <input id="swalNewMacName" class="swal2-input" placeholder="напр. Бобинажна машина 1, Струг HAAS..." style="width: 100%; margin: 0 0 10px 0;">
+                <select id="swalNewMacPreset" class="swal2-select" style="width: 100%; margin: 0 0 10px 0;" onchange="
+                    const idx = this.value;
+                    if (idx !== '') {
+                        const mac = MACHINE_TYPE_CATALOG[parseInt(idx)];
+                        if (mac) {
+                            document.getElementById('swalNewMacName').value = mac.name;
+                            if (mac.code && !document.getElementById('swalNewMacCode').value) {
+                                document.getElementById('swalNewMacCode').value = mac.code;
+                            }
+                            if (mac.model && !document.getElementById('swalNewMacModel').value) {
+                                document.getElementById('swalNewMacModel').value = mac.model;
+                            }
+                        }
+                    }
+                ">
+                    <option value="">-- Изберете машина от шаблоните (или въведете ръчно долу) --</option>
+                    ${machinePresetOptions}
+                </select>
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
+                    Име на машина / оборудване: <span style="color:#dc2626;">*</span>
+                </label>
+                <input id="swalNewMacName" class="swal2-input" placeholder="напр. Бобинажна машина, Струг HAAS..." style="width: 100%; margin: 0 0 10px 0;">
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
                     <div>
