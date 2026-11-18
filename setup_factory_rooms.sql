@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS public.factory_rooms (
 );
 
 -- 2. Свързване на Машините към Стаите (factory_machines)
+-- Премахване на уникалното ограничение по име, за да може предприятието да има по няколко бройки от един и същи тип машина (напр. 3 бр. Бобинажна)
+ALTER TABLE public.factory_machines DROP CONSTRAINT IF EXISTS factory_machines_name_key;
+
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='factory_machines' AND column_name='room_number') THEN
