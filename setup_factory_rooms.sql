@@ -60,3 +60,24 @@ CREATE POLICY "Allow all on factory_rooms" ON public.factory_rooms FOR ALL USING
 GRANT ALL ON public.factory_rooms TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
+-- 7. Разграничаване на Работни постове (Бобиньорки, Монтажи) от Стационарни машини
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='factory_machines' AND column_name='asset_type') THEN
+        ALTER TABLE public.factory_machines ADD COLUMN asset_type TEXT DEFAULT 'machine';
+    END IF;
+END $$;
+
+UPDATE public.factory_machines 
+SET asset_type = 'workstation' 
+WHERE lower(trim(name)) IN (
+  'бобиньорки',
+  'монтаж 1',
+  'монтаж 1 мпр',
+  'монтаж 1 макари',
+  'монтаж 2',
+  'монтаж 2 + термопреса',
+  'мивка',
+  'барабан'
+);
+

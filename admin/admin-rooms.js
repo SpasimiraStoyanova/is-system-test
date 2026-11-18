@@ -6,6 +6,26 @@ let globalToolsCache = [];
 let activeFloorFilter = 'all'; // 'all', 'Етаж 1', 'Етаж 2', 'Етаж 3', 'warehouse'
 let roomSearchQuery = '';
 
+// Списък на ръчни / групови работни постове (които не са индивидуални машини с инв./сериен номер)
+const MANUAL_WORKSTATION_NAMES = [
+    'бобиньорки',
+    'монтаж 1',
+    'монтаж 1 мпр',
+    'монтаж 1 макари',
+    'монтаж 2',
+    'монтаж 2 + термопреса',
+    'мивка',
+    'барабан'
+];
+
+window.isWorkstationItem = function(item) {
+    if (!item) return false;
+    if (item.asset_type === 'workstation') return true;
+    if (item.asset_type === 'machine') return false;
+    let nameNorm = String(item.name || '').trim().toLowerCase();
+    return MANUAL_WORKSTATION_NAMES.includes(nameNorm);
+};
+
 // Каталог за уреди и инструменти
 const TOOL_TYPE_CATALOG = [
     // 📏 Измервателни уреди (подлежащи на периодична калибрация)
@@ -164,8 +184,10 @@ function renderRoomsLayout() {
     if (!container) return;
 
     let totalRooms = globalRoomsCache.length;
-    let totalMachinesAssigned = globalMachinesCache.filter(m => m.room_number).length;
-    let totalMachinesUnassigned = globalMachinesCache.length - totalMachinesAssigned;
+    let allAssigned = globalMachinesCache.filter(m => m.room_number);
+    let totalWsAssigned = allAssigned.filter(m => isWorkstationItem(m)).length;
+    let totalMacAssigned = allAssigned.filter(m => !isWorkstationItem(m)).length;
+    let totalUnassigned = globalMachinesCache.length - allAssigned.length;
     let totalTools = globalToolsCache.length;
 
     // Филтриране на стаите
@@ -221,9 +243,10 @@ function renderRoomsLayout() {
                         <span>🏢</span> Опис по стаи & Инвентаризация
                     </h2>
                     <div style="font-size: 0.88em; color: #64748b; margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap;">
-                        <span>Стаи / Помещения: <b>${totalRooms}</b></span> &bull;
-                        <span>Зачислени машини: <b style="color:#16a34a;">${totalMachinesAssigned}</b></span> &bull;
-                        ${totalMachinesUnassigned > 0 ? `<span>Неразпределени машини: <b style="color:#ea580c;">${totalMachinesUnassigned}</b></span> &bull;` : ''}
+                        <span>Стаи: <b>${totalRooms}</b></span> &bull;
+                        <span>Работни постове: <b style="color:#7e22ce;">${totalWsAssigned}</b></span> &bull;
+                        <span>Стационарни машини: <b style="color:#0f766e;">${totalMacAssigned}</b></span> &bull;
+                        ${totalUnassigned > 0 ? `<span>Неразпределени: <b style="color:#ea580c;">${totalUnassigned}</b></span> &bull;` : ''}
                         <span>Инструменти & уреди: <b style="color:#0284c7;">${totalTools}</b></span>
                     </div>
                 </div>
@@ -232,11 +255,14 @@ function renderRoomsLayout() {
                     <button type="button" class="btn" onclick="openCreateRoomModal()" style="background: #2563eb; color: white; padding: 10px 16px; font-weight: 800; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.25);">
                         ➕ Нова Стая
                     </button>
+                    <button type="button" class="btn" onclick="openAddWorkstationModal()" style="background: #7e22ce; color: white; padding: 10px 16px; font-weight: 800; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(126,34,206,0.25);">
+                        👥 Нов работен пост
+                    </button>
                     <button type="button" class="btn" onclick="openAddMachineModal()" style="background: #0f766e; color: white; padding: 10px 16px; font-weight: 800; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(15,118,110,0.25);">
-                        🏭 Добави машина
+                        🏭 Нова машина
                     </button>
                     <button type="button" class="btn" onclick="openAddToolGlobalModal()" style="background: #16a34a; color: white; padding: 10px 16px; font-weight: 800; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(22,163,74,0.25);">
-                        📏 Добави уред / инструмент
+                        📏 Нов уред / инструмент
                     </button>
                     <button type="button" class="btn" onclick="renderRoomsTab(true)" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 10px 14px; font-weight: 800; border-radius: 8px; cursor: pointer;">
                         🔄 Опресни
@@ -294,9 +320,37 @@ function buildRoomCardHtml(room) {
         borderColor = '#fed7aa';
     }
 
-    let machines = globalMachinesCache.filter(m => String(m.room_number).trim() === rNum);
+    let allRoomItems = globalMachinesCache.filter(m => String(m.room_number).trim() === rNum);
+    let workstations = allRoomItems.filter(m => isWorkstationItem(m));
+    let machines = allRoomItems.filter(m => !isWorkstationItem(m));
     let tools = globalToolsCache.filter(t => String(t.room_number).trim() === rNum);
 
+    // Секция 1: Работни постове (Бобиньорки, Монтаж, Мивка...)
+    let workstationsListHtml = '';
+    if (workstations.length === 0) {
+        workstationsListHtml = `<div style="color: #94a3b8; font-size: 0.82em; font-style: italic; padding: 4px 0;">Няма зачислени работни постове.</div>`;
+    } else {
+        workstationsListHtml = `<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">`;
+        workstations.forEach(w => {
+            workstationsListHtml += `
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 7px 10px; cursor: pointer; transition: background 0.15s ease;" onclick="openWorkstationDetailsModal(${w.id})" onmouseover="this.style.background='#f3e8ff'" onmouseout="this.style.background='#faf5ff'">
+                    <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+                        <span style="font-size: 1.1em;">👥</span>
+                        <span style="font-weight: 800; color: #581c87; font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(w.name)}</span>
+                        ${w.notes ? `<span style="background: #f3e8ff; color: #6b21a8; padding: 1px 6px; border-radius: 4px; font-size: 0.75em; font-weight: 700;">${escapeHtml(w.notes)}</span>` : ''}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                        <span style="font-size: 0.75em; color: #7e22ce; font-weight: 800; background: #f3e8ff; padding: 2px 6px; border-radius: 4px;">Пост ➔</span>
+                        <button type="button" onclick="event.stopPropagation(); unassignMachineFromRoom(${w.id}, '${escapeHtml(w.name)}')" title="Отчисли от тази стая" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 1em; padding: 2px 4px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
+                            ✕
+                        </button>
+                    </div>
+                </div>`;
+        });
+        workstationsListHtml += `</div>`;
+    }
+
+    // Секция 2: Стационарни машини
     let machinesListHtml = '';
     if (machines.length === 0) {
         machinesListHtml = `<div style="color: #94a3b8; font-size: 0.85em; font-style: italic; padding: 6px 0;">Няма зачислени машини в тази стая.</div>`;
@@ -322,6 +376,7 @@ function buildRoomCardHtml(room) {
         machinesListHtml += `</div>`;
     }
 
+    // Секция 3: Инструменти и уреди
     let toolsListHtml = '';
     if (tools.length === 0) {
         toolsListHtml = `<div style="color: #94a3b8; font-size: 0.85em; font-style: italic; padding: 6px 0;">Няма зачислени инструменти/уреди в тази стая.</div>`;
@@ -396,11 +451,24 @@ function buildRoomCardHtml(room) {
                 </div>
             </div>
 
-            <!-- Секция: Машини -->
+            <!-- Секция 1: Работни постове / Зони -->
             <div style="margin-bottom: 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: 800; color: #334155; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
-                        🏭 Машини (${machines.length})
+                    <span style="font-weight: 800; color: #581c87; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
+                        👥 Работни постове (${workstations.length})
+                    </span>
+                    <button type="button" onclick="openAssignWorkstationModal('${escapeHtml(rNum)}', '${escapeHtml(room.room_name)}')" style="background: #f3e8ff; color: #7e22ce; border: none; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.78em; cursor: pointer;">
+                        ➕ Зачисли пост
+                    </button>
+                </div>
+                ${workstationsListHtml}
+            </div>
+
+            <!-- Секция 2: Стационарни Машини -->
+            <div style="margin-bottom: 14px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 800; color: #0f766e; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
+                        🏭 Стационарни Машини (${machines.length})
                     </span>
                     <button type="button" onclick="openAssignMachineModal('${escapeHtml(rNum)}', '${escapeHtml(room.room_name)}')" style="background: #e0f2fe; color: #0369a1; border: none; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.78em; cursor: pointer;">
                         ➕ Зачисли машина
@@ -409,10 +477,10 @@ function buildRoomCardHtml(room) {
                 ${machinesListHtml}
             </div>
 
-            <!-- Секция: Инструменти & Уреди -->
+            <!-- Секция 3: Инструменти & Уреди -->
             <div style="margin-top: 14px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: 800; color: #334155; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
+                    <span style="font-weight: 800; color: #166534; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
                         📏 Инструменти & Уреди (${tools.length})
                     </span>
                     <button type="button" onclick="openAddToolToRoomModal('${escapeHtml(rNum)}', '${escapeHtml(room.room_name)}')" style="background: #dcfce7; color: #166534; border: none; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.78em; cursor: pointer;">
@@ -1337,7 +1405,8 @@ window.deleteRoom = async function(roomId, roomNumber) {
 
 window.openAssignMachineModal = async function(roomNumber, roomName) {
     let optionsHtml = '<option value="">-- Изберете машина от списъка --</option>';
-    globalMachinesCache.forEach(m => {
+    let physicalMachines = globalMachinesCache.filter(m => !isWorkstationItem(m));
+    physicalMachines.forEach(m => {
         let currentLoc = m.room_number ? ` (в Стая ${m.room_number})` : ` ⚠️ Без стая`;
         let isCurrent = String(m.room_number).trim() === String(roomNumber).trim();
         if (!isCurrent) {
@@ -1358,7 +1427,7 @@ window.openAssignMachineModal = async function(roomNumber, roomName) {
         showCancelButton: true,
         confirmButtonText: '📌 Зачисли към стаята',
         cancelButtonText: 'Отказ',
-        confirmButtonColor: '#2563eb',
+        confirmButtonColor: '#0f766e',
         preConfirm: () => {
             const val = document.getElementById('swalSelectMachine').value;
             if (!val) { Swal.showValidationMessage('Моля изберете машина!'); return false; }
@@ -1372,6 +1441,270 @@ window.openAssignMachineModal = async function(roomNumber, roomName) {
                 .update({ room_number: String(roomNumber), room_name: roomName })
                 .eq('id', selectedMachineId);
             Swal.fire('Готово!', 'Машината беше зачислена към стаята.', 'success');
+            await loadRoomsData();
+            renderRoomsLayout();
+        } catch (err) {
+            Swal.fire('Грешка', err.message, 'error');
+        }
+    }
+};
+
+window.openAssignWorkstationModal = async function(roomNumber, roomName) {
+    let optionsHtml = '<option value="">-- Изберете работен пост / участък --</option>';
+    let workstationItems = globalMachinesCache.filter(m => isWorkstationItem(m));
+    workstationItems.forEach(w => {
+        let currentLoc = w.room_number ? ` (в Стая ${w.room_number})` : ` ⚠️ Без стая`;
+        let isCurrent = String(w.room_number).trim() === String(roomNumber).trim();
+        if (!isCurrent) {
+            optionsHtml += `<option value="${w.id}">${escapeHtml(w.name)}${currentLoc}</option>`;
+        }
+    });
+
+    const { value: formValues } = await Swal.fire({
+        title: `👥 Зачисляване на Работен пост`,
+        html: `
+            <div style="text-align: left; font-size: 0.9em;">
+                <p style="color: #475569; margin-top: 0;">Изберете работен пост за <b>Стая ${escapeHtml(roomNumber)} (${escapeHtml(roomName)})</b>:</p>
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Работен пост: <span style="color:#dc2626;">*</span></label>
+                <select id="swalSelectWorkstation" class="swal2-select" style="width: 100%; margin: 0 0 10px 0;">
+                    ${optionsHtml}
+                </select>
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Описание / Брой маси (по избор):</label>
+                <input id="swalWorkstationNotes" class="swal2-input" placeholder="напр. 4 работни маси / Постове 1-4" style="width: 100%; margin: 0;">
+                
+                <div style="margin-top: 14px; text-align: center; border-top: 1px dashed #cbd5e1; padding-top: 10px;">
+                    <span style="font-size: 0.85em; color: #64748b;">Няма търсения пост в списъка?</span><br>
+                    <button type="button" class="btn" onclick="Swal.close(); openAddWorkstationModal('${escapeHtml(roomNumber)}');" style="margin-top: 6px; background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe; padding: 6px 14px; font-weight: 800; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
+                        ➕ Създай изцяло нов пост
+                    </button>
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '💾 Зачисли към стаята',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#7e22ce',
+        preConfirm: () => {
+            const select = document.getElementById('swalSelectWorkstation');
+            const notes = document.getElementById('swalWorkstationNotes').value.trim();
+            if (!select.value) {
+                Swal.showValidationMessage('Моля, изберете работен пост!');
+                return false;
+            }
+            return {
+                workstationId: parseInt(select.value),
+                notes: notes
+            };
+        }
+    });
+
+    if (formValues) {
+        Swal.fire({ title: 'Зачисляване...', didOpen: () => Swal.showLoading() });
+        let roomObj = globalRoomsCache.find(r => String(r.room_number) === String(roomNumber));
+        let floor = roomObj ? roomObj.floor : (roomNumber.startsWith('1') ? 'Етаж 1' : (roomNumber.startsWith('2') ? 'Етаж 2' : 'Етаж 3'));
+
+        try {
+            let updatePayload = {
+                room_number: String(roomNumber),
+                room_name: roomName,
+                floor: floor
+            };
+            if (formValues.notes) {
+                updatePayload.notes = formValues.notes;
+            }
+            const { error } = await client.from('factory_machines')
+                .update(updatePayload)
+                .eq('id', formValues.workstationId);
+            if (error) throw error;
+
+            Swal.fire('Готово!', `Работният пост беше зачислен към Стая ${roomNumber}.`, 'success');
+            await loadRoomsData();
+            renderRoomsLayout();
+        } catch (err) {
+            Swal.fire('Грешка', err.message, 'error');
+        }
+    }
+};
+
+window.openAddWorkstationModal = async function(defaultRoomNum = '') {
+    let roomOptions = globalRoomsCache.map(r => `
+        <option value="${r.room_number}" ${String(defaultRoomNum) === String(r.room_number) ? 'selected' : ''}>
+            Стая ${r.room_number} - ${escapeHtml(r.room_name)}
+        </option>
+    `).join('');
+
+    const { value: formValues } = await Swal.fire({
+        title: `👥 Нов Работен Пост / Зона`,
+        html: `
+            <div style="text-align: left; font-size: 0.9em;">
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
+                    Наименование на пост / участък: <span style="color:#dc2626;">*</span>
+                </label>
+                <input id="swalNewWsName" class="swal2-input" placeholder="напр. Бобиньорки, Опаковане, Монтаж 3..." style="width: 100%; margin: 0 0 10px 0;">
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
+                    Стая / Помещение: <span style="color:#dc2626;">*</span>
+                </label>
+                <select id="swalNewWsRoom" class="swal2-select" style="width: 100%; margin: 0 0 10px 0;">
+                    <option value="">-- Изберете стая --</option>
+                    ${roomOptions}
+                </select>
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">
+                    Описание / Брой работни маси:
+                </label>
+                <input id="swalNewWsNotes" class="swal2-input" placeholder="напр. 4 работни маси / Зона за лепене" style="width: 100%; margin: 0;">
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '💾 Създай работен пост',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#7e22ce',
+        preConfirm: () => {
+            const name = document.getElementById('swalNewWsName').value.trim();
+            const roomNum = document.getElementById('swalNewWsRoom').value;
+            const notes = document.getElementById('swalNewWsNotes').value.trim();
+
+            if (!name) { Swal.showValidationMessage('Името на поста е задължително!'); return false; }
+            if (!roomNum) { Swal.showValidationMessage('Задължително изберете стая!'); return false; }
+
+            let roomObj = globalRoomsCache.find(r => String(r.room_number) === String(roomNum));
+            let floor = roomObj ? roomObj.floor : (roomNum.startsWith('1') ? 'Етаж 1' : (roomNum.startsWith('2') ? 'Етаж 2' : 'Етаж 3'));
+
+            return {
+                name: name,
+                room_number: roomNum,
+                room_name: roomObj ? roomObj.room_name : null,
+                floor: floor,
+                status: 'active',
+                asset_type: 'workstation',
+                notes: notes || null
+            };
+        }
+    });
+
+    if (formValues) {
+        Swal.fire({ title: 'Запис на работен пост...', didOpen: () => Swal.showLoading() });
+        try {
+            const { error } = await client.from('factory_machines').insert([formValues]);
+            if (error) throw error;
+            Swal.fire('Успех!', `Работният пост "${formValues.name}" беше заведен в Стая ${formValues.room_number}.`, 'success');
+            await loadRoomsData();
+            renderRoomsLayout();
+        } catch (err) {
+            Swal.fire('Грешка', err.message, 'error');
+        }
+    }
+};
+
+window.openWorkstationDetailsModal = function(wsId) {
+    let ws = globalMachinesCache.find(m => m.id === wsId);
+    if (!ws) return;
+
+    Swal.fire({
+        title: `👥 Работен Пост`,
+        html: `
+            <div style="text-align: left; font-size: 0.92em; line-height: 1.6;">
+                <div style="background: #faf5ff; border: 1.5px solid #d8b4fe; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px;">
+                    <div style="font-size: 1.25em; font-weight: 900; color: #581c87;">${escapeHtml(ws.name)}</div>
+                    <div style="font-size: 0.85em; color: #7e22ce; font-weight: bold; margin-top: 2px;">Ръчен / Групов производствен пост</div>
+                </div>
+
+                <table style="width:100%; border-collapse:collapse; font-size:0.95em;">
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold; width:45%;">📍 Стая / Локация:</td>
+                        <td style="padding:6px 0; font-weight:bold; color:#1e293b;">Стая ${escapeHtml(ws.room_number || '-')} ${ws.room_name ? '(' + escapeHtml(ws.room_name) + ')' : ''}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">🏢 Етаж:</td>
+                        <td style="padding:6px 0; color:#1e293b;">${escapeHtml(ws.floor || '-')}</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">🪑 Брой маси / Описание:</td>
+                        <td style="padding:6px 0; color:#1e293b; font-weight:600;">${escapeHtml(ws.notes || 'Няма въведено')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px 0; color:#64748b; font-weight:bold;">⚡ Статус:</td>
+                        <td style="padding:6px 0;"><span style="background:#dcfce7; color:#166534; font-size:0.85em; padding:2px 8px; border-radius:4px; font-weight:800;">🟢 В експлоатация</span></td>
+                    </tr>
+                </table>
+            </div>
+        `,
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: '✏️ Редактирай',
+        denyButtonText: '🚪 Премести в друга стая',
+        cancelButtonText: 'Затвори',
+        confirmButtonColor: '#7e22ce',
+        denyButtonColor: '#0f766e',
+        cancelButtonColor: '#64748b'
+    }).then((res) => {
+        if (res.isConfirmed) {
+            openEditWorkstationModal(wsId);
+        } else if (res.isDenied) {
+            openMoveMachineModal(wsId);
+        }
+    });
+};
+
+window.openEditWorkstationModal = async function(wsId) {
+    let ws = globalMachinesCache.find(m => m.id === wsId);
+    if (!ws) return;
+
+    let roomOptions = globalRoomsCache.map(r => `
+        <option value="${r.room_number}" ${String(ws.room_number) === String(r.room_number) ? 'selected' : ''}>
+            Стая ${r.room_number} - ${escapeHtml(r.room_name)}
+        </option>
+    `).join('');
+
+    const { value: formValues } = await Swal.fire({
+        title: `✏️ Редакция на ${escapeHtml(ws.name)}`,
+        html: `
+            <div style="text-align: left; font-size: 0.9em;">
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Наименование на пост: <span style="color:#dc2626;">*</span></label>
+                <input id="swalEditWsName" class="swal2-input" value="${escapeHtml(ws.name)}" style="width: 100%; margin: 0 0 10px 0;">
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Стая / Локация: <span style="color:#dc2626;">*</span></label>
+                <select id="swalEditWsRoom" class="swal2-select" style="width: 100%; margin: 0 0 10px 0;">
+                    ${roomOptions}
+                </select>
+
+                <label style="font-weight: 800; color: #334155; display: block; margin-bottom: 4px;">Описание / Брой маси:</label>
+                <input id="swalEditWsNotes" class="swal2-input" value="${escapeHtml(ws.notes || '')}" placeholder="напр. 4 работни маси" style="width: 100%; margin: 0;">
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Запази',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#7e22ce',
+        preConfirm: () => {
+            const name = document.getElementById('swalEditWsName').value.trim();
+            const roomNum = document.getElementById('swalEditWsRoom').value;
+            const notes = document.getElementById('swalEditWsNotes').value.trim();
+
+            if (!name) { Swal.showValidationMessage('Името е задължително!'); return false; }
+            if (!roomNum) { Swal.showValidationMessage('Стаята е задължителна!'); return false; }
+
+            let rObj = globalRoomsCache.find(r => String(r.room_number) === String(roomNum));
+            return {
+                name: name,
+                room_number: roomNum,
+                room_name: rObj ? rObj.room_name : null,
+                floor: rObj ? rObj.floor : null,
+                notes: notes || null
+            };
+        }
+    });
+
+    if (formValues) {
+        Swal.fire({ title: 'Обновяване...', didOpen: () => Swal.showLoading() });
+        try {
+            const { error } = await client.from('factory_machines').update(formValues).eq('id', wsId);
+            if (error) throw error;
+            Swal.fire('Обновено!', 'Данните на поста са запазени.', 'success');
             await loadRoomsData();
             renderRoomsLayout();
         } catch (err) {
@@ -1453,10 +1786,24 @@ window.printRoomPassport = function(roomNumber) {
         return;
     }
 
-    let machines = globalMachinesCache.filter(m => String(m.room_number).trim() === String(roomNumber).trim());
+    let allRoomItems = globalMachinesCache.filter(m => String(m.room_number).trim() === String(roomNumber).trim());
+    let workstations = allRoomItems.filter(m => isWorkstationItem(m));
+    let machines = allRoomItems.filter(m => !isWorkstationItem(m));
     let tools = globalToolsCache.filter(t => String(t.room_number).trim() === String(roomNumber).trim());
 
     let todayStr = new Date().toLocaleDateString('bg-BG');
+
+    let wsRows = workstations.map((w, idx) => `
+        <tr>
+            <td style="text-align:center;">${idx + 1}</td>
+            <td style="font-weight:bold;">${escapeHtml(w.name)}</td>
+            <td>${escapeHtml(w.notes || 'Ръчен работен пост')}</td>
+            <td style="text-align:center;">${escapeHtml(w.status === 'active' ? 'В експлоатация' : w.status)}</td>
+        </tr>
+    `).join('');
+    if (!wsRows) {
+        wsRows = `<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:8px;">Няма зачислени работни постове</td></tr>`;
+    }
 
     let machinesRows = machines.map((m, idx) => `
         <tr>
@@ -1468,7 +1815,7 @@ window.printRoomPassport = function(roomNumber) {
         </tr>
     `).join('');
     if (!machinesRows) {
-        machinesRows = `<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:12px;">Няма зачислени машини</td></tr>`;
+        machinesRows = `<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:8px;">Няма зачислени стационарни машини</td></tr>`;
     }
 
     let toolsRows = tools.map((t, idx) => `
@@ -1482,7 +1829,7 @@ window.printRoomPassport = function(roomNumber) {
         </tr>
     `).join('');
     if (!toolsRows) {
-        toolsRows = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:12px;">Няма зачислени инструменти/уреди</td></tr>`;
+        toolsRows = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:8px;">Няма зачислени инструменти/уреди</td></tr>`;
     }
 
     let printHtml = `
@@ -1524,7 +1871,22 @@ window.printRoomPassport = function(roomNumber) {
                 <div><b>Дата на изготвяне на описа:</b> ${todayStr} г.</div>
             </div>
 
-            <div class="sec-title">1. МАШИНИ И ОСНОВНИ РАБОТНИ МЕСТА</div>
+            <div class="sec-title">1. РАБОТНИ ПОСТОВЕ И ПРОИЗВОДСТВЕНИ ЗОНИ</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:5%;">№</th>
+                        <th style="width:45%;">Наименование на пост / участък</th>
+                        <th style="width:30%;">Описание / Брой маси</th>
+                        <th style="width:20%;">Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${wsRows}
+                </tbody>
+            </table>
+
+            <div class="sec-title">2. СТАЦИОНАРНИ МАШИНИ И СЪОРЪЖЕНИЯ</div>
             <table>
                 <thead>
                     <tr>
@@ -1540,7 +1902,7 @@ window.printRoomPassport = function(roomNumber) {
                 </tbody>
             </table>
 
-            <div class="sec-title">2. ИЗМЕРВАТЕЛНИ УРЕДИ, ИНСТРУМЕНТИ И ОСНАСТКА</div>
+            <div class="sec-title">3. ИЗМЕРВАТЕЛНИ УРЕДИ, ИНСТРУМЕНТИ И ОСНАСТКА</div>
             <table>
                 <thead>
                     <tr>
