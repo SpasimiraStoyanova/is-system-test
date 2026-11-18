@@ -205,7 +205,7 @@ function renderRoomsLayout() {
                 </button>
             </div>`;
     } else {
-        roomsHtml = `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 18px; margin-top: 18px;">`;
+        roomsHtml = `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 18px; margin-top: 18px; align-items: start;">`;
         filteredRooms.forEach(room => {
             roomsHtml += buildRoomCardHtml(room);
         });
@@ -410,7 +410,7 @@ function buildRoomCardHtml(room) {
             </div>
 
             <!-- Секция: Инструменти & Уреди -->
-            <div style="margin-top: auto; border-top: 1px dashed #e2e8f0; padding-top: 10px;">
+            <div style="margin-top: 14px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-weight: 800; color: #334155; font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.3px;">
                         📏 Инструменти & Уреди (${tools.length})
