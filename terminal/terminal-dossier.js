@@ -609,6 +609,7 @@ window.renderSelectedWorkerPayslip = function(index) {
     if (!contentDiv || !currentWorkerSalaryLogs[index]) return;
 
     const log = currentWorkerSalaryLogs[index];
+    const details = log.details_json || {};
     const baseBonus = Number(log.base_bonus || 0);
     const lateCount = Number(log.late_count || 0);
     const latePenalty = Number(log.late_penalty || 0);
@@ -620,6 +621,19 @@ window.renderSelectedWorkerPayslip = function(index) {
     const finalPayout = Number(log.final_payout || 0);
 
     const perfectBonus = totalBonus - baseBonus;
+
+    // Percentages (from details_json or calculated)
+    const latePenaltyPct = details.latePenaltyPct !== undefined 
+        ? details.latePenaltyPct 
+        : (baseBonus > 0 && latePenalty > 0 ? Math.round((latePenalty / baseBonus) * 100) : 0);
+
+    const auditPenaltyPct = details.auditPenaltyPct !== undefined 
+        ? details.auditPenaltyPct 
+        : (baseBonus > 0 && auditPenalty > 0 ? Math.round((auditPenalty / baseBonus) * 100) : 0);
+
+    const perfectBonusPct = details.perfectBonusPct !== undefined 
+        ? details.perfectBonusPct 
+        : (baseBonus > 0 && perfectBonus > 0 ? Math.round((perfectBonus / baseBonus) * 100) : 0);
 
     contentDiv.innerHTML = `
         <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto;">
@@ -656,7 +670,7 @@ window.renderSelectedWorkerPayslip = function(index) {
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #ffffff; border: 1px solid #f1f5f9; border-radius: 6px;">
                     <div>
                         <span>⏱️ Закъснения за смяна (след 08:05):</span>
-                        <span style="font-size: 0.82em; color: #64748b; margin-left: 6px;">(${lateCount} ${lateCount === 1 ? 'път' : 'пъти'})</span>
+                        <span style="font-size: 0.82em; color: #64748b; margin-left: 6px;">(${lateCount} ${lateCount === 1 ? 'път' : 'пъти'}${latePenaltyPct > 0 ? ` • <b>-${latePenaltyPct}%</b>` : ''})</span>
                     </div>
                     <b style="color: ${latePenalty > 0 ? '#dc2626' : '#16a34a'};">${latePenalty > 0 ? `-${latePenalty.toFixed(2)} €` : '0.00 €'}</b>
                 </div>
@@ -664,14 +678,17 @@ window.renderSelectedWorkerPayslip = function(index) {
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #ffffff; border: 1px solid #f1f5f9; border-radius: 6px;">
                     <div>
                         <span>🧹 3S Одити на работното място:</span>
-                        <span style="font-size: 0.82em; color: #64748b; margin-left: 6px;">(${auditFailed} неиздържани)</span>
+                        <span style="font-size: 0.82em; color: #64748b; margin-left: 6px;">(${auditFailed} неиздържани${auditPenaltyPct > 0 ? ` • <b>-${auditPenaltyPct}%</b>` : ''})</span>
                     </div>
                     <b style="color: ${auditPenalty > 0 ? '#dc2626' : '#16a34a'};">${auditPenalty > 0 ? `-${auditPenalty.toFixed(2)} €` : '0.00 €'}</b>
                 </div>
 
                 ${perfectBonus > 0 ? `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px;">
-                    <span>🎁 Поощрение (0 закъснения за месеца):</span>
+                    <div>
+                        <span>🎁 Поощрение (0 закъснения за месеца):</span>
+                        ${perfectBonusPct > 0 ? `<span style="font-size: 0.82em; color: #166534; margin-left: 6px;">(<b>+${perfectBonusPct}%</b>)</span>` : ''}
+                    </div>
                     <b style="color: #16a34a;">+${perfectBonus.toFixed(2)} €</b>
                 </div>
                 ` : ''}

@@ -21,7 +21,7 @@ let salaryCalculations = [];
 let isCalculatingSalaries = false;
 let currentSalaryMonthStatus = 'Не е запазено';
 
-// Първоначални правила по подразбиране (според Заповедта)
+// Първоначални правила по подразбиране (според Заповедта - в проценти спрямо Базовия Бонус)
 const DEFAULT_BONUS_RULES = [
     {
         id: 1,
@@ -29,10 +29,11 @@ const DEFAULT_BONUS_RULES = [
         rule_name: 'Закъснения за смяна (след 08:05 ч.)',
         category: 'attendance',
         threshold: 3,
-        penalty_amount: 10.00,
+        calc_type: 'percent', // 'percent' (% от базовия бонус) или 'fixed' (твърда сума в EUR)
+        penalty_amount: 10.00, // 10%
         bonus_amount: 0,
         unit: 'пъти',
-        description: 'При 3 или повече закъснения за смяна след 08:05 ч. се удържат 10 € (на всеки 3 закъснения по 10 €)',
+        description: 'При 3 или повече закъснения за смяна след 08:05 ч. се удържат 10% от базовия бонус (на всеки 3 закъснения по -10%)',
         is_active: true
     },
     {
@@ -41,10 +42,11 @@ const DEFAULT_BONUS_RULES = [
         rule_name: 'Неиздържан 3S одит (под 80%)',
         category: '3s',
         threshold: 1,
-        penalty_amount: 20.00,
+        calc_type: 'percent',
+        penalty_amount: 20.00, // 20%
         bonus_amount: 0,
         unit: 'одита',
-        description: 'При неиздържан 3S одит на работното място се удържат 20 € за всеки такъв одит',
+        description: 'При неиздържан 3S одит на работното място се удържат 20% от базовия бонус за всеки такъв одит',
         is_active: true
     },
     {
@@ -53,10 +55,11 @@ const DEFAULT_BONUS_RULES = [
         rule_name: 'Грешно отчитане на детайл / Брак',
         category: 'reports',
         threshold: 3,
-        penalty_amount: 15.00,
+        calc_type: 'percent',
+        penalty_amount: 15.00, // 15%
         bonus_amount: 0,
         unit: 'отчета',
-        description: 'При 3 или повече грешни отчитания или брак (по подразбиране е изключено, може да се активира от правилата при нужда)',
+        description: 'При 3 или повече грешни отчитания или брак се удържат 15% от базовия бонус (по подразбиране е изключено)',
         is_active: false
     },
     {
@@ -65,10 +68,11 @@ const DEFAULT_BONUS_RULES = [
         rule_name: 'Поощрение: Без закъснения за месеца',
         category: 'bonus',
         threshold: 0,
+        calc_type: 'percent',
         penalty_amount: 0,
-        bonus_amount: 20.00,
+        bonus_amount: 10.00, // +10%
         unit: 'месец',
-        description: 'Поощрителен бонус от 20 € при 0 закъснения през целия календарен месец',
+        description: 'Поощрителен бонус от +10% към базовия бонус при 0 закъснения през целия календарен месец',
         is_active: true
     }
 ];
@@ -108,12 +112,20 @@ async function loadSalaryRules() {
     try {
         const { data, error } = await client.from('salary_bonus_rules').select('*').order('id', { ascending: true });
         if (!error && data && data.length > 0) {
-            salaryRulesCache = data;
+            salaryRulesCache = data.map(r => ({
+                ...r,
+                calc_type: r.calc_type || 'percent'
+            }));
         } else {
             // Fallback to local storage or defaults
             const saved = localStorage.getItem('amci_salary_bonus_rules');
             if (saved) {
-                try { salaryRulesCache = JSON.parse(saved); } catch (e) { salaryRulesCache = DEFAULT_BONUS_RULES; }
+                try { 
+                    const parsed = JSON.parse(saved);
+                    salaryRulesCache = parsed.map(r => ({ ...r, calc_type: r.calc_type || 'percent' }));
+                } catch (e) { 
+                    salaryRulesCache = [...DEFAULT_BONUS_RULES]; 
+                }
             } else {
                 salaryRulesCache = [...DEFAULT_BONUS_RULES];
             }
@@ -122,6 +134,91 @@ async function loadSalaryRules() {
         console.warn('Salary rules load note:', e.message);
         salaryRulesCache = [...DEFAULT_BONUS_RULES];
     }
+}
+
+// Помощна функция за изчисляване на бонуси и санкции (% спрямо базовия бонус или твърда сума)
+function computeWorkerBonusValues(calcData, rules) {
+    const lateRule = rules.find(r => r.rule_code === 'LATE_ARRIVAL' && r.is_active);
+    const auditRule = rules.find(r => r.rule_code === 'FAILED_3S' && r.is_active);
+    const defectRule = rules.find(r => r.rule_code === 'WRONG_REPORT' && r.is_active);
+    const perfectAttendanceRule = rules.find(r => r.rule_code === 'PERFECT_ATTENDANCE' && r.is_active);
+
+    const baseBonus = parseFloat(calcData.baseBonus) || 0;
+    const baseSalary = parseFloat(calcData.baseSalary) || 0;
+    const manualAdjustment = parseFloat(calcData.manualAdjustment) || 0;
+
+    // 1. Закъснения
+    let latePenaltyPct = 0;
+    let latePenalty = 0;
+    if (lateRule && lateRule.threshold > 0 && calcData.lateCount >= lateRule.threshold) {
+        const factor = Math.floor(calcData.lateCount / lateRule.threshold);
+        if (lateRule.calc_type === 'fixed') {
+            latePenalty = factor * (parseFloat(lateRule.penalty_amount) || 0);
+        } else {
+            latePenaltyPct = factor * (parseFloat(lateRule.penalty_amount) || 0);
+            latePenalty = Math.round((baseBonus * (latePenaltyPct / 100)) * 100) / 100;
+        }
+    }
+
+    // 2. 3S Одити
+    let auditPenaltyPct = 0;
+    let auditPenalty = 0;
+    if (auditRule && calcData.failedAuditsCount >= (auditRule.threshold || 1)) {
+        const count = calcData.failedAuditsCount;
+        if (auditRule.calc_type === 'fixed') {
+            auditPenalty = count * (parseFloat(auditRule.penalty_amount) || 0);
+        } else {
+            auditPenaltyPct = count * (parseFloat(auditRule.penalty_amount) || 0);
+            auditPenalty = Math.round((baseBonus * (auditPenaltyPct / 100)) * 100) / 100;
+        }
+    }
+
+    // 3. Отчети (Брак)
+    let defectPenaltyPct = 0;
+    let defectPenalty = 0;
+    if (defectRule && defectRule.threshold > 0 && calcData.defectsCount >= defectRule.threshold) {
+        const factor = Math.floor(calcData.defectsCount / defectRule.threshold);
+        if (defectRule.calc_type === 'fixed') {
+            defectPenalty = factor * (parseFloat(defectRule.penalty_amount) || 0);
+        } else {
+            defectPenaltyPct = factor * (parseFloat(defectRule.penalty_amount) || 0);
+            defectPenalty = Math.round((baseBonus * (defectPenaltyPct / 100)) * 100) / 100;
+        }
+    }
+
+    // 4. Поощрение (0 закъснения за целия месец)
+    let perfectBonusPct = 0;
+    let perfectBonus = 0;
+    if (perfectAttendanceRule && calcData.lateCount === 0 && (calcData.totalCheckIns || 0) >= 10) {
+        if (perfectAttendanceRule.calc_type === 'fixed') {
+            perfectBonus = parseFloat(perfectAttendanceRule.bonus_amount) || 0;
+        } else {
+            perfectBonusPct = parseFloat(perfectAttendanceRule.bonus_amount) || 0;
+            perfectBonus = Math.round((baseBonus * (perfectBonusPct / 100)) * 100) / 100;
+        }
+    }
+
+    const totalPenalty = Math.round((latePenalty + auditPenalty + defectPenalty) * 100) / 100;
+    const totalBonus = Math.round((baseBonus + perfectBonus) * 100) / 100;
+    // Удръжките от бонуса не могат да доведат до отрицателен бонус фонд; ръчните корекции се добавят след това
+    const netBonus = Math.max(0, totalBonus - totalPenalty);
+    const finalBonusPayout = Math.round((netBonus + manualAdjustment) * 100) / 100;
+    const finalPayout = Math.round((baseSalary + finalBonusPayout) * 100) / 100;
+
+    return {
+        latePenaltyPct,
+        latePenalty,
+        auditPenaltyPct,
+        auditPenalty,
+        defectPenaltyPct,
+        defectPenalty,
+        perfectBonusPct,
+        perfectBonus,
+        totalPenalty,
+        totalBonus,
+        finalBonusPayout,
+        finalPayout
+    };
 }
 
 // ==============================================================================
@@ -259,28 +356,6 @@ window.calculateMonthlySalaries = async function () {
                 return op === email || op.includes(name.toLowerCase());
             });
 
-            // Calculate penalties based on active rules
-            let latePenalty = 0;
-            if (lateRule && lateRule.threshold > 0 && lates.length >= lateRule.threshold) {
-                // Tiered: every X lates gives penalty_amount
-                latePenalty = Math.floor(lates.length / lateRule.threshold) * (parseFloat(lateRule.penalty_amount) || 0);
-            }
-
-            let auditPenalty = 0;
-            if (auditRule && failedAudits.length >= (auditRule.threshold || 1)) {
-                auditPenalty = failedAudits.length * (parseFloat(auditRule.penalty_amount) || 0);
-            }
-
-            let defectPenalty = 0;
-            if (defectRule && defectRule.threshold > 0 && workerDefects.length >= defectRule.threshold) {
-                defectPenalty = Math.floor(workerDefects.length / defectRule.threshold) * (parseFloat(defectRule.penalty_amount) || 0);
-            }
-
-            let perfectBonus = 0;
-            if (perfectAttendanceRule && lates.length === 0 && totalCheckIns >= 10) {
-                perfectBonus = parseFloat(perfectAttendanceRule.bonus_amount) || 0;
-            }
-
             // Base values (can be overridden from saved log or personal table)
             const baseBonus = saved ? (parseFloat(saved.base_bonus) || 0) : (parseFloat(worker['Базов бонус']) || 0);
             const baseSalary = saved ? (parseFloat(saved.base_salary) || 0) : (parseFloat(worker['Основна заплата']) || 0);
@@ -288,9 +363,17 @@ window.calculateMonthlySalaries = async function () {
             const manualNotes = saved ? (saved.manual_notes || '') : '';
             const status = saved ? (saved.status || 'Чернова') : 'Чернова';
 
-            const totalPenalty = latePenalty + auditPenalty + defectPenalty;
-            const totalBonus = baseBonus + perfectBonus;
-            const finalBonusPayout = totalBonus - totalPenalty + manualAdjustment;
+            const workerData = {
+                baseBonus,
+                baseSalary,
+                manualAdjustment,
+                totalCheckIns,
+                lateCount: lates.length,
+                failedAuditsCount: failedAudits.length,
+                defectsCount: workerDefects.length
+            };
+
+            const computed = computeWorkerBonusValues(workerData, salaryRulesCache);
 
             results.push({
                 workerEmail: email,
@@ -301,21 +384,25 @@ window.calculateMonthlySalaries = async function () {
                 totalCheckIns: totalCheckIns,
                 lates: lates,
                 lateCount: lates.length,
-                latePenalty: latePenalty,
+                latePenaltyPct: computed.latePenaltyPct,
+                latePenalty: computed.latePenalty,
                 auditsTotal: workerAudits.length,
                 failedAudits: failedAudits,
                 failedAuditsCount: failedAudits.length,
-                auditPenalty: auditPenalty,
+                auditPenaltyPct: computed.auditPenaltyPct,
+                auditPenalty: computed.auditPenalty,
                 defects: workerDefects,
                 defectsCount: workerDefects.length,
-                defectPenalty: defectPenalty,
-                perfectBonus: perfectBonus,
+                defectPenaltyPct: computed.defectPenaltyPct,
+                defectPenalty: computed.defectPenalty,
+                perfectBonusPct: computed.perfectBonusPct,
+                perfectBonus: computed.perfectBonus,
                 manualAdjustment: manualAdjustment,
                 manualNotes: manualNotes,
-                totalPenalty: totalPenalty,
-                totalBonus: totalBonus,
-                finalBonusPayout: finalBonusPayout,
-                finalPayout: baseSalary + finalBonusPayout,
+                totalPenalty: computed.totalPenalty,
+                totalBonus: computed.totalBonus,
+                finalBonusPayout: computed.finalBonusPayout,
+                finalPayout: computed.finalPayout,
                 status: status,
                 month: monthName,
                 year: year
@@ -494,27 +581,27 @@ function renderSalariesLayout() {
                                     <!-- Закъснения -->
                                     <td style="padding:10px 10px; text-align:center;">
                                         <button type="button" onclick="showLateDetailsModal(${idx})" style="background:${isLateWarn ? '#fee2e2' : '#f0fdf4'}; border:1px solid ${isLateWarn ? '#fca5a5' : '#86efac'}; color:${isLateWarn ? '#b91c1c' : '#15803d'}; padding:3px 8px; border-radius:6px; font-weight:800; cursor:pointer; font-size:0.92em;" title="Кликнете за списък с датите и часовете на закъснение">
-                                            ${calc.lateCount} бр. ${calc.latePenalty > 0 ? `<b style="color:#dc2626;">(-${calc.latePenalty}€)</b>` : ''}
+                                            ${calc.lateCount} бр. ${calc.latePenalty > 0 ? `<b style="color:#dc2626;">(${calc.latePenaltyPct > 0 ? `-${calc.latePenaltyPct}% / ` : ''}-${calc.latePenalty.toFixed(2)}€)</b>` : ''}
                                         </button>
                                     </td>
 
                                     <!-- 3S Одити -->
                                     <td style="padding:10px 10px; text-align:center;">
                                         <button type="button" onclick="show3sDetailsModal(${idx})" style="background:${isAuditWarn ? '#fee2e2' : '#f0fdf4'}; border:1px solid ${isAuditWarn ? '#fca5a5' : '#86efac'}; color:${isAuditWarn ? '#b91c1c' : '#15803d'}; padding:3px 8px; border-radius:6px; font-weight:800; cursor:pointer; font-size:0.92em;" title="Кликнете за преглед на 3S одитите">
-                                            ${calc.failedAuditsCount} бр. ${calc.auditPenalty > 0 ? `<b style="color:#dc2626;">(-${calc.auditPenalty}€)</b>` : ''}
+                                            ${calc.failedAuditsCount} бр. ${calc.auditPenalty > 0 ? `<b style="color:#dc2626;">(${calc.auditPenaltyPct > 0 ? `-${calc.auditPenaltyPct}% / ` : ''}-${calc.auditPenalty.toFixed(2)}€)</b>` : ''}
                                         </button>
                                     </td>
 
                                     <!-- Брак / Отчети -->
                                     <td style="padding:10px 10px; text-align:center;">
                                         <span style="background:${isDefectWarn ? '#fee2e2' : '#f8fafc'}; border:1px solid ${isDefectWarn ? '#fca5a5' : '#cbd5e1'}; color:${isDefectWarn ? '#b91c1c' : '#475569'}; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.92em;">
-                                            ${calc.defectsCount} бр. ${calc.defectPenalty > 0 ? `<b style="color:#dc2626;">(-${calc.defectPenalty}€)</b>` : ''}
+                                            ${calc.defectsCount} бр. ${calc.defectPenalty > 0 ? `<b style="color:#dc2626;">(${calc.defectPenaltyPct > 0 ? `-${calc.defectPenaltyPct}% / ` : ''}-${calc.defectPenalty.toFixed(2)}€)</b>` : ''}
                                         </span>
                                     </td>
 
                                     <!-- Поощрение -->
                                     <td style="padding:10px 10px; text-align:center;">
-                                        ${calc.perfectBonus > 0 ? `<span style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:3px 8px; border-radius:6px; font-weight:800;">+${calc.perfectBonus} €</span>` : '<span style="color:#94a3b8;">—</span>'}
+                                        ${calc.perfectBonus > 0 ? `<span style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:3px 8px; border-radius:6px; font-weight:800;">${calc.perfectBonusPct > 0 ? `+${calc.perfectBonusPct}% ` : ''}(+${calc.perfectBonus.toFixed(2)} €)</span>` : '<span style="color:#94a3b8;">—</span>'}
                                     </td>
 
                                     <!-- Ръчна корекция (+ / - €) -->
@@ -536,7 +623,7 @@ function renderSalariesLayout() {
                                         <div style="font-size:1.15em; font-weight:900; color:${calc.finalBonusPayout < 0 ? '#dc2626' : (calc.finalBonusPayout > 0 ? '#15803d' : '#475569')};">
                                             ${calc.finalBonusPayout > 0 ? '+' : ''}${calc.finalBonusPayout.toLocaleString('bg-BG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                                         </div>
-                                        ${calc.totalPenalty > 0 ? `<div style="font-size:0.75em; color:#ef4444;">Удръжки: -${calc.totalPenalty} €</div>` : ''}
+                                        ${calc.totalPenalty > 0 ? `<div style="font-size:0.75em; color:#ef4444;">Удръжки: -${calc.totalPenalty.toFixed(2)} €</div>` : ''}
                                     </td>
 
                                     <!-- Действия: Фиш -->
@@ -555,7 +642,7 @@ function renderSalariesLayout() {
             <!-- Footer Notes & Legend -->
             <div style="margin-top:16px; padding:12px 16px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; font-size:0.85em; color:#64748b;">
                 <div>
-                    ℹ️ <b>Легенда на правилата:</b> Закъснение $\\ge 3$ пъти $\\rightarrow -10$ € &nbsp;|&nbsp; Неиздържан 3S одит $\\rightarrow -20$ €/одит &nbsp;|&nbsp; Грешни отчети/брак $\\ge 3$ $\\rightarrow -15$ € &nbsp;|&nbsp; Без закъснения $\\rightarrow +20$ € бонус
+                    ℹ️ <b>Легенда на правилата:</b> Закъснение &ge; 3 пъти &rarr; -10% от бонуса &nbsp;|&nbsp; Неиздържан 3S одит &rarr; -20% от бонуса/одит &nbsp;|&nbsp; Грешни отчети/брак &ge; 3 &rarr; -15% &nbsp;|&nbsp; Без закъснения &rarr; +10% поощрение
                 </div>
                 <div>
                     След като нанесете нужните индивидуални корекции, натиснете <b>„💾 Запази“</b> или <b>„📥 Excel Ведомост“</b> за счетоводството.
@@ -580,8 +667,8 @@ window.updateWorkerBaseBonus = function (index, val) {
     if (salaryCalculations[index]) {
         const num = parseFloat(val) || 0;
         salaryCalculations[index].baseBonus = num;
-        salaryCalculations[index].totalBonus = num + salaryCalculations[index].perfectBonus;
-        salaryCalculations[index].finalBonusPayout = salaryCalculations[index].totalBonus - salaryCalculations[index].totalPenalty + (salaryCalculations[index].manualAdjustment || 0);
+        const recomputed = computeWorkerBonusValues(salaryCalculations[index], salaryRulesCache);
+        Object.assign(salaryCalculations[index], recomputed);
         renderSalariesLayout();
     }
 };
@@ -590,7 +677,8 @@ window.updateWorkerManualAdjustment = function (index, val) {
     if (salaryCalculations[index]) {
         const num = parseFloat(val) || 0;
         salaryCalculations[index].manualAdjustment = num;
-        salaryCalculations[index].finalBonusPayout = salaryCalculations[index].totalBonus - salaryCalculations[index].totalPenalty + num;
+        const recomputed = computeWorkerBonusValues(salaryCalculations[index], salaryRulesCache);
+        Object.assign(salaryCalculations[index], recomputed);
         renderSalariesLayout();
     }
 };
@@ -622,13 +710,17 @@ window.showLateDetailsModal = function (index) {
         `).join('');
     }
 
+    const penaltyText = calc.latePenalty > 0 
+        ? `${calc.latePenaltyPct > 0 ? `-${calc.latePenaltyPct}% (` : ''}-${calc.latePenalty.toFixed(2)} €${calc.latePenaltyPct > 0 ? ')' : ''}`
+        : '0.00 €';
+
     Swal.fire({
         title: `⏱️ Закъснения: ${calc.workerName}`,
         html: `
             <div style="text-align:left; font-size:0.9em;">
                 <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px; margin-bottom:12px;">
                     <div>Смяната започва в <b>${currentShiftStartTime} ч.</b> (с толеранс до 08:05 ч.).</div>
-                    <div style="margin-top:4px;">Общо регистрирани закъснения: <b>${calc.lateCount} бр.</b> | Удръжка: <b style="color:#dc2626;">-${calc.latePenalty} €</b></div>
+                    <div style="margin-top:4px;">Общо регистрирани закъснения: <b>${calc.lateCount} бр.</b> | Удръжка: <b style="color:#dc2626;">${penaltyText}</b></div>
                 </div>
                 <div style="max-height:250px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px;">
                     <table style="width:100%; border-collapse:collapse; font-size:0.88em;">
@@ -670,13 +762,17 @@ window.show3sDetailsModal = function (index) {
         `).join('');
     }
 
+    const penaltyText = calc.auditPenalty > 0 
+        ? `${calc.auditPenaltyPct > 0 ? `-${calc.auditPenaltyPct}% (` : ''}-${calc.auditPenalty.toFixed(2)} €${calc.auditPenaltyPct > 0 ? ')' : ''}`
+        : '0.00 €';
+
     Swal.fire({
         title: `🧹 3S Одити: ${calc.workerName}`,
         html: `
             <div style="text-align:left; font-size:0.9em;">
                 <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px; margin-bottom:12px;">
                     <div>Праг за преминаване на 3S одит: <b>80%</b>.</div>
-                    <div style="margin-top:4px;">Неиздържани одити: <b>${calc.failedAuditsCount} бр.</b> | Удръжка: <b style="color:#dc2626;">-${calc.auditPenalty} €</b></div>
+                    <div style="margin-top:4px;">Неиздържани одити: <b>${calc.failedAuditsCount} бр.</b> | Удръжка: <b style="color:#dc2626;">${penaltyText}</b></div>
                 </div>
                 <div style="max-height:250px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px;">
                     <table style="width:100%; border-collapse:collapse; font-size:0.88em;">
@@ -749,14 +845,14 @@ window.showWorkerPaySlip = function (index) {
                     </tr>
                     ${c.perfectBonus > 0 ? `
                         <tr style="border-bottom:1px solid #e2e8f0; background:#f0fdf4;">
-                            <td style="padding:6px 10px; color:#166534;">🟢 Поощрение за отлично присъствие (0 закъснения)</td>
+                            <td style="padding:6px 10px; color:#166534;">🟢 Поощрение за отлично присъствие (0 закъснения${c.perfectBonusPct > 0 ? ` • +${c.perfectBonusPct}%` : ''})</td>
                             <td style="padding:6px 10px; text-align:center; color:#166534;">—</td>
                             <td style="padding:6px 10px; text-align:right; font-weight:bold; color:#166534;">+${c.perfectBonus.toFixed(2)} €</td>
                         </tr>
                     ` : ''}
                     <tr style="border-bottom:1px solid #e2e8f0;">
                         <td style="padding:6px 10px; color:${c.latePenalty > 0 ? '#dc2626' : '#64748b'};">
-                            Закъснения след 08:05 ч. ${c.lateCount > 0 ? `(${c.lateCount} бр.)` : ''}
+                            Закъснения след 08:05 ч. ${c.lateCount > 0 ? `(${c.lateCount} бр.${c.latePenaltyPct > 0 ? ` • -${c.latePenaltyPct}%` : ''})` : ''}
                         </td>
                         <td style="padding:6px 10px; text-align:center;">${c.lateCount}</td>
                         <td style="padding:6px 10px; text-align:right; font-weight:bold; color:${c.latePenalty > 0 ? '#dc2626' : '#64748b'};">
@@ -765,7 +861,7 @@ window.showWorkerPaySlip = function (index) {
                     </tr>
                     <tr style="border-bottom:1px solid #e2e8f0;">
                         <td style="padding:6px 10px; color:${c.auditPenalty > 0 ? '#dc2626' : '#64748b'};">
-                            Неиздържани 3S одити ${c.failedAuditsCount > 0 ? `(${c.failedAuditsCount} бр.)` : ''}
+                            Неиздържани 3S одити ${c.failedAuditsCount > 0 ? `(${c.failedAuditsCount} бр.${c.auditPenaltyPct > 0 ? ` • -${c.auditPenaltyPct}%` : ''})` : ''}
                         </td>
                         <td style="padding:6px 10px; text-align:center;">${c.failedAuditsCount}</td>
                         <td style="padding:6px 10px; text-align:right; font-weight:bold; color:${c.auditPenalty > 0 ? '#dc2626' : '#64748b'};">
@@ -774,7 +870,7 @@ window.showWorkerPaySlip = function (index) {
                     </tr>
                     <tr style="border-bottom:1px solid #e2e8f0;">
                         <td style="padding:6px 10px; color:${c.defectPenalty > 0 ? '#dc2626' : '#64748b'};">
-                            Брак / Грешки в отчитането ${c.defectsCount > 0 ? `(${c.defectsCount} бр.)` : ''}
+                            Брак / Грешки в отчитането ${c.defectsCount > 0 ? `(${c.defectsCount} бр.${c.defectPenaltyPct > 0 ? ` • -${c.defectPenaltyPct}%` : ''})` : ''}
                         </td>
                         <td style="padding:6px 10px; text-align:center;">${c.defectsCount}</td>
                         <td style="padding:6px 10px; text-align:right; font-weight:bold; color:${c.defectPenalty > 0 ? '#dc2626' : '#64748b'};">
@@ -837,7 +933,10 @@ window.showWorkerPaySlip = function (index) {
 // 7. Конфигуратор на Правилата (Заповедта)
 // ==============================================================================
 window.openBonusRulesModal = function () {
-    const rulesHtml = salaryRulesCache.map((r, idx) => `
+    const rulesHtml = salaryRulesCache.map((r, idx) => {
+        const isPercent = r.calc_type !== 'fixed';
+        const val = r.penalty_amount > 0 ? r.penalty_amount : r.bonus_amount;
+        return `
         <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; padding:12px; margin-bottom:10px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                 <div style="font-weight:900; color:#1e293b; font-size:1em;">
@@ -849,32 +948,40 @@ window.openBonusRulesModal = function () {
                 </label>
             </div>
             <div style="font-size:0.82em; color:#64748b; margin-bottom:8px;">${r.description || ''}</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; background:#f8fafc; padding:8px; border-radius:6px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; background:#f8fafc; padding:8px; border-radius:6px;">
+                <div>
+                    <label style="display:block; font-size:0.75em; font-weight:700; color:#475569; margin-bottom:2px;">Тип изчисление:</label>
+                    <select onchange="updateRuleCalcType(${idx}, this.value)" style="width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:4px; font-weight:bold; background:#fff; font-size:0.85em;">
+                        <option value="percent" ${isPercent ? 'selected' : ''}>% от базовия бонус</option>
+                        <option value="fixed" ${!isPercent ? 'selected' : ''}>Твърда сума (€)</option>
+                    </select>
+                </div>
                 <div>
                     <label style="display:block; font-size:0.75em; font-weight:700; color:#475569; margin-bottom:2px;">Праг (брой ${r.unit}):</label>
                     <input type="number" min="0" value="${r.threshold}" onchange="updateRuleThreshold(${idx}, this.value)" style="width:100%; padding:4px 8px; border:1px solid #cbd5e1; border-radius:4px; font-weight:bold;">
                 </div>
                 <div>
-                    <label style="display:block; font-size:0.75em; font-weight:700; color:#475569; margin-bottom:2px;">Сума (€):</label>
-                    <input type="number" step="any" min="0" value="${r.penalty_amount > 0 ? r.penalty_amount : r.bonus_amount}" onchange="updateRuleAmount(${idx}, this.value)" style="width:100%; padding:4px 8px; border:1px solid #cbd5e1; border-radius:4px; font-weight:bold; color:${r.category === 'bonus' ? '#15803d' : '#dc2626'};">
+                    <label id="ruleAmountLabel_${idx}" style="display:block; font-size:0.75em; font-weight:700; color:#475569; margin-bottom:2px;">Размер (${isPercent ? '%' : '€'}):</label>
+                    <input type="number" step="any" min="0" value="${val}" onchange="updateRuleAmount(${idx}, this.value)" style="width:100%; padding:4px 8px; border:1px solid #cbd5e1; border-radius:4px; font-weight:bold; color:${r.category === 'bonus' ? '#15803d' : '#dc2626'};">
                 </div>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 
     Swal.fire({
         title: '⚙️ Настройки на Правилата (Заповед)',
         html: `
             <div style="text-align:left; font-size:0.9em;">
                 <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px; margin-bottom:12px; font-size:0.85em; color:#1e40af;">
-                    💡 Тук можете да промените праговете и сумите веднага щом заповедта е утвърдена, без да се налага промяна на код.
+                    💡 Тук можете да промените дали санкциите и поощренията са в <b>проценти (%) от базовия бонус</b> или <b>твърда сума (€)</b>, както и да настроите праговете спрямо утвърдената Заповед.
                 </div>
                 <div style="max-height:360px; overflow-y:auto; padding-right:4px;">
                     ${rulesHtml}
                 </div>
             </div>
         `,
-        width: 640,
+        width: 680,
         showCancelButton: true,
         confirmButtonText: '💾 Запази правилата',
         cancelButtonText: 'Отказ',
@@ -884,6 +991,14 @@ window.openBonusRulesModal = function () {
             await saveBonusRulesToDb();
         }
     });
+};
+
+window.updateRuleCalcType = function (idx, type) {
+    if (salaryRulesCache[idx]) {
+        salaryRulesCache[idx].calc_type = type;
+        const lbl = document.getElementById(`ruleAmountLabel_${idx}`);
+        if (lbl) lbl.textContent = `Размер (${type === 'fixed' ? '€' : '%'}):`;
+    }
 };
 
 window.toggleRuleActive = function (idx, active) {
@@ -923,6 +1038,7 @@ async function saveBonusRulesToDb() {
                 rule_name: rule.rule_name,
                 category: rule.category,
                 threshold: rule.threshold,
+                calc_type: rule.calc_type || 'percent',
                 penalty_amount: rule.penalty_amount,
                 bonus_amount: rule.bonus_amount,
                 unit: rule.unit,
@@ -960,11 +1076,15 @@ window.exportSalariesToExcel = function () {
         "Присъствени дни": c.totalCheckIns,
         "Базов бонус (€)": c.baseBonus,
         "Закъснения (бр.)": c.lateCount,
+        "Удръжка закъснения (%)": c.latePenaltyPct > 0 ? `-${c.latePenaltyPct}%` : '0%',
         "Удръжка закъснения (€)": c.latePenalty > 0 ? -c.latePenalty : 0,
         "3S Неиздържани (бр.)": c.failedAuditsCount,
+        "Удръжка 3S (%)": c.auditPenaltyPct > 0 ? `-${c.auditPenaltyPct}%` : '0%',
         "Удръжка 3S (€)": c.auditPenalty > 0 ? -c.auditPenalty : 0,
         "Брак / Грешки (бр.)": c.defectsCount,
+        "Удръжка Брак (%)": c.defectPenaltyPct > 0 ? `-${c.defectPenaltyPct}%` : '0%',
         "Удръжка Брак (€)": c.defectPenalty > 0 ? -c.defectPenalty : 0,
+        "Поощрителен Бонус (%)": c.perfectBonusPct > 0 ? `+${c.perfectBonusPct}%` : '0%',
         "Поощрителен Бонус (€)": c.perfectBonus,
         "Ръчна корекция (€)": c.manualAdjustment,
         "Бележка / Обосновка": c.manualNotes,
@@ -1065,9 +1185,50 @@ window.saveMonthlySalariesToDb = async function (targetStatus = 'Чернова'
             total_bonus: c.totalBonus || 0,
             final_payout: c.finalBonusPayout || 0,
             status: targetStatus,
-            details_json: { lates: c.lates, failedAudits: c.failedAudits },
+            details_json: {
+                latePenaltyPct: c.latePenaltyPct || 0,
+                auditPenaltyPct: c.auditPenaltyPct || 0,
+                defectPenaltyPct: c.defectPenaltyPct || 0,
+                perfectBonusPct: c.perfectBonusPct || 0,
+                lates: c.lates || [],
+                failedAudits: c.failedAudits || []
+            },
             updated_at: new Date().toISOString()
         }));
+
+        const { error } = await client.from('salary_monthly_logs').upsert(rowsToSave, { onConflict: 'month,year,worker_email' });
+        if (error) throw error;
+
+        currentSalaryMonthStatus = targetStatus;
+        salaryCalculations.forEach(c => { c.status = targetStatus; });
+
+        renderSalariesLayout();
+
+        if (targetStatus === 'Одобрено') {
+            Swal.fire({
+                icon: 'success',
+                title: 'Фишовете са публикувани!',
+                html: `Ведомостта за <b>${monthName} ${currentSalaryYear} г.</b> е одобрена.<br>Всички служители вече могат да си виждат фиша на терминалите с личния си ПИН.`,
+                confirmButtonColor: '#16a34a'
+            });
+        } else {
+            Swal.fire({
+                icon: 'success',
+                title: 'Черновата е запазена!',
+                text: `Данните за ${monthName} ${currentSalaryYear} г. са запазени в базата като чернова. Служителите все още не ги виждат на терминалите.`,
+                timer: 2200,
+                showConfirmButton: false
+            });
+        }
+    } catch (e) {
+        console.warn('saveMonthlySalariesToDb note:', e.message);
+        Swal.fire({
+            icon: 'error',
+            title: 'Грешка при запис',
+            html: `Неуспешен запис в базата данни: ${e.message}<br><br><span style="font-size:0.85em; color:#64748b;">Уверете се, че сте изпълнили еднократно SQL скрипта <b>setup_salaries_system.sql</b> в Supabase SQL Editor.</span>`
+        });
+    }
+};
 
         const { error } = await client.from('salary_monthly_logs').upsert(rowsToSave, { onConflict: 'month,year,worker_email' });
         if (error) throw error;

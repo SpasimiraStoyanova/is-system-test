@@ -11,14 +11,17 @@ CREATE TABLE IF NOT EXISTS public.salary_bonus_rules (
     rule_name text NOT NULL,
     category text NOT NULL, -- 'attendance' (Закъснения), '3s' (3S Одити), 'reports' (Отчети), 'bonus' (Поощрения)
     threshold integer NOT NULL DEFAULT 1, -- праг брой пъти
-    penalty_amount numeric NOT NULL DEFAULT 0, -- удръжка в EUR
-    bonus_amount numeric NOT NULL DEFAULT 0, -- бонус в EUR
+    calc_type text NOT NULL DEFAULT 'percent', -- 'percent' (% от базовия бонус) или 'fixed' (твърда сума в EUR)
+    penalty_amount numeric NOT NULL DEFAULT 0, -- удръжка (% или EUR)
+    bonus_amount numeric NOT NULL DEFAULT 0, -- бонус (% или EUR)
     unit text NOT NULL DEFAULT 'пъти',
     description text,
     is_active boolean DEFAULT true,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()),
     updated_at timestamp with time zone DEFAULT timezone('utc'::text, now())
 );
+
+ALTER TABLE public.salary_bonus_rules ADD COLUMN IF NOT EXISTS calc_type text DEFAULT 'percent';
 
 -- 2. Таблица за Месечни Записи / Изчисления на Бонусите и Заплатите
 CREATE TABLE IF NOT EXISTS public.salary_monthly_logs (
@@ -54,17 +57,18 @@ ON public.salary_monthly_logs (month, year, worker_email);
 ALTER TABLE public.personal ADD COLUMN IF NOT EXISTS "Основна заплата" numeric DEFAULT 0;
 ALTER TABLE public.personal ADD COLUMN IF NOT EXISTS "Базов бонус" numeric DEFAULT 0;
 
--- 4. Първоначални правила по подразбиране (според примерите за Заповедта)
-INSERT INTO public.salary_bonus_rules (rule_code, rule_name, category, threshold, penalty_amount, bonus_amount, unit, description, is_active)
+-- 4. Първоначални правила по подразбиране (според Заповедта - в % спрямо Базовия Бонус)
+INSERT INTO public.salary_bonus_rules (rule_code, rule_name, category, threshold, calc_type, penalty_amount, bonus_amount, unit, description, is_active)
 VALUES 
-    ('LATE_ARRIVAL', 'Закъснения за смяна (след 08:05)', 'attendance', 3, 10.00, 0, 'пъти', 'При 3 или повече закъснения за смяна след 08:05 ч. се удържат 10 €', true),
-    ('FAILED_3S', 'Неиздържан 3S одит (под 80%)', '3s', 1, 20.00, 0, 'одита', 'При неиздържан 3S одит на работното място се удържат 20 €', true),
-    ('WRONG_REPORT', 'Грешно отчитане на детайл / Брак', 'reports', 3, 15.00, 0, 'отчета', 'При 3 или повече грешни отчитания или брак (по подразбиране е изключено)', false),
-    ('PERFECT_ATTENDANCE', 'Поощрение: Без закъснения за месеца', 'bonus', 0, 0, 20.00, 'месец', 'Поощрителен бонус при 0 закъснения през целия календарен месец', true)
+    ('LATE_ARRIVAL', 'Закъснения за смяна (след 08:05)', 'attendance', 3, 'percent', 10.00, 0, 'пъти', 'При 3 или повече закъснения за смяна след 08:05 ч. се удържат 10% от базовия бонус (на всеки 3 закъснения по -10%)', true),
+    ('FAILED_3S', 'Неиздържан 3S одит (под 80%)', '3s', 1, 'percent', 20.00, 0, 'одита', 'При неиздържан 3S одит на работното място се удържат 20% от базовия бонус за всеки такъв одит', true),
+    ('WRONG_REPORT', 'Грешно отчитане на детайл / Брак', 'reports', 3, 'percent', 15.00, 0, 'отчета', 'При 3 или повече грешни отчитания или брак се удържат 15% от базовия бонус (по подразбиране е изключено)', false),
+    ('PERFECT_ATTENDANCE', 'Поощрение: Без закъснения за месеца', 'bonus', 0, 'percent', 0, 10.00, 'месец', 'Поощрителен бонус от +10% към базовия бонус при 0 закъснения през целия календарен месец', true)
 ON CONFLICT (rule_code) DO UPDATE 
 SET rule_name = EXCLUDED.rule_name,
     category = EXCLUDED.category,
     threshold = EXCLUDED.threshold,
+    calc_type = EXCLUDED.calc_type,
     penalty_amount = EXCLUDED.penalty_amount,
     bonus_amount = EXCLUDED.bonus_amount,
     description = EXCLUDED.description,
