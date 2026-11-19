@@ -70,10 +70,10 @@ const DEFAULT_BONUS_RULES = [
         threshold: 0,
         calc_type: 'percent',
         penalty_amount: 0,
-        bonus_amount: 10.00, // +10%
+        bonus_amount: 0,
         unit: 'месец',
-        description: 'Поощрителен бонус от +10% към базовия бонус при 0 закъснения през целия календарен месец',
-        is_active: true
+        description: 'Поощрителен бонус (изключено - без допълнителни поощрения)',
+        is_active: false
     }
 ];
 
@@ -147,10 +147,13 @@ function computeWorkerBonusValues(calcData, rules) {
     const baseSalary = parseFloat(calcData.baseSalary) || 0;
     const manualAdjustment = parseFloat(calcData.manualAdjustment) || 0;
 
-    // 1. Закъснения
+    // 1. Закъснения (проверка за ръчна глоба или изчисление по правило)
     let latePenaltyPct = 0;
     let latePenalty = 0;
-    if (lateRule && lateRule.threshold > 0 && calcData.lateCount >= lateRule.threshold) {
+    if (calcData.overrideLatePenalty !== undefined && calcData.overrideLatePenalty !== null) {
+        latePenalty = parseFloat(calcData.overrideLatePenalty) || 0;
+        latePenaltyPct = baseBonus > 0 ? Math.round((latePenalty / baseBonus) * 100) : 0;
+    } else if (lateRule && lateRule.threshold > 0 && calcData.lateCount >= lateRule.threshold) {
         const factor = Math.floor(calcData.lateCount / lateRule.threshold);
         if (lateRule.calc_type === 'fixed') {
             latePenalty = factor * (parseFloat(lateRule.penalty_amount) || 0);
@@ -160,10 +163,13 @@ function computeWorkerBonusValues(calcData, rules) {
         }
     }
 
-    // 2. 3S Одити
+    // 2. 3S Одити (проверка за ръчна глоба или изчисление по правило)
     let auditPenaltyPct = 0;
     let auditPenalty = 0;
-    if (auditRule && calcData.failedAuditsCount >= (auditRule.threshold || 1)) {
+    if (calcData.overrideAuditPenalty !== undefined && calcData.overrideAuditPenalty !== null) {
+        auditPenalty = parseFloat(calcData.overrideAuditPenalty) || 0;
+        auditPenaltyPct = baseBonus > 0 ? Math.round((auditPenalty / baseBonus) * 100) : 0;
+    } else if (auditRule && calcData.failedAuditsCount >= (auditRule.threshold || 1)) {
         const count = calcData.failedAuditsCount;
         if (auditRule.calc_type === 'fixed') {
             auditPenalty = count * (parseFloat(auditRule.penalty_amount) || 0);
@@ -186,10 +192,10 @@ function computeWorkerBonusValues(calcData, rules) {
         }
     }
 
-    // 4. Поощрение (0 закъснения за целия месец)
+    // 4. Поощрение (изключено по подразбиране, освен ако изрично не е активирано)
     let perfectBonusPct = 0;
     let perfectBonus = 0;
-    if (perfectAttendanceRule && calcData.lateCount === 0 && (calcData.totalCheckIns || 0) >= 10) {
+    if (perfectAttendanceRule && perfectAttendanceRule.is_active && (parseFloat(perfectAttendanceRule.bonus_amount) > 0) && calcData.lateCount === 0 && (calcData.totalCheckIns || 0) >= 10) {
         if (perfectAttendanceRule.calc_type === 'fixed') {
             perfectBonus = parseFloat(perfectAttendanceRule.bonus_amount) || 0;
         } else {
@@ -219,6 +225,43 @@ function computeWorkerBonusValues(calcData, rules) {
         finalBonusPayout,
         finalPayout
     };
+}
+
+function recomputeWorkerCalculations(workerIdx) {
+    const calc = salaryCalculations[workerIdx];
+    if (!calc) return;
+
+    const unexcusedLates = (calc.lates || []).filter(l => !l.isExcused);
+    const unexcusedAudits = (calc.failedAudits || []).filter(a => !a.isExcused);
+    const unexcusedDefects = (calc.defects || []).filter(d => !d.isExcused);
+
+    calc.lateCount = calc.lates ? calc.lates.length : 0;
+    calc.unexcusedLateCount = unexcusedLates.length;
+    calc.excusedLateCount = calc.lateCount - calc.unexcusedLateCount;
+
+    calc.failedAuditsCount = calc.failedAudits ? calc.failedAudits.length : 0;
+    calc.unexcusedAuditCount = unexcusedAudits.length;
+    calc.excusedAuditCount = calc.failedAuditsCount - calc.unexcusedAuditCount;
+
+    calc.defectsCount = calc.defects ? calc.defects.length : 0;
+    calc.unexcusedDefectsCount = unexcusedDefects.length;
+
+    const workerData = {
+        baseBonus: calc.baseBonus,
+        baseSalary: calc.baseSalary,
+        manualAdjustment: calc.manualAdjustment,
+        totalCheckIns: calc.totalCheckIns,
+        lateCount: calc.unexcusedLateCount, // Само неоправданите закъснения носят удръжка!
+        failedAuditsCount: calc.unexcusedAuditCount,
+        defectsCount: calc.unexcusedDefectsCount,
+        overrideLatePenalty: calc.overrideLatePenalty,
+        overrideAuditPenalty: calc.overrideAuditPenalty
+    };
+
+    const computed = computeWorkerBonusValues(workerData, salaryRulesCache);
+    Object.assign(calc, computed);
+
+    renderSalariesLayout();
 }
 
 // ==============================================================================
@@ -336,10 +379,22 @@ window.calculateMonthlySalaries = async function () {
                                 timeStr: d.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' }),
                                 minutesLate: minLate,
                                 location: c['Локация'] || '',
-                                note: c['Бележка'] || ''
+                                note: c['Бележка'] || '',
+                                isExcused: false,
+                                excuseNote: ''
                             });
                         }
                     } catch (e) { }
+                }
+            });
+
+            // Възстановяване на запазени оправдавания от предишни редакции (ако има)
+            const savedLates = saved?.details_json?.lates || [];
+            lates.forEach(l => {
+                const sl = savedLates.find(s => s.dateStr === l.dateStr && s.timeStr === l.timeStr);
+                if (sl && sl.isExcused) {
+                    l.isExcused = true;
+                    l.excuseNote = sl.excuseNote || 'Оправдано';
                 }
             });
 
@@ -349,6 +404,15 @@ window.calculateMonthlySalaries = async function () {
                 return target === email || target === name.toLowerCase();
             });
             const failedAudits = workerAudits.filter(a => (parseFloat(a.percentage) || 0) < 80);
+            const savedAudits = saved?.details_json?.failedAudits || [];
+            failedAudits.forEach(a => {
+                const aDate = a.audit_date || a.created_at?.split('T')[0];
+                const sa = savedAudits.find(s => (s.id && s.id === a.id) || ((s.audit_date || s.created_at?.split('T')[0]) === aDate && s.sector === a.sector));
+                if (sa && sa.isExcused) {
+                    a.isExcused = true;
+                    a.excuseNote = sa.excuseNote || 'Оправдано';
+                }
+            });
 
             // 3. Отчети (Брак)
             const workerDefects = allDefects.filter(o => {
@@ -363,14 +427,23 @@ window.calculateMonthlySalaries = async function () {
             const manualNotes = saved ? (saved.manual_notes || '') : '';
             const status = saved ? (saved.status || 'Чернова') : 'Чернова';
 
+            const unexcusedLates = lates.filter(l => !l.isExcused);
+            const unexcusedAudits = failedAudits.filter(a => !a.isExcused);
+            const unexcusedDefects = workerDefects.filter(d => !d.isExcused);
+
+            const overrideLatePenalty = saved?.details_json?.overrideLatePenalty !== undefined ? saved.details_json.overrideLatePenalty : null;
+            const overrideAuditPenalty = saved?.details_json?.overrideAuditPenalty !== undefined ? saved.details_json.overrideAuditPenalty : null;
+
             const workerData = {
                 baseBonus,
                 baseSalary,
                 manualAdjustment,
                 totalCheckIns,
-                lateCount: lates.length,
-                failedAuditsCount: failedAudits.length,
-                defectsCount: workerDefects.length
+                lateCount: unexcusedLates.length, // Само неоправданите носят санкция!
+                failedAuditsCount: unexcusedAudits.length,
+                defectsCount: unexcusedDefects.length,
+                overrideLatePenalty,
+                overrideAuditPenalty
             };
 
             const computed = computeWorkerBonusValues(workerData, salaryRulesCache);
@@ -384,15 +457,22 @@ window.calculateMonthlySalaries = async function () {
                 totalCheckIns: totalCheckIns,
                 lates: lates,
                 lateCount: lates.length,
+                unexcusedLateCount: unexcusedLates.length,
+                excusedLateCount: lates.length - unexcusedLates.length,
+                overrideLatePenalty: overrideLatePenalty,
                 latePenaltyPct: computed.latePenaltyPct,
                 latePenalty: computed.latePenalty,
                 auditsTotal: workerAudits.length,
                 failedAudits: failedAudits,
                 failedAuditsCount: failedAudits.length,
+                unexcusedAuditCount: unexcusedAudits.length,
+                excusedAuditCount: failedAudits.length - unexcusedAudits.length,
+                overrideAuditPenalty: overrideAuditPenalty,
                 auditPenaltyPct: computed.auditPenaltyPct,
                 auditPenalty: computed.auditPenalty,
                 defects: workerDefects,
                 defectsCount: workerDefects.length,
+                unexcusedDefectsCount: unexcusedDefects.length,
                 defectPenaltyPct: computed.defectPenaltyPct,
                 defectPenalty: computed.defectPenalty,
                 perfectBonusPct: computed.perfectBonusPct,
@@ -548,10 +628,9 @@ function renderSalariesLayout() {
                         <tr style="background:#f8fafc; color:#475569; border-bottom:1.5px solid #cbd5e1;">
                             <th style="padding:10px 12px; width:220px;">Служител</th>
                             <th style="padding:10px 10px; text-align:center; width:110px;">Базов Бонус</th>
-                            <th style="padding:10px 10px; text-align:center; width:130px;">Закъснения (&gt;08:05)</th>
-                            <th style="padding:10px 10px; text-align:center; width:110px;">3S Одити</th>
+                            <th style="padding:10px 10px; text-align:center; width:150px;">Закъснения (&gt;08:05)</th>
+                            <th style="padding:10px 10px; text-align:center; width:130px;">3S Одити</th>
                             <th style="padding:10px 10px; text-align:center; width:110px;">Брак / Грешки</th>
-                            <th style="padding:10px 10px; text-align:center; width:90px;">Поощрение</th>
                             <th style="padding:10px 10px; text-align:center; width:130px;">Ръчна кор. (+/- €)</th>
                             <th style="padding:10px 10px;">Бележка / Обосновка</th>
                             <th style="padding:10px 12px; text-align:right; width:130px;">Краен Бонус</th>
@@ -560,8 +639,8 @@ function renderSalariesLayout() {
                     </thead>
                     <tbody>
                         ${salaryCalculations.map((calc, idx) => {
-                            const isLateWarn = calc.lateCount >= 3;
-                            const isAuditWarn = calc.failedAuditsCount > 0;
+                            const isLateWarn = (calc.unexcusedLateCount !== undefined ? calc.unexcusedLateCount : calc.lateCount) >= 3;
+                            const isAuditWarn = (calc.unexcusedAuditCount !== undefined ? calc.unexcusedAuditCount : calc.failedAuditsCount) > 0;
                             const isDefectWarn = calc.defectsCount >= 3;
 
                             return `
@@ -580,15 +659,15 @@ function renderSalariesLayout() {
 
                                     <!-- Закъснения -->
                                     <td style="padding:10px 10px; text-align:center;">
-                                        <button type="button" onclick="showLateDetailsModal(${idx})" style="background:${isLateWarn ? '#fee2e2' : '#f0fdf4'}; border:1px solid ${isLateWarn ? '#fca5a5' : '#86efac'}; color:${isLateWarn ? '#b91c1c' : '#15803d'}; padding:3px 8px; border-radius:6px; font-weight:800; cursor:pointer; font-size:0.92em;" title="Кликнете за списък с датите и часовете на закъснение">
-                                            ${calc.lateCount} бр. ${calc.latePenalty > 0 ? `<b style="color:#dc2626;">(${calc.latePenaltyPct > 0 ? `-${calc.latePenaltyPct}% / ` : ''}-${calc.latePenalty.toFixed(2)}€)</b>` : ''}
+                                        <button type="button" onclick="showLateDetailsModal(${idx})" style="background:${isLateWarn ? '#fee2e2' : '#f0fdf4'}; border:1px solid ${isLateWarn ? '#fca5a5' : '#86efac'}; color:${isLateWarn ? '#b91c1c' : '#15803d'}; padding:3px 8px; border-radius:6px; font-weight:800; cursor:pointer; font-size:0.92em;" title="Кликнете за преглед, оправдаване на закъснения или ръчна глоба">
+                                            ${calc.lateCount} бр.${calc.excusedLateCount > 0 ? ` <span style="font-size:0.8em; color:#15803d; font-weight:normal;">(${calc.excusedLateCount} опр.)</span>` : ''} ${calc.latePenalty > 0 ? `<b style="color:#dc2626;">(${calc.latePenaltyPct > 0 ? `-${calc.latePenaltyPct}% / ` : ''}-${calc.latePenalty.toFixed(2)}€)</b>` : (calc.lateCount > 0 ? '<b style="color:#15803d;">(0€)</b>' : '')}
                                         </button>
                                     </td>
 
                                     <!-- 3S Одити -->
                                     <td style="padding:10px 10px; text-align:center;">
-                                        <button type="button" onclick="show3sDetailsModal(${idx})" style="background:${isAuditWarn ? '#fee2e2' : '#f0fdf4'}; border:1px solid ${isAuditWarn ? '#fca5a5' : '#86efac'}; color:${isAuditWarn ? '#b91c1c' : '#15803d'}; padding:3px 8px; border-radius:6px; font-weight:800; cursor:pointer; font-size:0.92em;" title="Кликнете за преглед на 3S одитите">
-                                            ${calc.failedAuditsCount} бр. ${calc.auditPenalty > 0 ? `<b style="color:#dc2626;">(${calc.auditPenaltyPct > 0 ? `-${calc.auditPenaltyPct}% / ` : ''}-${calc.auditPenalty.toFixed(2)}€)</b>` : ''}
+                                        <button type="button" onclick="show3sDetailsModal(${idx})" style="background:${isAuditWarn ? '#fee2e2' : '#f0fdf4'}; border:1px solid ${isAuditWarn ? '#fca5a5' : '#86efac'}; color:${isAuditWarn ? '#b91c1c' : '#15803d'}; padding:3px 8px; border-radius:6px; font-weight:800; cursor:pointer; font-size:0.92em;" title="Кликнете за преглед, оправдаване на одити или ръчна глоба">
+                                            ${calc.failedAuditsCount} бр.${calc.excusedAuditCount > 0 ? ` <span style="font-size:0.8em; color:#15803d; font-weight:normal;">(${calc.excusedAuditCount} опр.)</span>` : ''} ${calc.auditPenalty > 0 ? `<b style="color:#dc2626;">(${calc.auditPenaltyPct > 0 ? `-${calc.auditPenaltyPct}% / ` : ''}-${calc.auditPenalty.toFixed(2)}€)</b>` : (calc.failedAuditsCount > 0 ? '<b style="color:#15803d;">(0€)</b>' : '')}
                                         </button>
                                     </td>
 
@@ -597,11 +676,6 @@ function renderSalariesLayout() {
                                         <span style="background:${isDefectWarn ? '#fee2e2' : '#f8fafc'}; border:1px solid ${isDefectWarn ? '#fca5a5' : '#cbd5e1'}; color:${isDefectWarn ? '#b91c1c' : '#475569'}; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.92em;">
                                             ${calc.defectsCount} бр. ${calc.defectPenalty > 0 ? `<b style="color:#dc2626;">(${calc.defectPenaltyPct > 0 ? `-${calc.defectPenaltyPct}% / ` : ''}-${calc.defectPenalty.toFixed(2)}€)</b>` : ''}
                                         </span>
-                                    </td>
-
-                                    <!-- Поощрение -->
-                                    <td style="padding:10px 10px; text-align:center;">
-                                        ${calc.perfectBonus > 0 ? `<span style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:3px 8px; border-radius:6px; font-weight:800;">${calc.perfectBonusPct > 0 ? `+${calc.perfectBonusPct}% ` : ''}(+${calc.perfectBonus.toFixed(2)} €)</span>` : '<span style="color:#94a3b8;">—</span>'}
                                     </td>
 
                                     <!-- Ръчна корекция (+ / - €) -->
@@ -642,7 +716,7 @@ function renderSalariesLayout() {
             <!-- Footer Notes & Legend -->
             <div style="margin-top:16px; padding:12px 16px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; font-size:0.85em; color:#64748b;">
                 <div>
-                    ℹ️ <b>Легенда на правилата:</b> Закъснение &ge; 3 пъти &rarr; -10% от бонуса &nbsp;|&nbsp; Неиздържан 3S одит &rarr; -20% от бонуса/одит &nbsp;|&nbsp; Грешни отчети/брак &ge; 3 &rarr; -15% &nbsp;|&nbsp; Без закъснения &rarr; +10% поощрение
+                    ℹ️ <b>Легенда на правилата:</b> Закъснение &ge; 3 пъти &rarr; -10% от бонуса &nbsp;|&nbsp; Неиздържан 3S одит &rarr; -20% от бонуса/одит &nbsp;|&nbsp; Грешни отчети/брак &ge; 3 &rarr; -15% &nbsp;|&nbsp; Кликнете върху закъсненията/одитите за оправдаване или ръчна корекция
                 </div>
                 <div>
                     След като нанесете нужните индивидуални корекции, натиснете <b>„💾 Запази“</b> или <b>„📥 Excel Ведомост“</b> за счетоводството.
@@ -667,9 +741,7 @@ window.updateWorkerBaseBonus = function (index, val) {
     if (salaryCalculations[index]) {
         const num = parseFloat(val) || 0;
         salaryCalculations[index].baseBonus = num;
-        const recomputed = computeWorkerBonusValues(salaryCalculations[index], salaryRulesCache);
-        Object.assign(salaryCalculations[index], recomputed);
-        renderSalariesLayout();
+        recomputeWorkerCalculations(index);
     }
 };
 
@@ -677,9 +749,7 @@ window.updateWorkerManualAdjustment = function (index, val) {
     if (salaryCalculations[index]) {
         const num = parseFloat(val) || 0;
         salaryCalculations[index].manualAdjustment = num;
-        const recomputed = computeWorkerBonusValues(salaryCalculations[index], salaryRulesCache);
-        Object.assign(salaryCalculations[index], recomputed);
-        renderSalariesLayout();
+        recomputeWorkerCalculations(index);
     }
 };
 
@@ -690,24 +760,41 @@ window.updateWorkerNotes = function (index, val) {
 };
 
 // ==============================================================================
-// 5. Модални прозорци за Детайли (Закъснения & 3S)
+// 5. Модални прозорци за Детайли & Ръчно Оправдаване (Закъснения & 3S)
 // ==============================================================================
 window.showLateDetailsModal = function (index) {
     const calc = salaryCalculations[index];
     if (!calc) return;
 
+    const totalLates = calc.lates ? calc.lates.length : 0;
+    const excusedCount = calc.excusedLateCount || 0;
+    const unexcusedCount = calc.unexcusedLateCount !== undefined ? calc.unexcusedLateCount : (totalLates - excusedCount);
+
     let rowsHtml = '';
-    if (calc.lates.length === 0) {
-        rowsHtml = '<tr><td colspan="4" style="text-align:center; padding:15px; color:#15803d; font-weight:bold;">🟢 Няма регистрирани закъснения през този месец!</td></tr>';
+    if (totalLates === 0) {
+        rowsHtml = '<tr><td colspan="5" style="text-align:center; padding:15px; color:#15803d; font-weight:bold;">🟢 Няма регистрирани закъснения през този месец!</td></tr>';
     } else {
-        rowsHtml = calc.lates.map((l, i) => `
-            <tr style="border-bottom:1px solid #f1f5f9;">
+        rowsHtml = calc.lates.map((l, i) => {
+            const isExc = !!l.isExcused;
+            return `
+            <tr style="border-bottom:1px solid #f1f5f9; background:${isExc ? '#f0fdf4' : 'transparent'};">
                 <td style="padding:8px 10px; font-weight:bold; color:#1e293b;">${i + 1}. ${l.dateStr}</td>
-                <td style="padding:8px 10px; color:#b91c1c; font-weight:800;">${l.timeStr} ч.</td>
-                <td style="padding:8px 10px; color:#dc2626;">+${l.minutesLate} мин.</td>
-                <td style="padding:8px 10px; color:#64748b; font-size:0.85em;">${l.location || '—'}</td>
+                <td style="padding:8px 10px; color:${isExc ? '#15803d' : '#b91c1c'}; font-weight:800;">${l.timeStr} ч.</td>
+                <td style="padding:8px 10px; color:${isExc ? '#15803d' : '#dc2626'};">+${l.minutesLate} мин.</td>
+                <td style="padding:8px 10px; font-size:0.85em;">
+                    ${isExc 
+                        ? `<span style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:2px 8px; border-radius:6px; font-weight:800;">🕊️ Оправдано</span><div style="font-size:0.8em; color:#166534; margin-top:2px;">${l.excuseNote || 'Предупредил'}</div>` 
+                        : `<span style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; padding:2px 8px; border-radius:6px; font-weight:700;">⚠️ Неоправдано</span>`
+                    }
+                </td>
+                <td style="padding:8px 10px; text-align:center;">
+                    <button type="button" onclick="toggleLateExcused(${index}, ${i})" style="padding:4px 9px; border-radius:6px; font-size:0.78em; font-weight:800; cursor:pointer; border:none; background:${isExc ? '#64748b' : '#16a34a'}; color:#ffffff;" title="${isExc ? 'Върни като неоправдано' : 'Оправдай закъснението (напр. предупредил предварително)'}">
+                        ${isExc ? '↩️ Отмени' : '🕊️ Оправдай'}
+                    </button>
+                </td>
             </tr>
-        `).join('');
+            `;
+        }).join('');
     }
 
     const penaltyText = calc.latePenalty > 0 
@@ -718,48 +805,159 @@ window.showLateDetailsModal = function (index) {
         title: `⏱️ Закъснения: ${calc.workerName}`,
         html: `
             <div style="text-align:left; font-size:0.9em;">
-                <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px; margin-bottom:12px;">
-                    <div>Смяната започва в <b>${currentShiftStartTime} ч.</b> (с толеранс до 08:05 ч.).</div>
-                    <div style="margin-top:4px;">Общо регистрирани закъснения: <b>${calc.lateCount} бр.</b> | Удръжка: <b style="color:#dc2626;">${penaltyText}</b></div>
+                <!-- Summary 3-box Grid -->
+                <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:10px; margin-bottom:12px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; text-align:center;">
+                    <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:6px;">
+                        <div style="font-size:0.75em; color:#64748b; font-weight:700; text-transform:uppercase;">Общо закъснения</div>
+                        <div style="font-size:1.3em; font-weight:900; color:#1e293b;">${totalLates} бр.</div>
+                    </div>
+                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:6px;">
+                        <div style="font-size:0.75em; color:#15803d; font-weight:700; text-transform:uppercase;">🕊️ Оправдани</div>
+                        <div style="font-size:1.3em; font-weight:900; color:#15803d;">${excusedCount} бр.</div>
+                    </div>
+                    <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:6px;">
+                        <div style="font-size:0.75em; color:#b91c1c; font-weight:700; text-transform:uppercase;">⚠️ За санкция</div>
+                        <div style="font-size:1.3em; font-weight:900; color:#dc2626;">${unexcusedCount} бр.</div>
+                    </div>
                 </div>
+
+                <!-- Fine status & manual override -->
+                <div style="background:${calc.latePenalty > 0 ? '#fef2f2' : '#f0fdf4'}; border:1px solid ${calc.latePenalty > 0 ? '#fecaca' : '#86efac'}; border-radius:8px; padding:10px 12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <span style="font-weight:700; color:#334155;">Удръжка:</span>
+                        <b style="color:${calc.latePenalty > 0 ? '#dc2626' : '#15803d'}; font-size:1.05em; margin-left:6px;">${penaltyText}</b>
+                        ${calc.overrideLatePenalty !== null && calc.overrideLatePenalty !== undefined ? '<span style="font-size:0.75em; color:#7c3aed; font-weight:bold; margin-left:6px;">(ръчно зададена)</span>' : ''}
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <label style="font-size:0.82em; font-weight:700; color:#475569;">Ръчна глоба (€):</label>
+                        <input type="number" step="any" min="0" value="${calc.overrideLatePenalty !== null && calc.overrideLatePenalty !== undefined ? calc.overrideLatePenalty : ''}" placeholder="Авто" 
+                               onchange="setWorkerOverrideLatePenalty(${index}, this.value)"
+                               style="width:75px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-weight:bold; text-align:center;">
+                        ${calc.overrideLatePenalty !== null && calc.overrideLatePenalty !== undefined ? `
+                            <button type="button" onclick="clearWorkerOverrideLatePenalty(${index})" style="background:#cbd5e1; border:none; border-radius:4px; padding:3px 6px; font-size:0.75em; font-weight:bold; cursor:pointer;" title="Върни към автоматично изчисление по правила">Авто</button>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- Table list -->
                 <div style="max-height:250px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px;">
                     <table style="width:100%; border-collapse:collapse; font-size:0.88em;">
                         <thead>
                             <tr style="background:#f8fafc; color:#475569; text-align:left; border-bottom:1px solid #cbd5e1;">
                                 <th style="padding:8px 10px;">Дата</th>
-                                <th style="padding:8px 10px;">Час</th>
+                                <th style="padding:8px 10px;">Влизане</th>
                                 <th style="padding:8px 10px;">Закъснение</th>
-                                <th style="padding:8px 10px;">Локация</th>
+                                <th style="padding:8px 10px;">Статус</th>
+                                <th style="padding:8px 10px; text-align:center;">Оправдаване</th>
                             </tr>
                         </thead>
                         <tbody>${rowsHtml}</tbody>
                     </table>
                 </div>
+                <div style="font-size:0.8em; color:#64748b; margin-top:8px;">
+                    💡 Ако служителят ви е предупредил за дадено закъснение, натиснете <b>„🕊️ Оправдай“</b>. Оправданите закъснения не се броят към прага за санкции.
+                </div>
             </div>
         `,
-        width: 580,
+        width: 660,
         showCloseButton: true,
-        confirmButtonText: 'Затвори',
-        confirmButtonColor: '#64748b'
+        confirmButtonText: 'Готово',
+        confirmButtonColor: '#2563eb'
     });
+};
+
+window.toggleLateExcused = async function (workerIdx, lateIdx) {
+    const calc = salaryCalculations[workerIdx];
+    if (!calc || !calc.lates || !calc.lates[lateIdx]) return;
+
+    const item = calc.lates[lateIdx];
+    if (!item.isExcused) {
+        const { value: reason, isDismissed } = await Swal.fire({
+            title: '🕊️ Оправдаване на закъснение',
+            html: `
+                <div style="text-align:left; font-size:0.9em; color:#334155;">
+                    <div>Дата: <b>${item.dateStr}</b> в <b>${item.timeStr} ч.</b> (+${item.minutesLate} мин.)</div>
+                    <div style="margin-top:10px;">Причина / бележка (напр. <i>„Предупредил предварително“</i>):</div>
+                </div>
+            `,
+            input: 'text',
+            inputValue: 'Предупредил предварително',
+            showCancelButton: true,
+            confirmButtonText: 'Потвърди и оправдай',
+            cancelButtonText: 'Отказ',
+            confirmButtonColor: '#16a34a'
+        });
+
+        if (isDismissed) {
+            showLateDetailsModal(workerIdx);
+            return;
+        }
+
+        item.isExcused = true;
+        item.excuseNote = String(reason || 'Предупредил').trim();
+    } else {
+        item.isExcused = false;
+        item.excuseNote = '';
+    }
+
+    recomputeWorkerCalculations(workerIdx);
+    showLateDetailsModal(workerIdx);
+};
+
+window.setWorkerOverrideLatePenalty = function (workerIdx, val) {
+    const calc = salaryCalculations[workerIdx];
+    if (!calc) return;
+    if (val === '' || isNaN(parseFloat(val))) {
+        calc.overrideLatePenalty = null;
+    } else {
+        calc.overrideLatePenalty = Math.max(0, parseFloat(val));
+    }
+    recomputeWorkerCalculations(workerIdx);
+    showLateDetailsModal(workerIdx);
+};
+
+window.clearWorkerOverrideLatePenalty = function (workerIdx) {
+    const calc = salaryCalculations[workerIdx];
+    if (!calc) return;
+    calc.overrideLatePenalty = null;
+    recomputeWorkerCalculations(workerIdx);
+    showLateDetailsModal(workerIdx);
 };
 
 window.show3sDetailsModal = function (index) {
     const calc = salaryCalculations[index];
     if (!calc) return;
 
+    const totalAudits = calc.auditsTotal || 0;
+    const failedTotal = calc.failedAudits ? calc.failedAudits.length : 0;
+    const excusedAudits = calc.excusedAuditCount || 0;
+    const unexcusedAudits = calc.unexcusedAuditCount !== undefined ? calc.unexcusedAuditCount : (failedTotal - excusedAudits);
+
     let rowsHtml = '';
-    if (calc.failedAudits.length === 0) {
-        rowsHtml = '<tr><td colspan="4" style="text-align:center; padding:15px; color:#15803d; font-weight:bold;">🟢 Всички проведени 3S одити за месеца са взети успешно (&ge;80%)!</td></tr>';
+    if (failedTotal === 0) {
+        rowsHtml = '<tr><td colspan="5" style="text-align:center; padding:15px; color:#15803d; font-weight:bold;">🟢 Всички проведени 3S одити за месеца са взети успешно (&ge;80%)!</td></tr>';
     } else {
-        rowsHtml = calc.failedAudits.map((a, i) => `
-            <tr style="border-bottom:1px solid #f1f5f9;">
+        rowsHtml = calc.failedAudits.map((a, i) => {
+            const isExc = !!a.isExcused;
+            return `
+            <tr style="border-bottom:1px solid #f1f5f9; background:${isExc ? '#f0fdf4' : 'transparent'};">
                 <td style="padding:8px 10px; font-weight:bold; color:#1e293b;">${a.audit_date || a.created_at?.split('T')[0]}</td>
                 <td style="padding:8px 10px; color:#475569;">${a.sector || '—'}</td>
-                <td style="padding:8px 10px; color:#dc2626; font-weight:900;">${a.percentage}%</td>
-                <td style="padding:8px 10px; color:#64748b; font-size:0.85em;">${a.notes || 'Без бележка'}</td>
+                <td style="padding:8px 10px; color:${isExc ? '#15803d' : '#dc2626'}; font-weight:900;">${a.percentage}%</td>
+                <td style="padding:8px 10px; font-size:0.85em;">
+                    ${isExc 
+                        ? `<span style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:2px 8px; border-radius:6px; font-weight:800;">🕊️ Оправдан</span><div style="font-size:0.8em; color:#166534; margin-top:2px;">${a.excuseNote || 'Обективни причини'}</div>` 
+                        : `<span style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; padding:2px 8px; border-radius:6px; font-weight:700;">⚠️ Неиздържан</span><div style="font-size:0.8em; color:#64748b; margin-top:2px;">${a.notes || ''}</div>`
+                    }
+                </td>
+                <td style="padding:8px 10px; text-align:center;">
+                    <button type="button" onclick="toggleAuditExcused(${index}, ${i})" style="padding:4px 9px; border-radius:6px; font-size:0.78em; font-weight:800; cursor:pointer; border:none; background:${isExc ? '#64748b' : '#16a34a'}; color:#ffffff;" title="${isExc ? 'Върни като неиздържан' : 'Оправдай одита (напр. обективни причини/нов служител)'}">
+                        ${isExc ? '↩️ Отмени' : '🕊️ Оправдай'}
+                    </button>
+                </td>
             </tr>
-        `).join('');
+            `;
+        }).join('');
     }
 
     const penaltyText = calc.auditPenalty > 0 
@@ -770,10 +968,41 @@ window.show3sDetailsModal = function (index) {
         title: `🧹 3S Одити: ${calc.workerName}`,
         html: `
             <div style="text-align:left; font-size:0.9em;">
-                <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px; margin-bottom:12px;">
-                    <div>Праг за преминаване на 3S одит: <b>80%</b>.</div>
-                    <div style="margin-top:4px;">Неиздържани одити: <b>${calc.failedAuditsCount} бр.</b> | Удръжка: <b style="color:#dc2626;">${penaltyText}</b></div>
+                <!-- Summary 3-box Grid -->
+                <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:10px; margin-bottom:12px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; text-align:center;">
+                    <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:6px;">
+                        <div style="font-size:0.75em; color:#64748b; font-weight:700; text-transform:uppercase;">Общо одити</div>
+                        <div style="font-size:1.3em; font-weight:900; color:#1e293b;">${totalAudits} бр.</div>
+                    </div>
+                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:6px;">
+                        <div style="font-size:0.75em; color:#15803d; font-weight:700; text-transform:uppercase;">🕊️ Оправдани</div>
+                        <div style="font-size:1.3em; font-weight:900; color:#15803d;">${excusedAudits} бр.</div>
+                    </div>
+                    <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:6px;">
+                        <div style="font-size:0.75em; color:#b91c1c; font-weight:700; text-transform:uppercase;">⚠️ За санкция</div>
+                        <div style="font-size:1.3em; font-weight:900; color:#dc2626;">${unexcusedAudits} бр.</div>
+                    </div>
                 </div>
+
+                <!-- Fine status & manual override -->
+                <div style="background:${calc.auditPenalty > 0 ? '#fef2f2' : '#f0fdf4'}; border:1px solid ${calc.auditPenalty > 0 ? '#fecaca' : '#86efac'}; border-radius:8px; padding:10px 12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <span style="font-weight:700; color:#334155;">Удръжка:</span>
+                        <b style="color:${calc.auditPenalty > 0 ? '#dc2626' : '#15803d'}; font-size:1.05em; margin-left:6px;">${penaltyText}</b>
+                        ${calc.overrideAuditPenalty !== null && calc.overrideAuditPenalty !== undefined ? '<span style="font-size:0.75em; color:#7c3aed; font-weight:bold; margin-left:6px;">(ръчно зададена)</span>' : ''}
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <label style="font-size:0.82em; font-weight:700; color:#475569;">Ръчна глоба (€):</label>
+                        <input type="number" step="any" min="0" value="${calc.overrideAuditPenalty !== null && calc.overrideAuditPenalty !== undefined ? calc.overrideAuditPenalty : ''}" placeholder="Авто" 
+                               onchange="setWorkerOverrideAuditPenalty(${index}, this.value)"
+                               style="width:75px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:4px; font-weight:bold; text-align:center;">
+                        ${calc.overrideAuditPenalty !== null && calc.overrideAuditPenalty !== undefined ? `
+                            <button type="button" onclick="clearWorkerOverrideAuditPenalty(${index})" style="background:#cbd5e1; border:none; border-radius:4px; padding:3px 6px; font-size:0.75em; font-weight:bold; cursor:pointer;" title="Върни към автоматично изчисление">Авто</button>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- Table list -->
                 <div style="max-height:250px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px;">
                     <table style="width:100%; border-collapse:collapse; font-size:0.88em;">
                         <thead>
@@ -781,7 +1010,8 @@ window.show3sDetailsModal = function (index) {
                                 <th style="padding:8px 10px;">Дата</th>
                                 <th style="padding:8px 10px;">Звено</th>
                                 <th style="padding:8px 10px;">Резултат</th>
-                                <th style="padding:8px 10px;">Бележка</th>
+                                <th style="padding:8px 10px;">Статус</th>
+                                <th style="padding:8px 10px; text-align:center;">Оправдаване</th>
                             </tr>
                         </thead>
                         <tbody>${rowsHtml}</tbody>
@@ -789,11 +1019,69 @@ window.show3sDetailsModal = function (index) {
                 </div>
             </div>
         `,
-        width: 600,
+        width: 660,
         showCloseButton: true,
-        confirmButtonText: 'Затвори',
-        confirmButtonColor: '#64748b'
+        confirmButtonText: 'Готово',
+        confirmButtonColor: '#2563eb'
     });
+};
+
+window.toggleAuditExcused = async function (workerIdx, auditIdx) {
+    const calc = salaryCalculations[workerIdx];
+    if (!calc || !calc.failedAudits || !calc.failedAudits[auditIdx]) return;
+
+    const item = calc.failedAudits[auditIdx];
+    if (!item.isExcused) {
+        const { value: reason, isDismissed } = await Swal.fire({
+            title: '🕊️ Оправдаване на 3S одит',
+            html: `
+                <div style="text-align:left; font-size:0.9em; color:#334155;">
+                    <div>Дата: <b>${item.audit_date || item.created_at?.split('T')[0]}</b> (Звено: ${item.sector || '—'})</div>
+                    <div style="margin-top:10px;">Въведете причина (напр. <i>„Нов служител / Обективни технически причини“</i>):</div>
+                </div>
+            `,
+            input: 'text',
+            inputValue: 'Обективни причини / Предупредил',
+            showCancelButton: true,
+            confirmButtonText: 'Потвърди и оправдай',
+            cancelButtonText: 'Отказ',
+            confirmButtonColor: '#16a34a'
+        });
+
+        if (isDismissed) {
+            show3sDetailsModal(workerIdx);
+            return;
+        }
+
+        item.isExcused = true;
+        item.excuseNote = String(reason || 'Оправдано').trim();
+    } else {
+        item.isExcused = false;
+        item.excuseNote = '';
+    }
+
+    recomputeWorkerCalculations(workerIdx);
+    show3sDetailsModal(workerIdx);
+};
+
+window.setWorkerOverrideAuditPenalty = function (workerIdx, val) {
+    const calc = salaryCalculations[workerIdx];
+    if (!calc) return;
+    if (val === '' || isNaN(parseFloat(val))) {
+        calc.overrideAuditPenalty = null;
+    } else {
+        calc.overrideAuditPenalty = Math.max(0, parseFloat(val));
+    }
+    recomputeWorkerCalculations(workerIdx);
+    show3sDetailsModal(workerIdx);
+};
+
+window.clearWorkerOverrideAuditPenalty = function (workerIdx) {
+    const calc = salaryCalculations[workerIdx];
+    if (!calc) return;
+    calc.overrideAuditPenalty = null;
+    recomputeWorkerCalculations(workerIdx);
+    show3sDetailsModal(workerIdx);
 };
 
 // ==============================================================================
@@ -843,26 +1131,24 @@ window.showWorkerPaySlip = function (index) {
                         <td style="padding:6px 10px; text-align:center;">1</td>
                         <td style="padding:6px 10px; text-align:right; font-weight:bold; color:#15803d;">+${(c.baseBonus || 0).toFixed(2)} €</td>
                     </tr>
-                    ${c.perfectBonus > 0 ? `
-                        <tr style="border-bottom:1px solid #e2e8f0; background:#f0fdf4;">
-                            <td style="padding:6px 10px; color:#166534;">🟢 Поощрение за отлично присъствие (0 закъснения${c.perfectBonusPct > 0 ? ` • +${c.perfectBonusPct}%` : ''})</td>
-                            <td style="padding:6px 10px; text-align:center; color:#166534;">—</td>
-                            <td style="padding:6px 10px; text-align:right; font-weight:bold; color:#166534;">+${c.perfectBonus.toFixed(2)} €</td>
-                        </tr>
-                    ` : ''}
                     <tr style="border-bottom:1px solid #e2e8f0;">
                         <td style="padding:6px 10px; color:${c.latePenalty > 0 ? '#dc2626' : '#64748b'};">
-                            Закъснения след 08:05 ч. ${c.lateCount > 0 ? `(${c.lateCount} бр.${c.latePenaltyPct > 0 ? ` • -${c.latePenaltyPct}%` : ''})` : ''}
+                            Закъснения след 08:05 ч. (${c.lateCount} регистрирани${c.excusedLateCount > 0 ? `, ${c.excusedLateCount} оправдани` : ''}${c.latePenaltyPct > 0 ? ` • -${c.latePenaltyPct}%` : ''})
                         </td>
-                        <td style="padding:6px 10px; text-align:center;">${c.lateCount}</td>
+                        <td style="padding:6px 10px; text-align:center;">${c.unexcusedLateCount !== undefined ? c.unexcusedLateCount : c.lateCount}</td>
                         <td style="padding:6px 10px; text-align:right; font-weight:bold; color:${c.latePenalty > 0 ? '#dc2626' : '#64748b'};">
                             ${c.latePenalty > 0 ? '-' + c.latePenalty.toFixed(2) + ' €' : '0.00 €'}
                         </td>
                     </tr>
                     <tr style="border-bottom:1px solid #e2e8f0;">
                         <td style="padding:6px 10px; color:${c.auditPenalty > 0 ? '#dc2626' : '#64748b'};">
-                            Неиздържани 3S одити ${c.failedAuditsCount > 0 ? `(${c.failedAuditsCount} бр.${c.auditPenaltyPct > 0 ? ` • -${c.auditPenaltyPct}%` : ''})` : ''}
+                            Неиздържани 3S одити (${c.failedAuditsCount} регистрирани${c.excusedAuditCount > 0 ? `, ${c.excusedAuditCount} оправдани` : ''}${c.auditPenaltyPct > 0 ? ` • -${c.auditPenaltyPct}%` : ''})
                         </td>
+                        <td style="padding:6px 10px; text-align:center;">${c.unexcusedAuditCount !== undefined ? c.unexcusedAuditCount : c.failedAuditsCount}</td>
+                        <td style="padding:6px 10px; text-align:right; font-weight:bold; color:${c.auditPenalty > 0 ? '#dc2626' : '#64748b'};">
+                            ${c.auditPenalty > 0 ? '-' + c.auditPenalty.toFixed(2) + ' €' : '0.00 €'}
+                        </td>
+                    </tr>
                         <td style="padding:6px 10px; text-align:center;">${c.failedAuditsCount}</td>
                         <td style="padding:6px 10px; text-align:right; font-weight:bold; color:${c.auditPenalty > 0 ? '#dc2626' : '#64748b'};">
                             ${c.auditPenalty > 0 ? '-' + c.auditPenalty.toFixed(2) + ' €' : '0.00 €'}
@@ -1075,17 +1361,18 @@ window.exportSalariesToExcel = function () {
         "Имейл": c.workerEmail,
         "Присъствени дни": c.totalCheckIns,
         "Базов бонус (€)": c.baseBonus,
-        "Закъснения (бр.)": c.lateCount,
+        "Закъснения (общо бр.)": c.lateCount,
+        "Оправдани закъснения (бр.)": c.excusedLateCount || 0,
+        "Неоправдани закъснения (бр.)": c.unexcusedLateCount !== undefined ? c.unexcusedLateCount : c.lateCount,
         "Удръжка закъснения (%)": c.latePenaltyPct > 0 ? `-${c.latePenaltyPct}%` : '0%',
         "Удръжка закъснения (€)": c.latePenalty > 0 ? -c.latePenalty : 0,
-        "3S Неиздържани (бр.)": c.failedAuditsCount,
+        "3S Неиздържани (общо бр.)": c.failedAuditsCount,
+        "3S Оправдани (бр.)": c.excusedAuditCount || 0,
         "Удръжка 3S (%)": c.auditPenaltyPct > 0 ? `-${c.auditPenaltyPct}%` : '0%',
         "Удръжка 3S (€)": c.auditPenalty > 0 ? -c.auditPenalty : 0,
         "Брак / Грешки (бр.)": c.defectsCount,
         "Удръжка Брак (%)": c.defectPenaltyPct > 0 ? `-${c.defectPenaltyPct}%` : '0%',
         "Удръжка Брак (€)": c.defectPenalty > 0 ? -c.defectPenalty : 0,
-        "Поощрителен Бонус (%)": c.perfectBonusPct > 0 ? `+${c.perfectBonusPct}%` : '0%',
-        "Поощрителен Бонус (€)": c.perfectBonus,
         "Ръчна корекция (€)": c.manualAdjustment,
         "Бележка / Обосновка": c.manualNotes,
         "КРАЕН БОНУС (€)": c.finalBonusPayout,
@@ -1189,7 +1476,12 @@ window.saveMonthlySalariesToDb = async function (targetStatus = 'Чернова'
                 latePenaltyPct: c.latePenaltyPct || 0,
                 auditPenaltyPct: c.auditPenaltyPct || 0,
                 defectPenaltyPct: c.defectPenaltyPct || 0,
-                perfectBonusPct: c.perfectBonusPct || 0,
+                overrideLatePenalty: c.overrideLatePenalty !== undefined ? c.overrideLatePenalty : null,
+                overrideAuditPenalty: c.overrideAuditPenalty !== undefined ? c.overrideAuditPenalty : null,
+                unexcusedLateCount: c.unexcusedLateCount !== undefined ? c.unexcusedLateCount : c.lateCount,
+                excusedLateCount: c.excusedLateCount || 0,
+                unexcusedAuditCount: c.unexcusedAuditCount !== undefined ? c.unexcusedAuditCount : c.failedAuditsCount,
+                excusedAuditCount: c.excusedAuditCount || 0,
                 lates: c.lates || [],
                 failedAudits: c.failedAudits || []
             },
