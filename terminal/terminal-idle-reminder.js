@@ -77,12 +77,20 @@ async function sendIdleReminderPushNotification({ workerName, workerEmail, machi
     const ONESIGNAL_APP_ID = "2507a9cb-0d28-4952-9b7b-42e800a61613";
     const ONESIGNAL_API_KEY = "os_v2_app_eud2tsynfbevfg33iluabjqwcngcem2gdkaebuebdt" + "ob2ewfduy6d6lsudjvxyol6gqh7tatgimm7kewbh4sjp7yea5hzqmmdydqxkq";
 
+    let displayMachine = machine || 'работното място';
+    if (displayMachine && displayMachine.includes(',')) {
+        const list = displayMachine.split(',').map(s => s.trim()).filter(Boolean);
+        if (list.length > 3) {
+            displayMachine = `${list.slice(0, 3).join(', ')} (+${list.length - 3})`;
+        }
+    }
+
     let title = isMorning 
-        ? `⚠️ Напомняне: Непоета задача (${machine})`
-        : `⚠️ Напомняне: Престой над 10 мин. (${machine})`;
+        ? `⚠️ Напомняне: Непоета задача (${displayMachine})`
+        : `⚠️ Напомняне: Престой над 10 мин. (${displayMachine})`;
     let body = isMorning
-        ? `👷 ${workerName || 'Колега'}, вече е след 8:35 ч., а на ${machine} има ${availableCount} свободни задачи. Моля, отворете терминала и поемете задача!`
-        : `👷 ${workerName || 'Колега'}, изминаха повече от 10 мин. без поета задача, а на ${machine} има ${availableCount} свободни задачи. Моля, поемете задача!`;
+        ? `👷 ${workerName || 'Колега'}, вече е след 8:35 ч., а на ${displayMachine} има ${availableCount} свободни задачи. Моля, отворете терминала и поемете задача!`
+        : `👷 ${workerName || 'Колега'}, изминаха повече от 10 мин. без поета задача, а на ${displayMachine} има ${availableCount} свободни задачи. Моля, поемете задача!`;
     let terminalUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'terminal.html';
 
     let payload = {
@@ -128,7 +136,18 @@ async function checkIdleWorkerReminder() {
     if (activeTaskId !== null && activeTaskId !== undefined) return;
     if (globalTasks.some(t => t.isTaken)) return;
 
-    // 2. Проверка на СИНИТЕ ЗАДАЧИ за неговото работно място
+    // 2. ЖЕЛЯЗНО ПРАВИЛО ЗА СУТРИНТА (преди 08:35 ч. системата НИКОГА не мрънка!):
+    // До 08:30 ч. работниците почистват работното си място и изпълняват 3S.
+    // До 08:35 ч. имат толеранс да изберат и започнат първата си задача за смяната.
+    // Преди 08:35 ч. не се генерира, не се показва и не се изпраща абсолютно никакво напомняне!
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    if (currentHour < 8 || (currentHour === 8 && currentMinute < 35)) {
+        return;
+    }
+
+    // 3. Проверка на СИНИТЕ ЗАДАЧИ за неговото работно място
     // Филтрираме регулярните задачи (без зелени буферни карти и без проби)
     const blueTasks = globalTasks.filter(t => (!t.isGreenCard && !t.isProba && !t.isBuffer) || t.type === 'СИНЯ');
     if (blueTasks.length === 0) {
@@ -143,15 +162,16 @@ async function checkIdleWorkerReminder() {
         return;
     }
 
-    const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
-    const startOfDay = todayStr + 'T00:00:00.000Z';
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const startOfTodayIso = startOfToday.toISOString();
+    const startOfTodayMs = startOfToday.getTime();
     const cleanEmail = currentEmail.trim().toLowerCase();
 
     isIdleReminderChecking = true;
 
     try {
-        // 3. Взимаме напомнянията за днес (сортирани низходящо)
+        // 4. Взимаме напомнянията за днес (сортирани низходящо)
         const { data: reminderData, error: remErr } = await client
             .from('task_reminders')
             .select('*')
@@ -168,14 +188,15 @@ async function checkIdleWorkerReminder() {
         const reminders = reminderData || [];
         const latestReminder = reminders.length > 0 ? reminders[0] : null;
 
-        // 3.1. Ако има напомняне със статус 'SENT' и без 'read_at' -> веднага показваме блокиращия прозорец!
+        // 4.1. Ако има напомняне със статус 'SENT' и без 'read_at' -> показваме блокиращия прозорец
+        // (но само след 08:35 ч., както вече гарантира проверката по-горе)
         if (latestReminder && latestReminder.status === 'SENT' && !latestReminder.read_at) {
             showBlockingIdleTaskReminder(latestReminder);
             isIdleReminderChecking = false;
             return;
         }
 
-        // 3.2. Кулдаун между напомняния (минимум 10 минути от последното изпратено напомняне)
+        // 4.2. Кулдаун между напомняния (минимум 10 минути от последното изпратено напомняне)
         if (latestReminder && latestReminder.sent_at) {
             const timeSinceLastReminder = now.getTime() - new Date(latestReminder.sent_at).getTime();
             if (timeSinceLastReminder < 10 * 60 * 1000) {
@@ -185,7 +206,7 @@ async function checkIdleWorkerReminder() {
             }
         }
 
-        // 4. Търсим последния приключен отчет за днес от таблицата otcheti
+        // 5. Търсим последния приключен отчет за ДНЕС от таблицата otcheti
         let lastFinishedTime = null;
         try {
             const opName = currentOperator || cleanEmail;
@@ -193,7 +214,7 @@ async function checkIdleWorkerReminder() {
                 .from('otcheti')
                 .select('Дата, Статус')
                 .or(`Оператор.eq."${opName}",Оператор.eq."${cleanEmail}"`)
-                .gte('Дата', startOfDay)
+                .gte('Дата', startOfTodayIso)
                 .order('Дата', { ascending: false })
                 .limit(1);
 
@@ -204,39 +225,40 @@ async function checkIdleWorkerReminder() {
             console.warn('Грешка при четене на последния отчет:', e);
         }
 
-        // Проверяваме и локално записано време за старт на престоя в браузъра
+        // Проверяваме и локално записано време за старт на престоя в браузъра (САМО ЗА ДНЕС!)
         const localIdleStartStr = localStorage.getItem('mes_last_task_idle_start');
         if (localIdleStartStr) {
             const localIdleTime = parseInt(localIdleStartStr, 10);
-            if (!isNaN(localIdleTime)) {
+            if (!isNaN(localIdleTime) && localIdleTime >= startOfTodayMs) {
                 if (!lastFinishedTime || localIdleTime > lastFinishedTime) {
                     lastFinishedTime = localIdleTime;
                 }
+            } else {
+                // Времето е от предишен ден – чистим го веднага!
+                try { localStorage.removeItem('mes_last_task_idle_start'); } catch (e) {}
             }
         }
 
-        // 5. ОПРЕДЕЛЯНЕ ДАЛИ ТРЯБВА ДА СЕ ИЗПРАТИ ИЗВЕСТИЕ:
+        // 6. ОПРЕДЕЛЯНЕ ДАЛИ ТРЯБВА ДА СЕ ИЗПРАТИ ИЗВЕСТИЕ:
         let shouldTrigger = false;
         let reminderReason = '';
         let isMorningTrigger = false;
 
         if (lastFinishedTime) {
-            // А) Има приключена или освободена задача днес:
+            // А) През деня: Има приключена или освободена задача днес:
             const idleMs = now.getTime() - lastFinishedTime;
             if (idleMs >= 10 * 60 * 1000) {
                 // Изминали са поне 10 минути без поемане на нова задача!
                 shouldTrigger = true;
                 const minutesIdle = Math.floor(idleMs / 60000);
                 reminderReason = `Престой ${minutesIdle} мин. без поета задача след приключване`;
+                isMorningTrigger = false;
             }
         } else {
-            // Б) Все още няма приключена задача днес (сутрешно начало на смяната):
-            const isAfter835 = (now.getHours() > 8) || (now.getHours() === 8 && now.getMinutes() >= 35);
-            if (isAfter835) {
-                shouldTrigger = true;
-                reminderReason = `Непоета задача сутрин след 08:35 ч.`;
-                isMorningTrigger = true;
-            }
+            // Б) Сутрешно начало на смяната: Все още няма приключена/поета задача днес (а вече сме след 08:35 ч.!):
+            shouldTrigger = true;
+            reminderReason = `Непоета задача сутрин след 08:35 ч.`;
+            isMorningTrigger = true;
         }
 
         if (!shouldTrigger) {
@@ -322,7 +344,13 @@ function showBlockingIdleTaskReminder(reminder) {
     playIdleReminderChime();
     if (navigator.vibrate) navigator.vibrate([250, 100, 250, 100, 450]);
 
-    const machineName = reminder.machine || currentMachine || 'работното място';
+    let machineName = reminder.machine || currentMachine || 'работното място';
+    if (machineName && machineName.includes(',')) {
+        const list = machineName.split(',').map(s => s.trim()).filter(Boolean);
+        if (list.length > 3) {
+            machineName = `${list.slice(0, 3).join(', ')} и още ${list.length - 3} машини`;
+        }
+    }
     const availCount = reminder.available_blue_tasks || 'няколко';
     const isMorning = reminder.notes && reminder.notes.includes('08:35');
 

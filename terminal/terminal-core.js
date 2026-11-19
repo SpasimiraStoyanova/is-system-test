@@ -409,10 +409,12 @@ async function processCheckIn(actionType) {
         if (insertErr) throw insertErr;
         
         if (actionType === 'Излизане') {
+            try { localStorage.removeItem('mes_last_task_idle_start'); } catch(e){}
             await client.from('otcheti').delete().eq('Оператор', currentOperator).eq('Статус', 'Започната');
         }
         
         if (actionType === 'Влизане') {
+            try { localStorage.removeItem('mes_last_task_idle_start'); } catch(e){}
             let now = new Date();
             if (now.getHours() >= 8 && 'speechSynthesis' in window) {
                 window.speechSynthesis.cancel(); let msg = new SpeechSynthesisUtterance("Регистрирано е закъснение."); msg.lang = 'bg-BG'; msg.rate = 1.0; msg.pitch = 1.1; window.speechSynthesis.speak(msg);
