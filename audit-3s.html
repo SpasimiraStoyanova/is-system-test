@@ -445,47 +445,67 @@
       <!-- Auditor Selection -->
       <div class="form-group">
         <label class="form-label" for="auditorSelect">Проверяващ:</label>
-        <select id="auditorSelect" class="form-select" onchange="onAuditorChange()">
+        <select id="auditorSelect" class="form-select" onchange="onAuditorSelectChanged()">
           <option value="" disabled selected>Изберете проверяващ...</option>
         </select>
-        <div id="auditorSectorDisplay" style="display:none;">
-          <span class="sector-badge" id="sectorBadgeText">Звено: --</span>
-        </div>
-      </div>
-
-      <!-- Target Type Switcher -->
-      <div class="form-group" style="margin-top: 8px;">
-        <label class="form-label">Обект на проверката:</label>
-        <div class="type-switcher">
-          <button type="button" class="type-btn active" id="btnTypeWorker" onclick="setTargetType('worker')">
-            <span>👤</span> Служител
-          </button>
-          <button type="button" class="type-btn" id="btnTypeArea" onclick="setTargetType('area')">
-            <span>🏢</span> Обща част
+        
+        <!-- Auth Badge when verified -->
+        <div id="auditorAuthBadge" style="display: none; margin-top: 10px; background: rgba(16, 185, 129, 0.12); border: 1.5px solid #10b981; border-radius: 10px; padding: 10px 14px; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.25em;">🔒</span>
+            <div>
+              <div style="color: #34d399; font-weight: 800; font-size: 0.95em;">Удостоверен с индивидуален ПИН</div>
+              <div id="sectorBadgeText" style="color: #94a3b8; font-size: 0.82em; font-weight: 700;">Звено: --</div>
+            </div>
+          </div>
+          <button type="button" onclick="logoutAuditor()" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #f87171; border-radius: 6px; padding: 6px 12px; font-size: 0.82em; font-weight: 800; cursor: pointer;">
+            🚪 Изход / Смени
           </button>
         </div>
       </div>
 
-      <!-- Target Dropdown (Worker or Area) -->
-      <div class="form-group" id="workerSelectGroup">
-        <label class="form-label" for="targetWorkerSelect">Избор на служител:</label>
-        <select id="targetWorkerSelect" class="form-select" onchange="checkFormValidity()">
-          <option value="" disabled selected>Изберете служител...</option>
-        </select>
-      </div>
+      <!-- Target Section Group: ONLY VISIBLE AFTER PIN AUTH -->
+      <div id="targetSectionGroup" style="display: none;">
+        <!-- Target Type Switcher -->
+        <div class="form-group" style="margin-top: 8px;">
+          <label class="form-label">Обект на проверката:</label>
+          <div class="type-switcher">
+            <button type="button" class="type-btn active" id="btnTypeWorker" onclick="setTargetType('worker')">
+              <span>👤</span> Служител
+            </button>
+            <button type="button" class="type-btn" id="btnTypeArea" onclick="setTargetType('area')">
+              <span>🏢</span> Обща част
+            </button>
+          </div>
+        </div>
 
-      <div class="form-group" id="areaSelectGroup" style="display: none;">
-        <label class="form-label" for="targetAreaSelect">Избор на обща част / зона:</label>
-        <select id="targetAreaSelect" class="form-select" onchange="checkFormValidity()">
-          <option value="" disabled selected>Изберете обща част...</option>
-        </select>
+        <!-- Target Dropdown (Worker or Area) -->
+        <div class="form-group" id="workerSelectGroup">
+          <label class="form-label" for="targetWorkerSelect">Избор на служител:</label>
+          <select id="targetWorkerSelect" class="form-select" onchange="checkFormValidity()">
+            <option value="" disabled selected>Изберете служител...</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="areaSelectGroup" style="display: none;">
+          <label class="form-label" for="targetAreaSelect">Избор на обща част / зона:</label>
+          <select id="targetAreaSelect" class="form-select" onchange="checkFormValidity()">
+            <option value="" disabled selected>Изберете обща част...</option>
+          </select>
+        </div>
       </div>
     </div>
 
     <!-- Card 2: Question Rubrics -->
     <div id="questionsContainer">
-      <div class="card" style="text-align: center; color: var(--text-muted); padding: 24px;">
-        Моля, изберете проверяващ, за да се заредят въпросите за вашето звено.
+      <div class="card" style="text-align: center; color: var(--text-muted); padding: 32px 20px;">
+        <div style="font-size: 2.5em; margin-bottom: 10px;">🔒</div>
+        <div style="font-weight: 800; font-size: 1.15em; color: #f8fafc; margin-bottom: 6px;">
+          Защитено с индивидуален ПИН код
+        </div>
+        <div style="font-size: 0.9em; line-height: 1.5; max-width: 420px; margin: 0 auto; color: #94a3b8;">
+          Моля, изберете проверяващ от падащото меню по-горе и въведете своя индивидуален ПИН код, за да се отключат въпросите и служителите за вашето звено.
+        </div>
       </div>
     </div>
 
@@ -542,6 +562,7 @@
     let state = {
       auditors: [],
       selectedAuditor: null,
+      isAuthenticatedAuditor: false,
       targetType: 'worker', // 'worker' or 'area'
       workers: [],
       areas: [],
@@ -566,7 +587,7 @@
 
         if (!audErr && auditorsData) {
           state.auditors = auditorsData;
-          populateAuditorDropdown();
+          await populateAuditorDropdown();
         }
 
         // Load workers from personal table
@@ -584,7 +605,7 @@
       }
     }
 
-    function populateAuditorDropdown() {
+    async function populateAuditorDropdown() {
       const select = document.getElementById('auditorSelect');
       select.innerHTML = '<option value="" disabled selected>Изберете проверяващ...</option>';
 
@@ -603,58 +624,236 @@
         select.appendChild(opt);
       });
 
-      // If only 1 auditor exists, auto-select it; otherwise let the auditor choose their name
+      // Check if already authenticated in this session
+      const cachedId = sessionStorage.getItem('audit_3s_auth_auditor_id');
+      if (cachedId) {
+        const found = state.auditors.find(a => String(a.id) === String(cachedId));
+        if (found) {
+          select.value = found.id;
+          state.isAuthenticatedAuditor = true;
+          state.selectedAuditor = found;
+          document.getElementById('auditorAuthBadge').style.display = 'flex';
+          document.getElementById('sectorBadgeText').innerText = `Звено: ${found.sector}`;
+          document.getElementById('targetSectionGroup').style.display = 'block';
+          await loadSectorQuestions(found.sector);
+          await loadSectorAreas(found.sector);
+          await loadSectorWorkers(found.sector);
+          document.getElementById('notesPhotoCard').style.display = 'block';
+          document.getElementById('stickyFooter').style.display = 'flex';
+          return;
+        }
+      }
+
+      // If not authenticated, lock form by default
+      lockAuditForm();
+
+      // If exactly 1 auditor is configured, pre-prompt them for PIN
       if (sectorMap.size === 1) {
         let onlyAuditor = Array.from(sectorMap.values())[0];
         select.value = onlyAuditor.id;
-        onAuditorChange();
+        setTimeout(() => {
+          promptAndVerifyAuditorPin(onlyAuditor);
+        }, 300);
       }
     }
 
-    function populateWorkersDropdown() {
-      const select = document.getElementById('targetWorkerSelect');
-      select.innerHTML = '<option value="" disabled selected>Изберете служител...</option>';
-      state.workers.forEach(w => {
-        let opt = document.createElement('option');
-        opt.value = w['Име'];
-        opt.textContent = `${w['Име']}${w['Длъжност'] ? ' (' + w['Длъжност'] + ')' : ''}`;
-        select.appendChild(opt);
-      });
-    }
-
-    function populateAreasDropdown() {
-      const select = document.getElementById('targetAreaSelect');
-      select.innerHTML = '<option value="" disabled selected>Изберете обща част...</option>';
-      state.areas.forEach(a => {
-        let opt = document.createElement('option');
-        opt.value = a.area_name;
-        opt.textContent = a.area_name;
-        select.appendChild(opt);
-      });
-    }
-
-    async function onAuditorChange() {
+    async function onAuditorSelectChanged() {
       const select = document.getElementById('auditorSelect');
       const auditorId = parseInt(select.value);
-      state.selectedAuditor = state.auditors.find(a => a.id === auditorId);
-      if (!state.selectedAuditor) return;
+      if (!auditorId) return;
 
-      // Show sector badge
-      document.getElementById('auditorSectorDisplay').style.display = 'block';
-      document.getElementById('sectorBadgeText').innerText = `Звено: ${state.selectedAuditor.sector}`;
+      const candidateAuditor = state.auditors.find(a => a.id === auditorId);
+      if (!candidateAuditor) return;
 
-      // Load specific questions for this sector
-      await loadSectorQuestions(state.selectedAuditor.sector);
+      // If already authenticated as this auditor, keep it
+      if (state.isAuthenticatedAuditor && state.selectedAuditor && state.selectedAuditor.id === candidateAuditor.id) {
+        return;
+      }
 
-      // Load specific areas for this sector
-      await loadSectorAreas(state.selectedAuditor.sector);
+      // Otherwise ask for PIN
+      await promptAndVerifyAuditorPin(candidateAuditor);
+    }
 
-      // Load assigned workers for this sector
-      await loadSectorWorkers(state.selectedAuditor.sector);
+    async function promptAndVerifyAuditorPin(candidateAuditor) {
+      if (!candidateAuditor) return;
 
-      document.getElementById('notesPhotoCard').style.display = 'block';
-      document.getElementById('stickyFooter').style.display = 'flex';
-      checkFormValidity();
+      const result = await Swal.fire({
+        title: '🔒 Идентификация на Проверяващ',
+        html: `
+          <div style="text-align:center; margin-bottom:14px;">
+            <div style="font-size:1.15em; font-weight:800; color:#38bdf8;">${escapeHtml(candidateAuditor.auditor_name)}</div>
+            <div style="font-size:0.88em; color:#94a3b8; margin-top:3px;">Звено: <b style="color:#f1f5f9;">${escapeHtml(candidateAuditor.sector)}</b></div>
+          </div>
+          <div style="font-size:0.92em; color:#cbd5e1; margin-bottom:12px; line-height: 1.4;">
+            Въведете вашия <b>индивидуален ПИН код</b><br>
+            <span style="font-size:0.82em; color:#94a3b8;">(същия като за личното досие и заплатите)</span>:
+          </div>
+        `,
+        input: 'password',
+        inputAttributes: {
+          maxlength: '12',
+          autocapitalize: 'off',
+          autocorrect: 'off',
+          inputmode: 'numeric',
+          style: 'text-align: center; font-size: 1.6em; letter-spacing: 6px; padding: 10px; font-weight: 900; background: #0f172a; color: #38bdf8; border: 1.5px solid #38bdf8; border-radius: 8px;'
+        },
+        inputPlaceholder: '••••',
+        confirmButtonText: '🔓 Отключи Одит',
+        confirmButtonColor: '#10b981',
+        showCancelButton: true,
+        cancelButtonText: 'Отказ',
+        cancelButtonColor: '#64748b',
+        allowOutsideClick: false,
+        background: '#1e293b',
+        color: '#f8fafc',
+        showLoaderOnConfirm: true,
+        preConfirm: async (pin) => {
+          const cleanPin = (pin || '').trim();
+          if (!cleanPin) {
+            Swal.showValidationMessage('Моля, въведете вашия ПИН код!');
+            return false;
+          }
+
+          try {
+            let query = client.from('personal').select('Име, Имейл, password');
+            if (candidateAuditor.email && candidateAuditor.email.trim()) {
+              query = query.or(`Имейл.eq."${candidateAuditor.email.trim()}",Име.eq."${candidateAuditor.auditor_name.trim()}"`);
+            } else {
+              query = query.eq('Име', candidateAuditor.auditor_name.trim());
+            }
+
+            const { data, error } = await query.limit(1);
+            if (error) throw error;
+            if (!data || data.length === 0) {
+              Swal.showValidationMessage('Служителят не е открит в списъка на персонала!');
+              return false;
+            }
+
+            const userRow = data[0];
+            if (!userRow.password || !String(userRow.password).trim()) {
+              Swal.showValidationMessage('Нямате въведен ПИН код в личното досие. Обърнете се към администратор.');
+              return false;
+            }
+
+            if (String(userRow.password).trim() !== cleanPin) {
+              Swal.showValidationMessage('❌ Грешен ПИН код! Моля, опитайте отново.');
+              return false;
+            }
+
+            return true;
+          } catch (err) {
+            Swal.showValidationMessage('Грешка при проверка: ' + (err.message || err));
+            return false;
+          }
+        }
+      });
+
+      if (result.isConfirmed) {
+        state.isAuthenticatedAuditor = true;
+        state.selectedAuditor = candidateAuditor;
+        sessionStorage.setItem('audit_3s_auth_auditor_id', String(candidateAuditor.id));
+
+        document.getElementById('auditorSelect').value = candidateAuditor.id;
+        document.getElementById('auditorAuthBadge').style.display = 'flex';
+        document.getElementById('sectorBadgeText').innerText = `Звено: ${candidateAuditor.sector}`;
+        document.getElementById('targetSectionGroup').style.display = 'block';
+
+        await loadSectorQuestions(candidateAuditor.sector);
+        await loadSectorAreas(candidateAuditor.sector);
+        await loadSectorWorkers(candidateAuditor.sector);
+
+        document.getElementById('notesPhotoCard').style.display = 'block';
+        document.getElementById('stickyFooter').style.display = 'flex';
+        checkFormValidity();
+
+        const Toast = Swal.mixin({
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 2000,
+          timerProgressBar: true,
+          background: '#1e293b',
+          color: '#f8fafc'
+        });
+        Toast.fire({
+          icon: 'success',
+          title: `Здравейте, ${candidateAuditor.auditor_name}!`
+        });
+      } else {
+        if (!state.isAuthenticatedAuditor) {
+          document.getElementById('auditorSelect').value = '';
+          lockAuditForm();
+        } else if (state.selectedAuditor) {
+          document.getElementById('auditorSelect').value = state.selectedAuditor.id;
+        }
+      }
+    }
+
+    function lockAuditForm() {
+      state.isAuthenticatedAuditor = false;
+      state.selectedAuditor = null;
+      sessionStorage.removeItem('audit_3s_auth_auditor_id');
+
+      const select = document.getElementById('auditorSelect');
+      if (select) select.value = '';
+
+      const authBadge = document.getElementById('auditorAuthBadge');
+      if (authBadge) authBadge.style.display = 'none';
+
+      const targetSec = document.getElementById('targetSectionGroup');
+      if (targetSec) targetSec.style.display = 'none';
+
+      const questionsContainer = document.getElementById('questionsContainer');
+      if (questionsContainer) {
+        questionsContainer.innerHTML = `
+          <div class="card" style="text-align: center; color: var(--text-muted); padding: 32px 20px;">
+            <div style="font-size: 2.5em; margin-bottom: 10px;">🔒</div>
+            <div style="font-weight: 800; font-size: 1.15em; color: #f8fafc; margin-bottom: 6px;">
+              Защитено с индивидуален ПИН код
+            </div>
+            <div style="font-size: 0.9em; line-height: 1.5; max-width: 420px; margin: 0 auto; color: #94a3b8;">
+              Моля, изберете проверяващ от падащото меню по-горе и въведете своя индивидуален ПИН код, за да се отключат въпросите и служителите за вашето звено.
+            </div>
+          </div>
+        `;
+      }
+
+      const notesCard = document.getElementById('notesPhotoCard');
+      if (notesCard) notesCard.style.display = 'none';
+
+      const stickyFooter = document.getElementById('stickyFooter');
+      if (stickyFooter) stickyFooter.style.display = 'none';
+
+      state.answers = {};
+      state.photoFile = null;
+    }
+
+    function logoutAuditor() {
+      Swal.fire({
+        title: 'Изход от одит?',
+        text: 'Сигурни ли сте, че искате да излезете от профила на проверяващия?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Да, изход',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        background: '#1e293b',
+        color: '#f8fafc'
+      }).then((r) => {
+        if (r.isConfirmed) {
+          lockAuditForm();
+          Swal.fire({
+            icon: 'info',
+            title: 'Успешен изход',
+            text: 'Формулярът е заключен отново.',
+            timer: 1500,
+            showConfirmButton: false,
+            background: '#1e293b',
+            color: '#f8fafc'
+          });
+        }
+      });
     }
 
     async function loadSectorWorkers(sector) {
@@ -1001,6 +1200,17 @@
     }
 
     async function saveAudit() {
+      if (!state.isAuthenticatedAuditor || !state.selectedAuditor) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Необходима е идентификация',
+          text: 'Моля, изберете проверяващ и въведете своя индивидуален ПИН код преди запис на одит.',
+          background: '#1e293b',
+          color: '#f8fafc'
+        });
+        return;
+      }
+
       let targetName = state.targetType === 'worker'
         ? document.getElementById('targetWorkerSelect').value
         : document.getElementById('targetAreaSelect').value;

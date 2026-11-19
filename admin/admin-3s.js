@@ -279,8 +279,14 @@ function render3sSettingsSubTab() {
                         Лицето, което извършва 3S одитите за "${current3sSector}".
                     </div>
                     <div style="display:flex; gap:8px;">
-                        <input type="text" id="sectorAuditorInput" value="${escapeHtml(auditorName)}" placeholder="Въведете Име на проверяващия..." style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.92em;">
+                        <input list="personnelAuditorDatalist" type="text" id="sectorAuditorInput" value="${escapeHtml(auditorName)}" placeholder="Изберете от персонала..." style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.92em;">
+                        <datalist id="personnelAuditorDatalist">
+                            ${allPersonnelListCache.map(p => `<option value="${escapeHtml(p['Име'])}">${escapeHtml(p['Длъжност'] ? '(' + p['Длъжност'] + ')' : '')}</option>`).join('')}
+                        </datalist>
                         <button type="button" class="btn-primary" onclick="saveSectorAuditor()" style="padding:8px 14px; font-size:0.88em;">💾 Запази</button>
+                    </div>
+                    <div style="font-size:0.8em; color:#059669; font-weight:700; margin-top:6px;">
+                        🔒 Проверяващият се идентифицира в мобилния формуляр с индивидуалния си ПИН код (от Лично Досие / Фишове).
                     </div>
                 </div>
 
@@ -358,24 +364,36 @@ async function saveSectorAuditor() {
         return;
     }
 
+    let matched = allPersonnelListCache.find(p => p['Име'] && p['Име'].toLowerCase().trim() === name.toLowerCase());
+    let email = matched ? (matched['Имейл'] || '') : '';
+
     try {
         let existing = audit3sAuditorsCache.find(a => a.sector === current3sSector);
         if (existing) {
+            let updatePayload = { auditor_name: name };
+            if (email) updatePayload.email = email;
             const { error } = await client
                 .from('audit_3s_auditors')
-                .update({ auditor_name: name })
+                .update(updatePayload)
                 .eq('id', existing.id);
             if (error) throw error;
             existing.auditor_name = name;
+            if (email) existing.email = email;
         } else {
             const { data, error } = await client
                 .from('audit_3s_auditors')
-                .insert([{ auditor_name: name, sector: current3sSector, is_active: true }])
+                .insert([{ auditor_name: name, sector: current3sSector, email: email, is_active: true }])
                 .select();
             if (error) throw error;
             if (data && data[0]) audit3sAuditorsCache.push(data[0]);
         }
-        Swal.fire({ icon: 'success', title: 'Запазено!', timer: 1200, showConfirmButton: false });
+        Swal.fire({ 
+            icon: 'success', 
+            title: 'Запазено!', 
+            text: `Проверяващ за "${current3sSector}": ${name}`, 
+            timer: 1600, 
+            showConfirmButton: false 
+        });
     } catch (err) {
         Swal.fire('Грешка', err.message, 'error');
     }
