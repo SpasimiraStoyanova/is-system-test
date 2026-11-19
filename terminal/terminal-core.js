@@ -293,7 +293,7 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
 function getUserLocation() {
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
-            resolve({ loc: "Не се поддържа", note: "⚠️ GPS НЕ СЕ ПОДДЪРЖА", dist: null, accuracy: null });
+            resolve({ loc: "Не се поддържа", note: "⚠️ GPS НЕ СЕ ПОДДЪРЖА", dist: null, accuracy: null, lat: null, lng: null, hasLocation: false });
             return;
         }
 
@@ -322,10 +322,11 @@ function getUserLocation() {
                     dist: dist,
                     accuracy: accuracy,
                     lat: lat,
-                    lng: lng
+                    lng: lng,
+                    hasLocation: true
                 });
             } catch (calcErr) {
-                resolve({ loc: "Грешка GPS", note: "⚠️ ГРЕШКА ЛОКАЦИЯ", dist: null, accuracy: null, lat: null, lng: null });
+                resolve({ loc: "Грешка GPS", note: "⚠️ ГРЕШКА ЛОКАЦИЯ", dist: null, accuracy: null, lat: null, lng: null, hasLocation: false });
             }
         };
 
@@ -335,7 +336,7 @@ function getUserLocation() {
             (errHigh) => {
                 // Ако потребителят изрично е забранил достъп до GPS от браузъра (код 1 = PERMISSION_DENIED)
                 if (errHigh && errHigh.code === 1) {
-                    resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА РАЗРЕШЕНИЕ ЗА GPS", dist: null, accuracy: null, lat: null, lng: null });
+                    resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА РАЗРЕШЕНИЕ ЗА GPS", dist: null, accuracy: null, lat: null, lng: null, hasLocation: false });
                     return;
                 }
 
@@ -356,7 +357,7 @@ function getUserLocation() {
                             note = "⚠️ ВРЕМЕТО ЗА GPS ИЗТЕЧЕ";
                             locText = "Таймаут GPS";
                         }
-                        resolve({ loc: locText, note: note, dist: null, accuracy: null, lat: null, lng: null });
+                        resolve({ loc: locText, note: note, dist: null, accuracy: null, lat: null, lng: null, hasLocation: false });
                     },
                     {
                         enableHighAccuracy: false,
@@ -372,6 +373,93 @@ function getUserLocation() {
             }
         );
     });
+}
+
+/**
+ * Диалог при липсваща / изключена локация при чекиране:
+ * Предлага на работника инструкции как да включи GPS-а с бутон за повторен опит,
+ * или алтернативно да продължи без локация след изрично потвърждение, че чекирането ще се счита за НЕПРАВИЛНО.
+ */
+async function promptLocationResolution(geoInfo, getLocationFn) {
+    let currentGeo = geoInfo;
+
+    while (!currentGeo.hasLocation) {
+        const result = await Swal.fire({
+            icon: 'warning',
+            title: '📍 Локацията ви не е включена!',
+            html: `
+                <div style="text-align: left; font-size: 0.9em; color: #334155; line-height: 1.5;">
+                    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px; margin-bottom: 12px; color: #991b1b;">
+                        ⚠️ Системата <b>не успя да засече вашето местоположение</b> (${currentGeo.note || 'Изключен GPS'}). За да се отчетете валидно, трябва да сте в цеха с включен GPS.
+                    </div>
+                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; margin-bottom: 12px;">
+                        <b>📱 Как да я включите:</b>
+                        <ul style="margin: 6px 0 0 18px; padding: 0;">
+                            <li>Издърпайте менюто на телефона отгоре надолу и включете <b>„Местоположение / GPS“</b>.</li>
+                            <li>Ако браузърът ви попита, изберете <b>„Разреши / Allow“</b>.</li>
+                            <li>(Натиснете катинарчето <b>🔒</b> до адреса на сайта горе, ако сте го блокирали).</li>
+                        </ul>
+                    </div>
+                    <div style="font-size: 0.84em; color: #64748b;">
+                        След като включите GPS-а, натиснете зеления бутон <b>„Опитай пак“</b>.
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '🔄 Включих я, опитай пак',
+            cancelButtonText: '⚠️ Продължи без локация',
+            confirmButtonColor: '#16a34a',
+            cancelButtonColor: '#ea580c',
+            allowOutsideClick: false,
+            allowEscapeKey: false
+        });
+
+        if (result.isConfirmed) {
+            Swal.fire({
+                title: 'Проверка на локация...',
+                html: 'Моля, изчакайте засичане на GPS сигнал...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+            currentGeo = await getLocationFn();
+        } else if (result.dismiss === Swal.DismissReason.cancel) {
+            const confirmResult = await Swal.fire({
+                icon: 'question',
+                title: 'Сигурни ли сте?',
+                html: `
+                    <div style="text-align: left; font-size: 0.92em; color: #334155; line-height: 1.5;">
+                        Чекирането ще бъде записано като:<br>
+                        <b style="color: #dc2626;">⚠️ НЕПРАВИЛНО ЧЕКИРАНЕ (ИЗКЛЮЧЕНА ЛОКАЦИЯ)</b>.<br><br>
+                        Това ще бъде видимо за ръководството в месечния отчет и досието.<br><br>
+                        Желаете ли да продължите въпреки това?
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Да, продължи без локация',
+                cancelButtonText: 'Отказ, ще включа GPS',
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#64748b',
+                allowOutsideClick: false
+            });
+
+            if (confirmResult.isConfirmed) {
+                return {
+                    loc: "Без GPS",
+                    note: "⚠️ НЕПРАВИЛНО ЧЕКИРАНЕ (ИЗКЛЮЧЕНА ЛОКАЦИЯ)",
+                    dist: null,
+                    accuracy: null,
+                    lat: null,
+                    lng: null,
+                    hasLocation: false,
+                    forcedWithoutLocation: true
+                };
+            }
+        } else {
+            return null;
+        }
+    }
+
+    return currentGeo;
 }
 
 async function processCheckIn(actionType) {
@@ -398,7 +486,15 @@ async function processCheckIn(actionType) {
             }
         }
         
-        const geoInfo = await getUserLocation();
+        let initialGeo = await getUserLocation();
+        let geoInfo = initialGeo;
+        if (!geoInfo.hasLocation) {
+            geoInfo = await promptLocationResolution(initialGeo, getUserLocation);
+            if (!geoInfo) return; // Потребителят е отказал
+        }
+
+        Swal.fire({ title: 'Записване на часа...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
         const { error: insertErr } = await client.from('chekiraniya').insert([{ 
             "Имейл": currentEmail, 
             "Действие": actionType, 
@@ -420,7 +516,13 @@ async function processCheckIn(actionType) {
                 window.speechSynthesis.cancel(); let msg = new SpeechSynthesisUtterance("Регистрирано е закъснение."); msg.lang = 'bg-BG'; msg.rate = 1.0; msg.pitch = 1.1; window.speechSynthesis.speak(msg);
             }
         }
-        Swal.fire({ icon: actionType === 'Влизане' ? 'success' : 'info', title: 'Успешно!', text: `${actionType} е регистрирано.`, timer: 2000, showConfirmButton: false }).then(() => { 
+        Swal.fire({ 
+            icon: geoInfo.forcedWithoutLocation ? 'warning' : (actionType === 'Влизане' ? 'success' : 'info'), 
+            title: geoInfo.forcedWithoutLocation ? 'Отчетено без локация!' : 'Успешно!', 
+            text: `${actionType} е регистрирано.${geoInfo.forcedWithoutLocation ? ' (Записано като НЕПРАВИЛНО ЧЕКИРАНЕ)' : ''}`, 
+            timer: geoInfo.forcedWithoutLocation ? 3000 : 2000, 
+            showConfirmButton: false 
+        }).then(() => { 
             loadTasks(true); 
         });
     } catch (err) { 

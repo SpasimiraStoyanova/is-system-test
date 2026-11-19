@@ -150,7 +150,7 @@
         function getUserLocation() {
             return new Promise((resolve) => {
                 if (!navigator.geolocation) {
-                    resolve({ loc: "Не се поддържа", note: "⚠️ GPS НЕ СЕ ПОДДЪРЖА", dist: null, accuracy: null });
+                    resolve({ loc: "Не се поддържа", note: "⚠️ GPS НЕ СЕ ПОДДЪРЖА", dist: null, accuracy: null, hasLocation: false });
                     return;
                 }
 
@@ -175,10 +175,13 @@
                             loc: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
                             note: note,
                             dist: dist,
-                            accuracy: accuracy
+                            accuracy: accuracy,
+                            lat: lat,
+                            lng: lng,
+                            hasLocation: true
                         });
                     } catch (calcErr) {
-                        resolve({ loc: "Грешка GPS", note: "⚠️ ГРЕШКА ЛОКАЦИЯ", dist: null, accuracy: null });
+                        resolve({ loc: "Грешка GPS", note: "⚠️ ГРЕШКА ЛОКАЦИЯ", dist: null, accuracy: null, hasLocation: false });
                     }
                 };
 
@@ -187,7 +190,7 @@
                     handleSuccess,
                     (errHigh) => {
                         if (errHigh && errHigh.code === 1) {
-                            resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА РАЗРЕШЕНИЕ ЗА GPS", dist: null, accuracy: null });
+                            resolve({ loc: "GPS Отказан", note: "⚠️ ЛИПСВА РАЗРЕШЕНИЕ ЗА GPS", dist: null, accuracy: null, hasLocation: false });
                             return;
                         }
 
@@ -207,7 +210,7 @@
                                     note = "⚠️ ВРЕМЕТО ЗА GPS ИЗТЕЧЕ";
                                     locText = "Таймаут GPS";
                                 }
-                                resolve({ loc: locText, note: note, dist: null, accuracy: null });
+                                resolve({ loc: locText, note: note, dist: null, accuracy: null, hasLocation: false });
                             },
                             {
                                 enableHighAccuracy: false,
@@ -225,13 +228,92 @@
             });
         }
 
+        async function promptLocationResolution(geoInfo, getLocationFn) {
+            let currentGeo = geoInfo;
+
+            while (!currentGeo.hasLocation) {
+                const result = await Swal.fire({
+                    icon: 'warning',
+                    title: '📍 Локацията ви не е включена!',
+                    html: `
+                        <div style="text-align: left; font-size: 0.9em; color: #334155; line-height: 1.5;">
+                            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px; margin-bottom: 12px; color: #991b1b;">
+                                ⚠️ Системата <b>не успя да засече вашето местоположение</b> (${currentGeo.note || 'Изключен GPS'}). За да се отчетете валидно, трябва да сте в цеха с включен GPS.
+                            </div>
+                            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; margin-bottom: 12px;">
+                                <b>📱 Как да я включите:</b>
+                                <ul style="margin: 6px 0 0 18px; padding: 0;">
+                                    <li>Издърпайте менюто на телефона отгоре надолу и включете <b>„Местоположение / GPS“</b>.</li>
+                                    <li>Ако браузърът ви попита, изберете <b>„Разреши / Allow“</b>.</li>
+                                    <li>(Натиснете катинарчето <b>🔒</b> до адреса на сайта горе, ако сте го блокирали).</li>
+                                </ul>
+                            </div>
+                            <div style="font-size: 0.84em; color: #64748b;">
+                                След като включите GPS-а, натиснете зеления бутон <b>„Опитай пак“</b>.
+                            </div>
+                        </div>
+                    `,
+                    showCancelButton: true,
+                    confirmButtonText: '🔄 Включих я, опитай пак',
+                    cancelButtonText: '⚠️ Продължи без локация',
+                    confirmButtonColor: '#16a34a',
+                    cancelButtonColor: '#ea580c',
+                    allowOutsideClick: false
+                });
+
+                if (result.isConfirmed) {
+                    Swal.fire({ title: 'Проверка на локация...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    currentGeo = await getLocationFn();
+                    if (currentGeo.hasLocation) {
+                        return currentGeo;
+                    }
+                } else if (result.dismiss === Swal.DismissReason.cancel) {
+                    const confirmResult = await Swal.fire({
+                        title: '⚠️ Потвърждение за неправилно чекиране',
+                        html: `
+                            <div style="text-align: left; font-size: 0.9em; color: #334155;">
+                                <p>Сигурни ли сте, че искате да се чекирате <b>БЕЗ включена локация</b>?</p>
+                                <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px; color: #9a3412;">
+                                    ⚠️ <b>Внимание:</b> Това ще се отчете в системата като <b>„НЕПРАВИЛНО ЧЕКИРАНЕ (БЕЗ GPS)“</b> и ръководството ще бъде уведомено, че сте се чекирали без активна локация!
+                                </div>
+                            </div>
+                        `,
+                        icon: 'question',
+                        showCancelButton: true,
+                        confirmButtonText: 'Да, чекирай ме без GPS',
+                        cancelButtonText: 'Отказ, ще включа локацията',
+                        confirmButtonColor: '#dc2626',
+                        cancelButtonColor: '#64748b',
+                        allowOutsideClick: false
+                    });
+
+                    if (confirmResult.isConfirmed) {
+                        return {
+                            loc: "Без GPS",
+                            note: "⚠️ НЕПРАВИЛНО ЧЕКИРАНЕ (ИЗКЛЮЧЕНА ЛОКАЦИЯ)",
+                            dist: null,
+                            accuracy: null,
+                            lat: null,
+                            lng: null,
+                            hasLocation: false,
+                            forcedWithoutLocation: true
+                        };
+                    }
+                } else {
+                    return null;
+                }
+            }
+
+            return currentGeo;
+        }
+
         async function handleSubmit(e) {
             e.preventDefault();
             const email = emailInput.value.trim().toLowerCase();
             if (!email) return;
 
             try {
-                Swal.fire({ title: 'Обработване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                Swal.fire({ title: 'Проверка...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
                 
                 const { data: lastRecord, error: fetchErr } = await client
                     .from('chekiraniya')
@@ -254,8 +336,15 @@
                     }
                 }
 
-                // 2. ВЗИМАНЕ НА ЛОКАЦИЯ (тихо във фонов режим)
-                const geoInfo = await getUserLocation();
+                // 2. ВЗИМАНЕ НА ЛОКАЦИЯ С ПРОВЕРКА И ИЗВЕСТИЕ ПРИ ИЗКЛЮЧЕН GPS
+                let initialGeo = await getUserLocation();
+                let geoInfo = initialGeo;
+                if (!geoInfo.hasLocation) {
+                    geoInfo = await promptLocationResolution(initialGeo, getUserLocation);
+                    if (!geoInfo) return; // Потребителят е отказал
+                }
+
+                Swal.fire({ title: 'Записване на часа...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
                 // 3. ЗАПИСВАНЕ (само съществуващи колони в таблицата)
                 const insertPayload = {
@@ -276,8 +365,8 @@
                 localStorage.setItem('workerEmail', email);
 
                 Swal.fire({
-                    icon: 'success',
-                    title: 'Успешно отчетено!',
+                    icon: geoInfo.forcedWithoutLocation ? 'warning' : 'success',
+                    title: geoInfo.forcedWithoutLocation ? 'Отчетено без локация!' : 'Успешно отчетено!',
                     text: `${actionText} беше записано за ${email}`,
                     timer: 2500,
                     showConfirmButton: false
@@ -285,8 +374,8 @@
                     // Красив завършек, за да знае човекът, че е готов
                     document.body.innerHTML = `
                         <div style="text-align:center; padding:30px; max-width:400px; background:white; border-radius:20px; box-shadow:0 10px 25px rgba(0,0,0,0.05);">
-                            <h2 style="color: #16a34a; margin-bottom:10px;">✨ Благодарим ви!</h2>
-                            <p style="color: #475569; font-size:1.1em;">Вашият час е регистриран успешно.<br>Може да затворите този прозорец.</p>
+                            <h2 style="color: ${geoInfo.forcedWithoutLocation ? '#ea580c' : '#16a34a'}; margin-bottom:10px;">✨ Благодарим ви!</h2>
+                            <p style="color: #475569; font-size:1.1em;">Вашият час е регистриран успешно.<br>${geoInfo.forcedWithoutLocation ? '<span style="color:#dc2626; font-size:0.9em; font-weight:bold;">⚠️ Чекирането е отчетено БЕЗ GPS локация.</span><br>' : ''}Може да затворите този прозорец.</p>
                         </div>
                     `;
                 });
@@ -294,13 +383,6 @@
             } catch (err) {
                 console.error("Checkin error:", err);
                 Swal.fire('❌ Грешка при връзката', (err && err.message) ? err.message : 'Моля, проверете интернета си и опитайте отново.', 'error');
-            }
-        }
-                });
-
-            } catch (err) {
-                console.error(err);
-                Swal.fire('❌ Грешка при връзката', 'Моля, проверете интернета си и опитайте отново.', 'error');
             }
         }
     </script>
