@@ -26,7 +26,7 @@
     <script src="admin/admin-calendar.js?v=8" defer></script>
     <script src="admin/admin-report.js?v=5" defer></script>
     <script src="admin/admin-validator.js?v=1" defer></script>
-    <script src="admin/admin-requests.js?v=7" defer></script>
+    <script src="admin/admin-requests.js?v=8" defer></script>
     <script src="admin/admin-probi.js?v=4" defer></script>
     <script src="admin/admin-3s.js?v=2" defer></script>
     <script src="admin/admin-spotlight.js?v=1" defer></script>
@@ -93,9 +93,12 @@
                         </button>
                         <div class="admin-dropdown-divider"></div>
                         <button type="button" class="admin-dropdown-item" onclick="openPlanValidatorModal()" style="font-weight: 800; color: #7c3aed;">🔍 Валидатор на План</button>
-                        <button type="button" class="admin-dropdown-item" onclick="window.open('workplace-tasks.html', '_blank')" style="font-weight: 800; color: #0284c7; display: flex; justify-content: space-between; align-items: center;">
-                            <span>🎯 Табло Машини &amp; Задачи</span>
+                        <button type="button" class="admin-dropdown-item" onclick="openAdminSpotAuditModal()" style="font-weight: 800; color: #7c3aed; display: flex; justify-content: space-between; align-items: center;">
+                            <span>📋 Експресни Ревизии (Spot Audits)</span>
                             <span id="adminSpotAuditSubBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
+                        </button>
+                        <button type="button" class="admin-dropdown-item" onclick="window.open('workplace-tasks.html', '_blank')" style="font-weight: 800; color: #0284c7;">
+                            <span>🎯 Табло Машини &amp; Задачи</span>
                         </button>
                         <button type="button" class="admin-dropdown-item" onclick="window.open('planner-bobini.html', '_blank')">📝 Планьор Бобиньорки</button>
                         <div class="admin-dropdown-divider"></div>

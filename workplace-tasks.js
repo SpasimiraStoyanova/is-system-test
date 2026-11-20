@@ -65,6 +65,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadIdleRemindersHistory();
         initIdleRemindersAdminRealtime();
         setInterval(scanAndSendIdleRemindersCentral, 60000);
+
+        // Автоматично отваряне на прозореца с дневника на ревизиите, ако е отворено с ?openSpotAudit=1
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('openSpotAudit') || urlParams.get('audit') || urlParams.get('spotAudit')) {
+                openSpotAuditModal();
+                switchSpotAuditTab('history');
+            }
+        } catch(e) {}
     }, 1200);
 });
 
