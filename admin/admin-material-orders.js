@@ -1144,8 +1144,8 @@ function renderMonthlyDeficitsTable() {
                     <th style="padding:10px 12px; text-align:center; width:115px;">Недостиг</th>
                     <th style="padding:10px 12px; text-align:center; width:135px;">Чакаща доставка</th>
                     <th style="padding:10px 12px; text-align:center; width:130px;">За поръчка</th>
-                    <th style="padding:10px 12px; width:160px;">Доставчик</th>
-                    <th style="padding:10px 12px; text-align:right; width:125px;">Действие</th>
+                    <th style="padding:10px 12px; width:210px;">Доставчик &amp; Имейл</th>
+                    <th style="padding:10px 12px; text-align:right; width:160px;">Действие</th>
                 </tr>
             </thead>
             <tbody>
@@ -1194,19 +1194,28 @@ function renderMonthlyDeficitsTable() {
                 <td style="padding:10px 12px; text-align:center;">
                     <input type="number" id="inp_def_qty_${actualIdx}" value="${item.neededToOrder}" min="0" step="any" style="width:85px; padding:5px 8px; font-weight:900; color:#7c3aed; border:1.5px solid #cbd5e1; border-radius:6px; text-align:center; font-size:0.95em;" oninput="updateMonthlyBatchOrderButtonSummary()">
                 </td>
-                <td style="padding:10px 12px;">
-                    <input type="text" id="inp_def_sup_${actualIdx}" list="dl_def_suppliers" value="${escapeHtml(item.supplier)}" placeholder="Доставчик" style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:0.85em; border:1px solid #cbd5e1; border-radius:6px;">
+                <td style="padding:8px 12px;">
+                    <input type="text" id="inp_def_sup_${actualIdx}" list="dl_def_suppliers" value="${escapeHtml(item.supplier)}" placeholder="Доставчик" style="width:100%; box-sizing:border-box; padding:4px 8px; font-size:0.85em; border:1px solid #cbd5e1; border-radius:6px; font-weight:700;" onchange="handleMonthlySupplierChange(${actualIdx})">
+                    <input type="email" id="inp_def_email_${actualIdx}" value="${escapeHtml(item.email)}" placeholder="✉️ имейл на доставчик..." style="margin-top:3px; width:100%; box-sizing:border-box; padding:3px 7px; font-size:0.79em; border:1px solid #cbd5e1; border-radius:5px; color:#0369a1;" onchange="handleMonthlyEmailChange(${actualIdx})">
                 </td>
                 <td style="padding:10px 12px; text-align:right;">
-                    ${item.neededToOrder > 0 ? `
-                        <button onclick="executeSingleMonthlyMaterialOrder(${actualIdx})" style="background:linear-gradient(135deg, #7c3aed, #6d28d9); color:white; border:none; padding:6px 12px; border-radius:7px; font-weight:800; font-size:0.82em; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 4px rgba(124,58,237,0.25);" title="Поръчай тази суровина с 1 клик">
-                            <span>🛒 Поръчай</span>
-                        </button>
-                    ` : `
-                        <span style="color:#16a34a; font-weight:800; font-size:0.8em; background:#f0fdf4; padding:4px 8px; border-radius:6px; border:1px solid #bbf7d0; display:inline-flex; align-items:center; gap:4px;">
-                            ✅ Обезпечено
-                        </span>
-                    `}
+                    <div style="display:flex; justify-content:flex-end; gap:5px; align-items:center;">
+                        ${item.neededToOrder > 0 ? `
+                            <button onclick="executeSingleMonthlyMaterialOrder(${actualIdx})" style="background:linear-gradient(135deg, #7c3aed, #6d28d9); color:white; border:none; padding:6px 11px; border-radius:7px; font-weight:800; font-size:0.82em; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 4px rgba(124,58,237,0.25);" title="Запиши в дневника и отвори готова Gmail бланка за доставчика">
+                                <span>🛒 Поръчай</span>
+                            </button>
+                            <button onclick="openMonthlyDeficitGmailDraft(${actualIdx})" style="background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; padding:5px 8px; border-radius:6px; font-size:0.82em; font-weight:700; cursor:pointer;" title="Отвори Gmail бланка без запис">
+                                ✉️
+                            </button>
+                        ` : `
+                            <span style="color:#16a34a; font-weight:800; font-size:0.8em; background:#f0fdf4; padding:4px 8px; border-radius:6px; border:1px solid #bbf7d0; display:inline-flex; align-items:center; gap:4px;">
+                                ✅ Обезпечено
+                            </span>
+                            <button onclick="openMonthlyDeficitGmailDraft(${actualIdx})" style="background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; padding:5px 8px; border-radius:6px; font-size:0.82em; font-weight:700; cursor:pointer;" title="Отвори Gmail бланка">
+                                ✉️
+                            </button>
+                        `}
+                    </div>
                 </td>
             </tr>
         `;
@@ -1217,7 +1226,102 @@ function renderMonthlyDeficitsTable() {
     updateMonthlyBatchOrderButtonSummary();
 }
 
-// 9. Маркиране на всички редове
+// 9. Автоматично попълване на имейл при смяна на доставчик
+window.handleMonthlySupplierChange = function(idx) {
+    const item = globalMonthlyDeficits[idx];
+    if (!item) return;
+
+    const supInp = document.getElementById(`inp_def_sup_${idx}`);
+    const emailInp = document.getElementById(`inp_def_email_${idx}`);
+    const sup = (supInp?.value || '').trim();
+
+    item.supplier = sup;
+
+    if (sup && emailInp && !emailInp.value) {
+        // Проверяваме в localStorage
+        const savedMail = localStorage.getItem('material_supplier_email_' + sup.toLowerCase()) || '';
+        if (savedMail) {
+            emailInp.value = savedMail;
+            item.email = savedMail;
+        } else {
+            // Търсим в предишните поръчки
+            const prev = (globalMaterialOrders || []).find(o => (o['Доставчик'] || '').trim().toLowerCase() === sup.toLowerCase() && o['Имейл на доставчик']);
+            if (prev) {
+                emailInp.value = prev['Имейл на доставчик'];
+                item.email = prev['Имейл на доставчик'];
+            }
+        }
+    }
+};
+
+window.handleMonthlyEmailChange = function(idx) {
+    const item = globalMonthlyDeficits[idx];
+    if (!item) return;
+
+    const emailInp = document.getElementById(`inp_def_email_${idx}`);
+    const supInp = document.getElementById(`inp_def_sup_${idx}`);
+    const email = (emailInp?.value || '').trim();
+    const sup = (supInp?.value || item.supplier || '').trim();
+
+    item.email = email;
+    if (sup && email) {
+        try {
+            localStorage.setItem('material_supplier_email_' + sup.toLowerCase(), email);
+        } catch(e) {}
+    }
+};
+
+// 10. Генератор на Gmail линк със заредена бланка
+window.buildMaterialOrderGmailUrl = function(recipientEmail, supplierName, items) {
+    let listText = '';
+    if (items.length === 1) {
+        const it = items[0];
+        const packNote = it.packSize ? ` (Опаковка: ${it.packSize})` : '';
+        listText = `Материал: ${it.material}\nКоличество: ${it.qty} ${it.unit}${packNote}`;
+    } else {
+        listText = items.map((it, i) => {
+            const packNote = it.packSize ? ` (Опаковка: ${it.packSize})` : '';
+            return `${i + 1}. ${it.material}: ${it.qty} ${it.unit}${packNote}`;
+        }).join('\n');
+    }
+
+    const greeting = supplierName ? `Здравейте,\n\n` : `Здравейте,\n\n`;
+    const subject = encodeURIComponent(
+        items.length === 1 
+            ? `Поръчка на материал: ${items[0].material}`
+            : `Поръчка на суровини (${items.length} позиции) - AMCI`
+    );
+
+    const bodyText = `${greeting}Бихме искали да заявим следната поръчка за нашето производство:\n\n${listText}\n\nМоля да потвърдите получаването на поръчката и очаквано време за доставка.\n\nПоздрави,\nAMCI Производство`;
+    const body = encodeURIComponent(bodyText);
+
+    return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipientEmail || '')}&su=${subject}&body=${body}`;
+};
+
+// 11. Отваряне на Gmail бланка за позиция
+window.openMonthlyDeficitGmailDraft = function(idx) {
+    const item = globalMonthlyDeficits[idx];
+    if (!item) return;
+
+    const qtyInp = document.getElementById(`inp_def_qty_${idx}`);
+    const supInp = document.getElementById(`inp_def_sup_${idx}`);
+    const emailInp = document.getElementById(`inp_def_email_${idx}`);
+
+    const qty = parseFloat(qtyInp?.value) || item.neededToOrder || item.deficit || 1;
+    const sup = (supInp?.value || item.supplier || '').trim();
+    const email = (emailInp?.value || item.email || '').trim();
+
+    const url = buildMaterialOrderGmailUrl(email, sup, [{
+        material: item.material,
+        qty: qty,
+        unit: item.unit,
+        packSize: item.packSize
+    }]);
+
+    window.open(url, 'GmailOrderPopup_' + Date.now(), 'width=820,height=620,left=200,top=80,scrollbars=yes');
+};
+
+// 12. Маркиране на всички редове
 window.toggleSelectAllMonthlyDeficits = function(checked) {
     document.querySelectorAll('.chk-monthly-def-row').forEach(cb => {
         cb.checked = checked;
@@ -1225,7 +1329,7 @@ window.toggleSelectAllMonthlyDeficits = function(checked) {
     updateMonthlyBatchOrderButtonSummary();
 };
 
-// 10. Обновяване на броячите върху бутона за групова поръчка
+// 13. Обновяване на броячите върху бутона за групова поръчка
 window.updateMonthlyBatchOrderButtonSummary = function() {
     let count = 0;
     document.querySelectorAll('.chk-monthly-def-row').forEach(cb => {
@@ -1250,16 +1354,18 @@ window.updateMonthlyBatchOrderButtonSummary = function() {
     }
 };
 
-// 11. Изпълнение на единична поръчка с 1 клик
+// 14. Изпълнение на единична поръчка с 1 клик (ЗАПИСВА В БАЗАТА + ОТВАРЯ GMAIL)
 window.executeSingleMonthlyMaterialOrder = async function(idx) {
     const item = globalMonthlyDeficits[idx];
     if (!item) return;
 
     const qtyInp = document.getElementById(`inp_def_qty_${idx}`);
     const supInp = document.getElementById(`inp_def_sup_${idx}`);
+    const emailInp = document.getElementById(`inp_def_email_${idx}`);
 
     const qty = parseFloat(qtyInp?.value) || 0;
     const supplier = (supInp?.value || item.supplier || '').trim();
+    const email = (emailInp?.value || item.email || '').trim();
 
     if (isNaN(qty) || qty <= 0) {
         Swal.fire('Невалидно количество', 'Моля, въведете количество по-голямо от 0!', 'warning');
@@ -1270,16 +1376,16 @@ window.executeSingleMonthlyMaterialOrder = async function(idx) {
         Swal.fire({ title: 'Записване на поръчката...', didOpen: () => Swal.showLoading() });
         const todayStr = new Date().toISOString().split('T')[0];
 
-        // Запазваме доставчик в localStorage ако има
-        if (supplier && item.email) {
-            try { localStorage.setItem('material_supplier_email_' + supplier.toLowerCase(), item.email); } catch(e) {}
+        // Запазваме имейл за този доставчик в localStorage
+        if (supplier && email) {
+            try { localStorage.setItem('material_supplier_email_' + supplier.toLowerCase(), email); } catch(e) {}
         }
 
         const newOrder = {
             'Материал': item.material,
             'Дата на поръчка': todayStr,
             'Доставчик': supplier || 'AMCI Склад Доставки',
-            'Имейл на доставчик': item.email || '',
+            'Имейл на доставчик': email || '',
             'Количество': qty,
             'Статус': 'Поръчано'
         };
@@ -1297,6 +1403,8 @@ window.executeSingleMonthlyMaterialOrder = async function(idx) {
                     material: item.material,
                     quantity: qty,
                     deficit: item.deficit,
+                    supplier: supplier,
+                    email: email,
                     user: adminEmail
                 }
             }]);
@@ -1310,13 +1418,31 @@ window.executeSingleMonthlyMaterialOrder = async function(idx) {
         await checkMonthlyMaterialDeficits(false);
         renderMonthlyDeficitsTable();
 
+        // ✉️ АВТОМАТИЧНО ОТВАРЯНЕ НА GMAIL СЪС ЗАРЕДЕНА БЛАНКА
+        const gmailUrl = buildMaterialOrderGmailUrl(email, supplier, [{
+            material: item.material,
+            qty: qty,
+            unit: item.unit,
+            packSize: item.packSize
+        }]);
+        window.open(gmailUrl, 'GmailOrderPopup_' + Date.now(), 'width=820,height=620,left=200,top=80,scrollbars=yes');
+
         Swal.fire({
             icon: 'success',
-            title: 'Поръчката е създадена!',
-            html: `Успешно поръчани <b>${qty} ${item.unit}</b> от <b>${escapeHtml(item.material)}</b> със статус <b>„Поръчано“</b>.<br>При пристигане на пратката, отворете дневника на поръчките и натиснете <b>„Приеми“</b>.`,
-            timer: 3500,
+            title: '🛒 Поръчката е създадена & отворена в Gmail!',
+            html: `
+                <div style="text-align:left; font-size:0.92em; line-height:1.5;">
+                    <div>Материал: <b style="color:#5b21b6;">${escapeHtml(item.material)}</b></div>
+                    <div>Количество: <b>${qty} ${item.unit}</b></div>
+                    <div>Доставчик: <b>${escapeHtml(supplier || 'Непосочен')}</b> (${escapeHtml(email || 'без имейл')})</div>
+                    <div style="margin-top:10px; background:#f5f3ff; border:1px solid #ddd6fe; padding:8px 10px; border-radius:8px; color:#5b21b6;">
+                        ✉️ <b>Отворен е Gmail прозорец с готова бланка за изпращане.</b> Записът е вписан в дневника със статус <b>„Поръчано“</b>.
+                    </div>
+                </div>
+            `,
             showConfirmButton: true,
-            confirmButtonText: 'Добре'
+            confirmButtonText: 'Разбрах',
+            confirmButtonColor: '#7c3aed'
         });
 
     } catch (err) {
@@ -1324,7 +1450,7 @@ window.executeSingleMonthlyMaterialOrder = async function(idx) {
     }
 };
 
-// 12. Изпълнение на групова поръчка с 1 клик на ВСИЧКИ дефицити
+// 15. Изпълнение на групова поръчка с 1 клик на ВСИЧКИ дефицити (ЗАПИСВА В БАЗАТА + ОТВАРЯ GMAIL БЛАНКИ)
 window.executeBatchMonthlyMaterialOrders = async function() {
     const itemsToOrder = [];
     document.querySelectorAll('.chk-monthly-def-row').forEach(cb => {
@@ -1334,13 +1460,18 @@ window.executeBatchMonthlyMaterialOrders = async function() {
             if (item) {
                 const qtyInp = document.getElementById(`inp_def_qty_${idx}`);
                 const supInp = document.getElementById(`inp_def_sup_${idx}`);
+                const emailInp = document.getElementById(`inp_def_email_${idx}`);
+
                 const q = parseFloat(qtyInp?.value) || 0;
                 const s = (supInp?.value || item.supplier || '').trim();
+                const em = (emailInp?.value || item.email || '').trim();
+
                 if (q > 0) {
                     itemsToOrder.push({
                         item: item,
                         qty: q,
-                        supplier: s
+                        supplier: s,
+                        email: em
                     });
                 }
             }
@@ -1354,18 +1485,41 @@ window.executeBatchMonthlyMaterialOrders = async function() {
 
     const totalQty = itemsToOrder.reduce((acc, x) => acc + x.qty, 0);
 
+    // Групиране по доставчик / имейл
+    const groups = {};
+    itemsToOrder.forEach(x => {
+        const key = (x.supplier || 'Общ доставчик').trim();
+        if (!groups[key]) {
+            groups[key] = {
+                supplier: key,
+                email: x.email || '',
+                items: []
+            };
+        }
+        if (!groups[key].email && x.email) groups[key].email = x.email;
+        groups[key].items.push({
+            material: x.item.material,
+            qty: x.qty,
+            unit: x.item.unit,
+            packSize: x.item.packSize
+        });
+    });
+
+    const groupKeys = Object.keys(groups);
+
     const res = await Swal.fire({
         title: '🚀 Поръчай ВСИЧКИ дефицити с 1 клик?',
         html: `
             <div style="text-align:left; font-size:0.92em; line-height:1.5;">
-                Ще бъдат създадени <b>${itemsToOrder.length}</b> отделни заявки за материали със статус <b>„Поръчано“</b> до достигане на пълния минимален буфер.<br><br>
-                Общо бройки/метри за поръчка: <b>${totalQty}</b>.<br><br>
-                Потвърждавате ли създаването на поръчките?
+                Ще бъдат създадени <b>${itemsToOrder.length}</b> позиции със статус <b>„Поръчано“</b> за общо <b>${totalQty}</b> единици.<br>
+                Разпределени към <b>${groupKeys.length} доставчика</b>.<br><br>
+                ✉️ Системата ще генерира готови бланки за изпращане по <b>Gmail</b> към доставчиците!<br><br>
+                Потвърждавате ли поръчката?
             </div>
         `,
         icon: 'question',
         showCancelButton: true,
-        confirmButtonText: '✅ Да, поръчай всички!',
+        confirmButtonText: '✅ Да, поръчай & зареди имейли!',
         cancelButtonText: 'Отказ',
         confirmButtonColor: '#7c3aed'
     });
@@ -1379,13 +1533,20 @@ window.executeBatchMonthlyMaterialOrders = async function() {
                 'Материал': entry.item.material,
                 'Дата на поръчка': todayStr,
                 'Доставчик': entry.supplier || 'AMCI Склад Доставки',
-                'Имейл на доставчик': entry.item.email || '',
+                'Имейл на доставчик': entry.email || '',
                 'Количество': entry.qty,
                 'Статус': 'Поръчано'
             }));
 
             const { error: insErr } = await client.from('porachki_materiali').insert(batchPayload);
             if (insErr) throw insErr;
+
+            // Запазваме имейлите в localStorage
+            itemsToOrder.forEach(entry => {
+                if (entry.supplier && entry.email) {
+                    try { localStorage.setItem('material_supplier_email_' + entry.supplier.toLowerCase(), entry.email); } catch(e) {}
+                }
+            });
 
             // Одит лог
             try {
@@ -1396,6 +1557,7 @@ window.executeBatchMonthlyMaterialOrders = async function() {
                     new_data: {
                         count: itemsToOrder.length,
                         total_quantity: totalQty,
+                        suppliers_count: groupKeys.length,
                         user: adminEmail
                     }
                 }]);
@@ -1409,14 +1571,61 @@ window.executeBatchMonthlyMaterialOrders = async function() {
             await checkMonthlyMaterialDeficits(false);
             renderMonthlyDeficitsTable();
 
-            Swal.fire({
-                icon: 'success',
-                title: '🎉 Всички поръчки са създадени!',
-                html: `Успешно са регистрирани <b>${itemsToOrder.length} поръчки</b> в дневника със статус <b>„Поръчано“</b>.<br>След пристигането им в цеха, отворете дневника и ги заприходете с <b>„Приеми“</b>!`,
-                timer: 4000,
-                showConfirmButton: true,
-                confirmButtonText: 'Отлично'
-            });
+            // Ако е само 1 доставчик - веднага отваряме неговия Gmail
+            if (groupKeys.length === 1) {
+                const g = groups[groupKeys[0]];
+                const gUrl = buildMaterialOrderGmailUrl(g.email, g.supplier, g.items);
+                window.open(gUrl, 'GmailOrderPopup_' + Date.now(), 'width=820,height=620,left=200,top=80,scrollbars=yes');
+
+                Swal.fire({
+                    icon: 'success',
+                    title: '🎉 Поръчката е записана & Gmail е отворен!',
+                    html: `
+                        Успешно записани <b>${itemsToOrder.length} позиции</b> със статус <b>„Поръчано“</b>.<br><br>
+                        ✉️ Отворен е Gmail с готова заредена бланка за <b>${escapeHtml(g.supplier)}</b> (${escapeHtml(g.email || 'без имейл')}).
+                    `,
+                    confirmButtonText: 'Отлично',
+                    confirmButtonColor: '#7c3aed'
+                });
+            } else {
+                // Ако са няколко доставчика - отваряме първия веднага и показваме бутони за останалите
+                const firstG = groups[groupKeys[0]];
+                const firstUrl = buildMaterialOrderGmailUrl(firstG.email, firstG.supplier, firstG.items);
+                window.open(firstUrl, 'GmailOrderPopup_' + Date.now(), 'width=820,height=620,left=200,top=80,scrollbars=yes');
+
+                let supplierButtonsHtml = groupKeys.map(k => {
+                    const grp = groups[k];
+                    const url = buildMaterialOrderGmailUrl(grp.email, grp.supplier, grp.items);
+                    return `
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:#f5f3ff; border:1px solid #ddd6fe; padding:8px 12px; border-radius:8px; margin-bottom:8px;">
+                            <div style="text-align:left;">
+                                <b style="color:#5b21b6;">${escapeHtml(grp.supplier)}</b>
+                                <div style="font-size:0.8em; color:#6d28d9;">${grp.items.length} позиции ${grp.email ? `• ${escapeHtml(grp.email)}` : '• (няма имейл)'}</div>
+                            </div>
+                            <button onclick="window.open('${url}', 'GmailOrder_${Date.now()}_${Math.floor(Math.random()*1000)}', 'width=820,height=620,left=200,top=80,scrollbars=yes')" style="background:#7c3aed; color:white; border:none; padding:6px 12px; border-radius:6px; font-weight:800; font-size:0.85em; cursor:pointer;">
+                                ✉️ Отвори Gmail
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+
+                Swal.fire({
+                    icon: 'success',
+                    title: '🎉 Поръчките са записани със статус „Поръчано“!',
+                    html: `
+                        <div style="text-align:left; font-size:0.9em; line-height:1.5;">
+                            Записани са <b>${itemsToOrder.length} позиции</b>. Разпределени са по доставчици.<br>
+                            Отворен е имейл за първия доставчик. Можете да отворите бланките и за останалите отдолу:
+                            <div style="margin-top:12px; max-height:260px; overflow-y:auto;">
+                                ${supplierButtonsHtml}
+                            </div>
+                        </div>
+                    `,
+                    width: '620px',
+                    confirmButtonText: 'Готово',
+                    confirmButtonColor: '#7c3aed'
+                });
+            }
 
         } catch (err) {
             Swal.fire('Грешка', 'Неуспешна групова поръчка: ' + err.message, 'error');
@@ -1424,7 +1633,7 @@ window.executeBatchMonthlyMaterialOrders = async function() {
     }
 };
 
-// 13. Симулация на примерен дефицит (Стомана Ф5: Наличност 10 м, Мин 100 м -> Дефицит 90 м)
+// 16. Симулация на примерен дефицит (Стомана Ф5: Наличност 10 м, Мин 100 м -> Дефицит 90 м)
 window.simulateMaterialDeficit = function() {
     const testItem = {
         material: 'Стомана Ф5',
