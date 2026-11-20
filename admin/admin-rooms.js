@@ -214,7 +214,13 @@ function renderRoomsLayout() {
         if (activeFloorFilter !== 'all') {
             if (activeFloorFilter === 'warehouse') {
                 let nameLower = String(r.room_name || '').toLowerCase();
-                let isWh = nameLower.includes('склад') || String(r.room_number).toLowerCase().includes('склад') || String(r.room_number) === '10' || String(r.room_number) === '20';
+                let numLower = String(r.room_number || '').toLowerCase();
+                let floorLower = String(r.floor || '').toLowerCase();
+                let isWh = nameLower.includes('склад') || numLower.includes('склад') || 
+                           nameLower.includes('коридор') || numLower.includes('коридор') || 
+                           nameLower.includes('рафт') || nameLower.includes('фоайе') ||
+                           floorLower.includes('склад') || floorLower.includes('коридор') || 
+                           numLower === '10' || numLower === '20';
                 if (!isWh) return false;
             } else {
                 let floorNum = activeFloorFilter.replace(/\D/g, '');
@@ -231,6 +237,20 @@ function renderRoomsLayout() {
         }
         return true;
     });
+
+    let floor1Count = globalRoomsCache.filter(r => String(r.room_number).startsWith('1') || r.floor === 'Етаж 1').length;
+    let floor2Count = globalRoomsCache.filter(r => String(r.room_number).startsWith('2') || r.floor === 'Етаж 2').length;
+    let floor3Count = globalRoomsCache.filter(r => String(r.room_number).startsWith('3') || r.floor === 'Етаж 3').length;
+    let whCount = globalRoomsCache.filter(r => {
+        let nameLower = String(r.room_name || '').toLowerCase();
+        let numLower = String(r.room_number || '').toLowerCase();
+        let floorLower = String(r.floor || '').toLowerCase();
+        return nameLower.includes('склад') || numLower.includes('склад') || 
+               nameLower.includes('коридор') || numLower.includes('коридор') || 
+               nameLower.includes('рафт') || nameLower.includes('фоайе') ||
+               floorLower.includes('склад') || floorLower.includes('коридор') || 
+               numLower === '10' || numLower === '20';
+    }).length;
 
     let roomsHtml = '';
     if (filteredRooms.length === 0) {
@@ -296,16 +316,16 @@ function renderRoomsLayout() {
                         Всички локации (${totalRooms})
                     </button>
                     <button type="button" onclick="setFloorFilter('Етаж 1')" style="padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; ${activeFloorFilter === 'Етаж 1' ? 'background: #1d4ed8; color: white;' : 'background: #dbeafe; color: #1e40af;'}">
-                        Етаж 1 (11, 12...)
+                        Етаж 1 (${floor1Count})
                     </button>
                     <button type="button" onclick="setFloorFilter('Етаж 2')" style="padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; ${activeFloorFilter === 'Етаж 2' ? 'background: #059669; color: white;' : 'background: #d1fae5; color: #065f46;'}">
-                        Етаж 2 (21, 22...)
+                        Етаж 2 (${floor2Count})
                     </button>
                     <button type="button" onclick="setFloorFilter('Етаж 3')" style="padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; ${activeFloorFilter === 'Етаж 3' ? 'background: #7c3aed; color: white;' : 'background: #ede9fe; color: #5b21b6;'}">
-                        Етаж 3 (31, 32...)
+                        Етаж 3 (${floor3Count})
                     </button>
                     <button type="button" onclick="setFloorFilter('warehouse')" style="padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85em; cursor: pointer; border: none; ${activeFloorFilter === 'warehouse' ? 'background: #ea580c; color: white;' : 'background: #ffedd5; color: #9a3412;'}">
-                        📦 Складове & Коридори
+                        📦 Складове &amp; Коридори (${whCount})
                     </button>
                 </div>
 
