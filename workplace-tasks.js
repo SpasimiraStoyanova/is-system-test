@@ -160,22 +160,50 @@ async function loadAllData() {
             if (m) machineSet.add(m);
         });
 
-        // Сортиране на машините: по Номер на машина (101, 102... 201, 202... 301), след това по азбучен ред
-        allUniqueMachines = Array.from(machineSet).sort((a,b) => {
+        // Сортиране на машините: Първо по Номер на стая (11, 12, 13, 15, 16, 21, 22, 23, 24, 25, 32...),
+        // след това по Номер на машина (code), и накрая по азбучен ред. Машините без стая отиват накрая.
+        allUniqueMachines = Array.from(machineSet).sort((a, b) => {
             let metaA = machineMetaMap[normalize(a)];
             let metaB = machineMetaMap[normalize(b)];
-            let codeA = metaA && metaA.code ? metaA.code.trim() : null;
-            let codeB = metaB && metaB.code ? metaB.code.trim() : null;
+
+            let roomA = metaA && metaA.room_number ? String(metaA.room_number).trim() : null;
+            let roomB = metaB && metaB.room_number ? String(metaB.room_number).trim() : null;
+
+            // 1. Първично сортиране: По номер на стая
+            if (roomA && roomB) {
+                let numRoomA = parseFloat(roomA);
+                let numRoomB = parseFloat(roomB);
+                if (!isNaN(numRoomA) && !isNaN(numRoomB) && numRoomA !== numRoomB) {
+                    return numRoomA - numRoomB;
+                }
+                let cmpRoom = roomA.localeCompare(roomB, undefined, { numeric: true });
+                if (cmpRoom !== 0) return cmpRoom;
+            } else if (roomA && !roomB) {
+                return -1; // Машини със стая са преди тези без стая
+            } else if (!roomA && roomB) {
+                return 1;  // Машини без стая отиват накрая
+            }
+
+            // 2. Вторично сортиране (в рамките на същата стая или ако и двете нямат стая): По номер на машина (code)
+            let codeA = metaA && metaA.code ? String(metaA.code).trim() : null;
+            let codeB = metaB && metaB.code ? String(metaB.code).trim() : null;
 
             if (codeA && codeB) {
                 let numA = parseFloat(codeA);
                 let numB = parseFloat(codeB);
-                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-                return codeA.localeCompare(codeB, undefined, { numeric: true });
+                if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+                    return numA - numB;
+                }
+                let cmpCode = codeA.localeCompare(codeB, undefined, { numeric: true });
+                if (cmpCode !== 0) return cmpCode;
+            } else if (codeA && !codeB) {
+                return -1;
+            } else if (!codeA && codeB) {
+                return 1;
             }
-            if (codeA && !codeB) return -1;
-            if (!codeA && codeB) return 1;
-            return a.localeCompare(b);
+
+            // 3. Третично сортиране: По азбучен ред на името
+            return a.localeCompare(b, 'bg');
         });
 
         populatePeriodSelectors();
