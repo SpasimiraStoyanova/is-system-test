@@ -35,6 +35,10 @@ let currentStatusFilter = 'all';
 let hasUnsavedChanges = false;
 let sortableInstances = [];
 
+// Accordion Collapsible State
+let machineCardState = {}; // { [machineName]: { expanded: boolean, filter: 'all' | 'ready' | 'waiting' } }
+let allMachinesDefaultCollapsed = true; // По подразбиране: показват се само имената на машините
+
 // Helpers
 function normalize(str) {
     if (!str) return '';
@@ -865,12 +869,27 @@ function renderAllMachines() {
         }
 
         // Бутон 🧰 се показва само ако конкретната машина има зачислена инструментална екипировка (напр. пластини)
-        let toolsBtnHtml = toolsCount > 0 ? `<button type="button" onclick="showMachineAssignedToolsModal('${escapeHtml(machineName)}')" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35); color: white; padding: 2px 7px; border-radius: 6px; font-size: 0.72em; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Зачислена екипировка">🧰 ${toolsCount}</button>` : '';
+        let toolsBtnHtml = toolsCount > 0 ? `<button type="button" onclick="event.stopPropagation(); showMachineAssignedToolsModal('${escapeHtml(machineName)}');" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35); color: white; padding: 2px 7px; border-radius: 6px; font-size: 0.72em; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Зачислена екипировка">🧰 ${toolsCount}</button>` : '';
 
-        let toolingReqBadgeHtml = hasPendingReq ? `<span style="background: #dc2626; color: white; font-size: 0.68em; font-weight: 900; padding: 2px 6px; border-radius: 6px; cursor: pointer; box-shadow: 0 0 8px rgba(220, 38, 38, 0.7);" onclick="showMachineToolingReqAlert('${escapeHtml(machineName)}')" title="Спешен сигнал от цеха: свършват пластини / екипировка!">⚠️ Чака пластини</span>` : '';
+        let toolingReqBadgeHtml = hasPendingReq ? `<span style="background: #dc2626; color: white; font-size: 0.68em; font-weight: 900; padding: 2px 6px; border-radius: 6px; cursor: pointer; box-shadow: 0 0 8px rgba(220, 38, 38, 0.7);" onclick="event.stopPropagation(); showMachineToolingReqAlert('${escapeHtml(machineName)}');" title="Спешен сигнал от цеха: свършват пластини / екипировка!">⚠️ Чака пластини</span>` : '';
+
+        // Проверка за сгънато / разгънато състояние на машината
+        let isExpanded = false;
+        let cardFilter = 'all';
+
+        if (taskFilterText && visibleTasks.length > 0) {
+            isExpanded = true;
+        } else if (machineCardState[machineName]) {
+            isExpanded = machineCardState[machineName].expanded;
+            cardFilter = machineCardState[machineName].filter || 'all';
+        } else {
+            isExpanded = !allMachinesDefaultCollapsed;
+        }
+
+        let chevronIcon = isExpanded ? 'fa-chevron-up' : 'fa-chevron-down';
 
         let machineHeaderHtml = `
-            <div class="machine-header" style="${canCrossTransfer ? 'border-top: 4px solid #a855f7;' : ''}">
+            <div class="machine-header" onclick="toggleMachineCard('${escapeHtml(machineName)}', null, event)" style="${canCrossTransfer ? 'border-top: 4px solid #a855f7;' : ''}" title="Кликнете за сгъване / разгъване на задачите">
                 <div class="machine-title" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                     <i class="fas fa-microchip"></i>
                     ${codeBadgeHtml}
@@ -881,9 +900,10 @@ function renderAllMachines() {
                     ${canCrossTransfer ? `<span class="badge" style="background:#7e22ce; color:#f3e8ff; font-size:0.65em; padding:2px 5px; border-radius:4px;" title="Може да приема и прехвърля операции с EMCO и HAAS ST 10">🔄 CNC група</span>` : ''}
                 </div>
                 <div class="machine-header-badges">
-                    <span class="m-badge m-badge-total" title="Общо задачи">${allTasksForMachine.length}</span>
-                    ${readyCount > 0 ? `<span class="m-badge m-badge-ready" title="Готови за пускане">🟢 ${readyCount}</span>` : ''}
-                    ${waitingCount > 0 ? `<span class="m-badge m-badge-waiting" title="Изчакващи">🟡 ${waitingCount}</span>` : ''}
+                    <span class="m-badge m-badge-total m-badge-clickable" onclick="toggleMachineCard('${escapeHtml(machineName)}', 'all', event)" title="Общо задачи: ${allTasksForMachine.length} (кликнете за показване на всички)">${allTasksForMachine.length}</span>
+                    ${readyCount > 0 ? `<span class="m-badge m-badge-ready m-badge-clickable" onclick="toggleMachineCard('${escapeHtml(machineName)}', 'all', event)" title="🟢 Готови за пускане: ${readyCount} бр. (кликнете за отваряне)">🟢 ${readyCount}</span>` : ''}
+                    ${waitingCount > 0 ? `<span class="m-badge m-badge-waiting m-badge-clickable" onclick="toggleMachineCard('${escapeHtml(machineName)}', 'waiting', event)" title="🟡 Чакащи заготовки: ${waitingCount} бр. (кликнете да покаже САМО чакащите задачи)">🟡 ${waitingCount}</span>` : ''}
+                    <span class="m-collapse-chevron"><i class="fas ${chevronIcon}"></i></span>
                 </div>
             </div>
         `;
@@ -996,9 +1016,18 @@ function renderAllMachines() {
             });
         }
 
+        let cardClasses = ['machine-card'];
+        if (!isExpanded) cardClasses.push('collapsed');
+        if (cardFilter === 'waiting') cardClasses.push('filter-waiting');
+        if (cardFilter === 'ready') cardClasses.push('filter-ready');
+
         gridHtml += `
-            <div class="machine-card" data-machine="${escapeHtml(machineName)}">
+            <div class="${cardClasses.join(' ')}" data-machine="${escapeHtml(machineName)}">
                 ${machineHeaderHtml}
+                <div class="machine-filter-bar" style="${cardFilter === 'waiting' ? 'display: flex;' : 'display: none;'}">
+                    <span>🟡 Показват се само чакащи задачи (${waitingCount} бр.)</span>
+                    <button type="button" onclick="toggleMachineCard('${escapeHtml(machineName)}', 'all', event)">Покажи всички (${allTasksForMachine.length})</button>
+                </div>
                 <div class="machine-tasks-list" data-machine="${escapeHtml(machineName)}">
                     ${tasksListHtml}
                 </div>
@@ -1008,6 +1037,118 @@ function renderAllMachines() {
 
     grid.innerHTML = gridHtml;
     initAllSortables();
+    updateGlobalCollapseButtons();
+}
+
+// ==============================================================================
+// УПРАВЛЕНИЕ НА СГЪВАНЕТО И ФИЛТРИРАНЕТО НА МАШИНИТЕ (АКОРДЕОН / ПАДАЩО МЕНЮ)
+// ==============================================================================
+
+window.toggleMachineCard = function(machineName, targetFilter = null, ev = null) {
+    if (ev) ev.stopPropagation();
+
+    let card = document.querySelector(`.machine-card[data-machine="${CSS.escape(machineName)}"]`);
+    if (!card) return;
+
+    if (!machineCardState[machineName]) {
+        machineCardState[machineName] = { 
+            expanded: !allMachinesDefaultCollapsed, 
+            filter: 'all' 
+        };
+    }
+    let state = machineCardState[machineName];
+
+    if (targetFilter === 'waiting') {
+        // Потребителят иска: "Ако цъкна на жълтите, да показва само тях"
+        if (state.expanded && state.filter === 'waiting') {
+            state.expanded = false;
+        } else {
+            state.expanded = true;
+            state.filter = 'waiting';
+        }
+    } else if (targetFilter === 'ready' || targetFilter === 'all') {
+        // Потребителят иска: "Ако цъкна на зелените задачи - да отваря всички"
+        if (state.expanded && state.filter === 'all') {
+            state.expanded = false;
+        } else {
+            state.expanded = true;
+            state.filter = 'all';
+        }
+    } else {
+        // Кликнато е върху заглавието на машината или стрелката
+        state.expanded = !state.expanded;
+        if (state.expanded) {
+            state.filter = 'all';
+        }
+    }
+
+    applyMachineCardState(card, machineName);
+};
+
+function applyMachineCardState(card, machineName) {
+    let state = machineCardState[machineName] || { expanded: false, filter: 'all' };
+    let filterBar = card.querySelector('.machine-filter-bar');
+    let chevron = card.querySelector('.m-collapse-chevron i');
+
+    if (state.expanded) {
+        card.classList.remove('collapsed');
+        if (chevron) {
+            chevron.className = 'fas fa-chevron-up';
+        }
+        if (state.filter === 'waiting') {
+            card.classList.add('filter-waiting');
+            card.classList.remove('filter-ready');
+            if (filterBar) filterBar.style.display = 'flex';
+        } else {
+            card.classList.remove('filter-waiting', 'filter-ready');
+            if (filterBar) filterBar.style.display = 'none';
+        }
+    } else {
+        card.classList.add('collapsed');
+        card.classList.remove('filter-waiting', 'filter-ready');
+        if (chevron) {
+            chevron.className = 'fas fa-chevron-down';
+        }
+        if (filterBar) filterBar.style.display = 'none';
+    }
+}
+
+window.collapseAllMachines = function() {
+    allMachinesDefaultCollapsed = true;
+    Object.keys(machineTasksMap).forEach(m => {
+        machineCardState[m] = { expanded: false, filter: 'all' };
+    });
+    document.querySelectorAll('.machine-card').forEach(card => {
+        let m = card.getAttribute('data-machine');
+        applyMachineCardState(card, m);
+    });
+    updateGlobalCollapseButtons();
+};
+
+window.expandAllMachines = function() {
+    allMachinesDefaultCollapsed = false;
+    Object.keys(machineTasksMap).forEach(m => {
+        machineCardState[m] = { expanded: true, filter: 'all' };
+    });
+    document.querySelectorAll('.machine-card').forEach(card => {
+        let m = card.getAttribute('data-machine');
+        applyMachineCardState(card, m);
+    });
+    updateGlobalCollapseButtons();
+};
+
+function updateGlobalCollapseButtons() {
+    let btnCol = document.getElementById('btnCollapseAll');
+    let btnExp = document.getElementById('btnExpandAll');
+    if (btnCol && btnExp) {
+        if (allMachinesDefaultCollapsed) {
+            btnCol.classList.add('active');
+            btnExp.classList.remove('active');
+        } else {
+            btnExp.classList.add('active');
+            btnCol.classList.remove('active');
+        }
+    }
 }
 
 function initAllSortables() {

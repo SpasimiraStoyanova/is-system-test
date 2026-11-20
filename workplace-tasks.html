@@ -97,6 +97,14 @@
                 </div>
 
                 <div class="quick-options">
+                    <div class="view-collapse-group" style="display: flex; gap: 6px; align-items: center; margin-right: 6px;">
+                        <button type="button" class="btn-collapse-mode active" id="btnCollapseAll" onclick="collapseAllMachines()" title="Показвай само имената на машините">
+                            <i class="fas fa-compress-alt"></i> Свий всички
+                        </button>
+                        <button type="button" class="btn-collapse-mode" id="btnExpandAll" onclick="expandAllMachines()" title="Разгъни задачите на всички машини">
+                            <i class="fas fa-expand-alt"></i> Разгъни всички
+                        </button>
+                    </div>
                     <label class="toggle-option">
                         <input type="checkbox" id="chkOnlyWithTasks" checked onchange="filterMachinesAndTasks()">
                         <span>Показвай само машини със задачи (<span id="activeMachinesCount">0</span>)</span>
