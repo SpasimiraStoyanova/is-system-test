@@ -13,9 +13,7 @@ const MANUAL_WORKSTATION_NAMES = [
     'монтаж 1 мпр',
     'монтаж 1 макари',
     'монтаж 2',
-    'монтаж 2 + термопреса',
-    'мивка',
-    'барабан'
+    'монтаж 2 + термопреса'
 ];
 
 window.isWorkstationItem = function(item) {
@@ -94,7 +92,9 @@ const MACHINE_TYPE_CATALOG = [
     { name: 'Пещ за закаляване', code: '', model: '', status: 'active' },
     { name: 'Камера за пръскане на ламели', code: '', model: '', status: 'active' },
     { name: 'Камера за прахово боядисване', code: '', model: '', status: 'active' },
-    { name: 'Ултразвукова вана (ултразвук)', code: '', model: '', status: 'active' }
+    { name: 'Ултразвукова вана (ултразвук)', code: '', model: '', status: 'active' },
+    { name: 'Мивка', code: '', model: '', status: 'active' },
+    { name: 'Барабан', code: '', model: '', status: 'active' }
 ];
 
 // --------------------------------------------------------------------------
@@ -1654,6 +1654,7 @@ window.deleteRoom = async function(roomId, roomNumber) {
 window.openAssignMachineModal = async function(roomNumber, roomName) {
     let optionsHtml = '<option value="">-- Изберете машина от списъка --</option>';
     let physicalMachines = globalMachinesCache.filter(m => !isWorkstationItem(m));
+    physicalMachines.sort((a, b) => a.name.localeCompare(b.name, 'bg'));
     physicalMachines.forEach(m => {
         let currentLoc = m.room_number ? ` (в Стая ${m.room_number})` : ` ⚠️ Без стая`;
         let isCurrent = String(m.room_number).trim() === String(roomNumber).trim();
@@ -1707,6 +1708,7 @@ window.openAssignMachineModal = async function(roomNumber, roomName) {
 window.openAssignWorkstationModal = async function(roomNumber, roomName) {
     let optionsHtml = '<option value="">-- Изберете работен пост / участък --</option>';
     let workstationItems = globalMachinesCache.filter(m => isWorkstationItem(m));
+    workstationItems.sort((a, b) => a.name.localeCompare(b.name, 'bg'));
     workstationItems.forEach(w => {
         let currentLoc = w.room_number ? ` (в Стая ${w.room_number})` : ` ⚠️ Без стая`;
         let isCurrent = String(w.room_number).trim() === String(roomNumber).trim();
