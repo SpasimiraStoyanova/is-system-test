@@ -2931,6 +2931,14 @@ async function scanAndSendIdleRemindersCentral(isManualTrigger = false) {
                     isMorning: isMorningCentral
                 });
 
+                // Сигнал към телефона на ръководителя
+                if (typeof window.sendAmciPushNotification === 'function' && isMorningCentral) {
+                    window.sendAmciPushNotification(
+                        `🔔 Напомняне (8:35): Непоета задача`,
+                        `Работник: ${worker.name}\nМашина: ${assignedMachine}\nСвободни заготовки: ${readyTasks.length} бр.`
+                    );
+                }
+
                 console.log(`[НАПОМНЯНЕ] Изпратено подсещане за непоета задача до ${worker.name} (${assignedMachine})`);
             }
         }

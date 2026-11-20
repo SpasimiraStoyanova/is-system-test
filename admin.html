@@ -16,7 +16,7 @@
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <script src="admin/admin-config.js?v=19" defer></script>
     <script src="admin/admin-pdf.js?v=2" defer></script>
-    <script src="admin/admin-notif.js?v=2" defer></script>
+    <script src="admin/admin-notif.js?v=6" defer></script>
     <script src="admin/admin-personnel.js?v=11" defer></script>
     <script src="admin/admin-archives.js?v=4" defer></script>
     <script src="admin/admin-core.js?v=47" defer></script>
@@ -134,6 +134,7 @@
                             <span id="adminCalSubBadge" style="display: none; margin-left: auto; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
                         </button>
                         <button type="button" class="admin-dropdown-item" onclick="openNotificationDialog()">📢 Изпрати Известие до Цеха</button>
+                        <button type="button" class="admin-dropdown-item" onclick="testAmciPushNotification()" style="font-weight: 800; color: #0284c7;">🔔 Тествай Известие към Телефона</button>
                         <div class="admin-dropdown-divider"></div>
                         <button type="button" class="admin-dropdown-item" onclick="window.forceReloadTerminals()" style="color: #dc2626; font-weight: 700;" title="Принудително рестартира всички таблети в цеха">🔄 Синхронизирай Терминалите</button>
                     </div>

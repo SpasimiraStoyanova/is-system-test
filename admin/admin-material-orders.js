@@ -853,6 +853,13 @@ window.checkMonthlyMaterialDeficits = async function(autoPrompt = false) {
             const promptKey = `dismissed_monthly_material_prompt_${today.getFullYear()}_${today.getMonth() + 1}`;
             if (!sessionStorage.getItem(promptKey)) {
                 showMonthlyDeficitToast(countNeeded, promptKey);
+                if (window.sendAmciPushNotification) {
+                    const topItems = list.filter(x => x.neededToOrder > 0).slice(0, 5).map(x => `• ${x.material}: ${x.neededToOrder} ${x.unit}`).join('\n');
+                    window.sendAmciPushNotification(
+                        `📦 20-то число: Нужди на цеха (${countNeeded} позиции)`,
+                        `Заготовките за месеца приключиха.\nОткрити са ${countNeeded} дефицитни суровини за поръчка:\n${topItems}\n\nОтворете системата за поръчка с 1 клик!`
+                    );
+                }
             }
         }
 

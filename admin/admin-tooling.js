@@ -48,6 +48,17 @@ async function fetchToolingRequests() {
                 playNotificationChime();
             }
             showToolingRequestToast(newestReq);
+
+            // Изпращане на сигнал към телефона
+            if (window.sendAmciPushNotification && newestReq) {
+                const mac = newestReq.machine_name || 'Цех';
+                const item = newestReq.item_name || 'Пластини / Инструменти';
+                const op = newestReq.operator_name || 'Работник';
+                window.sendAmciPushNotification(
+                    `⚠️ Заявка за инструменти (${mac})`,
+                    `Спешна нужда от: ${item}\nМашина: ${mac}\nОператор: ${op}\nСпешност: ${newestReq.urgency || 'Спешна'}`
+                );
+            }
         }
         lastKnownToolingCount = pendingCount;
     } catch (err) {

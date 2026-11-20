@@ -59,3 +59,60 @@ async function sendOneSignalNotification(target, title, body) {
         Swal.fire('Успех!', 'Известието беше изпратено успешно.', 'success');
     } catch (err) { console.error(err); Swal.fire('Грешка при изпращане', err.message, 'error'); }
 }
+
+// ==============================================================================
+// AMCI ИЗВЕСТИЯ НА ТЕЛЕФОНА (GOOGLE PUSH WEBHOOK)
+// ==============================================================================
+const DEFAULT_AMCI_NOTIF_WEBHOOK = "https://script.google.com/macros/s/AKfycbwdGTqsIF_ZQiSR-j2jkcytHMLBl4F7DUe0Yc5Fp7l1bWpdBwLxnHr88QoGNNDzUcVb/exec";
+
+window.sendAmciPushNotification = async function (title, text) {
+    try {
+        const webhookUrl = localStorage.getItem('amci_notif_webhook_url') || DEFAULT_AMCI_NOTIF_WEBHOOK;
+        if (!webhookUrl) return false;
+
+        const payload = JSON.stringify({
+            title: String(title || '🔔 AMCI Сигнал'),
+            text: String(text || '')
+        });
+
+        // text/plain не задейства CORS preflight OPTIONS проверка и Google Apps Script го приема директно
+        await fetch(webhookUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: payload
+        });
+
+        console.log('[AMCI PUSH] Изпратено известие към Google:', title);
+        return true;
+    } catch (err) {
+        console.warn('[AMCI PUSH ERROR]:', err);
+        return false;
+    }
+};
+
+// Функция за бърз тест от административния панел
+window.testAmciPushNotification = async function () {
+    Swal.fire({
+        title: 'Тестване на известието...',
+        text: 'Изпращане на тестово известие към телефона ви...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        await window.sendAmciPushNotification(
+            '🔔 AMCI Тестово Известие',
+            'Връзката със системата работи перфектно! Всички важни сигнали от цеха ще звънят директно на телефона ви.'
+        );
+        Swal.fire({
+            icon: 'success',
+            title: 'Изпратено!',
+            text: 'Проверете телефона си – до 2 секунди ще чуете известието!',
+            confirmButtonColor: '#059669'
+        });
+    } catch (e) {
+        Swal.fire('Грешка', e.message, 'error');
+    }
+};
+
