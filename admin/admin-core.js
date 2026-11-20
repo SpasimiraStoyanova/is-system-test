@@ -520,6 +520,7 @@ function switchTab(tabKey, force = false) {
     const syncMacBtn = document.getElementById('syncMachinesBtn');
     const toolReqBtn = document.getElementById('toolingRequestsBtn');
     const matOrdersBtn = document.getElementById('materialOrdersBtn');
+    const monthlyDeficitBtn = document.getElementById('monthlyDeficitBtn');
     const locCheckBtn = document.getElementById('silentLocationCheckBtn');
     const locHistBtn = document.getElementById('locationHistoryBtn');
 
@@ -528,6 +529,7 @@ function switchTab(tabKey, force = false) {
     if (pdfBtn) pdfBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
     if (mrpBtn) mrpBtn.style.display = (tabKey === 'sklad' || tabKey === 'porachki') ? 'flex' : 'none';
     if (matOrdersBtn) matOrdersBtn.style.display = (tabKey === 'sklad') ? 'flex' : 'none';
+    if (monthlyDeficitBtn) monthlyDeficitBtn.style.display = (tabKey === 'sklad') ? 'flex' : 'none';
     if (transBtn) transBtn.style.display = (tabKey === 'sklad_inventory') ? 'flex' : 'none';
     if (syncMacBtn) syncMacBtn.style.display = (tabKey === 'workstations') ? 'flex' : 'none';
     if (toolReqBtn) toolReqBtn.style.display = (tabKey === 'tooling_sklad') ? 'flex' : 'none';

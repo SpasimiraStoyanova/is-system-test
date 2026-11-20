@@ -87,6 +87,10 @@
                             <span>🛒 Поръчки на Материали &amp; Доставки</span>
                             <span id="adminMaterialOrdersSubBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
                         </button>
+                        <button type="button" class="admin-dropdown-item" onclick="openMonthlyMaterialDeficitsModal()" style="font-weight: 800; color: #7c3aed; display: flex; justify-content: space-between; align-items: center;">
+                            <span>📅 Нужди на цеха (20-то число)</span>
+                            <span id="adminMonthlyDeficitBadge" style="display: none; background: #7c3aed; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
+                        </button>
                         <button type="button" class="admin-dropdown-item" onclick="openToolingRequestsModal()" style="font-weight: 800; color: #d97706; display: flex; justify-content: space-between; align-items: center;">
                             <span>🛠️ Заявки за Инструменти &amp; Пластини</span>
                             <span id="adminToolingReqBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
@@ -137,6 +141,9 @@
 
                 <!-- Контекстен бутон Поръчки на Материали (само в таб Склад Материали) -->
                 <button type="button" class="btn-primary" id="materialOrdersBtn" onclick="openMaterialOrdersModal()" style="display: none; background: linear-gradient(135deg, #0284c7, #0369a1); box-shadow: 0 2px 4px rgba(2, 132, 199, 0.3); font-weight: 800;" title="Дневник на поръчките за материали и доставки">🛒 Поръчки на Материали <span id="materialOrdersBtnBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;">0</span></button>
+
+                <!-- Контекстен бутон Нужди на цеха (20-то число) (само в таб Склад Материали) -->
+                <button type="button" class="btn-primary" id="monthlyDeficitBtn" onclick="openMonthlyMaterialDeficitsModal()" style="display: none; background: linear-gradient(135deg, #7c3aed, #6d28d9); box-shadow: 0 2px 4px rgba(124, 58, 237, 0.3); font-weight: 800;" title="Месечно пресмятане на нуждите от материали (след 20-то число)">📅 Нужди на цеха (20-то) <span id="skladMonthlyDeficitBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;">0</span></button>
 
                 <!-- Контекстен бутон Анализ на доставките -->
                 <button type="button" class="btn-primary" id="mrpBtn" onclick="openMrpModal()" style="display: none; background-color: #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);">🚨 Анализ на доставките</button>

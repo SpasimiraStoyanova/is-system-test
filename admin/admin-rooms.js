@@ -16,7 +16,7 @@ const MANUAL_WORKSTATION_NAMES = [
     'монтаж 2 + термопреса'
 ];
 
-window.isWorkstationItem = function(item) {
+window.isWorkstationItem = function (item) {
     if (!item) return false;
     if (item.asset_type === 'workstation') return true;
     if (item.asset_type === 'machine') return false;
@@ -100,7 +100,7 @@ const MACHINE_TYPE_CATALOG = [
 // --------------------------------------------------------------------------
 // 1. Инициализиране и рендериране на главния таб
 // --------------------------------------------------------------------------
-window.renderRoomsTab = async function(forceRefresh = false) {
+window.renderRoomsTab = async function (forceRefresh = false) {
     const mainTable = document.getElementById('mainTable');
     const addNewBtn = document.getElementById('addNewBtn');
     if (mainTable) mainTable.style.display = 'none';
@@ -169,7 +169,7 @@ function showSqlMissingNotice() {
     }
 }
 
-window.copyRoomsSqlToClipboard = function() {
+window.copyRoomsSqlToClipboard = function () {
     const sqlText = `-- Изпълнете това в Supabase SQL Editor:
 CREATE TABLE IF NOT EXISTS public.factory_rooms (
     id SERIAL PRIMARY KEY,
@@ -325,7 +325,7 @@ function renderRoomsLayout() {
 function buildRoomCardHtml(room) {
     let rNum = String(room.room_number || '').trim();
     let floor = room.floor || (rNum.startsWith('1') ? 'Етаж 1' : (rNum.startsWith('2') ? 'Етаж 2' : (rNum.startsWith('3') ? 'Етаж 3' : 'Етаж 1')));
-    
+
     let badgeBg = '#1d4ed8'; // Етаж 1
     let borderColor = '#93c5fd';
     if (floor.includes('2') || rNum.startsWith('2')) {
@@ -346,12 +346,12 @@ function buildRoomCardHtml(room) {
     let totalAssets = workstations.length + machines.length + tools.length;
 
     // Проверка за изтекли/изтичащи калибрации
-    let today = new Date(); today.setHours(0,0,0,0);
+    let today = new Date(); today.setHours(0, 0, 0, 0);
     let expiredCount = 0;
     let expiringCount = 0;
     tools.forEach(t => {
         if (t.calibration_due) {
-            let due = new Date(t.calibration_due); due.setHours(0,0,0,0);
+            let due = new Date(t.calibration_due); due.setHours(0, 0, 0, 0);
             let diffDays = Math.round((due - today) / (1000 * 60 * 60 * 24));
             if (diffDays < 0) expiredCount++;
             else if (diffDays <= 30) expiringCount++;
@@ -435,13 +435,13 @@ function buildRoomCardHtml(room) {
 // --------------------------------------------------------------------------
 // 3.1 Детайлен модален прозорец за стая (Опис на оборудването)
 // --------------------------------------------------------------------------
-window.openRoomDetailsModal = function(roomNumber, initialTab = 'all') {
+window.openRoomDetailsModal = function (roomNumber, initialTab = 'all') {
     let room = globalRoomsCache.find(r => String(r.room_number).trim() === String(roomNumber).trim());
     if (!room) return;
 
     let rNum = String(room.room_number || '').trim();
     let floor = room.floor || (rNum.startsWith('1') ? 'Етаж 1' : (rNum.startsWith('2') ? 'Етаж 2' : (rNum.startsWith('3') ? 'Етаж 3' : 'Етаж 1')));
-    
+
     let badgeBg = '#1d4ed8'; // Етаж 1
     if (floor.includes('2') || rNum.startsWith('2')) badgeBg = '#059669'; // Етаж 2
     else if (floor.includes('3') || rNum.startsWith('3')) badgeBg = '#7c3aed'; // Етаж 3
@@ -513,8 +513,8 @@ window.openRoomDetailsModal = function(roomNumber, initialTab = 'all') {
         tools.forEach(t => {
             let calibBadge = '';
             if (t.calibration_due) {
-                let today = new Date(); today.setHours(0,0,0,0);
-                let due = new Date(t.calibration_due); due.setHours(0,0,0,0);
+                let today = new Date(); today.setHours(0, 0, 0, 0);
+                let due = new Date(t.calibration_due); due.setHours(0, 0, 0, 0);
                 let diffDays = Math.round((due - today) / (1000 * 60 * 60 * 24));
                 if (diffDays < 0) {
                     calibBadge = `<span style="background:#fee2e2; color:#b91c1c; font-size:0.74em; padding:2px 8px; border-radius:4px; font-weight:800;">🔴 Изтекъл (${t.calibration_due})</span>`;
@@ -645,7 +645,7 @@ window.openRoomDetailsModal = function(roomNumber, initialTab = 'all') {
     });
 };
 
-window._switchRoomModalTab = function(tabName) {
+window._switchRoomModalTab = function (tabName) {
     const secWs = document.getElementById('modalSecWorkstations');
     const secMac = document.getElementById('modalSecMachines');
     const secTools = document.getElementById('modalSecTools');
@@ -696,7 +696,7 @@ window._switchRoomModalTab = function(tabName) {
     }
 };
 
-window._filterModalTools = function(query) {
+window._filterModalTools = function (query) {
     let q = (query || '').toLowerCase().trim();
     let container = document.getElementById('swalModalToolsList');
     if (!container) return;
@@ -710,13 +710,13 @@ window._filterModalTools = function(query) {
 // --------------------------------------------------------------------------
 // 4. ПАСПОРТ НА МАШИНА (Клик на машина в стаята)
 // --------------------------------------------------------------------------
-window.openMachinePassportModal = function(machineId) {
+window.openMachinePassportModal = function (machineId) {
     let machine = globalMachinesCache.find(m => m.id === machineId);
     if (!machine) return;
 
     let roomText = machine.room_number ? `Стая ${machine.room_number} ${machine.room_name ? '(' + machine.room_name + ')' : ''}` : '⚠️ Незачислена към стая';
-    let statusText = machine.status === 'maintenance' 
-        ? '<span style="color:#ea580c; font-weight:bold;">🟠 В профилактика / Ремонт</span>' 
+    let statusText = machine.status === 'maintenance'
+        ? '<span style="color:#ea580c; font-weight:bold;">🟠 В профилактика / Ремонт</span>'
         : '<span style="color:#16a34a; font-weight:bold;">🟢 В експлоатация (Активна)</span>';
 
     Swal.fire({
@@ -777,7 +777,7 @@ window.openMachinePassportModal = function(machineId) {
     });
 };
 
-window.openEditMachineModal = async function(machineId) {
+window.openEditMachineModal = async function (machineId) {
     let m = globalMachinesCache.find(x => x.id === machineId);
     if (!m) return;
 
@@ -876,7 +876,7 @@ window.openEditMachineModal = async function(machineId) {
     }
 };
 
-window.openMoveMachineModal = async function(machineId) {
+window.openMoveMachineModal = async function (machineId) {
     let m = globalMachinesCache.find(x => x.id === machineId);
     if (!m) return;
 
@@ -921,14 +921,14 @@ window.openMoveMachineModal = async function(machineId) {
 // --------------------------------------------------------------------------
 // 5. ПАСПОРТ НА ИНСТРУМЕНТ / УРЕД (Клик на уред в стаята)
 // --------------------------------------------------------------------------
-window.openToolPassportModal = function(toolId) {
+window.openToolPassportModal = function (toolId) {
     let tool = globalToolsCache.find(t => t.id === toolId);
     if (!tool) return;
 
     let calibStatusHtml = '<span style="color:#64748b;">Не се изисква</span>';
     if (tool.calibration_due) {
-        let today = new Date(); today.setHours(0,0,0,0);
-        let due = new Date(tool.calibration_due); due.setHours(0,0,0,0);
+        let today = new Date(); today.setHours(0, 0, 0, 0);
+        let due = new Date(tool.calibration_due); due.setHours(0, 0, 0, 0);
         let diffDays = Math.round((due - today) / (1000 * 60 * 60 * 24));
         if (diffDays < 0) {
             calibStatusHtml = `<span style="background:#fee2e2; color:#b91c1c; font-size:0.85em; padding:3px 8px; border-radius:6px; font-weight:800;">🔴 Изтекла (${escapeHtml(tool.calibration_due)})</span>`;
@@ -1005,21 +1005,21 @@ window.openToolPassportModal = function(toolId) {
     });
 };
 
-window.triggerToolCalibrationModal = function(id, code, name) {
+window.triggerToolCalibrationModal = function (id, code, name) {
     Swal.close();
     if (typeof openToolCalibrationModal === 'function') {
         openToolCalibrationModal(id, code, name);
     }
 };
 
-window.triggerToolCalibHistoryModal = function(code, name) {
+window.triggerToolCalibHistoryModal = function (code, name) {
     Swal.close();
     if (typeof openToolCalibrationHistoryModal === 'function') {
         openToolCalibrationHistoryModal(code, name);
     }
 };
 
-window.openEditToolModal = async function(toolId) {
+window.openEditToolModal = async function (toolId) {
     let t = globalToolsCache.find(x => x.id === toolId);
     if (!t) return;
 
@@ -1143,7 +1143,7 @@ window.openEditToolModal = async function(toolId) {
     }
 };
 
-window.openMoveToolModal = async function(toolId) {
+window.openMoveToolModal = async function (toolId) {
     let t = globalToolsCache.find(x => x.id === toolId);
     if (!t) return;
 
@@ -1187,7 +1187,7 @@ window.openMoveToolModal = async function(toolId) {
 // --------------------------------------------------------------------------
 // 6. ДОБАВЯНЕ НА НОВА МАШИНА (СЪС ЗАДЪЛЖИТЕЛНА СТАЯ)
 // --------------------------------------------------------------------------
-window.openAddMachineModal = async function(defaultRoomNum = '') {
+window.openAddMachineModal = async function (defaultRoomNum = '') {
     if (globalRoomsCache.length === 0) {
         Swal.fire('Внимание', 'Първо добавете поне една стая / локация (напр. Стая 11 или Склад)!', 'warning');
         return;
@@ -1326,7 +1326,7 @@ window.openAddMachineModal = async function(defaultRoomNum = '') {
 // --------------------------------------------------------------------------
 // 7. ДОБАВЯНЕ НА НОВ УРЕД (ОБЩ БУТОН С ИЗБОР НА СТАЯ)
 // --------------------------------------------------------------------------
-window.openAddToolGlobalModal = async function() {
+window.openAddToolGlobalModal = async function () {
     if (globalRoomsCache.length === 0) {
         Swal.fire('Внимание', 'Първо добавете поне една стая / локация!', 'warning');
         return;
@@ -1451,7 +1451,7 @@ window.openAddToolGlobalModal = async function() {
     }
 };
 
-window.recalcGlobalToolCode = function() {
+window.recalcGlobalToolCode = function () {
     let roomNum = document.getElementById('swalGlobalToolRoom')?.value;
     let catIdx = document.getElementById('swalGlobalToolCatalog')?.value;
     if (!roomNum || catIdx === '') return;
@@ -1477,7 +1477,7 @@ window.recalcGlobalToolCode = function() {
 // --------------------------------------------------------------------------
 // 8. Управление на стаи и печат на опис
 // --------------------------------------------------------------------------
-window.openCreateRoomModal = async function() {
+window.openCreateRoomModal = async function () {
     const { value: formValues } = await Swal.fire({
         title: '➕ Добавяне на нова стая / локация',
         html: `
@@ -1561,7 +1561,7 @@ window.openCreateRoomModal = async function() {
     }
 };
 
-window.autoSelectFloorFromNum = function(val) {
+window.autoSelectFloorFromNum = function (val) {
     let clean = String(val || '').trim();
     let select = document.getElementById('swalRoomFloor');
     if (!select || !clean) return;
@@ -1571,7 +1571,7 @@ window.autoSelectFloorFromNum = function(val) {
     else if (clean.toLowerCase().includes('склад')) select.value = 'Склад';
 };
 
-window.openEditRoomModal = async function(roomId) {
+window.openEditRoomModal = async function (roomId) {
     let room = globalRoomsCache.find(r => r.id === roomId);
     if (!room) return;
 
@@ -1628,7 +1628,7 @@ window.openEditRoomModal = async function(roomId) {
     }
 };
 
-window.deleteRoom = async function(roomId, roomNumber) {
+window.deleteRoom = async function (roomId, roomNumber) {
     const res = await Swal.fire({
         title: `Изтриване на Стая № ${roomNumber}?`,
         html: `Сигурни ли сте? Машините и инструментите в тази стая няма да се изтрият, а ще останат <b>незачислени</b>.`,
@@ -1651,7 +1651,7 @@ window.deleteRoom = async function(roomId, roomNumber) {
     }
 };
 
-window.openAssignMachineModal = async function(roomNumber, roomName) {
+window.openAssignMachineModal = async function (roomNumber, roomName) {
     let optionsHtml = '<option value="">-- Изберете машина от списъка --</option>';
     let physicalMachines = globalMachinesCache.filter(m => !isWorkstationItem(m));
     physicalMachines.sort((a, b) => a.name.localeCompare(b.name, 'bg'));
@@ -1705,7 +1705,7 @@ window.openAssignMachineModal = async function(roomNumber, roomName) {
     }
 };
 
-window.openAssignWorkstationModal = async function(roomNumber, roomName) {
+window.openAssignWorkstationModal = async function (roomNumber, roomName) {
     let optionsHtml = '<option value="">-- Изберете работен пост / участък --</option>';
     let workstationItems = globalMachinesCache.filter(m => isWorkstationItem(m));
     workstationItems.sort((a, b) => a.name.localeCompare(b.name, 'bg'));
@@ -1785,7 +1785,7 @@ window.openAssignWorkstationModal = async function(roomNumber, roomName) {
     }
 };
 
-window.openAddWorkstationModal = async function(defaultRoomNum = '') {
+window.openAddWorkstationModal = async function (defaultRoomNum = '') {
     let roomOptions = globalRoomsCache.map(r => `
         <option value="${r.room_number}" ${String(defaultRoomNum) === String(r.room_number) ? 'selected' : ''}>
             Стая ${r.room_number} - ${escapeHtml(r.room_name)}
@@ -1861,7 +1861,7 @@ window.openAddWorkstationModal = async function(defaultRoomNum = '') {
     }
 };
 
-window.openWorkstationDetailsModal = function(wsId) {
+window.openWorkstationDetailsModal = function (wsId) {
     let ws = globalMachinesCache.find(m => m.id === wsId);
     if (!ws) return;
 
@@ -1911,7 +1911,7 @@ window.openWorkstationDetailsModal = function(wsId) {
     });
 };
 
-window.openEditWorkstationModal = async function(wsId) {
+window.openEditWorkstationModal = async function (wsId) {
     let ws = globalMachinesCache.find(m => m.id === wsId);
     if (!ws) return;
 
@@ -1974,7 +1974,7 @@ window.openEditWorkstationModal = async function(wsId) {
     }
 };
 
-window.unassignMachineFromRoom = async function(machineId, machineName, roomNumber = '') {
+window.unassignMachineFromRoom = async function (machineId, machineName, roomNumber = '') {
     const res = await Swal.fire({
         title: 'Отчисляване от стаята?',
         text: `Искате ли да отчислите "${machineName}" от тази стая?`,
@@ -2002,7 +2002,7 @@ window.unassignMachineFromRoom = async function(machineId, machineName, roomNumb
     }
 };
 
-window.deleteTool = async function(toolId, toolCode, roomNumber = '') {
+window.deleteTool = async function (toolId, toolCode, roomNumber = '') {
     const res = await Swal.fire({
         title: `Изтриване на ${toolCode}?`,
         text: 'Сигурни ли сте, че искате да премахнете този уред от инвентарния опис?',
@@ -2031,7 +2031,7 @@ window.deleteTool = async function(toolId, toolCode, roomNumber = '') {
     }
 };
 
-window.openAddToolToRoomModal = function(roomNumber, roomName) {
+window.openAddToolToRoomModal = function (roomNumber, roomName) {
     window.openAddToolGlobalModal();
     setTimeout(() => {
         let select = document.getElementById('swalGlobalToolRoom');
@@ -2042,12 +2042,12 @@ window.openAddToolToRoomModal = function(roomNumber, roomName) {
     }, 200);
 };
 
-window.setFloorFilter = function(floor) {
+window.setFloorFilter = function (floor) {
     activeFloorFilter = floor;
     renderRoomsLayout();
 };
 
-window.onRoomSearchInput = function(val) {
+window.onRoomSearchInput = function (val) {
     roomSearchQuery = String(val || '').trim();
     renderRoomsLayout();
 };
@@ -2055,7 +2055,7 @@ window.onRoomSearchInput = function(val) {
 // --------------------------------------------------------------------------
 // 9. Разпечатване на Паспорт / Опис за вратата
 // --------------------------------------------------------------------------
-window.printRoomPassport = function(roomNumber) {
+window.printRoomPassport = function (roomNumber) {
     let room = globalRoomsCache.find(r => String(r.room_number).trim() === String(roomNumber).trim());
     if (!room) {
         Swal.fire('Грешка', 'Не е намерена такава стая.', 'error');
