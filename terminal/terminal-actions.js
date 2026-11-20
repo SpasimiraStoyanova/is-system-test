@@ -109,6 +109,22 @@ async function validateRealTimeStock(taskData, val) {
 }
 
 function claimCurrentTaskDOM(taskId) {
+  if (typeof isSpotAuditPendingBlocking === 'function' && isSpotAuditPendingBlocking()) {
+      if (typeof showBlockingSpotAuditModal === 'function' && typeof activeSpotAudits !== 'undefined' && activeSpotAudits.length > 0) {
+          showBlockingSpotAuditModal(activeSpotAudits[0]);
+      } else {
+          Swal.fire({
+              title: 'Внимание!',
+              text: 'Първо трябва да попълните чакащата изненадваща ревизия!',
+              icon: 'warning',
+              confirmButtonText: 'ОК',
+              confirmButtonColor: '#9333ea',
+              allowOutsideClick: false
+          });
+      }
+      return;
+  }
+
   if (window.pendingIdleTaskReminder && !window.pendingIdleTaskReminder.read_at) {
       Swal.fire({
           title: 'Внимание!',
