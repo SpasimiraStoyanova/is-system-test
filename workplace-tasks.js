@@ -1612,6 +1612,7 @@ function getRealInventoryStock(detailId, opName) {
     let normCode = normalize(detailId);
     let normOp = normalize(opName);
 
+    // 1. Търсене на наличност точно за конкретната междинна операция (WIP)
     let match = rawInventory.find(inv => {
         let iCode = normalize(inv['ID Детайл']);
         let iOp = normalize(inv['Операция']);
@@ -1620,8 +1621,36 @@ function getRealInventoryStock(detailId, opName) {
 
     if (match) {
         let q = parseFloat(match['Общо'] !== undefined && match['Общо'] !== null ? match['Общо'] : match['Количество']);
-        return isNaN(q) ? 0 : q;
+        if (!isNaN(q) && q > 0) return q;
     }
+
+    // 2. Ако няма намерена наличност на самата операция, проверяваме дали тази операция не е ПОСЛЕДНАТА за детайла.
+    // За последната (или единствена) операция готовите бройки се водят в склад като "готов продукт".
+    let detailRoutes = (rawRoutes || []).filter(r => normalize(r['Код на детайла']) === normCode);
+    detailRoutes.sort((a,b) => (parseInt(a['№ Операция']) || 0) - (parseInt(b['№ Операция']) || 0));
+
+    let isLastOp = false;
+    if (detailRoutes.length > 0) {
+        let lastOp = detailRoutes[detailRoutes.length - 1];
+        if (normalize(lastOp['Име на операция']) === normOp) {
+            isLastOp = true;
+        }
+    } else {
+        isLastOp = true;
+    }
+
+    if (isLastOp) {
+        let gpMatch = rawInventory.find(inv => {
+            let iCode = normalize(inv['ID Детайл']);
+            let iOp = normalize(inv['Операция']);
+            return iCode === normCode && (iOp === 'готов продукт' || iOp.includes('готов'));
+        });
+        if (gpMatch) {
+            let q = parseFloat(gpMatch['Общо'] !== undefined && gpMatch['Общо'] !== null ? gpMatch['Общо'] : gpMatch['Количество']);
+            return isNaN(q) ? 0 : q;
+        }
+    }
+
     return 0;
 }
 
