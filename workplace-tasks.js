@@ -1607,49 +1607,65 @@ function populateAuditMachineSelect() {
     if (currentVal) select.value = currentVal;
 }
 
-function getRealInventoryStock(detailId, opName) {
+function getRealInventoryStock(detailId, opName, machineName = '') {
     if (!rawInventory || !detailId) return 0;
     let normCode = normalize(detailId);
     let normOp = normalize(opName);
+    let normMach = normalize(machineName);
 
-    // 1. Търсене на наличност точно за конкретната междинна операция (WIP)
-    let match = rawInventory.find(inv => {
+    // 1. Маршрутна карта за детайла
+    let detailRoutes = (rawRoutes || []).filter(r => normalize(r['Код на детайла']) === normCode);
+    detailRoutes.sort((a,b) => (parseInt(a['№ Операция']) || 0) - (parseInt(b['№ Операция']) || 0));
+
+    // Намираме индекса на операцията за тази машина
+    let opIndex = -1;
+    if (detailRoutes.length > 0) {
+        opIndex = detailRoutes.findIndex(r => {
+            let rOp = normalize(r['Име на операция']);
+            let rMach = normalize(r['Машина']);
+            let opMatches = (rOp === normOp || rOp.includes(normOp) || normOp.includes(rOp));
+            let machMatches = (!normMach || rMach === normMach || rMach.includes(normMach) || normMach.includes(rMach));
+            return opMatches && machMatches;
+        });
+        if (opIndex === -1) {
+            opIndex = detailRoutes.findIndex(r => {
+                let rOp = normalize(r['Име на операция']);
+                return rOp === normOp || rOp.includes(normOp) || normOp.includes(rOp);
+            });
+        }
+    }
+
+    let isLastOp = (detailRoutes.length === 0) || (opIndex !== -1 && opIndex === detailRoutes.length - 1);
+
+    // 2. Междинна наличност (WIP), минала точно през тази операция/машина и останала на склад
+    let opStock = 0;
+    let matches = rawInventory.filter(inv => {
         let iCode = normalize(inv['ID Детайл']);
         let iOp = normalize(inv['Операция']);
         return iCode === normCode && (iOp === normOp || iOp.includes(normOp) || normOp.includes(iOp));
     });
+    matches.forEach(m => {
+        let q = parseFloat(m['Общо'] !== undefined && m['Общо'] !== null ? m['Общо'] : m['Количество']);
+        if (!isNaN(q) && q > 0) opStock += q;
+    });
 
-    if (match) {
-        let q = parseFloat(match['Общо'] !== undefined && match['Общо'] !== null ? match['Общо'] : match['Количество']);
-        if (!isNaN(q) && q > 0) return q;
-    }
-
-    // 2. Ако няма намерена наличност на самата операция, проверяваме дали тази операция не е ПОСЛЕДНАТА за детайла.
-    // За последната (или единствена) операция готовите бройки се водят в склад като "готов продукт".
-    let detailRoutes = (rawRoutes || []).filter(r => normalize(r['Код на детайла']) === normCode);
-    detailRoutes.sort((a,b) => (parseInt(a['№ Операция']) || 0) - (parseInt(b['№ Операция']) || 0));
-
-    let isLastOp = false;
-    if (detailRoutes.length > 0) {
-        let lastOp = detailRoutes[detailRoutes.length - 1];
-        if (normalize(lastOp['Име на операция']) === normOp) {
-            isLastOp = true;
-        }
-    } else {
-        isLastOp = true;
-    }
-
+    // 3. Ако операцията е ПОСЛЕДНАТА за детайла, изработените бройки от тази последна машина са в склад като "готов продукт"
+    let gpStock = 0;
     if (isLastOp) {
-        let gpMatch = rawInventory.find(inv => {
+        let gpMatches = rawInventory.filter(inv => {
             let iCode = normalize(inv['ID Детайл']);
             let iOp = normalize(inv['Операция']);
             return iCode === normCode && (iOp === 'готов продукт' || iOp.includes('готов'));
         });
-        if (gpMatch) {
-            let q = parseFloat(gpMatch['Общо'] !== undefined && gpMatch['Общо'] !== null ? gpMatch['Общо'] : gpMatch['Количество']);
-            return isNaN(q) ? 0 : q;
-        }
+        gpMatches.forEach(m => {
+            let q = parseFloat(m['Общо'] !== undefined && m['Общо'] !== null ? m['Общо'] : m['Количество']);
+            if (!isNaN(q) && q > 0) gpStock += q;
+        });
     }
+
+    if (opStock > 0 && gpStock > 0) return opStock + gpStock;
+    if (opStock > 0) return opStock;
+    if (gpStock > 0) return gpStock;
 
     return 0;
 }
@@ -1670,7 +1686,7 @@ function onAuditMachineChange() {
 
     let html = '<option value="">-- Изберете детайл --</option>';
     Object.values(uniqueParts).forEach(t => {
-        let stock = getRealInventoryStock(t.detail_id, t.op_name);
+        let stock = getRealInventoryStock(t.detail_id, t.op_name, machine);
         let stockBadge = stock > 0 ? `📦 ${stock} бр. в склад` : `0 бр. в склад`;
         html += `<option value="${escapeHtml(t.detail_id)}" data-op="${escapeHtml(t.op_name)}" data-stock="${stock}" data-plan="${t.remain_qty || 0}">${escapeHtml(t.detail_id)} (${escapeHtml(t.detail_name)}) — оп. ${escapeHtml(t.op_name)} [${stockBadge}]</option>`;
     });
@@ -1720,7 +1736,7 @@ function onAuditPartChange() {
 }
 
 function quickTriggerSpotAudit(machine, detailId, opName) {
-    let stock = getRealInventoryStock(detailId, opName);
+    let stock = getRealInventoryStock(detailId, opName, machine);
     openSpotAuditModal(machine, detailId, opName, stock);
 }
 
