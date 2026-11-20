@@ -14,8 +14,12 @@ function escapeHtml(str) {
 
 window.openTerminalToolingRequestModal = async function() {
     let mach = (typeof currentMachine !== 'undefined' && currentMachine) ? currentMachine : (localStorage.getItem('mes_machine') || 'ВСИЧКИ');
-    if (!mach || mach === 'ВСИЧКИ' || mach === 'Всички') {
-        Swal.fire('Изберете работно място', 'Моля, първо изберете конкретно работно място (машина), за да заявите екипировка.', 'info');
+    if (!mach || mach === 'ВСИЧКИ' || mach === 'Всички' || mach.includes(',')) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Изберете конкретна машина',
+            text: 'Заявка за пластини или екипировка може да се изпраща само за една конкретна машина, която ги използва, а не за всички общо.'
+        });
         return;
     }
 

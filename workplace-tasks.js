@@ -119,21 +119,21 @@ async function loadAllData() {
             };
         });
 
-        (facTools || []).forEach(ft => {
-            let ws = normalize(ft.workstation_name);
-            let ftRoom = ft.room_number ? String(ft.room_number).trim() : '';
-            Object.keys(machineMetaMap).forEach(mKey => {
-                let mRoom = machineMetaMap[mKey].room_number;
-                if ((ftRoom && mRoom && ftRoom === mRoom) || (ws && (ws.includes(mKey) || mKey.includes(ws)))) {
-                    machineMetaMap[mKey].tools.push(ft);
-                }
-            });
-        });
+        // 1. Общите инструменти (уредите) принадлежат на СТАИТЕ, а не на отделните машини.
+        // Към машините няма зачислени общи инструменти.
+        // Евентуално по-късно тук ще се показва само конкретна инструментална екипировка (пластини/цанги).
 
+        // 2. Чакащи заявки за инструментална екипировка (пластини):
+        // Свързват се САМО с конкретната машина, която реално ги използва!
         (toolReqs || []).forEach(tr => {
-            let ws = normalize(tr.workstation_name);
+            let targetMachines = String(tr.workstation_name || '')
+                .split(',')
+                .map(s => normalize(s))
+                .filter(Boolean);
+
             Object.keys(machineMetaMap).forEach(mKey => {
-                if (ws && (ws.includes(mKey) || mKey.includes(ws))) {
+                // Точно съвпадение само с машината, за която е заявена екипировката
+                if (targetMachines.includes(mKey)) {
                     machineMetaMap[mKey].hasPendingToolingReq = true;
                     machineMetaMap[mKey].pendingReqItems.push(tr);
                 }
@@ -855,7 +855,8 @@ function renderAllMachines() {
             roomBadgeHtml = `<span style="background: ${roomColor}; color: white; font-size: 0.78em; font-weight: 900; padding: 2px 7px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.25);" title="Разположена в Стая ${escapeHtml(rNum)} ${escapeHtml(meta.room_name || '')}">🚪 Стая ${escapeHtml(rNum)}</span>`;
         }
 
-        let toolsBtnHtml = `<button type="button" onclick="showMachineAssignedToolsModal('${escapeHtml(machineName)}')" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35); color: white; padding: 2px 7px; border-radius: 6px; font-size: 0.72em; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Зачислени малки инструменти">${toolsCount > 0 ? `🧰 ${toolsCount}` : `🧰 +`}</button>`;
+        // Бутон 🧰 се показва само ако конкретната машина има зачислена инструментална екипировка (напр. пластини)
+        let toolsBtnHtml = toolsCount > 0 ? `<button type="button" onclick="showMachineAssignedToolsModal('${escapeHtml(machineName)}')" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35); color: white; padding: 2px 7px; border-radius: 6px; font-size: 0.72em; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Зачислена екипировка">🧰 ${toolsCount}</button>` : '';
 
         let toolingReqBadgeHtml = hasPendingReq ? `<span style="background: #dc2626; color: white; font-size: 0.68em; font-weight: 900; padding: 2px 6px; border-radius: 6px; cursor: pointer; box-shadow: 0 0 8px rgba(220, 38, 38, 0.7);" onclick="showMachineToolingReqAlert('${escapeHtml(machineName)}')" title="Спешен сигнал от цеха: свършват пластини / екипировка!">⚠️ Чака пластини</span>` : '';
 
