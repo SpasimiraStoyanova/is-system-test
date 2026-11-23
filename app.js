@@ -391,6 +391,24 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         });
     }
 
+    // Изваждаме опакованите (неизпратени) бройки на планове, които НЕ са в plansData (напр. '📦 Опакован'),
+    // за да не се броят като свободна наличност за нови активни планове
+    const activePlanIdSet = new Set((plansData || []).map(p => String(p.id).trim()));
+    (reportsData || []).forEach(r => {
+        if (String(r['Статус'] || '').trim() !== 'Отчетено') return;
+        let op = String(r['Операция'] || '').trim().toLowerCase();
+        if (!op.startsWith('опаковане')) return;
+        let rawPId = String(r['ID План'] || '').trim();
+        let mappedPId = planNameToId[rawPId] || rawPId;
+        if (!mappedPId || !activePlanIdSet.has(mappedPId)) {
+            let code = String(r['ID Детайл'] || '').trim().toLowerCase();
+            let qty = parseFloat(r['Количество']) || 0;
+            if (code && qty > 0 && invGpMap[code] !== undefined) {
+                invGpMap[code] = Math.max(0, invGpMap[code] - qty);
+            }
+        }
+    });
+
     let invWipMap = {};
     if (invWipData) {
         invWipData.forEach(r => {

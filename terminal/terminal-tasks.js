@@ -112,6 +112,23 @@ function computeMonitorMetrics(plansData, reportsData, skladData, invData, nomDa
     });
     activePlans.sort((a, b) => (a.id || 0) - (b.id || 0));
 
+    // Изваждаме опакованите (неизпратени) бройки на изключените планове (напр. '📦 Опакован'),
+    // за да останат само свободните бройки в invGpMap
+    let activePlanIdSet = new Set(activePlans.map(p => String(p.id).trim()));
+    (reportsData || []).forEach(r => {
+        if (String(r['Статус'] || '').trim() !== 'Отчетено') return;
+        let op = String(r['Операция'] || '').trim().toLowerCase();
+        if (!op.startsWith('опаковане')) return;
+        let rawPId = String(r['ID План'] || '').trim();
+        if (!rawPId || !activePlanIdSet.has(rawPId)) {
+            let code = String(r['ID Детайл'] || '').trim().toLowerCase();
+            let qty = parseFloat(r['Количество']) || 0;
+            if (code && qty > 0 && invGpMap[code] !== undefined) {
+                invGpMap[code] = Math.max(0, invGpMap[code] - qty);
+            }
+        }
+    });
+
     let activeNodes = [];
     activePlans.forEach(p => {
         let originalPlanCode = String(p['Вътрешно име']).trim();
@@ -460,9 +477,12 @@ async function loadTasks(isSilent = false) {
       let groupTotalTargets = {};
       let groupScrapDetails = {};
       
+      let activeNonPackedPlanIds = new Set();
       plansRes.data.forEach(plan => {
-          if (String(plan['Статус'] || '').includes('Изпратен')) return;
-          let planId = String(plan.id).trim(); 
+          let pSt = String(plan['Статус'] || '').trim();
+          if (pSt.includes('Изпратен') || pSt.includes('Опакован')) return;
+          let planId = String(plan.id).trim();
+          activeNonPackedPlanIds.add(planId); 
           let rootItem = String(plan['Вътрешно име']).trim(); 
           let targetQty = parseFloat(plan['Целево количество']) || 0;
           let monthYear = (plan['Месец'] && plan['Година']) ? (plan['Месец'] + ' ' + plan['Година']) : '';
@@ -509,6 +529,29 @@ async function loadTasks(isSilent = false) {
       }
       window.globalPhysicalStock = { ...rawPhysicalStock };
       let physicalStock = { ...rawPhysicalStock };
+
+      // Приспадаме опакованите (запазени в кашони) бройки на опакованите планове от наличността на последната операция,
+      // за да не се броят като свободни за новите активни планове
+      if (reportsRes && reportsRes.data) {
+          reportsRes.data.forEach(r => {
+              if (String(r['Статус'] || '').trim() !== 'Отчетено') return;
+              let op = normalizeStr(r['Операция']);
+              if (!op.startsWith('опаковане')) return;
+              let rawPId = String(r['ID План'] || '').trim();
+              if (!rawPId || !activeNonPackedPlanIds.has(rawPId)) {
+                  let code = normalizeStr(r['ID Детайл']);
+                  let qty = parseFloat(r['Количество']) || 0;
+                  if (code && qty > 0) {
+                      let routes = (globalRoutesByDetail && globalRoutesByDetail[code]) ? globalRoutesByDetail[code] : [];
+                      let lastOpName = (routes && routes.length > 0) ? normalizeStr(routes[routes.length - 1]['Име на операция']) : 'готов продукт';
+                      let stockKey = code + '_' + lastOpName;
+                      if (physicalStock[stockKey] !== undefined) {
+                          physicalStock[stockKey] = Math.max(0, physicalStock[stockKey] - qty);
+                      }
+                  }
+              }
+          });
+      }
 
       let getDepth = (item, visited = new Set()) => {
           if (depths[item] !== undefined) return depths[item];

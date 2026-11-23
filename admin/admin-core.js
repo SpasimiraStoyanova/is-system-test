@@ -727,26 +727,41 @@ async function loadCurrentTableData(forceRefresh = false) {
                 lastOpByCode[c] = String(list[list.length - 1]['Име на операция'] || '').trim().toLowerCase();
             });
 
-            // Packaging map
+            // Packaging map & unshipped reserved quantities
             const packMap = {};
+            const totalUnshippedPackedByCode = {};
+            const packedByPlanAndCode = {};
             (otchetiRes?.data || []).forEach(p => {
                 let op = String(p['Операция'] || '');
+                let opLower = op.trim().toLowerCase();
+                let stLower = String(p['Статус'] || '').trim().toLowerCase();
+                let pId = String(p['ID План'] || '').trim();
+                let codeUpper = String(p['ID Детайл'] || '').trim().toUpperCase();
+                let codeLower = codeUpper.toLowerCase();
+                let pQty = parseFloat(p['Количество']) || 0;
+
+                if (stLower === 'отчетено' && opLower.startsWith('опаковане') && pQty > 0) {
+                    totalUnshippedPackedByCode[codeLower] = (totalUnshippedPackedByCode[codeLower] || 0) + pQty;
+                    if (pId) {
+                        let pkKey = pId + '_' + codeLower;
+                        packedByPlanAndCode[pkKey] = (packedByPlanAndCode[pkKey] || 0) + pQty;
+                    }
+                }
+
                 if (/Опаковане - Кашон №/i.test(op)) {
-                    let pId = String(p['ID План'] || '').trim();
-                    let code = String(p['ID Детайл'] || '').trim().toUpperCase();
-                    let key = pId + '_' + code;
+                    let key = pId + '_' + codeUpper;
                     if (!packMap[key]) packMap[key] = {};
                     let boxMatch = op.match(/Опаковане - Кашон №\s*(.+)/i);
                     let boxNum = boxMatch ? boxMatch[1] : '?';
-                    packMap[key][boxNum] = (packMap[key][boxNum] || 0) + (parseFloat(p['Количество']) || 0);
+                    packMap[key][boxNum] = (packMap[key][boxNum] || 0) + pQty;
                 }
             });
 
             // Inventory Finished Products map
             const invGpByCode = {};
             (invRes?.data || []).forEach(inv => {
-                let c = String(inv['ID Детайл'] || '').trim().toLowerCase();
-                let op = String(inv['Операция'] || '').trim().toLowerCase();
+                let c = String(inv['ID Детайл']).trim().toLowerCase();
+                let op = String(inv['Операция']).trim().toLowerCase();
                 if (op === 'готов продукт' || op === 'готов детайл') {
                     let q = parseFloat(inv['Количество']) || parseFloat(inv['Общо']) || 0;
                     invGpByCode[c] = (invGpByCode[c] || 0) + q;
@@ -758,7 +773,10 @@ async function loadCurrentTableData(forceRefresh = false) {
                 'юли': 6, 'август': 7, 'септември': 8, 'октомври': 9, 'ноември': 10, 'декември': 11
             };
 
-            rows.forEach(r => {
+            const unpackedClaimedByCode = {};
+            const rowsAsc = [...rows].sort((a, b) => parseInt(a.id || 0) - parseInt(b.id || 0));
+
+            rowsAsc.forEach(r => {
                 let key = String(r.id).trim() + '_' + String(r['ID Детайл']).trim().toUpperCase();
                 if (packMap[key]) {
                     let boxTexts = Object.keys(packMap[key]).map(b => `${packMap[key][b]} бр в кашон № ${b}`);
@@ -819,15 +837,44 @@ async function loadCurrentTableData(forceRefresh = false) {
                     }
                 });
 
+                let planPacked = packedByPlanAndCode[planIdStr + '_' + code] || 0;
                 if (r['__total_packed'] && r['__total_packed'] > reportedDone) {
                     reportedDone = r['__total_packed'];
                 }
-                if (reportedDone === 0 && invGpByCode[code]) {
-                    reportedDone = Math.min(targetQty, invGpByCode[code]);
+                if (planPacked > reportedDone) {
+                    reportedDone = planPacked;
+                }
+
+                r['__directReportedDone'] = reportedDone;
+                r['__codeLower'] = code;
+                r['__targetQty'] = targetQty;
+                r['__lastOp'] = lastOp;
+
+                let st = String(r['Статус'] || '').trim().toLowerCase();
+                if (!st.includes('изпратен') && reportedDone > planPacked) {
+                    unpackedClaimedByCode[code] = (unpackedClaimedByCode[code] || 0) + (reportedDone - planPacked);
+                }
+            });
+
+            // Изчисляваме САМО свободните готови бройки (Общо в склад - Запазени в кашони - Неопаковани по активни/завършени планове)
+            const freeInvGpByCode = {};
+            Object.keys(invGpByCode).forEach(c => {
+                freeInvGpByCode[c] = Math.max(0, (invGpByCode[c] || 0) - (totalUnshippedPackedByCode[c] || 0) - (unpackedClaimedByCode[c] || 0));
+            });
+
+            rowsAsc.forEach(r => {
+                let code = r['__codeLower'];
+                let targetQty = r['__targetQty'];
+                let reportedDone = r['__directReportedDone'];
+                let st = String(r['Статус'] || '').trim().toLowerCase();
+
+                if (reportedDone === 0 && !st.includes('изпратен') && !st.includes('опакован') && freeInvGpByCode[code] > 0) {
+                    let alloc = Math.min(targetQty, freeInvGpByCode[code]);
+                    reportedDone = alloc;
+                    freeInvGpByCode[code] -= alloc;
                 }
 
                 let actualDone = reportedDone;
-                let st = String(r['Статус'] || '').trim().toLowerCase();
                 if ((st === 'завършен' || st.includes('изпратен')) && actualDone === 0) {
                     actualDone = targetQty;
                 }
@@ -835,11 +882,9 @@ async function loadCurrentTableData(forceRefresh = false) {
                 let remain = Math.max(0, targetQty - actualDone);
                 let pct = targetQty > 0 ? Math.round((actualDone / targetQty) * 100) : (actualDone > 0 ? 100 : 0);
 
-                r['__targetQty'] = targetQty;
                 r['__doneQty'] = actualDone;
                 r['__remainQty'] = remain;
                 r['__pct'] = pct;
-                r['__lastOp'] = lastOp;
                 r['produced_info'] = `${actualDone} / ${remain}`;
                 r['progress_bar'] = `${pct}%`;
             });

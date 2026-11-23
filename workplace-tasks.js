@@ -300,6 +300,22 @@ function computeMonitorMetrics(plansData, reportsData, skladData, invData, nomDa
     });
     activePlans.sort((a, b) => (a.id || 0) - (b.id || 0));
 
+    // Изваждаме опакованите (неизпратени) бройки на изключените планове (напр. '📦 Опакован') от invGpMap
+    let activePlanIdSet = new Set(activePlans.map(p => String(p.id).trim()));
+    (reportsData || []).forEach(r => {
+        if (String(r['Статус'] || '').trim() !== 'Отчетено') return;
+        let op = String(r['Операция'] || '').trim().toLowerCase();
+        if (!op.startsWith('опаковане')) return;
+        let rawPId = String(r['ID План'] || '').trim();
+        if (!rawPId || !activePlanIdSet.has(rawPId)) {
+            let code = String(r['ID Детайл'] || '').trim().toLowerCase();
+            let qty = parseFloat(r['Количество']) || 0;
+            if (code && qty > 0 && invGpMap[code] !== undefined) {
+                invGpMap[code] = Math.max(0, invGpMap[code] - qty);
+            }
+        }
+    });
+
     let activeNodes = [];
     activePlans.forEach(p => {
         let originalPlanCode = String(p['Вътрешно име']).trim();
