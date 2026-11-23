@@ -30,9 +30,10 @@ function hasWorkerActiveTask() {
 
 /**
  * Проверка дали има висяща ревизия, която блокира поемането на нови задачи
+ * Направено НЕБЛОКИРАЩО според изискванията: не спира работата и поемането на задачи.
  */
 function isSpotAuditPendingBlocking() {
-    return (Array.isArray(activeSpotAudits) && activeSpotAudits.length > 0 && !hasWorkerActiveTask());
+    return false;
 }
 
 /**
@@ -127,24 +128,12 @@ async function checkPendingSpotAudits() {
 
         activeSpotAudits = myAudits;
 
-        const isBusyWithTask = hasWorkerActiveTask();
-
-        if (isBusyWithTask) {
-            // Служителят работи по поета задача:
-            // 1. Не го прекъсваме с блокиращ прозорец!
-            // 2. Показваме информационен банер в горната част, че след отчитане ще се изисква ревизия
-            if (window.pendingBlockingSpotAudit) {
-                window.pendingBlockingSpotAudit = null;
-                Swal.close();
-            }
-            renderSpotAuditBanners(myAudits, true);
-        } else {
-            // Служителят НЯМА поета задача (свободен е или току-що я отчете):
-            // 1. Показваме банера в горната част
-            renderSpotAuditBanners(myAudits, false);
-            // 2. Блокираме веднага терминала с модален прозорец и звуков сигнал!
-            showBlockingSpotAuditModal(myAudits[0]);
+        // Показваме само информационен банер в горната част, БЕЗ да блокираме модално терминала!
+        if (window.pendingBlockingSpotAudit) {
+            window.pendingBlockingSpotAudit = null;
+            Swal.close();
         }
+        renderSpotAuditBanners(myAudits);
 
     } catch (err) {
         console.error('Грешка в checkPendingSpotAudits:', err);
@@ -184,16 +173,10 @@ function renderSpotAuditBanners(audits, isBusyWithTask = false) {
                         </span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        ${isBusyWithTask ? `
-                            <span style="background: #fef3c7; color: #b45309; font-weight: 800; font-size: 0.82em; padding: 3px 10px; border-radius: 12px; border: 1px solid #fde68a;">
-                                ⏳ Ще се блокира след отчитане
-                            </span>
-                        ` : `
-                            <span style="background: #fee2e2; color: #b91c1c; font-weight: 800; font-size: 0.82em; padding: 3px 10px; border-radius: 12px; border: 1px solid #fca5a5;">
-                                🔒 Терминалът е блокиран
-                            </span>
-                        `}
                         <span style="background: #f3e8ff; color: #7e22ce; font-weight: 800; font-size: 0.82em; padding: 3px 10px; border-radius: 12px; border: 1px solid #d8b4fe;">
+                            📋 Ревизия на наличност
+                        </span>
+                        <span style="background: #f1f5f9; color: #475569; font-weight: 800; font-size: 0.82em; padding: 3px 10px; border-radius: 12px; border: 1px solid #cbd5e1;">
                             ⏰ ${createdTime ? createdTime + ' ч.' : 'Сега'}
                         </span>
                     </div>
@@ -220,11 +203,9 @@ function renderSpotAuditBanners(audits, isBusyWithTask = false) {
                     </div>
                 </div>
 
-                ${isBusyWithTask ? `
-                    <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; color: #92400e; font-size: 0.92em; font-weight: 700;">
-                        💡 В момента работите по активна задача. Довършете я спокойно – веднага щом я отчетете, терминалът ще изисква потвърждение на тази наличност. (Можете да отчетете и предварително от бутоните по-долу).
-                    </div>
-                ` : ''}
+                <div style="background: #fdf4ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; color: #6b21a8; font-size: 0.88em; font-weight: 600;">
+                    💡 Банерът е информативен и не прекъсва работата ви. Моля, пребройте наличността пред машината и въведете отчета, когато сте готови.
+                </div>
 
                 <div style="font-size: 0.95em; font-weight: 700; color: #3b0764; margin-bottom: 8px;">
                     Моля, пребройте физическите бройки пред машината и въведете отчета:
@@ -438,14 +419,7 @@ async function submitSpotAuditResponse(auditId, expectedQty, reportedQty) {
     });
 
     if (!confirmRes.isConfirmed) {
-        // Ако служителят натисне "Отказ" при потвърждението, възстановяваме блокиращия екран!
         window.pendingBlockingSpotAudit = null;
-        if (!hasWorkerActiveTask()) {
-            const currentAudit = activeSpotAudits.find(a => a.id === auditId);
-            if (currentAudit) {
-                showBlockingSpotAuditModal(currentAudit);
-            }
-        }
         return;
     }
 
