@@ -464,6 +464,9 @@ async function submitSpotAuditResponse(auditId, expectedQty, reportedQty) {
             auditNotes = JSON.parse((targetAudit && targetAudit.notes) || '{}');
         } catch(e) {}
 
+        const worker = (typeof currentOperator !== 'undefined' && currentOperator) ? currentOperator : 'ОПЕРАТОР';
+        const nowIso = new Date().toISOString();
+
         const isAutoDeficit = (auditNotes && auditNotes.type === 'auto_deficit_check');
         let status = isDiscrepancy ? 'DISCREPANCY' : 'MATCH';
         let diffQtyForSave = diff;
