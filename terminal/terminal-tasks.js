@@ -1581,6 +1581,13 @@ async function loadTasks(isSilent = false) {
 
       window.globalEmergencyReconcileTasks = emergencyReconcileTasks;
 
+      // Ако сме в таб "Поети задачи", но няма нито една поета задача, автоматично превключваме към таб "МОГА" (ready)
+      let takenCount = globalTasks.filter(t => t.isTaken).length;
+      if (currentTaskFilter === 'taken' && takenCount === 0) {
+          setTaskFilter('ready');
+          return;
+      }
+
       renderTasks(globalTasks);
       if (typeof checkPendingSpotAudits === 'function') {
           checkPendingSpotAudits();

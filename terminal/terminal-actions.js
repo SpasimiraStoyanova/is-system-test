@@ -329,8 +329,16 @@ async function finishTask(taskId, btn) {
 
       if (typeof autoResolveAndonForTask === 'function') { autoResolveAndonForTask(taskData, val); }
       addLogToHistory('ГОТОВО', val, taskId); activeTaskId = null; 
+      taskData.isTaken = false;
+      let remainingTaken = globalTasks.filter(t => t.isTaken && t.id !== taskId);
+      if (remainingTaken.length === 0) {
+          setTaskFilter('ready');
+      }
       try { localStorage.setItem('mes_last_task_idle_start', String(Date.now())); } catch(e){} 
-      Swal.fire({ icon: 'success', title: 'Браво!', text: 'Отчетени: ' + val + ' бр.', timer: 1500, showConfirmButton: false }).then(() => { loadTasks(); });
+      Swal.fire({ icon: 'success', title: 'Браво!', text: 'Отчетени: ' + val + ' бр.', timer: 1500, showConfirmButton: false }).then(() => { 
+          if (currentTaskFilter === 'taken') setTaskFilter('ready');
+          loadTasks(); 
+      });
       } catch(err) { 
           if (!navigator.onLine || err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('fetch')) {
               let startedAt = window['startTime_' + taskId] || (taskData && taskData.startedAt) || new Date().toISOString();
