@@ -179,7 +179,7 @@ async function fetchDynamicData() {
     
     const [plansRes, reportsRes, skladRes, invRes] = await Promise.all([
         fetchAll('plan'),
-        fetchAll('otcheti'),
+        fetchAll('otcheti', 'id'),
         fetchAll('sklad'),
         fetchAll('inventory')
     ]);
@@ -402,18 +402,47 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
     }
     
     // Performance optimization: compute timestamps once before sorting (O(N) instead of O(N log N))
+    // Use Дата (event timestamp) with UTC normalization instead of Време Старт (which is identical on start and finish/scrap rows)
     let sortedReports = reportsData.map(r => {
-        r._ts = new Date(r['Време Старт'] || r['Дата']).getTime();
+        let tsStr = r['Дата'] || r['Време Старт'];
+        if (tsStr && typeof tsStr === 'string' && !tsStr.endsWith('Z') && !tsStr.includes('+')) tsStr += 'Z';
+        r._ts = tsStr ? new Date(tsStr).getTime() : 0;
         return r;
-    }).sort((a, b) => a._ts - b._ts);
+    }).sort((a, b) => (a._ts - b._ts) || ((a.id || 0) - (b.id || 0)));
 
     let componentScrapEvents = [];
     let opScrapEvents = [];
-    let statusEvents = [];
+    let statusEventsByOp = {};
     let grossCompletedOps = {};
 
     let allCombinedReports = sortedReports;
     let packagedQty = {}; // [NEW] Track packaged items
+
+    function pushStatusEvent(opKey, report) {
+        if (!statusEventsByOp[opKey]) statusEventsByOp[opKey] = [];
+        statusEventsByOp[opKey].push(report);
+    }
+
+    function resolveLatestOpStatus(eventsForOp, planDbIds) {
+        let latestStatus = 'Очаква се';
+        let activeOperators = new Set();
+        for (let i = 0; i < eventsForOp.length; i++) {
+            let e = eventsForOp[i];
+            let rawPIds = String(e['ID План'] || '').split(',').map(s => s.trim()).filter(s => s);
+            let oper = String(e['Оператор'] || '').trim().toLowerCase();
+            let matchesPlan = (rawPIds.length === 0 || rawPIds.some(pid => planDbIds.includes(pid)));
+            let isClosingExcess = (e['Статус'] !== 'Започната' && oper && activeOperators.has(oper) && (rawPIds.includes('СВРЪХПРОИЗВОДСТВО') || rawPIds.includes('ДООТЧИТАНЕ_ДЕФИЦИТ')));
+            if (matchesPlan || isClosingExcess) {
+                latestStatus = e['Статус'] === 'Отчетено' ? 'Отчетено' : e['Статус'];
+                if (oper) {
+                    if (e['Статус'] === 'Започната') activeOperators.add(oper);
+                    else activeOperators.delete(oper);
+                }
+            }
+        }
+        if (activeOperators.size > 0) return 'Започната';
+        return latestStatus;
+    }
 
     allCombinedReports.forEach(r => {
         let code = String(r['ID Детайл']).trim().toLowerCase();
@@ -433,6 +462,8 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 componentScrapEvents.push(r);
             } else {
                 opScrapEvents.push(r);
+                opStatusMap[key] = 'Брак';
+                pushStatusEvent(key, r);
             }
         } 
         else if (r['Статус'] === 'Отчетено') {
@@ -445,10 +476,10 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 grossCompletedOps[key] = (grossCompletedOps[key] || 0) + qty; 
             }
             opStatusMap[key] = 'Отчетено';
-            statusEvents.push(r);
-        } else if (r['Статус'] !== 'Брак') {
+            pushStatusEvent(key, r);
+        } else {
             opStatusMap[key] = r['Статус']; 
-            statusEvents.push(r);
+            pushStatusEvent(key, r);
         }
     });
 
@@ -538,17 +569,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
                 
                 let opState = 'gray';
                 
-                let latestStatus = 'Очаква се';
-                for (let i = statusEvents.length - 1; i >= 0; i--) {
-                    let e = statusEvents[i];
-                    if (String(e['ID Детайл']).trim().toLowerCase() === code.toLowerCase() && String(e['Операция'] || '').trim().toLowerCase() === opName.toLowerCase()) {
-                        let rawPIds = String(e['ID План'] || '').split(',').map(s=>s.trim()).filter(s=>s);
-                        if (rawPIds.length === 0 || rawPIds.some(pid => n.planDbIds.includes(pid))) {
-                            latestStatus = e['Статус'] === 'Отчетено' ? 'Отчетено' : e['Статус'];
-                            break;
-                        }
-                    }
-                }
+                let latestStatus = resolveLatestOpStatus(statusEventsByOp[opKey] || [], n.planDbIds);
                 
                 if (doneQty >= n.planQty) opState = 'green';
                 else if (doneQty > 0) opState = 'blue';

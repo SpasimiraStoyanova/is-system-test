@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="bg">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=5">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="monitor-montaj.js?v=9" defer></script>
+  <script src="monitor-montaj.js?v=10" defer></script>
   <style>
     .layout-wrapper {
       display: flex;
@@ -18,6 +19,7 @@
       box-sizing: border-box;
       overflow: hidden;
     }
+
     .window {
       flex: 1;
       display: flex;
@@ -28,6 +30,7 @@
       overflow: hidden;
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
     }
+
     .window-header {
       padding: 10px 15px;
       font-size: 1.1em;
@@ -39,6 +42,7 @@
       align-items: center;
       text-transform: uppercase;
     }
+
     .window-body {
       flex: 1;
       padding: 15px;
@@ -48,10 +52,12 @@
       gap: 15px;
       align-content: flex-start;
     }
+
     .node-card {
       width: 300px !important;
       margin-bottom: 0 !important;
     }
+
     h1#monitorTitle {
       margin: 0;
       padding: 0;
@@ -63,25 +69,29 @@
     }
   </style>
 </head>
+
 <body>
 
   <div id="loading">
     <div>Сглобяване на потока... ⚙️</div>
     <div id="error-box"></div>
   </div>
-  
+
   <div class="layout-wrapper">
     <h1 id="monitorTitle">Монитор Монтаж</h1>
-    
+
     <div class="lane" id="lane-resolvers" style="flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;">
-      <div class="window-header" style="border-top: 3px solid #3b82f6; background: linear-gradient(180deg, rgba(59,130,246,0.15) 0%, transparent 100%);">
+      <div class="window-header"
+        style="border-top: 3px solid #3b82f6; background: linear-gradient(180deg, rgba(59,130,246,0.15) 0%, transparent 100%);">
         РЕЗОЛВЕРИ
       </div>
       <div class="window-body" id="w-resolvers" style="flex: 1; padding-bottom: 20px;"></div>
     </div>
 
-    <div class="lane" id="lane-packets" style="margin-top: 15px; flex: 0 0 auto; max-height: 260px; display: flex; flex-direction: column;">
-      <div class="window-header" style="border-top: 3px solid #f59e0b; background: linear-gradient(180deg, rgba(245,158,11,0.15) 0%, transparent 100%);">
+    <div class="lane" id="lane-packets"
+      style="margin-top: 15px; flex: 0 0 auto; max-height: 260px; display: flex; flex-direction: column;">
+      <div class="window-header"
+        style="border-top: 3px solid #f59e0b; background: linear-gradient(180deg, rgba(245,158,11,0.15) 0%, transparent 100%);">
         ПАКЕТИ (РОТОРНИ / СТАТОРНИ)
       </div>
       <div class="window-body" id="w-packets" style="padding-bottom: 20px;"></div>
@@ -89,4 +99,5 @@
   </div>
 
 </body>
+
 </html>
