@@ -2729,10 +2729,20 @@ async function checkTerminalAndonAlerts() {
             if (ackList.includes(Number(req.id))) return false;
             
             let tMachine = req.target_machine || '';
+            let tPhase = '';
             try {
                 const tObj = JSON.parse(req.notes || '{}');
                 if (tObj.target_machine) tMachine = tObj.target_machine;
+                if (tObj.phase) tPhase = tObj.phase;
             } catch(e) {}
+
+            // ВАЖНО: Докато тече експресна ревизия (spot_audit_pending) или ако е установен надпис,
+            // на терминала НЕ се показва банер за доотчитане!
+            // Операторът на първата операция вижда САМО картата за ревизия (да преброи наличността).
+            // Доотчитане ще се поиска САМО след като ревизията потвърди транзит, и то от междинните операции (Оп. 20 / Оп. 30)!
+            if (tPhase === 'spot_audit_pending' || tPhase === 'over_reporting_detected') {
+                return false;
+            }
 
             return machineMatchesTarget(currentMachine, tMachine);
         });
@@ -2761,6 +2771,25 @@ async function checkTerminalAndonAlerts() {
         const reqOp = alertItem.op_name || '';
 
         if (tObj && tObj.type === 'discrepancy') {
+            let bodyText = '';
+            if (tObj.phase === 'reconciliation_cascade') {
+                bodyText = `
+                    🔍 <b>Ревизията на предходна операция (Оп. ${tObj.upstream_op_num || 10}) потвърди транзит на детайлите!</b>
+                    <br>
+                    По веригата за детайл <b style="color:#0369a1;">${targetPart}</b> липсва отчет от вашата операция (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>) за <b style="color:#c2410c;">${tObj.missing_qty || 10} бр.</b>
+                    <br><br>
+                    👉 <b>Към вас:</b> Моля, ако сте изработили бройките, натиснете зеления бутон долу за автоматично доотчитане на вашата операция и отпушване на веригата!
+                `;
+            } else {
+                bodyText = `
+                    Колегата <b>${reqOperator}</b> (машина <b>${reqMachine}</b>${reqOp ? ', оп. ' + reqOp : ''}) 
+                    отчете <b style="color: #16a34a; font-size: 1.1em;">${tObj.reported_qty || ''} бр.</b> от детайл <b style="color:#0369a1;">${targetPart}</b>, 
+                    но от вашата операция (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>) в системата са отчетени само <b>${tObj.prev_qty || 0} бр.</b> (липсват <b>${tObj.missing_qty || ''} бр.</b>)!
+                    <br><br>
+                    👉 <b>Към вас:</b> Моля, ако имате изработени детайли, доотчетете си бройките на <b>${targetOpNum ? 'Оп. ' + targetOpNum : ''} (${targetOpName})</b> на терминала!
+                `;
+            }
+
             banner.innerHTML = `
                 <div class="terminal-andon-alert" style="border-left: 6px solid #ea580c; background: #fff7ed;">
                     <div class="andon-header">
@@ -2771,11 +2800,7 @@ async function checkTerminalAndonAlerts() {
                         <span class="andon-badge" style="background: #ea580c; color: white;">Доотчитане</span>
                     </div>
                     <div class="andon-body" style="color: #1e293b;">
-                        Колегата <b>${reqOperator}</b> (машина <b>${reqMachine}</b>${reqOp ? ', оп. ' + reqOp : ''}) 
-                        отчете <b style="color: #16a34a; font-size: 1.1em;">${tObj.reported_qty || ''} бр.</b> от детайл <b style="color:#0369a1;">${targetPart}</b>, 
-                        но от вашата операция (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>) в системата са отчетени само <b>${tObj.prev_qty || 0} бр.</b> (липсват <b>${tObj.missing_qty || ''} бр.</b>)!
-                        <br><br>
-                        👉 <b>Към вас:</b> Моля, ако имате изработени детайли, доотчетете си бройките на <b>${targetOpNum ? 'Оп. ' + targetOpNum : ''} (${targetOpName})</b> на терминала!
+                        ${bodyText}
                     </div>
                     <div class="andon-actions" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                         <button type="button" class="andon-ack-btn" onclick="openDirectReconcileModal(${alertItem.id})" style="background: #16a34a; font-weight: 900; font-size: 0.95em; box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);">

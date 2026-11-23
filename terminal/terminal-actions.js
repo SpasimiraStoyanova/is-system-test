@@ -514,7 +514,7 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
                 is_prev_op: isPrevOp,
                 reported_by_part: taskData.name,
                 reported_qty: val,
-                prev_qty: prevStock,
+                prev_qty: (rootOrigin && rootOrigin.isAnomaly) ? (rootOrigin.anomaly.upstreamOp.reportedQty || rootOrigin.anomaly.upstreamOp.availStock || 0) : prevStock,
                 missing_qty: missingQty,
                 reported_by_operator: currentOperator,
                 reported_by_op_num: taskData.opNum,
