@@ -550,7 +550,7 @@ async function checkAdminSpotAudits() {
         const { data, error } = await client
             .from('spot_audits')
             .select('id, status, created_at, answered_at')
-            .in('status', ['DISCREPANCY', 'MATCH'])
+            .in('status', ['DISCREPANCY', 'MATCH', 'TRANSIT_CONFIRMED'])
             .gte('created_at', today.toISOString());
 
         if (error) return;
@@ -634,6 +634,31 @@ function initAdminSpotAuditRealtime() {
                         if (res.isConfirmed) {
                             openAdminSpotAuditModal();
                         }
+                    });
+                } else if (newRow.status === 'TRANSIT_CONFIRMED') {
+                    if (typeof playNotificationChime === 'function') playNotificationChime();
+                    Swal.fire({
+                        title: '🟢 Потвърден транзит на детайли!',
+                        html: `
+                            <div style="font-size:1.02em; line-height:1.5; color:#1e293b; text-align:left; background:#f0fdf4; border:1.5px solid #86efac; border-radius:10px; padding:14px; margin-top:8px;">
+                                <div>👷 <b>Работник:</b> <span style="color:#15803d; font-weight:800; font-size:1.1em;">${newRow.worker_name || 'ОПЕРАТОР'}</span> (няма грешка на това работно място)</div>
+                                <div>🏭 <b>Работно място:</b> <b>${newRow.target_machine}</b></div>
+                                <div>📦 <b>Детайл:</b> <b>${newRow.part_code}</b> (${newRow.operation})</div>
+                                <hr style="border:none; border-top:1px dashed #86efac; margin:10px 0;">
+                                <div style="font-size:1.02em; color:#166534; font-weight:800;">
+                                    ✅ Проверката потвърди: бройките са изработени тук и са преминали транзит напред!
+                                </div>
+                                <div style="font-size:0.86em; color:#64748b; margin-top:6px;">
+                                    Няма разминаване на Оп. ${newRow.operation}. Системата насочи известието за доотчитане към следващите операции.
+                                </div>
+                            </div>
+                        `,
+                        icon: 'info',
+                        showCancelButton: false,
+                        confirmButtonColor: '#16a34a',
+                        confirmButtonText: 'Супер, разбрах'
+                    }).then((res) => {
+                        markAuditAsReadInAdmin(newRow.id);
                     });
                 } else if (newRow.status === 'MATCH') {
                     if (typeof playNotificationChime === 'function') playNotificationChime();
@@ -836,6 +861,10 @@ function renderAdminSpotAuditTable() {
             statusHtml = `<span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 8px; border-radius:6px; font-size:0.82em; font-weight:800;">🟢 Точно съвпадение</span>`;
             reportedText = `<b>${a.reported_qty} бр.</b>`;
             diffText = `<span style="color:#16a34a; font-weight:800;">0 бр.</span>`;
+        } else if (a.status === 'TRANSIT_CONFIRMED') {
+            statusHtml = `<span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 8px; border-radius:6px; font-size:0.82em; font-weight:800;">🟢 Потвърден транзит</span>`;
+            reportedText = `<b>${a.reported_qty} бр.</b>`;
+            diffText = `<span style="color:#16a34a; font-weight:800;">Транзит (Няма детайли)</span>`;
         } else if (a.status === 'DISCREPANCY') {
             let diffVal = parseFloat(a.difference_qty) || 0;
             let diffSign = diffVal > 0 ? '+' : '';

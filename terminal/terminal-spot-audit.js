@@ -464,15 +464,23 @@ async function submitSpotAuditResponse(auditId, expectedQty, reportedQty) {
             auditNotes = JSON.parse((targetAudit && targetAudit.notes) || '{}');
         } catch(e) {}
 
-        const worker = currentOperator || 'ОПЕРАТОР';
-        const nowIso = new Date().toISOString();
-        const status = isDiscrepancy ? 'DISCREPANCY' : 'MATCH';
+        const isAutoDeficit = (auditNotes && auditNotes.type === 'auto_deficit_check');
+        let status = isDiscrepancy ? 'DISCREPANCY' : 'MATCH';
+        let diffQtyForSave = diff;
+
+        if (isAutoDeficit && reportedQty === 0) {
+            // При ревизия за дефицит, 0 бр. означава, че бройките са преминали транзит!
+            // Това НЕ Е черна точка за Оп. 10, а потвърждение, че детайлите са предадени напред,
+            // а грешката е в пропуснатия отчет на междинните операции (Оп. 20 / Оп. 30).
+            status = 'TRANSIT_CONFIRMED';
+            diffQtyForSave = 0;
+        }
 
         const { error } = await client
             .from('spot_audits')
             .update({
                 reported_qty: reportedQty,
-                difference_qty: diff,
+                difference_qty: diffQtyForSave,
                 status: status,
                 worker_name: worker,
                 answered_at: nowIso
@@ -482,7 +490,7 @@ async function submitSpotAuditResponse(auditId, expectedQty, reportedQty) {
         if (error) throw error;
 
         // Автоматична обработка при ревизия за дефицит
-        if (auditNotes && auditNotes.type === 'auto_deficit_check') {
+        if (isAutoDeficit) {
             await handleAutoDeficitAuditResult(targetAudit, auditNotes, reportedQty, worker);
         }
 
@@ -490,13 +498,23 @@ async function submitSpotAuditResponse(auditId, expectedQty, reportedQty) {
 
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
-        await Swal.fire({
-            icon: 'success',
-            title: 'Ревизията е записана!',
-            html: `Отчетът беше записан успешно на името на:<br><b style="color:#4338ca; font-size:1.15em;">${worker}</b><br><small style="color:#64748b;">Дата и час: ${new Date().toLocaleTimeString('bg-BG')}</small>`,
-            timer: 2000,
-            showConfirmButton: false
-        });
+        if (status === 'TRANSIT_CONFIRMED') {
+            await Swal.fire({
+                icon: 'info',
+                title: '🟢 Потвърден транзит!',
+                html: `Потвърдихте, че детайлите не са пред машината.<br><b style="color:#16a34a; font-size:1.05em;">Нямате грешка в отчитането!</b><br><br><span style="color:#475569; font-size:0.9em;">Системата прехвърля доотчитането към следващите операции по веригата.</span>`,
+                timer: 3000,
+                showConfirmButton: false
+            });
+        } else {
+            await Swal.fire({
+                icon: 'success',
+                title: 'Ревизията е записана!',
+                html: `Отчетът беше записан успешно на името на:<br><b style="color:#4338ca; font-size:1.15em;">${worker}</b><br><small style="color:#64748b;">Дата и час: ${new Date().toLocaleTimeString('bg-BG')}</small>`,
+                timer: 2000,
+                showConfirmButton: false
+            });
+        }
 
         // Премахваме банера от екрана
         const card = document.getElementById('spot_card_' + auditId);
@@ -554,18 +572,10 @@ async function handleAutoDeficitAuditResult(audit, auditNotes, reportedQty, work
 
         if (reportedQty === 0) {
             // СЛУЧАЙ А: Работникът на Оп. 10 потвърждава 0 бр. налични (детайлите са преминали транзит!)
-            // 1. Нулираме буфера на Оп. 10 в inventory (тъй като физически детайлите са напуснали тази операция)
-            try {
-                await client
-                    .from('inventory')
-                    .update({ 'Количество': 0 })
-                    .ilike('ID Детайл', partName.trim())
-                    .ilike('Операция', upstreamOpName.trim());
-            } catch(invErr) {
-                console.warn('Inventory adjust error:', invErr);
-            }
+            // ВАЖНО: Не пипаме ръчно inventory на Оп. 10, защото когато Оп. 20 доотчете своите 10 бр.,
+            // тригерът в базата автоматично ще извади 10 бр. от Оп. 10 (10 - 10 = 0) и всичко ще се изравни точно!
 
-            // 2. Насочваме каскадата към първата междинна операция (напр. Оп. 20 Пудрене 2)
+            // Насочваме каскадата към първата междинна операция (напр. Оп. 20 Пудрене 2)
             if (intermediateOps.length > 0) {
                 const nextOp = intermediateOps[0];
                 const remainingOps = intermediateOps.slice(1);
