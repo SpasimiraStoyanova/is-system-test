@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="icon" type="image/png" href="icon.png">
-    <link rel="stylesheet" href="terminal/terminal.css?v=25">
+    <link rel="stylesheet" href="terminal/terminal.css?v=26">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
@@ -93,7 +93,7 @@
         <button class="history-toggle-btn" onclick="toggleHistory()">🕒</button>
         <div class="local-history" id="historyPanel">
           <button onclick="toggleHistory()" style="position: absolute; top: 10px; right: 10px; background: transparent; border: none; font-size: 16px; color: #94a3b8; font-weight: bold;">✖</button>
-          <h4>🕒 История на този телефон</h4>
+          <h4>🕒 История (последни 10)</h4>
           <ul id="historyList" class="history-list"><li class="history-item" style="color:#94a3b8; text-align:center;">Няма скорошни действия</li></ul>
         </div>
 
@@ -211,7 +211,7 @@
 
     <script src="terminal/terminal-core.js?v=19"></script>
     <script src="terminal/terminal-tasks.js?v=4.54"></script>
-    <script src="terminal/terminal-actions.js?v=30"></script>
+    <script src="terminal/terminal-actions.js?v=31"></script>
     <script src="terminal/terminal-calendar.js?v=3" defer></script>
     <script src="terminal/terminal-dossier.js?v=9"></script>
     <script src="terminal/terminal-spot-audit.js?v=10"></script>

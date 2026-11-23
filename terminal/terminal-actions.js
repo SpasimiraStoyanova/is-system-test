@@ -55,6 +55,9 @@ async function loadHistoryFromDB() {
                 };
             });
             updateHistoryUI();
+        } else if (data && data.length === 0) {
+            localHistoryData = [];
+            updateHistoryUI();
         }
     } catch (e) {
         console.error("Грешка при зареждане на история от базата:", e);
@@ -65,7 +68,10 @@ async function loadHistoryFromDB() {
 function toggleHistory() { 
     var panel = document.getElementById('historyPanel'); 
     panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none'; 
-    if(panel.style.display === 'block') document.getElementById('messagesPanel').style.display = 'none';
+    if(panel.style.display === 'block') {
+        document.getElementById('messagesPanel').style.display = 'none';
+        if (typeof loadHistoryFromDB === 'function') loadHistoryFromDB();
+    }
 }
 
 async function toggleMessages() {

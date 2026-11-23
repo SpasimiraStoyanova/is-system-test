@@ -559,7 +559,8 @@ input[type="number"]:focus {
   border: 1px solid var(--border-strong);
   padding: 16px 14px;
   border-radius: 14px;
-  width: 310px;
+  width: 330px;
+  max-width: calc(100vw - 40px);
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
   font-size: 13px;
   z-index: 9000;
@@ -572,14 +573,26 @@ input[type="number"]:focus {
   text-align: center;
   border-bottom: 1px solid var(--border-subtle);
   padding-bottom: 8px;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .history-list {
   list-style: none;
   padding: 0;
   margin: 0;
-  max-height: 220px;
+  max-height: min(420px, 60vh);
   overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
 }
 
 .history-item {
