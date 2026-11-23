@@ -1909,14 +1909,18 @@ async function saveForm(e) {
                     Swal.fire({ title: 'Запазване на буфер...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
                     let currentBuffer = 0;
                     let currentScrap = 0;
-                    const { data: bufData } = await client.from('sklad_bufferi').select('Буфер, "% Брак"').eq('ID Детайл', det);
+                    let queryBuf = client.from('sklad_bufferi').select('Буфер, "% Брак"').eq('ID Детайл', det);
+                    if (op) queryBuf = queryBuf.eq('Операция', op);
+                    const { data: bufData } = await queryBuf;
                     if (bufData && bufData.length > 0) {
                         currentBuffer = parseFloat(bufData[0]['Буфер']) || 0;
                         currentScrap = parseFloat(bufData[0]['% Брак']) || 0;
                     }
                     const newBufferTotal = currentBuffer + bufferQty;
                     const newScrap = scrapInput !== "" ? parseFloat(scrapInput) : currentScrap;
-                    await client.from('sklad_bufferi').delete().eq('ID Детайл', det);
+                    let delBuf = client.from('sklad_bufferi').delete().eq('ID Детайл', det);
+                    if (op) delBuf = delBuf.eq('Операция', op);
+                    await delBuf;
                     const { error: bufError } = await client.from('sklad_bufferi').insert([{ "ID Детайл": det, "Операция": op, "Буфер": newBufferTotal, "% Брак": newScrap }]);
                     if (bufError) throw bufError;
                 }
@@ -1972,7 +1976,9 @@ async function saveForm(e) {
                 }
 
 
-                await client.from('sklad_bufferi').delete().eq('ID Детайл', det);
+                let delBuf = client.from('sklad_bufferi').delete().eq('ID Детайл', det);
+                if (op) delBuf = delBuf.eq('Операция', op);
+                await delBuf;
                 const { error: bufError } = await client.from('sklad_bufferi').insert([{ "ID Детайл": det, "Операция": op, "Буфер": newBuffer, "% Брак": newScrap }]);
                 if (bufError) throw bufError;
 

@@ -5,6 +5,33 @@ function normalizeStr(str) {
     return String(str).replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
 }
 
+function isBufferOpMatch(targetOpStr, route) {
+    if (!targetOpStr || !route) return false;
+    let t = normalizeStr(targetOpStr);
+    let rName = normalizeStr(route['Име на операция']);
+    if (t === rName) return true;
+    
+    // Finished goods buffer indicators apply to the whole route, not a single operation
+    if (['готов продукт', 'склад готови детайли', 'готов детайл', 'склад'].includes(t)) {
+        return false;
+    }
+    
+    // Clean "оп. 20 - ", "оп. 20 ", "оп 20 ", "20 - ", "20. ", etc.
+    let cleanT = t.replace(/^(?:оп\.?\s*)?\d+[\s\.\-_:]*/i, '').trim();
+    let cleanR = rName.replace(/^(?:оп\.?\s*)?\d+[\s\.\-_:]*/i, '').trim();
+    if (cleanT && cleanR && (cleanT === cleanR || cleanT.includes(cleanR) || cleanR.includes(cleanT))) {
+        return true;
+    }
+    
+    // Match by operation number if present in targetOpStr (e.g. "Оп. 20" or "20" vs route['№ Операция'])
+    let tNumMatch = targetOpStr.match(/(?:оп\.?\s*|^)(\d+)\b/i);
+    let rNum = String(route['№ Операция'] || '').trim();
+    if (tNumMatch && rNum && tNumMatch[1] === rNum) {
+        return true;
+    }
+    return false;
+}
+
 function escapeHtml(str) {
     if (!str) return '';
     return String(str)
@@ -680,7 +707,9 @@ async function loadTasks(isSilent = false) {
           let routes = globalRoutesByDetail[code] || [];
           
           let bufferOpTarget = bufferOpMap[code];
-          let reachedBufferOp = !bufferOpTarget;
+          let isFinishedGoodsBuffer = !bufferOpTarget || 
+              ['готов продукт', 'склад готови детайли', 'готов детайл', 'склад', ''].includes(normalizeStr(bufferOpTarget));
+          let reachedBufferOp = isFinishedGoodsBuffer;
           
           if (routes.length > 0) {
               for (let i = routes.length - 1; i >= 0; i--) {
@@ -689,8 +718,10 @@ async function loadTasks(isSilent = false) {
                   let opName = normalizeStr(opNameRaw);
                   let opKey = code + '_' + opName;
                   
-                  if (!reachedBufferOp && bufferOpTarget && normalizeStr(bufferOpTarget) === opName) {
-                      reachedBufferOp = true;
+                  if (!reachedBufferOp && bufferOpTarget) {
+                      if (isBufferOpMatch(bufferOpTarget, route)) {
+                          reachedBufferOp = true;
+                      }
                   }
                   
                   let availableHere = physicalStock[opKey] || 0; 
