@@ -399,9 +399,14 @@ function renderMaterialRequestsList() {
         let targetDetailHtml = '';
         if (isDiscrepancy) {
             const missingTargetDesc = tPart ? `от детайл <b>${tPart}</b> (${tOpName || tMachine})` : `на предходната Оп. ${tOpNum} (${tOpName})`;
+            const prevQtyVal = (targetObj && targetObj.prev_qty !== undefined && targetObj.prev_qty !== null && targetObj.prev_qty !== '') 
+                ? targetObj.prev_qty 
+                : (targetObj && targetObj.missing_qty && targetObj.reported_qty ? Math.max(0, targetObj.reported_qty - targetObj.missing_qty) : 0);
+            const opNumTxt = (targetObj && targetObj.reported_by_op_num ? `Оп. ${targetObj.reported_by_op_num} - ` : '');
+
             targetDetailHtml = `
                 <div style="background: #fff7ed; border: 1.5px solid #fed7aa; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; color: #9a3412; line-height: 1.5;">
-                    👉 <b>Разминаване в наличността:</b> За детайл <b>${req.part_name}</b> (Оп. ${targetObj.reported_by_op_num || ''} - ${req.op_name}) са отчетени <b>${targetObj.reported_qty} бр.</b>, но в системата ${missingTargetDesc} има само <b>${targetObj.prev_qty} бр.</b> (липсват <b>${targetObj.missing_qty} бр.</b>)!<br>
+                    👉 <b>Разминаване в наличността:</b> За детайл <b>${req.part_name}</b> (${opNumTxt}${req.op_name}) са отчетени <b>${targetObj.reported_qty} бр.</b>, но в системата ${missingTargetDesc} има само <b>${prevQtyVal} бр.</b> (липсват <b>${targetObj.missing_qty} бр.</b>)!<br>
                     Работно място / Направление: <b>${tMachine}</b> &bull; Засегнат: <b>${targetObj.target_operator || 'колега / склад'}</b>
                     ${(targetObj.intermediate_machine && targetObj.intermediate_machine !== tMachine) ? `<div style="margin-top:4px; font-size:0.82em; color:#64748b;">ℹ️ Транзитно работно място: <b>${targetObj.intermediate_machine}</b> (${targetObj.intermediate_part || ''}${targetObj.intermediate_op_num ? ' / Оп. ' + targetObj.intermediate_op_num : ''})</div>` : ''}
                     ${(targetObj.chain && targetObj.chain.length > 0) ? `<div style="margin-top:6px; font-size:0.82em; color:#0369a1; background:#f0f9ff; border:1px solid #bae6fd; padding:4px 8px; border-radius:6px;">🔗 <b>Верига назад:</b> ${targetObj.chain.join(' ⬅️ ')}</div>` : ''}
@@ -425,20 +430,22 @@ function renderMaterialRequestsList() {
             `;
         }
 
+        const machineDisplay = (req.machine && req.machine.includes(',') && req.machine.length > 40) ? 'Всички машини' : (req.machine || 'Обща');
+
         html += `
             <div style="background: ${cardBg}; border: 1px solid #e2e8f0; ${cardBorder} border-radius: 12px; padding: 14px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
                     <div>
                         <div style="font-size: 1.15em; font-weight: 900; color: #0f172a;">${req.part_name} <span style="font-weight: 600; color: #64748b; font-size: 0.85em;">(${req.op_name || 'Операция'})</span></div>
                         <div style="font-size: 0.85em; color: #475569; margin-top: 2px;">
-                            Чака на машина: <b style="color: #1e3a8a;">${req.machine || 'Обща'}</b> &bull; Заявил: <b>${req.operator || 'Оператор'}</b> &bull; 🕒 ${dateStr}
+                            Чака на машина: <b style="color: #1e3a8a;">${machineDisplay}</b> &bull; Заявил: <b>${req.operator || 'Оператор'}</b> &bull; 🕒 ${dateStr}
                         </div>
                     </div>
                     <div>${statusPill}</div>
                 </div>
 
-                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 12px; font-size: 0.88em; color: #991b1b; font-weight: 700;">
-                    Липсва: ${req.reasons || 'Наличност: 0'}
+                <div style="background: ${isPending ? '#fff7ed' : '#f0fdf4'}; border: 1px solid ${isPending ? '#fed7aa' : '#bbf7d0'}; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; color: ${isPending ? '#9a3412' : '#166534'}; font-weight: 700; line-height: 1.4;">
+                    ${isDiscrepancy ? (isPending ? '⚠️ <b>Статус на разминаването:</b> ' : '✅ <b>Резултат:</b> ') : '📦 <b>Липсва:</b> '} ${req.reasons || 'Наличност: 0'}
                 </div>
 
                 ${targetDetailHtml}

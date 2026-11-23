@@ -2529,6 +2529,7 @@ window.autoResolveAndonForTask = async function(taskData, val) {
                             .from('material_requests')
                             .update({
                                 status: 'Осигурена',
+                                reasons: `Разминаването е напълно разрешено: липсващите ${val} бр. са доотчетени успешно по веригата. Дефицитът е изравнен и занулен в склада!`,
                                 resolved_at: new Date().toISOString(),
                                 resolved_by: `${currentOperator || 'Оператор'} (доотчетени ${val} бр., дефицитът е изравнен)`
                             })
