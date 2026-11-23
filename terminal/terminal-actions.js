@@ -376,6 +376,30 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
 
         let intermediateOp = null;
         let rootOrigin = null;
+
+        // Преди анализ презареждаме реалния актуален инвентар от базата, за да сме сигурни в точните наличности
+        try {
+            const { data: freshInv } = await client.from('inventory').select('*');
+            if (freshInv && freshInv.length > 0) {
+                const freshStock = {};
+                freshInv.forEach(r => {
+                    const code = normalizeStr(r['ID Детайл']);
+                    let op = normalizeStr(r['Операция']);
+                    if (op === 'готов продукт') {
+                        const routes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[code]) ? globalRoutesByDetail[code] : [];
+                        if (routes && routes.length > 0) {
+                            op = normalizeStr(routes[routes.length - 1]['Име на операция']);
+                        }
+                    }
+                    const key = code + '_' + op;
+                    freshStock[key] = (freshStock[key] || 0) + (parseFloat(r['Количество']) || 0);
+                });
+                window.globalPhysicalStock = freshStock;
+            }
+        } catch(invRefreshErr) {
+            console.warn('Could not refresh inventory in sendDiscrepancyAlerts:', invRefreshErr);
+        }
+
         if (typeof window.traceRootDeficitOrigin === 'function') {
             rootOrigin = window.traceRootDeficitOrigin(taskData.name, taskData.opNum, taskData.op, missingQty);
         }

@@ -452,7 +452,13 @@ async function submitSpotAuditResponse(auditId, expectedQty, reportedQty) {
     Swal.fire({ title: 'Запис на ревизията...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
     try {
-        const targetAudit = activeSpotAudits.find(a => a.id === auditId);
+        let targetAudit = activeSpotAudits.find(a => a.id === auditId);
+        if (!targetAudit) {
+            try {
+                const { data } = await client.from('spot_audits').select('*').eq('id', auditId).single();
+                if (data) targetAudit = data;
+            } catch(e) {}
+        }
         let auditNotes = {};
         try {
             auditNotes = JSON.parse((targetAudit && targetAudit.notes) || '{}');

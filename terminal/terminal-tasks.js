@@ -465,21 +465,23 @@ async function loadTasks(isSilent = false) {
           planRoots[groupKey][rootItem] = (planRoots[groupKey][rootItem] || 0) + targetQty;
       });
 
-      let physicalStock = {}; window.globalPhysicalStock = physicalStock; 
+      let rawPhysicalStock = {};
       if (invRes.data) {
           invRes.data.forEach(r => {
               let code = normalizeStr(r['ID Детайл']);
               let op = normalizeStr(r['Операция']);
               if (op === 'готов продукт') {
-                  let routes = globalRoutesByDetail[code];
+                  let routes = (globalRoutesByDetail && globalRoutesByDetail[code]) ? globalRoutesByDetail[code] : [];
                   if (routes && routes.length > 0) {
                       op = normalizeStr(routes[routes.length - 1]['Име на операция']);
                   }
               }
               let key = code + '_' + op;
-              physicalStock[key] = (physicalStock[key] || 0) + (parseFloat(r['Количество']) || 0);
+              rawPhysicalStock[key] = (rawPhysicalStock[key] || 0) + (parseFloat(r['Количество']) || 0);
           });
       }
+      window.globalPhysicalStock = { ...rawPhysicalStock };
+      let physicalStock = { ...rawPhysicalStock };
 
       let getDepth = (item, visited = new Set()) => {
           if (depths[item] !== undefined) return depths[item];
@@ -1857,10 +1859,27 @@ window.findRouteBufferAnomaly = function(partName, curOpNum, curOpName, missingQ
 
     const stockMap = window.globalPhysicalStock || {};
 
-    let upstreamWithBuffer = null;
     let intermediateOps = [];
+    const prevOp = routes[curIndex - 1];
+    const prevOpNum = parseInt(prevOp['№ Операция']) || curIndex * 10;
+    const prevOpName = String(prevOp['Име на операция']).trim();
+    const prevMachine = prevOp['Машина'] || 'Обща';
+    const prevStockKey = norm + '_' + normalizeStr(prevOpName);
+    const prevAvail = (stockMap[prevStockKey] !== undefined) ? stockMap[prevStockKey] : 0;
 
-    for (let i = curIndex - 1; i >= 0; i--) {
+    // Непосредствено предходната операция е първата междинна операция в дефицит!
+    intermediateOps.unshift({
+        index: curIndex - 1,
+        opNum: prevOpNum,
+        opName: prevOpName,
+        machine: prevMachine,
+        availStock: prevAvail
+    });
+
+    let upstreamWithBuffer = null;
+
+    // Търсим СТРОГО нагоре от непосредствено предходната операция (curIndex - 2 надолу до 0)
+    for (let i = curIndex - 2; i >= 0; i--) {
         const op = routes[i];
         const opName = String(op['Име на операция']).trim();
         const opNum = parseInt(op['№ Операция']) || (i + 1) * 10;
@@ -1998,6 +2017,30 @@ window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1
     }
 
     // 2. СТИГНАЛИ СМЕ ДО ПЪРВАТА ОПЕРАЦИЯ НА ТОЗИ ДЕТАЙЛ (или няма маршрут)
+    if (curIndex === 0 && routes.length > 0) {
+        const firstOp = routes[0];
+        const firstOpNum = firstOp['№ Операция'];
+        const firstOpName = String(firstOp['Име на операция']).trim();
+        const firstMachine = firstOp['Машина'] || 'Обща';
+        const firstStockKey = norm + '_' + normalizeStr(firstOpName);
+        const firstAvail = (stockMap[firstStockKey] !== undefined) ? stockMap[firstStockKey] : 0;
+
+        // Ако на Оп. 10 все още има наличен буфер, дефицитът НЕ идва от BOM децата!
+        if (firstAvail >= missingQty || firstAvail > 0) {
+            return {
+                rootPart: partName,
+                rootOpNum: firstOpNum,
+                rootOpName: firstOpName,
+                rootMachine: firstMachine,
+                isChild: false,
+                isRaw: false,
+                chain: [`${partName} (Оп. ${firstOpNum} ${firstOpName} / ${firstMachine})`],
+                intermediate: null,
+                reason: `Наличен буфер от ${firstAvail} бр. на Оп. ${firstOpNum} (${firstOpName}) на ${firstMachine}`
+            };
+        }
+    }
+
     const bomData = (typeof globalBomData !== 'undefined' && globalBomData) ? globalBomData : [];
     const children = bomData.filter(b => normalizeStr(b['ID Родител']) === norm);
 
@@ -2028,8 +2071,8 @@ window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1
             });
         }
 
-        const defChildWithRoute = missingChildren.find(c => c.routes.length > 0 && c.stock < (missingQty * c.multiplier))
-            || missingChildren.find(c => c.routes.length > 0);
+        // КРИТИЧНО: Избираме BOM детайл САМО ако РЕАЛНО липсват бройки от него (stock < required)!
+        const defChildWithRoute = missingChildren.find(c => c.routes.length > 0 && c.stock < (missingQty * c.multiplier));
 
         if (defChildWithRoute) {
             // Спираме на първото BOM ниво, което има маршрутна карта (произвеждан детайл)!
