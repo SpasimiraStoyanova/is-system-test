@@ -1540,6 +1540,47 @@ async function loadTasks(isSilent = false) {
           Swal.fire('Задачата е изпълнена', 'Някой друг току-що завърши тази задача!', 'info');
       }
 
+      // Зареждане на извънредни задачи за доотчитане на дефицит (независими от месечния план)
+      let emergencyReconcileTasks = [];
+      try {
+          const { data: mReqs } = await client
+              .from('material_requests')
+              .select('*')
+              .eq('status', 'Чакаща')
+              .order('created_at', { ascending: false });
+
+          if (mReqs && mReqs.length > 0) {
+              mReqs.forEach(req => {
+                  let tObj = {};
+                  try { tObj = JSON.parse(req.notes || '{}'); } catch(e) {}
+                  if (tObj && tObj.type === 'discrepancy' && tObj.phase === 'reconciliation_cascade') {
+                      let tMachine = tObj.target_machine || req.target_machine;
+                      if (machineMatchesTarget(currentMachine, tMachine)) {
+                          emergencyReconcileTasks.push({
+                              id: 'reconcile_task_' + req.id,
+                              realReqId: req.id,
+                              isEmergencyReconcile: true,
+                              name: tObj.target_part || req.target_part || req.part_name,
+                              op: tObj.target_op_name || req.target_op_name || req.op_name,
+                              opNum: tObj.target_op_num || req.target_op_num || '',
+                              machine: tMachine,
+                              targetQty: parseFloat(tObj.missing_qty) || 10,
+                              missingQty: parseFloat(tObj.missing_qty) || 10,
+                              reportedBy: req.operator || 'Колега',
+                              plan_name: 'ДООТЧИТАНЕ НА ДЕФИЦИТ',
+                              isBlocked: false,
+                              hasLimit: false
+                          });
+                      }
+                  }
+              });
+          }
+      } catch(e) {
+          console.warn('Error loading emergency reconcile requests:', e);
+      }
+
+      window.globalEmergencyReconcileTasks = emergencyReconcileTasks;
+
       renderTasks(globalTasks);
       if (typeof checkPendingSpotAudits === 'function') {
           checkPendingSpotAudits();
@@ -1568,6 +1609,11 @@ function renderTasks(tasks) {
   if (currentTaskFilter === 'ready') filteredTasks = visibleTasks.filter(t => !t.isBlocked);
   else if (currentTaskFilter === 'taken') filteredTasks = visibleTasks.filter(t => t.isTaken);
 
+  // Извънредни карти за доотчитане: показват се най-отгоре на свободните/всички задачи
+  if (currentTaskFilter !== 'taken' && window.globalEmergencyReconcileTasks && window.globalEmergencyReconcileTasks.length > 0) {
+      filteredTasks = [...window.globalEmergencyReconcileTasks, ...filteredTasks];
+  }
+
   if(filteredTasks.length === 0) { 
       if (currentTaskFilter === 'taken') {
           container.innerHTML = `
@@ -1588,6 +1634,37 @@ function renderTasks(tasks) {
 
   var html = '';
   filteredTasks.forEach(function(t) {
+    if (t.isEmergencyReconcile) {
+        html += `
+            <div class="task-card" style="border-left: 8px solid #ea580c; background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border-radius: 14px; padding: 18px; margin-bottom: 16px; box-shadow: 0 4px 15px rgba(234, 88, 12, 0.15); animation: pulseBorder 2.5s infinite;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:6px;">
+                    <span style="background:#ea580c; color:white; font-weight:900; font-size:0.85em; padding:3px 12px; border-radius:12px; text-transform:uppercase; letter-spacing:0.5px;">
+                        ⚠️ ИЗВЪНРЕДНО ДООТЧИТАНЕ
+                    </span>
+                    <span style="font-size:0.88em; color:#9a3412; font-weight:800;">
+                        Липсващи бройки: <b style="font-size:1.2em; color:#c2410c;">${t.missingQty} бр.</b>
+                    </span>
+                </div>
+                <div style="background:white; border-radius:10px; padding:12px 14px; border:1px solid #fed7aa; margin-bottom:12px;">
+                    <div style="font-size:1.25em; font-weight:900; color:#1e293b; margin-bottom:4px;">
+                        📦 Детайл: <span style="color:#0369a1;">${t.name}</span>
+                    </div>
+                    <div style="font-size:1.05em; font-weight:800; color:#475569;">
+                        ⚙️ Операция: <span style="color:#16a34a;">${t.opNum ? 'Оп. ' + t.opNum + ' - ' : ''}${t.op}</span>
+                    </div>
+                    <div style="font-size:0.85em; color:#64748b; margin-top:4px;">
+                        Работно място: <b>${t.machine}</b>
+                    </div>
+                </div>
+                <button type="button" onclick="openDirectReconcileModal(${t.realReqId})" style="
+                    width:100%; background:#16a34a; color:white; border:none; padding:14px; border-radius:10px; font-weight:900; font-size:1.15em; cursor:pointer; box-shadow:0 4px 12px rgba(22, 163, 74, 0.35); display:flex; align-items:center; justify-content:center; gap:8px;
+                ">
+                    <span>📝 ДООТЧЕТИ ${t.missingQty} бр. СЕГА</span>
+                </button>
+            </div>
+        `;
+        return;
+    }
     let borderStyle = t.isGreenCard ? 'border-left: 6px solid #16a34a;' : 'border-left: 6px solid #3b82f6;';
     let badgeStyle = t.isGreenCard ? 'background-color:#16a34a;' : '';
     let actionButtonBg = '#2563eb';
@@ -1758,6 +1835,65 @@ function renderTasks(tasks) {
 
 let currentRenderedTasksMap = {};
 
+window.findRouteBufferAnomaly = function(partName, curOpNum, curOpName, missingQty = 1) {
+    if (!partName) return null;
+    const norm = normalizeStr(partName);
+    const routes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[norm]) 
+        ? globalRoutesByDetail[norm] 
+        : [];
+    if (!routes || routes.length <= 1) return null;
+
+    let curIndex = -1;
+    if (curOpNum) curIndex = routes.findIndex(r => parseInt(r['№ Операция']) === parseInt(curOpNum));
+    if (curIndex === -1 && curOpName) curIndex = routes.findIndex(r => normalizeStr(r['Име на операция']) === normalizeStr(curOpName));
+    if (curIndex <= 0) return null;
+
+    const stockMap = window.globalPhysicalStock || {};
+
+    let upstreamWithBuffer = null;
+    let intermediateOps = [];
+
+    for (let i = curIndex - 1; i >= 0; i--) {
+        const op = routes[i];
+        const opName = String(op['Име на операция']).trim();
+        const opNum = parseInt(op['№ Операция']) || (i + 1) * 10;
+        const machine = op['Машина'] || 'Обща';
+        const stockKey = norm + '_' + normalizeStr(opName);
+        const avail = (stockMap[stockKey] !== undefined) ? stockMap[stockKey] : 0;
+
+        if (avail >= missingQty || avail > 0) {
+            upstreamWithBuffer = {
+                index: i,
+                opNum: opNum,
+                opName: opName,
+                machine: machine,
+                availStock: avail
+            };
+            break;
+        } else {
+            intermediateOps.unshift({
+                index: i,
+                opNum: opNum,
+                opName: opName,
+                machine: machine,
+                availStock: avail
+            });
+        }
+    }
+
+    if (upstreamWithBuffer) {
+        return {
+            partName: partName,
+            reportedOpNum: curOpNum,
+            reportedOpName: curOpName,
+            missingQty: missingQty,
+            upstreamOp: upstreamWithBuffer,
+            intermediateOps: intermediateOps
+        };
+    }
+    return null;
+};
+
 window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1, visited = new Set()) {
     if (!partName) return null;
     const norm = normalizeStr(partName);
@@ -1765,6 +1901,32 @@ window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1
     const visitKey = norm + '_' + (opNum || opNorm);
     if (visited.has(visitKey)) return null;
     visited.add(visitKey);
+
+    // 0. ПРОВЕРКА ЗА СКАЧЕНИ СЪДОВЕ (ОСТАНАЛ БУФЕР НАГОРЕ ПО МАРШРУТА НА ТОЗИ ДЕТАЙЛ)
+    if (visited.size <= 1) {
+        const anomaly = window.findRouteBufferAnomaly(partName, opNum, opName, missingQty);
+        if (anomaly) {
+            const chain = [
+                `${partName} (Оп. ${anomaly.upstreamOp.opNum} ${anomaly.upstreamOp.opName} / ${anomaly.upstreamOp.machine})`,
+                ...anomaly.intermediateOps.map(o => `${partName} (Оп. ${o.opNum} ${o.opName} / ${o.machine})`),
+                `${partName} (Оп. ${opNum} ${opName || ''})`
+            ];
+            return {
+                rootPart: partName,
+                rootOpNum: anomaly.upstreamOp.opNum,
+                rootOpName: anomaly.upstreamOp.opName,
+                rootMachine: anomaly.upstreamOp.machine,
+                isChild: false,
+                isRaw: false,
+                isAnomaly: true,
+                anomaly: anomaly,
+                chain: chain,
+                intermediate: anomaly.intermediateOps[0] || null,
+                intermediateOps: anomaly.intermediateOps,
+                reason: `Намерен остатък от ${anomaly.upstreamOp.availStock} бр. на Оп. ${anomaly.upstreamOp.opNum} (${anomaly.upstreamOp.opName}), пропуснато отчитане на междинните операции`
+            };
+        }
+    }
 
     const routes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[norm]) 
         ? globalRoutesByDetail[norm] 
@@ -2281,12 +2443,44 @@ window.autoResolveAndonForTask = async function(taskData, val) {
 
                     const reqTargetOpNum = parseInt(tObj.target_op_num || req.target_op_num) || 0;
                     if (tPart && normalizeStr(tPart) === taskPartNorm && (reqTargetOpNum === 0 || reqTargetOpNum === taskOpNum)) {
+                        
+                        // КАСКАДНО ДООТЧИТАНЕ: Ако има следващи операции по веригата, прехвърляме щафетата напред!
+                        if (tObj.phase === 'reconciliation_cascade' && tObj.remaining_cascade_ops && tObj.remaining_cascade_ops.length > 0) {
+                            const nextCascadeOp = tObj.remaining_cascade_ops[0];
+                            const remaining = tObj.remaining_cascade_ops.slice(1);
+                            const updatedNotes = {
+                                ...tObj,
+                                current_reconcile_op: nextCascadeOp,
+                                remaining_cascade_ops: remaining,
+                                target_op_num: nextCascadeOp.opNum,
+                                target_op_name: nextCascadeOp.opName,
+                                target_machine: nextCascadeOp.machine,
+                                last_resolved_op: taskOpNum,
+                                last_resolved_by: currentOperator || 'Оператор',
+                                last_resolved_qty: val
+                            };
+                            const updatedReasons = `Разминаване в отчетите: Оп. ${taskOpNum} (${taskData.op}) беше доотчетена от ${currentOperator || 'Оператор'}. Остава доотчитане на Оп. ${nextCascadeOp.opNum} (${nextCascadeOp.opName}) на ${nextCascadeOp.machine} за изравняване на дефицита!`;
+
+                            await client
+                                .from('material_requests')
+                                .update({
+                                    target_machine: nextCascadeOp.machine,
+                                    target_op_num: String(nextCascadeOp.opNum),
+                                    target_op_name: nextCascadeOp.opName,
+                                    reasons: updatedReasons,
+                                    notes: JSON.stringify(updatedNotes)
+                                })
+                                .eq('id', req.id);
+                            continue;
+                        }
+
+                        // Ако няма повече междинни операции, дефицитът е напълно занулен!
                         await client
                             .from('material_requests')
                             .update({
                                 status: 'Осигурена',
                                 resolved_at: new Date().toISOString(),
-                                resolved_by: `${currentOperator || 'Оператор'} (доотчетени ${val} бр.)`
+                                resolved_by: `${currentOperator || 'Оператор'} (доотчетени ${val} бр., дефицитът е изравнен)`
                             })
                             .eq('id', req.id);
                     }
@@ -2304,6 +2498,123 @@ window.autoResolveAndonForTask = async function(taskData, val) {
         }
     } catch(err) {
         console.warn('autoResolveAndonForTask error:', err);
+    }
+};
+
+window.openDirectReconcileModal = async function(reqId) {
+    try {
+        const { data, error } = await client
+            .from('material_requests')
+            .select('*')
+            .eq('id', reqId)
+            .single();
+
+        if (error || !data) {
+            Swal.fire('Грешка', 'Сигналът вече е обработен или не е намерен.', 'info');
+            return;
+        }
+
+        let tObj = {};
+        try { tObj = JSON.parse(data.notes || '{}'); } catch(e) {}
+
+        const partName = tObj.target_part || data.target_part || data.part_name;
+        const opNum = tObj.target_op_num || data.target_op_num || '';
+        const opName = tObj.target_op_name || data.target_op_name || data.op_name;
+        const machine = tObj.target_machine || data.target_machine || (currentMachine && currentMachine !== 'ВСИЧКИ' ? currentMachine : 'Обща');
+        const missingQty = parseFloat(tObj.missing_qty) || 10;
+        const operatorName = currentOperator || 'ОПЕРАТОР';
+
+        const { value: formValues } = await Swal.fire({
+            title: '📝 ДООТЧИТАНЕ НА БРОЙКИ',
+            html: `
+                <div style="background:#fff7ed; border:1.5px solid #fed7aa; border-radius:12px; padding:14px; text-align:left; margin-bottom:14px;">
+                    <div style="font-size:0.88em; color:#9a3412; font-weight:700; text-transform:uppercase; margin-bottom:4px;">
+                        ⚠️ Доотчитане на дефицит
+                    </div>
+                    <div style="font-size:1.15em; font-weight:900; color:#1e293b; margin-bottom:4px;">
+                        Детайл: <span style="color:#0369a1;">${partName}</span>
+                    </div>
+                    <div style="font-size:1em; font-weight:700; color:#475569;">
+                        Операция: <span style="color:#16a34a;">${opNum ? 'Оп. ' + opNum + ' - ' : ''}${opName}</span>
+                    </div>
+                    <div style="font-size:0.9em; color:#64748b; margin-top:4px;">
+                        Работно място: <b>${machine}</b>
+                    </div>
+                </div>
+                <div style="text-align:left; margin-bottom:12px;">
+                    <label style="display:block; font-size:0.92em; font-weight:800; color:#1e293b; margin-bottom:6px;">
+                        🔢 Количество за доотчитане (бр.):
+                    </label>
+                    <input type="number" id="swal_reconcile_qty" value="${missingQty}" min="1" style="
+                        width:100%; padding:12px; font-size:1.3em; font-weight:900; border:2px solid #ea580c; border-radius:8px; text-align:center; box-sizing:border-box; color:#ea580c;
+                    ">
+                </div>
+                <div style="font-size:0.85em; color:#64748b; text-align:left;">
+                    Отчетът ще се запише на оператор: <b style="color:#1e293b;">${operatorName}</b>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '✅ ПОТВЪРДИ ДООТЧИТАНЕТО',
+            cancelButtonText: 'Отказ',
+            confirmButtonColor: '#16a34a',
+            cancelButtonColor: '#94a3b8',
+            preConfirm: () => {
+                const qtyInput = document.getElementById('swal_reconcile_qty');
+                const qty = parseFloat(qtyInput ? qtyInput.value : 0);
+                if (isNaN(qty) || qty <= 0) {
+                    Swal.showValidationMessage('Моля, въведете валидно количество (повече от 0)!');
+                    return false;
+                }
+                return { qty: qty };
+            }
+        });
+
+        if (!formValues) return;
+
+        Swal.fire({ title: 'Запис на доотчитането...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+        const nowIso = new Date().toISOString();
+        const otchetInsert = {
+            "ID План": "ДООТЧИТАНЕ_ДЕФИЦИТ",
+            "ID Детайл": partName,
+            "Оператор": operatorName,
+            "Количество": formValues.qty,
+            "Операция": opName,
+            "Статус": "Отчетено",
+            "Дата": nowIso,
+            "Време Старт": nowIso
+        };
+
+        const { error: insErr } = await client.from('otcheti').insert([otchetInsert]);
+        if (insErr) throw insErr;
+
+        // Изпълняваме автоматичното прехвърляне или затваряне на заявката
+        const fakeTaskData = {
+            id: 'reconcile_' + reqId,
+            name: partName,
+            op: opName,
+            opNum: opNum,
+            machine: machine
+        };
+
+        if (typeof window.autoResolveAndonForTask === 'function') {
+            await window.autoResolveAndonForTask(fakeTaskData, formValues.qty);
+        }
+
+        await Swal.fire({
+            icon: 'success',
+            title: 'Успешно доотчитане!',
+            html: `Доотчетохте <b style="color:#16a34a; font-size:1.2em;">${formValues.qty} бр.</b> за ${partName} на ${opNum ? 'Оп. ' + opNum + ' ' : ''}(${opName}).`,
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+        if (typeof checkTerminalAndonAlerts === 'function') checkTerminalAndonAlerts();
+        if (typeof loadTasks === 'function') loadTasks();
+
+    } catch(err) {
+        console.error('openDirectReconcileModal error:', err);
+        Swal.fire('Грешка при запис', err.message, 'error');
     }
 };
 
@@ -2384,9 +2695,12 @@ async function checkTerminalAndonAlerts() {
                         <br><br>
                         👉 <b>Към вас:</b> Моля, ако имате изработени детайли, доотчетете си бройките на <b>${targetOpNum ? 'Оп. ' + targetOpNum : ''} (${targetOpName})</b> на терминала!
                     </div>
-                    <div class="andon-actions">
-                        <button type="button" class="andon-ack-btn" onclick="acknowledgeTerminalAndon(${alertItem.id})" style="background: #ea580c;">
-                            👌 Разбрах / Ще доотчета
+                    <div class="andon-actions" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <button type="button" class="andon-ack-btn" onclick="openDirectReconcileModal(${alertItem.id})" style="background: #16a34a; font-weight: 900; font-size: 0.95em; box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);">
+                            📝 ДООТЧЕТИ ${tObj.missing_qty || 10} бр. ТУК
+                        </button>
+                        <button type="button" class="andon-ack-btn" onclick="acknowledgeTerminalAndon(${alertItem.id})" style="background: #64748b; font-size: 0.85em;">
+                            👌 Скрий сигнала
                         </button>
                         ${myAlerts.length > 1 ? `<span style="font-size:0.82em; color:#9a3412; font-weight:700;">+ още ${myAlerts.length - 1} сигнала</span>` : ''}
                     </div>

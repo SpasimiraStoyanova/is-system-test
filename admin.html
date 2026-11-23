@@ -1,480 +1,654 @@
 <!DOCTYPE html>
 <html lang="bg">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AMCI Глобален Административен Панел</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="admin/admin.css?v=28">
-    <link rel="stylesheet" href="admin/admin-calendar.css?v=5">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="admin/admin-config.js?v=19" defer></script>
-    <script src="admin/admin-pdf.js?v=2" defer></script>
-    <script src="admin/admin-notif.js?v=6" defer></script>
-    <script src="admin/admin-personnel.js?v=11" defer></script>
-    <script src="admin/admin-archives.js?v=4" defer></script>
-    <script src="admin/admin-core.js?v=47" defer></script>
-    <script src="admin/admin-resolver.js?v=9" defer></script>
-    <script src="admin/admin-salaries.js?v=6" defer></script>
-    <script src="admin/admin-transform.js?v=3" defer></script>
-    <script src="admin/admin-calendar.js?v=8" defer></script>
-    <script src="admin/admin-report.js?v=5" defer></script>
-    <script src="admin/admin-validator.js?v=1" defer></script>
-    <script src="admin/admin-requests.js?v=8" defer></script>
-    <script src="admin/admin-probi.js?v=4" defer></script>
-    <script src="admin/admin-3s.js?v=2" defer></script>
-    <script src="admin/admin-spotlight.js?v=1" defer></script>
-    <script src="admin/admin-bulk.js?v=1" defer></script>
-    <script src="admin/admin-tooling.js?v=7" defer></script>
-    <script src="admin/admin-material-orders.js?v=1" defer></script>
-    <script src="admin/admin-rooms.js?v=11" defer></script>
-  </head>
-  <body>
-    <div id="appContent" style="display: none;">
-        <div class="navbar">
-          <div class="brand"><img src="icon.png" style="height: 32px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);" onerror="this.style.display='none'"> AMCI (ТЕСТ)</div>
-          <div class="nav-tabs" id="tabsContainer"></div>
-          <div class="nav-auth-area" id="navAuthArea"></div>
-        </div>
 
-        <div class="main-container">
-          <div id="adminGlobalAlertBanner" style="display: none; margin-bottom: 12px; width: 100%;"></div>
-          <div class="controls-row">
-            <div class="search-box">
-                <input type="text" id="searchInput" oninput="filterTable()" placeholder="🔍 Бързо търсене в таблицата...">
-                <button type="button" class="btn-quick-refresh" onclick="switchTab(currentTab, true)" title="Опресни данните от базата (F5)">🔄</button>
-            </div>
-            <div class="action-buttons-group">
-                <button type="button" class="btn-spotlight" id="btnSpotlightOpen" onclick="openSpotlightModal()" title="Универсално търсене през всички модули (Клавиш: Ctrl+K)">
-                    <span>🔍 Единно Досие</span>
-                    <kbd>Ctrl+K</kbd>
-                </button>
-                <input type="file" id="pdfUploader" accept="application/pdf" style="display:none;" onchange="processPDF(event)">
-                <button class="btn-primary" id="pdfBtn" onclick="document.getElementById('pdfUploader').click()" style="display: none; background-color: #059669; box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);">📥 Зареди от PDF</button>
-                <!-- Dropdown: Монитори и Екрани -->
-                <div class="admin-dropdown" id="dropdownScreens">
-                    <button type="button" class="btn-dropdown" onclick="toggleAdminDropdown('dropdownScreens')">
-                        <span>🖥️ Монитори</span> <span class="dropdown-caret">▼</span>
-                    </button>
-                    <div class="admin-dropdown-menu">
-                        <button type="button" class="admin-dropdown-item" onclick="window.open('index.html', '_blank')">📺 Жив Монитор (VSM)</button>
-                        <button type="button" class="admin-dropdown-item" onclick="window.open('monitor-hr.html', '_blank')">👥 HR Монитор Персонал</button>
-                        <div class="admin-dropdown-divider"></div>
-                        <button type="button" class="admin-dropdown-item" onclick="window.open('monitor-montaj.html?v=11', '_blank')">🔧 Монтаж 1 (Вар. 11)</button>
-                        <button type="button" class="admin-dropdown-item" onclick="window.open('monitor-montaj.html?v=25', '_blank')">🔧 Монтаж 2 (Вар. 25)</button>
-                    </div>
-                </div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AMCI Глобален Административен Панел</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="admin/admin.css?v=28">
+  <link rel="stylesheet" href="admin/admin-calendar.css?v=5">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <script src="admin/admin-config.js?v=19" defer></script>
+  <script src="admin/admin-pdf.js?v=2" defer></script>
+  <script src="admin/admin-notif.js?v=6" defer></script>
+  <script src="admin/admin-personnel.js?v=11" defer></script>
+  <script src="admin/admin-archives.js?v=4" defer></script>
+  <script src="admin/admin-core.js?v=47" defer></script>
+  <script src="admin/admin-resolver.js?v=9" defer></script>
+  <script src="admin/admin-salaries.js?v=6" defer></script>
+  <script src="admin/admin-transform.js?v=3" defer></script>
+  <script src="admin/admin-calendar.js?v=8" defer></script>
+  <script src="admin/admin-report.js?v=5" defer></script>
+  <script src="admin/admin-validator.js?v=1" defer></script>
+  <script src="admin/admin-requests.js?v=9" defer></script>
+  <script src="admin/admin-probi.js?v=4" defer></script>
+  <script src="admin/admin-3s.js?v=2" defer></script>
+  <script src="admin/admin-spotlight.js?v=1" defer></script>
+  <script src="admin/admin-bulk.js?v=1" defer></script>
+  <script src="admin/admin-tooling.js?v=7" defer></script>
+  <script src="admin/admin-material-orders.js?v=1" defer></script>
+  <script src="admin/admin-rooms.js?v=11" defer></script>
+</head>
 
-                <!-- Dropdown: Планиране и Производство -->
-                <div class="admin-dropdown" id="dropdownProduction">
-                    <button type="button" class="btn-dropdown" onclick="toggleAdminDropdown('dropdownProduction')" id="btnAdminPlanningNav" style="position: relative;">
-                        <span>🎯 Планиране</span>
-                        <span id="adminPlanningBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8em; font-weight: 900; margin-left: 3px; box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);">0</span>
-                        <span class="dropdown-caret">▼</span>
-                    </button>
-                    <div class="admin-dropdown-menu">
-                        <button type="button" class="admin-dropdown-item" onclick="openMaterialRequestsModal()" style="font-weight: 800; color: #ea580c; display: flex; justify-content: space-between; align-items: center;">
-                            <span>🔔 Заявки за Заготовки от Цеха</span>
-                            <span id="adminPlanningSubBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
-                        </button>
-                        <button type="button" class="admin-dropdown-item" onclick="openMaterialOrdersModal()" style="font-weight: 800; color: #0284c7; display: flex; justify-content: space-between; align-items: center;">
-                            <span>🛒 Поръчки на Материали &amp; Доставки</span>
-                            <span id="adminMaterialOrdersSubBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
-                        </button>
-                        <button type="button" class="admin-dropdown-item" onclick="openMonthlyMaterialDeficitsModal()" style="font-weight: 800; color: #7c3aed; display: flex; justify-content: space-between; align-items: center;">
-                            <span>📅 Нужди на цеха (20-то число)</span>
-                            <span id="adminMonthlyDeficitBadge" style="display: none; background: #7c3aed; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
-                        </button>
-                        <button type="button" class="admin-dropdown-item" onclick="openToolingRequestsModal()" style="font-weight: 800; color: #d97706; display: flex; justify-content: space-between; align-items: center;">
-                            <span>🛠️ Заявки за Инструменти &amp; Пластини</span>
-                            <span id="adminToolingReqBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
-                        </button>
-                        <div class="admin-dropdown-divider"></div>
-                        <button type="button" class="admin-dropdown-item" onclick="openPlanValidatorModal()" style="font-weight: 800; color: #7c3aed;">🔍 Валидатор на План</button>
-                        <button type="button" class="admin-dropdown-item" onclick="window.open('workplace-tasks.html', '_blank')" style="font-weight: 800; color: #0284c7;">
-                            <span>🎯 Табло Машини &amp; Задачи</span>
-                        </button>
-                        <button type="button" class="admin-dropdown-item" onclick="window.open('planner-bobini.html', '_blank')">📝 Планьор Бобиньорки</button>
-                        <div class="admin-dropdown-divider"></div>
-                        <button type="button" class="admin-dropdown-item" id="logisticsBtn" onclick="openLogisticsModal()">📦 Логистика на План</button>
-                    </div>
-                </div>
-                <!-- Dropdown: Справки и Финанси -->
-                <div class="admin-dropdown" id="dropdownReports">
-                    <button type="button" class="btn-dropdown" onclick="toggleAdminDropdown('dropdownReports')">
-                        <span>📊 Справки &amp; Финанси</span> <span class="dropdown-caret">▼</span>
-                    </button>
-                    <div class="admin-dropdown-menu">
-                        <button type="button" class="admin-dropdown-item" onclick="switchTab('salaries')" style="font-weight: 800; color: #15803d;">💰 Заплати &amp; Бонуси</button>
-                        <button type="button" class="admin-dropdown-item" onclick="window.open('traceability.html', '_blank')" style="font-weight: 800; color: #1e3a8a;">🕵️ Инвентарен Детектив (Хронология на бройки)</button>
-                        <button type="button" class="admin-dropdown-item" onclick="window.open('accounting.html', '_blank')">💼 Счетоводство</button>
-                        <button type="button" class="admin-dropdown-item" onclick="window.open('statistics.html', '_blank')">⏱️ Анализи на Нормовремена &amp; Гант</button>
-                        <div class="admin-dropdown-divider"></div>
-                        <button type="button" class="admin-dropdown-item" id="btnAdminReportNav" onclick="openExecutiveReportModal()">📑 Сводка &amp; Периодичен Отчет</button>
-                        <button type="button" class="admin-dropdown-item" onclick="openAuditModal()">🕒 Хронология на промените (Audit)</button>
-                    </div>
-                </div>
-
-                <!-- Dropdown: Система & Поддръжка -->
-                <div class="admin-dropdown" id="dropdownSystem">
-                    <button type="button" class="btn-dropdown" onclick="toggleAdminDropdown('dropdownSystem')" id="btnAdminCalendarNav" style="position: relative;">
-                        <span>⚙️ Система</span>
-                        <span id="adminCalBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 6px; font-size: 0.8em; font-weight: 900; margin-left: 2px;">0</span>
-                        <span class="dropdown-caret">▼</span>
-                    </button>
-                    <div class="admin-dropdown-menu">
-                        <button type="button" class="admin-dropdown-item" onclick="openCalendarModal()" style="display: flex; justify-content: space-between; align-items: center;">
-                            <span>📅 Календар &amp; Поддръжка</span>
-                            <span id="adminCalSubBadge" style="display: none; margin-left: auto; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
-                        </button>
-                        <button type="button" class="admin-dropdown-item" onclick="openNotificationDialog()">📢 Изпрати Известие до Цеха</button>
-                        <button type="button" class="admin-dropdown-item" onclick="testAmciPushNotification()" style="font-weight: 800; color: #0284c7;">🔔 Тествай Известие към Телефона</button>
-                        <div class="admin-dropdown-divider"></div>
-                        <button type="button" class="admin-dropdown-item" onclick="window.forceReloadTerminals()" style="color: #dc2626; font-weight: 700;" title="Принудително рестартира всички таблети в цеха">🔄 Синхронизирай Терминалите</button>
-                    </div>
-                </div>
-
-                <!-- Контекстен бутон Поръчки на Материали (само в таб Склад Материали) -->
-                <button type="button" class="btn-primary" id="materialOrdersBtn" onclick="openMaterialOrdersModal()" style="display: none; background: linear-gradient(135deg, #0284c7, #0369a1); box-shadow: 0 2px 4px rgba(2, 132, 199, 0.3); font-weight: 800;" title="Дневник на поръчките за материали и доставки">🛒 Поръчки на Материали <span id="materialOrdersBtnBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;">0</span></button>
-
-                <!-- Контекстен бутон Нужди на цеха (20-то число) (само в таб Склад Материали) -->
-                <button type="button" class="btn-primary" id="monthlyDeficitBtn" onclick="openMonthlyMaterialDeficitsModal()" style="display: none; background: linear-gradient(135deg, #7c3aed, #6d28d9); box-shadow: 0 2px 4px rgba(124, 58, 237, 0.3); font-weight: 800;" title="Месечно пресмятане на нуждите от материали (след 20-то число)">📅 Нужди на цеха (20-то) <span id="skladMonthlyDeficitBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;">0</span></button>
-
-                <!-- Контекстен бутон Анализ на доставките -->
-                <button type="button" class="btn-primary" id="mrpBtn" onclick="openMrpModal()" style="display: none; background-color: #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);">🚨 Анализ на доставките</button>
-
-                <!-- Контекстен бутон Трансформация на Резолвери (само в таб Склад) -->
-                <button type="button" class="btn-primary" id="transformResolverBtn" onclick="openTransformModal()" style="display: none; background-color: #6366f1; box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3); font-weight: 800;">🔄 Трансформация на Резолвери</button>
-
-                <!-- Контекстен бутон Синхронизиране на Машини от Маршрути -->
-                <button type="button" class="btn-primary" id="syncMachinesBtn" onclick="syncMachinesFromRoutes()" style="display: none; background-color: #0284c7; box-shadow: 0 2px 4px rgba(2, 132, 199, 0.3); font-weight: 800;" title="Зареди автоматично всички машини от маршрутните карти">🔄 Зареди машини от Маршрути</button>
-
-                <!-- Контекстен бутон Заявки & Поръчки за Екипировка (само в таб Склад Инструментална Екипировка) -->
-                <button type="button" class="btn-primary" id="toolingRequestsBtn" onclick="openToolingRequestsModal()" style="display: none; background: linear-gradient(135deg, #d97706, #b45309); box-shadow: 0 2px 4px rgba(217, 119, 6, 0.3); font-weight: 800;" title="Дневник на заявките и поръчките за пластини и инструменти от цеха">🛠️ Заявки &amp; Поръчки от Цеха <span id="toolingBtnBadge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;">0</span></button>
-
-                <!-- Контекстен бутон за Дискретна проверка на локация (само в таб Чекирания) -->
-                <button type="button" class="btn-primary" id="silentLocationCheckBtn" onclick="openSilentLocationCheckModal()" style="display: none; background-color: #7c3aed; box-shadow: 0 2px 4px rgba(124, 58, 237, 0.3); font-weight: 800;" title="Дискретна проверка на локацията на служител в реално време">📍 Проверка локация</button>
-                <button type="button" class="btn-primary" id="locationHistoryBtn" onclick="openLocationChecksHistoryModal()" style="display: none; background-color: #475569; box-shadow: 0 2px 4px rgba(71, 85, 105, 0.3); font-weight: 800;" title="Дневник на всички изненадващи проверки на локация">📜 Дневник Проверки</button>
-
-                <!-- Универсални постоянни действия: Експорт и Добавяне -->
-                <button type="button" class="btn-primary btn-excel" id="exportExcelBtn" onclick="exportCurrentTableToExcel()" title="Изтегли текущите данни в Excel файл">📥 Свали в Excel</button>
-                <button class="btn-primary" id="addNewBtn" onclick="openAddModal()">➕ Добави Нов Запис</button>
-            </div>
-          </div>
-          
-          <div class="mass-action-bar" id="massActionBar">
-             <div style="display: flex; align-items: center; gap: 12px;">
-                 <span class="mass-action-text" id="massActionText">Маркирани: 0 записа</span>
-                 <button type="button" onclick="massDeselectAll()" style="background: none; border: none; color: #64748b; font-size: 0.85em; cursor: pointer; text-decoration: underline;">Отказ</button>
-             </div>
-             <div class="mass-action-buttons-group" id="massActionButtonsContainer" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                 <button type="button" id="massBtnAcceptPorachki" class="btn-mass-action btn-mass-accept" onclick="massAcceptPorachki()" style="display:none;">✅ Приеми поръчките</button>
-                 <button type="button" id="massBtnPlanStatus" class="btn-mass-action btn-mass-status" onclick="massChangePlanStatus()" style="display:none;">🎯 Смени Статус</button>
-                 <button type="button" id="massBtnPlanPeriod" class="btn-mass-action btn-mass-period" onclick="massChangePlanPeriod()" style="display:none;">📅 Смени Период</button>
-                 <button type="button" id="massBtnRouteMachine" class="btn-mass-action btn-mass-machine" onclick="massChangeRouteMachine()" style="display:none;">⚙️ Смени Машина</button>
-                 <button type="button" class="btn-primary btn-excel" onclick="exportSelectedToExcel()" title="Свали само маркираните в Excel" style="padding: 8px 14px; font-size: 0.86em;">📥 Свали избраните</button>
-                 <button class="btn-danger-mass" onclick="deleteSelectedItems()">🗑️ Изтрий маркираните</button>
-             </div>
-          </div>
-
-          <div class="layout-wrapper">
-            <div class="sidebar" id="personnelSidebar">
-                <div class="sidebar-header">📁 Лични Досиета</div>
-                <div id="sidebarLoading" style="padding: 15px; text-align: center; color: #64748b; font-size: 0.85em;">Зареждане...</div>
-                <ul class="sidebar-list" id="sidebarList"></ul>
-            </div>
-
-            <div class="table-wrapper">
-                <div class="table-container">
-                  <div id="loadingLayout">Зареждане на данни... 🔍</div>
-                  <table id="mainTable" style="display: none;">
-                    <thead id="tableHead"></thead>
-                    <tbody id="tableBody"></tbody>
-                  </table>
-                </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-backdrop" id="modalBackdrop">
-          <div class="modal">
-            <div class="modal-header" id="modalTitle">Редакция <button onclick="closeModal()" style="border:none;background:transparent;cursor:pointer;font-size:1.2em;">✖</button></div>
-            <form id="dynamicForm" onsubmit="saveForm(event)">
-              <div class="dynamic-form-area" id="formFieldsArea"></div>
-              <div class="modal-actions">
-                <button type="button" class="btn-secondary" onclick="closeModal()">Отказ</button>
-                <button type="submit" class="btn-primary">Запази запис</button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        <div class="modal-backdrop" id="folderModalBackdrop">
-          <div class="modal" style="max-width: 820px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header">
-                <div>📁 Досие: <span id="currentWorkerName" style="color: #4338ca;"></span></div>
-                <button onclick="closeFolderModal()" style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
-            </div>
-            <div class="dossier-pin-bar">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 1.1em;">🔑</span>
-                    <span style="font-weight: 700; color: #334155; font-size: 0.88em;">Парола / ПИН за достъп на служителя (Терминал / Портал):</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="text" id="workerPasswordInput" class="dossier-pin-input" placeholder="напр. 1234" autocomplete="off">
-                    <button type="button" class="btn-primary" onclick="saveWorkerPassword()" style="padding: 6px 14px; font-size: 0.85em; border-radius: 6px;">💾 Запази</button>
-                </div>
-            </div>
-            <div class="folder-tabs">
-                <button class="f-tab active" id="tabAttBtn" onclick="switchFolderTab('att')">⏱️ Присъствие</button>
-                <button class="f-tab" id="tabWorkBtn" onclick="switchFolderTab('work')">🛠️ Свършена Работа</button>
-                <button class="f-tab" id="tabDocsBtn" onclick="switchFolderTab('docs')">📑 Документи</button>
-                <button class="f-tab" id="tab3sBtn" onclick="switchFolderTab('3s')">🧹 3S Одити</button>
-                <button class="f-tab" id="tabBonusesBtn" onclick="switchFolderTab('bonuses')">💰 Бонуси &amp; Заплата</button>
-                <button class="f-tab" id="tabEquipmentBtn" onclick="switchFolderTab('equipment')">🦺 Зачислено Оборудване</button>
-            </div>
-            <div id="f-att" class="folder-content active"><table class="modal-table"><thead><tr><th>Дата и час</th><th>Действие</th><th>Локация</th><th>Бележка</th></tr></thead><tbody id="workerAttList"></tbody></table></div>
-            <div id="f-work" class="folder-content"><table class="modal-table"><thead><tr><th>Дата</th><th>Детайл</th><th>Операция</th><th>К-во</th><th>Статус</th></tr></thead><tbody id="workerWorkList"></tbody></table></div>
-            <div id="f-docs" class="folder-content" style="padding: 10px 4px;">
-              <!-- Upload Box -->
-              <div class="doc-upload-box">
-                <div class="doc-upload-header">
-                  <span style="font-weight: 800; color: #1e293b; font-size: 0.95em;">📤 Качване на документ в досието</span>
-                  <span style="font-size: 0.8em; color: #64748b;">(Фишове за заплати, договори, болнични, молби)</span>
-                </div>
-                <div class="doc-upload-grid">
-                  <div class="doc-upload-field">
-                    <label for="docCategorySelect" style="font-size: 0.8em; font-weight: 700; color: #475569; margin-bottom: 4px; display: block;">Категория:</label>
-                    <select id="docCategorySelect" class="doc-select">
-                      <option value="salary">💶 Фиш за заплата</option>
-                      <option value="contract">📑 Трудов договор / Анекс</option>
-                      <option value="medical">🩺 Медицинско / Инструктаж</option>
-                      <option value="request">📝 Заявление / Молба</option>
-                      <option value="doc" selected>📄 Друг фирмен документ</option>
-                    </select>
-                  </div>
-                  <div class="doc-upload-field">
-                    <label for="docUploadInput" style="font-size: 0.8em; font-weight: 700; color: #475569; margin-bottom: 4px; display: block;">Файл от компютъра:</label>
-                    <input type="file" id="docUploadInput" class="doc-file-input">
-                  </div>
-                  <div class="doc-upload-action">
-                    <button type="button" class="btn-primary doc-upload-btn" onclick="uploadWorkerDoc()">⬆️ Качи документ</button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Documents Filter & Header -->
-              <div style="display: flex; justify-content: space-between; align-items: center; margin: 16px 0 10px 0; flex-wrap: wrap; gap: 8px;">
-                <div style="font-weight: 800; color: #334155; font-size: 0.95em; display: flex; align-items: center; gap: 6px;">
-                  <span>Качени документи:</span>
-                  <span id="workerDocsCount" style="background: #e0e7ff; color: #4338ca; font-size: 0.8em; padding: 2px 8px; border-radius: 12px; font-weight: 800;">0</span>
-                </div>
-                <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="docCategoryFilters">
-                  <button type="button" class="doc-filter-btn active" onclick="filterWorkerDocs('ALL', this)">Всички</button>
-                  <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('salary', this)">💶 Фишове</button>
-                  <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('contract', this)">📑 Договори</button>
-                  <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('medical', this)">🩺 Медицински</button>
-                  <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('doc', this)">📄 Други</button>
-                </div>
-              </div>
-
-              <div id="workerDocsList" style="min-height: 120px;">Зареждане на документи...</div>
-            </div>
-            <div id="f-3s" class="folder-content" style="padding: 10px 4px;"><div id="worker3sList"></div>
-            </div>
-            <div id="f-bonuses" class="folder-content" style="padding: 10px 4px;"><div id="workerBonusesList"></div>
-            </div>
-            <div id="f-equipment" class="folder-content" style="padding: 10px 4px;"><div id="workerEquipmentList"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-backdrop" id="resolverModalBackdrop" style="z-index: 2000;" onclick="if(event.target === this) closeResolverModal();">
-          <div class="modal" style="max-width: 1050px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
-            <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="font-size: 1.5em; background: #e0e7ff; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(67, 56, 202, 0.15);">📦</div>
-                    <div>
-                        <div style="font-size: 1.15em; font-weight: 800; color: #0f172a;">Спецификация и състав на детайл</div>
-                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
-                            <span style="font-size: 0.85em; color: #64748b; font-weight: 600;">Код / Детайл:</span>
-                            <span id="resolverTitle" style="font-size: 0.95em; font-weight: 800; color: #4338ca; font-family: monospace;"></span>
-                        </div>
-                    </div>
-                </div>
-                <button onclick="closeResolverModal()" style="border:none; background:#f1f5f9; cursor:pointer; font-size:1.3em; color:#64748b; line-height:1; width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition: all 0.15s ease;" onmouseover="this.style.background='#fee2e2'; this.style.color='#b91c1c';" onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';">✖</button>
-            </div>
-            <div id="resolverContent" style="padding: 20px; overflow-y: auto; flex: 1; background: #f8fafc;">
-                Зареждане...
-            </div>
-          </div>
-        </div>
-        <div class="modal-backdrop" id="logisticsModalBackdrop">
-
-          <div class="modal" style="max-width: 600px;">
-            <div class="modal-header">
-                <div>📦 Логистика на План</div>
-                <button onclick="document.getElementById('logisticsModalBackdrop').style.display='none'" style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
-            </div>
-            <div id="logisticsContent" style="padding: 20px; background: #f8fafc; border-radius: 8px; margin: 15px;">
-                <!-- Content will be generated by JS -->
-            </div>
-          </div>
-        </div>
-        
-        <div class="modal-backdrop" id="auditModalBackdrop">
-          <div class="modal" style="width: 90vw; max-width: 1400px; max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header">
-                <div>🕒 Хронология на промените</div>
-                <button onclick="document.getElementById('auditModalBackdrop').style.display='none'" style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
-            </div>
-            <div style="padding: 15px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 15px; align-items: center; background: #f8fafc; flex-wrap: wrap;">
-                <label style="font-weight: bold; color: #475569;">Таблица:</label>
-                <select id="auditTableFilter" onchange="fetchAuditLogs()" style="padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;">
-                    <option value="all">Всички</option>
-                    <option value="plan">Работен План</option>
-                    <option value="marshruti">Маршрутни карти</option>
-                    <option value="bom">Спецификации (BOM)</option>
-                    <option value="Номенклатура">Номенклатура</option>
-                    <option value="sklad">Склад Материали</option>
-                    <option value="inventory">Склад</option>
-                </select>
-                <div style="flex: 1; min-width: 250px; position: relative;">
-                    <input type="text" id="auditSearchFilter" placeholder="🔍 Търси детайл за проследимост (напр. 'вар. 11')..." onkeyup="if(event.key === 'Enter') fetchAuditLogs()" style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none; box-sizing: border-box;">
-                </div>
-                <button onclick="fetchAuditLogs()" class="btn-primary" style="background-color: #3b82f6; padding: 8px 16px;">🔄 Обнови</button>
-            </div>
-            <div id="auditContent" style="padding: 15px; overflow-y: auto; flex: 1; background: #f1f5f9;">
-                Зареждане...
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-backdrop" id="mrpModalBackdrop">
-          <div class="modal" style="max-width: 800px; max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header">
-                <div>🚨 Анализ на доставките (Дефицити)</div>
-                <button onclick="document.getElementById('mrpModalBackdrop').style.display='none'" style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
-            </div>
-            <div id="mrpContent" style="padding: 15px; overflow-y: auto; flex: 1; background: #f8fafc;">
-                <!-- Content will be generated by JS -->
-                Зареждане...
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-backdrop" id="transformModalBackdrop">
-          <div class="modal" style="max-width: 600px;">
-            <div class="modal-header">
-                <div>🔄 Трансформация на Резолвери</div>
-                <button onclick="document.getElementById('transformModalBackdrop').style.display='none'" style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
-            </div>
-            <div style="padding: 20px; background: #f8fafc; border-radius: 8px; margin: 15px; display: flex; flex-direction: column; gap: 15px;">
-                <div>
-                    <label style="font-weight:bold; display:block; margin-bottom:5px;">От Източник:</label>
-                    <select id="transSourceSelect" onchange="onTransformSourceChange()" style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1;"></select>
-                </div>
-                <div>
-                    <label style="font-weight:bold; display:block; margin-bottom:5px;">Операция:</label>
-                    <select id="transOpSelect" onchange="onTransformOpChange()" style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1;"></select>
-                </div>
-                <div>
-                    <label style="font-weight:bold; display:block; margin-bottom:5px;">Количество за трансформиране (Макс: <span id="transMaxQty">0</span> бр.):</label>
-                    <input type="number" id="transQtyInput" min="1" style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1; box-sizing:border-box;">
-                </div>
-                <div>
-                    <label style="font-weight:bold; display:block; margin-bottom:5px;">Към Цел (само съвместими по BOM):</label>
-                    <select id="transTargetSelect" style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1;"></select>
-                </div>
-                <div style="text-align:right; margin-top:10px;">
-                    <button class="btn-primary" onclick="executeTransformation()" style="background-color: #6366f1; padding:10px 20px; font-size:1.1em;">Възложи Трансформация</button>
-                </div>
-            </div>
-          </div>
-        </div>
-
-    
-        <div class="modal-backdrop" id="reportModalBackdrop">
-          <div class="modal" style="max-width: 1100px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
-            <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="font-size: 1.5em; background: #ccfbf1; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(13, 148, 136, 0.15);">📊</div>
-                    <div>
-                        <div style="font-size: 1.15em; font-weight: 800; color: #0f172a;">Оперативна сводка и периодичен отчет</div>
-                        <div style="font-size: 0.85em; color: #64748b; font-weight: 600; margin-top: 2px;">Производство, брак, критичен склад и сервизни събития</div>
-                    </div>
-                </div>
-                <button onclick="closeExecutiveReportModal()" style="border:none; background:#f1f5f9; cursor:pointer; font-size:1.3em; color:#64748b; line-height:1; width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition: all 0.15s ease;" onmouseover="this.style.background='#fee2e2'; this.style.color='#b91c1c';" onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';">✖</button>
-            </div>
-            <div id="reportModalContent" style="padding: 20px; overflow-y: auto; flex: 1; background: #f8fafc;">
-                Зареждане на отчет...
-            </div>
-          </div>
-        </div>
-
-        <!-- Modal: Валидатор на План -->
-        <div class="modal-backdrop" id="planValidatorModalBackdrop">
-          <div class="modal" style="max-width: 950px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);">
-            <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="font-size: 1.5em; background: #ede9fe; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(124, 58, 237, 0.15);">🔍</div>
-                    <div>
-                        <div style="font-size: 1.15em; font-weight: 800; color: #0f172a;">Валидатор за готовност на Месечен План</div>
-                        <div style="font-size: 0.85em; color: #64748b; font-weight: 600; margin-top: 2px;">Автоматична проверка за липсващи маршрути, BOM спецификации и дефицит на заготовки</div>
-                    </div>
-                </div>
-                <button onclick="closePlanValidatorModal()" style="border:none; background:#f1f5f9; cursor:pointer; font-size:1.3em; color:#64748b; line-height:1; width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition: all 0.15s ease;" onmouseover="this.style.background='#fee2e2'; this.style.color='#b91c1c';" onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';">✖</button>
-            </div>
-            
-            <div style="padding: 14px 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="font-weight: 700; color: #334155; font-size: 0.9em;">📅 Месец:</label>
-                    <select id="validatorMonthSelect" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600; outline: none;"></select>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="font-weight: 700; color: #334155; font-size: 0.9em;">Година:</label>
-                    <select id="validatorYearSelect" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600; outline: none;"></select>
-                </div>
-                <button type="button" class="btn-primary" onclick="runPlanValidation()" style="background-color: #7c3aed; padding: 7px 18px; font-weight: 700;">🚀 Провери План</button>
-                <div id="validatorStatusText" style="margin-left: auto; font-size: 0.88em; font-weight: 600; color: #64748b;"></div>
-            </div>
-
-            <div id="validatorContent" style="padding: 20px; overflow-y: auto; flex: 1; background: #ffffff;">
-                <div style="text-align: center; color: #94a3b8; padding: 40px;">Изберете месец и натиснете "Провери План"</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Modal: Заявки за заготовки от цеха -->
-        <div class="modal-backdrop" id="materialRequestsModalBackdrop">
-          <div class="modal" style="max-width: 820px; width: 95%;">
-            <div class="modal-header">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span>🔔 Заявки за заготовки и материали от Цеха</span>
-                <span id="modalReqCountBadge" style="background:#ea580c; color:white; padding:3px 9px; border-radius:12px; font-size:0.75em; font-weight:800;">0 чакащи</span>
-              </div>
-              <button onclick="closeMaterialRequestsModal()" style="border:none;background:transparent;cursor:pointer;font-size:1.3em;">✖</button>
-            </div>
-            <div id="materialRequestsList" style="max-height: 60vh; overflow-y: auto; padding: 4px;">
-              <!-- Dynamic requests list -->
-            </div>
-            <div class="modal-actions" style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 0.82em; color: #64748b;">Заявките се изпращат от операторите при блокирани детайли на терминала.</span>
-              <button type="button" class="btn-secondary" onclick="closeMaterialRequestsModal()">Затвори</button>
-            </div>
-          </div>
-        </div>
-
+<body>
+  <div id="appContent" style="display: none;">
+    <div class="navbar">
+      <div class="brand"><img src="icon.png"
+          style="height: 32px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"
+          onerror="this.style.display='none'"> AMCI (ТЕСТ)</div>
+      <div class="nav-tabs" id="tabsContainer"></div>
+      <div class="nav-auth-area" id="navAuthArea"></div>
     </div>
 
-    <!-- Datalists for intelligent autocomplete in forms -->
-    <datalist id="dl_nomenklatura"></datalist>
-    <datalist id="dl_machines"></datalist>
-  </body>
+    <div class="main-container">
+      <div id="adminGlobalAlertBanner" style="display: none; margin-bottom: 12px; width: 100%;"></div>
+      <div class="controls-row">
+        <div class="search-box">
+          <input type="text" id="searchInput" oninput="filterTable()" placeholder="🔍 Бързо търсене в таблицата...">
+          <button type="button" class="btn-quick-refresh" onclick="switchTab(currentTab, true)"
+            title="Опресни данните от базата (F5)">🔄</button>
+        </div>
+        <div class="action-buttons-group">
+          <button type="button" class="btn-spotlight" id="btnSpotlightOpen" onclick="openSpotlightModal()"
+            title="Универсално търсене през всички модули (Клавиш: Ctrl+K)">
+            <span>🔍 Единно Досие</span>
+            <kbd>Ctrl+K</kbd>
+          </button>
+          <input type="file" id="pdfUploader" accept="application/pdf" style="display:none;"
+            onchange="processPDF(event)">
+          <button class="btn-primary" id="pdfBtn" onclick="document.getElementById('pdfUploader').click()"
+            style="display: none; background-color: #059669; box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);">📥 Зареди от
+            PDF</button>
+          <!-- Dropdown: Монитори и Екрани -->
+          <div class="admin-dropdown" id="dropdownScreens">
+            <button type="button" class="btn-dropdown" onclick="toggleAdminDropdown('dropdownScreens')">
+              <span>🖥️ Монитори</span> <span class="dropdown-caret">▼</span>
+            </button>
+            <div class="admin-dropdown-menu">
+              <button type="button" class="admin-dropdown-item" onclick="window.open('index.html', '_blank')">📺 Жив
+                Монитор (VSM)</button>
+              <button type="button" class="admin-dropdown-item" onclick="window.open('monitor-hr.html', '_blank')">👥 HR
+                Монитор Персонал</button>
+              <div class="admin-dropdown-divider"></div>
+              <button type="button" class="admin-dropdown-item"
+                onclick="window.open('monitor-montaj.html?v=11', '_blank')">🔧 Монтаж 1 (Вар. 11)</button>
+              <button type="button" class="admin-dropdown-item"
+                onclick="window.open('monitor-montaj.html?v=25', '_blank')">🔧 Монтаж 2 (Вар. 25)</button>
+            </div>
+          </div>
+
+          <!-- Dropdown: Планиране и Производство -->
+          <div class="admin-dropdown" id="dropdownProduction">
+            <button type="button" class="btn-dropdown" onclick="toggleAdminDropdown('dropdownProduction')"
+              id="btnAdminPlanningNav" style="position: relative;">
+              <span>🎯 Планиране</span>
+              <span id="adminPlanningBadge"
+                style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8em; font-weight: 900; margin-left: 3px; box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);">0</span>
+              <span class="dropdown-caret">▼</span>
+            </button>
+            <div class="admin-dropdown-menu">
+              <button type="button" class="admin-dropdown-item" onclick="openMaterialRequestsModal()"
+                style="font-weight: 800; color: #ea580c; display: flex; justify-content: space-between; align-items: center;">
+                <span>🔔 Заявки за Заготовки от Цеха</span>
+                <span id="adminPlanningSubBadge"
+                  style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
+              </button>
+              <button type="button" class="admin-dropdown-item" onclick="openMaterialOrdersModal()"
+                style="font-weight: 800; color: #0284c7; display: flex; justify-content: space-between; align-items: center;">
+                <span>🛒 Поръчки на Материали &amp; Доставки</span>
+                <span id="adminMaterialOrdersSubBadge"
+                  style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
+              </button>
+              <button type="button" class="admin-dropdown-item" onclick="openMonthlyMaterialDeficitsModal()"
+                style="font-weight: 800; color: #7c3aed; display: flex; justify-content: space-between; align-items: center;">
+                <span>📅 Нужди на цеха (20-то число)</span>
+                <span id="adminMonthlyDeficitBadge"
+                  style="display: none; background: #7c3aed; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
+              </button>
+              <button type="button" class="admin-dropdown-item" onclick="openToolingRequestsModal()"
+                style="font-weight: 800; color: #d97706; display: flex; justify-content: space-between; align-items: center;">
+                <span>🛠️ Заявки за Инструменти &amp; Пластини</span>
+                <span id="adminToolingReqBadge"
+                  style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
+              </button>
+              <div class="admin-dropdown-divider"></div>
+              <button type="button" class="admin-dropdown-item" onclick="openPlanValidatorModal()"
+                style="font-weight: 800; color: #7c3aed;">🔍 Валидатор на План</button>
+              <button type="button" class="admin-dropdown-item" onclick="window.open('workplace-tasks.html', '_blank')"
+                style="font-weight: 800; color: #0284c7;">
+                <span>🎯 Табло Машини &amp; Задачи</span>
+              </button>
+              <button type="button" class="admin-dropdown-item"
+                onclick="window.open('planner-bobini.html', '_blank')">📝 Планьор Бобиньорки</button>
+              <div class="admin-dropdown-divider"></div>
+              <button type="button" class="admin-dropdown-item" id="logisticsBtn" onclick="openLogisticsModal()">📦
+                Логистика на План</button>
+            </div>
+          </div>
+          <!-- Dropdown: Справки и Финанси -->
+          <div class="admin-dropdown" id="dropdownReports">
+            <button type="button" class="btn-dropdown" onclick="toggleAdminDropdown('dropdownReports')">
+              <span>📊 Справки &amp; Финанси</span> <span class="dropdown-caret">▼</span>
+            </button>
+            <div class="admin-dropdown-menu">
+              <button type="button" class="admin-dropdown-item" onclick="switchTab('salaries')"
+                style="font-weight: 800; color: #15803d;">💰 Заплати &amp; Бонуси</button>
+              <button type="button" class="admin-dropdown-item" onclick="window.open('traceability.html', '_blank')"
+                style="font-weight: 800; color: #1e3a8a;">🕵️ Инвентарен Детектив (Хронология на бройки)</button>
+              <button type="button" class="admin-dropdown-item" onclick="window.open('accounting.html', '_blank')">💼
+                Счетоводство</button>
+              <button type="button" class="admin-dropdown-item" onclick="window.open('statistics.html', '_blank')">⏱️
+                Анализи на Нормовремена &amp; Гант</button>
+              <div class="admin-dropdown-divider"></div>
+              <button type="button" class="admin-dropdown-item" id="btnAdminReportNav"
+                onclick="openExecutiveReportModal()">📑 Сводка &amp; Периодичен Отчет</button>
+              <button type="button" class="admin-dropdown-item" onclick="openAuditModal()">🕒 Хронология на промените
+                (Audit)</button>
+            </div>
+          </div>
+
+          <!-- Dropdown: Система & Поддръжка -->
+          <div class="admin-dropdown" id="dropdownSystem">
+            <button type="button" class="btn-dropdown" onclick="toggleAdminDropdown('dropdownSystem')"
+              id="btnAdminCalendarNav" style="position: relative;">
+              <span>⚙️ Система</span>
+              <span id="adminCalBadge"
+                style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 6px; font-size: 0.8em; font-weight: 900; margin-left: 2px;">0</span>
+              <span class="dropdown-caret">▼</span>
+            </button>
+            <div class="admin-dropdown-menu">
+              <button type="button" class="admin-dropdown-item" onclick="openCalendarModal()"
+                style="display: flex; justify-content: space-between; align-items: center;">
+                <span>📅 Календар &amp; Поддръжка</span>
+                <span id="adminCalSubBadge"
+                  style="display: none; margin-left: auto; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.78rem; font-weight: 800;">0</span>
+              </button>
+              <button type="button" class="admin-dropdown-item" onclick="openNotificationDialog()">📢 Изпрати Известие
+                до Цеха</button>
+              <button type="button" class="admin-dropdown-item" onclick="testAmciPushNotification()"
+                style="font-weight: 800; color: #0284c7;">🔔 Тествай Известие към Телефона</button>
+              <div class="admin-dropdown-divider"></div>
+              <button type="button" class="admin-dropdown-item" onclick="window.forceReloadTerminals()"
+                style="color: #dc2626; font-weight: 700;" title="Принудително рестартира всички таблети в цеха">🔄
+                Синхронизирай Терминалите</button>
+            </div>
+          </div>
+
+          <!-- Контекстен бутон Поръчки на Материали (само в таб Склад Материали) -->
+          <button type="button" class="btn-primary" id="materialOrdersBtn" onclick="openMaterialOrdersModal()"
+            style="display: none; background: linear-gradient(135deg, #0284c7, #0369a1); box-shadow: 0 2px 4px rgba(2, 132, 199, 0.3); font-weight: 800;"
+            title="Дневник на поръчките за материали и доставки">🛒 Поръчки на Материали <span
+              id="materialOrdersBtnBadge"
+              style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;">0</span></button>
+
+          <!-- Контекстен бутон Нужди на цеха (20-то число) (само в таб Склад Материали) -->
+          <button type="button" class="btn-primary" id="monthlyDeficitBtn" onclick="openMonthlyMaterialDeficitsModal()"
+            style="display: none; background: linear-gradient(135deg, #7c3aed, #6d28d9); box-shadow: 0 2px 4px rgba(124, 58, 237, 0.3); font-weight: 800;"
+            title="Месечно пресмятане на нуждите от материали (след 20-то число)">📅 Нужди на цеха (20-то) <span
+              id="skladMonthlyDeficitBadge"
+              style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;">0</span></button>
+
+          <!-- Контекстен бутон Анализ на доставките -->
+          <button type="button" class="btn-primary" id="mrpBtn" onclick="openMrpModal()"
+            style="display: none; background-color: #ef4444; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);">🚨 Анализ на
+            доставките</button>
+
+          <!-- Контекстен бутон Трансформация на Резолвери (само в таб Склад) -->
+          <button type="button" class="btn-primary" id="transformResolverBtn" onclick="openTransformModal()"
+            style="display: none; background-color: #6366f1; box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3); font-weight: 800;">🔄
+            Трансформация на Резолвери</button>
+
+          <!-- Контекстен бутон Синхронизиране на Машини от Маршрути -->
+          <button type="button" class="btn-primary" id="syncMachinesBtn" onclick="syncMachinesFromRoutes()"
+            style="display: none; background-color: #0284c7; box-shadow: 0 2px 4px rgba(2, 132, 199, 0.3); font-weight: 800;"
+            title="Зареди автоматично всички машини от маршрутните карти">🔄 Зареди машини от Маршрути</button>
+
+          <!-- Контекстен бутон Заявки & Поръчки за Екипировка (само в таб Склад Инструментална Екипировка) -->
+          <button type="button" class="btn-primary" id="toolingRequestsBtn" onclick="openToolingRequestsModal()"
+            style="display: none; background: linear-gradient(135deg, #d97706, #b45309); box-shadow: 0 2px 4px rgba(217, 119, 6, 0.3); font-weight: 800;"
+            title="Дневник на заявките и поръчките за пластини и инструменти от цеха">🛠️ Заявки &amp; Поръчки от Цеха
+            <span id="toolingBtnBadge"
+              style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.8rem; margin-left: 4px;">0</span></button>
+
+          <!-- Контекстен бутон за Дискретна проверка на локация (само в таб Чекирания) -->
+          <button type="button" class="btn-primary" id="silentLocationCheckBtn" onclick="openSilentLocationCheckModal()"
+            style="display: none; background-color: #7c3aed; box-shadow: 0 2px 4px rgba(124, 58, 237, 0.3); font-weight: 800;"
+            title="Дискретна проверка на локацията на служител в реално време">📍 Проверка локация</button>
+          <button type="button" class="btn-primary" id="locationHistoryBtn" onclick="openLocationChecksHistoryModal()"
+            style="display: none; background-color: #475569; box-shadow: 0 2px 4px rgba(71, 85, 105, 0.3); font-weight: 800;"
+            title="Дневник на всички изненадващи проверки на локация">📜 Дневник Проверки</button>
+
+          <!-- Универсални постоянни действия: Експорт и Добавяне -->
+          <button type="button" class="btn-primary btn-excel" id="exportExcelBtn" onclick="exportCurrentTableToExcel()"
+            title="Изтегли текущите данни в Excel файл">📥 Свали в Excel</button>
+          <button class="btn-primary" id="addNewBtn" onclick="openAddModal()">➕ Добави Нов Запис</button>
+        </div>
+      </div>
+
+      <div class="mass-action-bar" id="massActionBar">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span class="mass-action-text" id="massActionText">Маркирани: 0 записа</span>
+          <button type="button" onclick="massDeselectAll()"
+            style="background: none; border: none; color: #64748b; font-size: 0.85em; cursor: pointer; text-decoration: underline;">Отказ</button>
+        </div>
+        <div class="mass-action-buttons-group" id="massActionButtonsContainer"
+          style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <button type="button" id="massBtnAcceptPorachki" class="btn-mass-action btn-mass-accept"
+            onclick="massAcceptPorachki()" style="display:none;">✅ Приеми поръчките</button>
+          <button type="button" id="massBtnPlanStatus" class="btn-mass-action btn-mass-status"
+            onclick="massChangePlanStatus()" style="display:none;">🎯 Смени Статус</button>
+          <button type="button" id="massBtnPlanPeriod" class="btn-mass-action btn-mass-period"
+            onclick="massChangePlanPeriod()" style="display:none;">📅 Смени Период</button>
+          <button type="button" id="massBtnRouteMachine" class="btn-mass-action btn-mass-machine"
+            onclick="massChangeRouteMachine()" style="display:none;">⚙️ Смени Машина</button>
+          <button type="button" class="btn-primary btn-excel" onclick="exportSelectedToExcel()"
+            title="Свали само маркираните в Excel" style="padding: 8px 14px; font-size: 0.86em;">📥 Свали
+            избраните</button>
+          <button class="btn-danger-mass" onclick="deleteSelectedItems()">🗑️ Изтрий маркираните</button>
+        </div>
+      </div>
+
+      <div class="layout-wrapper">
+        <div class="sidebar" id="personnelSidebar">
+          <div class="sidebar-header">📁 Лични Досиета</div>
+          <div id="sidebarLoading" style="padding: 15px; text-align: center; color: #64748b; font-size: 0.85em;">
+            Зареждане...</div>
+          <ul class="sidebar-list" id="sidebarList"></ul>
+        </div>
+
+        <div class="table-wrapper">
+          <div class="table-container">
+            <div id="loadingLayout">Зареждане на данни... 🔍</div>
+            <table id="mainTable" style="display: none;">
+              <thead id="tableHead"></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="modalBackdrop">
+      <div class="modal">
+        <div class="modal-header" id="modalTitle">Редакция <button onclick="closeModal()"
+            style="border:none;background:transparent;cursor:pointer;font-size:1.2em;">✖</button></div>
+        <form id="dynamicForm" onsubmit="saveForm(event)">
+          <div class="dynamic-form-area" id="formFieldsArea"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" onclick="closeModal()">Отказ</button>
+            <button type="submit" class="btn-primary">Запази запис</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="folderModalBackdrop">
+      <div class="modal"
+        style="max-width: 820px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <div>📁 Досие: <span id="currentWorkerName" style="color: #4338ca;"></span></div>
+          <button onclick="closeFolderModal()"
+            style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
+        </div>
+        <div class="dossier-pin-bar">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.1em;">🔑</span>
+            <span style="font-weight: 700; color: #334155; font-size: 0.88em;">Парола / ПИН за достъп на служителя
+              (Терминал / Портал):</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="text" id="workerPasswordInput" class="dossier-pin-input" placeholder="напр. 1234"
+              autocomplete="off">
+            <button type="button" class="btn-primary" onclick="saveWorkerPassword()"
+              style="padding: 6px 14px; font-size: 0.85em; border-radius: 6px;">💾 Запази</button>
+          </div>
+        </div>
+        <div class="folder-tabs">
+          <button class="f-tab active" id="tabAttBtn" onclick="switchFolderTab('att')">⏱️ Присъствие</button>
+          <button class="f-tab" id="tabWorkBtn" onclick="switchFolderTab('work')">🛠️ Свършена Работа</button>
+          <button class="f-tab" id="tabDocsBtn" onclick="switchFolderTab('docs')">📑 Документи</button>
+          <button class="f-tab" id="tab3sBtn" onclick="switchFolderTab('3s')">🧹 3S Одити</button>
+          <button class="f-tab" id="tabBonusesBtn" onclick="switchFolderTab('bonuses')">💰 Бонуси &amp; Заплата</button>
+          <button class="f-tab" id="tabEquipmentBtn" onclick="switchFolderTab('equipment')">🦺 Зачислено
+            Оборудване</button>
+        </div>
+        <div id="f-att" class="folder-content active">
+          <table class="modal-table">
+            <thead>
+              <tr>
+                <th>Дата и час</th>
+                <th>Действие</th>
+                <th>Локация</th>
+                <th>Бележка</th>
+              </tr>
+            </thead>
+            <tbody id="workerAttList"></tbody>
+          </table>
+        </div>
+        <div id="f-work" class="folder-content">
+          <table class="modal-table">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Детайл</th>
+                <th>Операция</th>
+                <th>К-во</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody id="workerWorkList"></tbody>
+          </table>
+        </div>
+        <div id="f-docs" class="folder-content" style="padding: 10px 4px;">
+          <!-- Upload Box -->
+          <div class="doc-upload-box">
+            <div class="doc-upload-header">
+              <span style="font-weight: 800; color: #1e293b; font-size: 0.95em;">📤 Качване на документ в досието</span>
+              <span style="font-size: 0.8em; color: #64748b;">(Фишове за заплати, договори, болнични, молби)</span>
+            </div>
+            <div class="doc-upload-grid">
+              <div class="doc-upload-field">
+                <label for="docCategorySelect"
+                  style="font-size: 0.8em; font-weight: 700; color: #475569; margin-bottom: 4px; display: block;">Категория:</label>
+                <select id="docCategorySelect" class="doc-select">
+                  <option value="salary">💶 Фиш за заплата</option>
+                  <option value="contract">📑 Трудов договор / Анекс</option>
+                  <option value="medical">🩺 Медицинско / Инструктаж</option>
+                  <option value="request">📝 Заявление / Молба</option>
+                  <option value="doc" selected>📄 Друг фирмен документ</option>
+                </select>
+              </div>
+              <div class="doc-upload-field">
+                <label for="docUploadInput"
+                  style="font-size: 0.8em; font-weight: 700; color: #475569; margin-bottom: 4px; display: block;">Файл
+                  от компютъра:</label>
+                <input type="file" id="docUploadInput" class="doc-file-input">
+              </div>
+              <div class="doc-upload-action">
+                <button type="button" class="btn-primary doc-upload-btn" onclick="uploadWorkerDoc()">⬆️ Качи
+                  документ</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Documents Filter & Header -->
+          <div
+            style="display: flex; justify-content: space-between; align-items: center; margin: 16px 0 10px 0; flex-wrap: wrap; gap: 8px;">
+            <div
+              style="font-weight: 800; color: #334155; font-size: 0.95em; display: flex; align-items: center; gap: 6px;">
+              <span>Качени документи:</span>
+              <span id="workerDocsCount"
+                style="background: #e0e7ff; color: #4338ca; font-size: 0.8em; padding: 2px 8px; border-radius: 12px; font-weight: 800;">0</span>
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="docCategoryFilters">
+              <button type="button" class="doc-filter-btn active"
+                onclick="filterWorkerDocs('ALL', this)">Всички</button>
+              <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('salary', this)">💶 Фишове</button>
+              <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('contract', this)">📑
+                Договори</button>
+              <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('medical', this)">🩺
+                Медицински</button>
+              <button type="button" class="doc-filter-btn" onclick="filterWorkerDocs('doc', this)">📄 Други</button>
+            </div>
+          </div>
+
+          <div id="workerDocsList" style="min-height: 120px;">Зареждане на документи...</div>
+        </div>
+        <div id="f-3s" class="folder-content" style="padding: 10px 4px;">
+          <div id="worker3sList"></div>
+        </div>
+        <div id="f-bonuses" class="folder-content" style="padding: 10px 4px;">
+          <div id="workerBonusesList"></div>
+        </div>
+        <div id="f-equipment" class="folder-content" style="padding: 10px 4px;">
+          <div id="workerEquipmentList"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="resolverModalBackdrop" style="z-index: 2000;"
+      onclick="if(event.target === this) closeResolverModal();">
+      <div class="modal"
+        style="max-width: 1050px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
+        <div class="modal-header"
+          style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div
+              style="font-size: 1.5em; background: #e0e7ff; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(67, 56, 202, 0.15);">
+              📦</div>
+            <div>
+              <div style="font-size: 1.15em; font-weight: 800; color: #0f172a;">Спецификация и състав на детайл</div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                <span style="font-size: 0.85em; color: #64748b; font-weight: 600;">Код / Детайл:</span>
+                <span id="resolverTitle"
+                  style="font-size: 0.95em; font-weight: 800; color: #4338ca; font-family: monospace;"></span>
+              </div>
+            </div>
+          </div>
+          <button onclick="closeResolverModal()"
+            style="border:none; background:#f1f5f9; cursor:pointer; font-size:1.3em; color:#64748b; line-height:1; width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition: all 0.15s ease;"
+            onmouseover="this.style.background='#fee2e2'; this.style.color='#b91c1c';"
+            onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';">✖</button>
+        </div>
+        <div id="resolverContent" style="padding: 20px; overflow-y: auto; flex: 1; background: #f8fafc;">
+          Зареждане...
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="logisticsModalBackdrop">
+
+      <div class="modal" style="max-width: 600px;">
+        <div class="modal-header">
+          <div>📦 Логистика на План</div>
+          <button onclick="document.getElementById('logisticsModalBackdrop').style.display='none'"
+            style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
+        </div>
+        <div id="logisticsContent" style="padding: 20px; background: #f8fafc; border-radius: 8px; margin: 15px;">
+          <!-- Content will be generated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="auditModalBackdrop">
+      <div class="modal"
+        style="width: 90vw; max-width: 1400px; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <div>🕒 Хронология на промените</div>
+          <button onclick="document.getElementById('auditModalBackdrop').style.display='none'"
+            style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
+        </div>
+        <div
+          style="padding: 15px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 15px; align-items: center; background: #f8fafc; flex-wrap: wrap;">
+          <label style="font-weight: bold; color: #475569;">Таблица:</label>
+          <select id="auditTableFilter" onchange="fetchAuditLogs()"
+            style="padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;">
+            <option value="all">Всички</option>
+            <option value="plan">Работен План</option>
+            <option value="marshruti">Маршрутни карти</option>
+            <option value="bom">Спецификации (BOM)</option>
+            <option value="Номенклатура">Номенклатура</option>
+            <option value="sklad">Склад Материали</option>
+            <option value="inventory">Склад</option>
+          </select>
+          <div style="flex: 1; min-width: 250px; position: relative;">
+            <input type="text" id="auditSearchFilter" placeholder="🔍 Търси детайл за проследимост (напр. 'вар. 11')..."
+              onkeyup="if(event.key === 'Enter') fetchAuditLogs()"
+              style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none; box-sizing: border-box;">
+          </div>
+          <button onclick="fetchAuditLogs()" class="btn-primary"
+            style="background-color: #3b82f6; padding: 8px 16px;">🔄 Обнови</button>
+        </div>
+        <div id="auditContent" style="padding: 15px; overflow-y: auto; flex: 1; background: #f1f5f9;">
+          Зареждане...
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="mrpModalBackdrop">
+      <div class="modal" style="max-width: 800px; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <div>🚨 Анализ на доставките (Дефицити)</div>
+          <button onclick="document.getElementById('mrpModalBackdrop').style.display='none'"
+            style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
+        </div>
+        <div id="mrpContent" style="padding: 15px; overflow-y: auto; flex: 1; background: #f8fafc;">
+          <!-- Content will be generated by JS -->
+          Зареждане...
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="transformModalBackdrop">
+      <div class="modal" style="max-width: 600px;">
+        <div class="modal-header">
+          <div>🔄 Трансформация на Резолвери</div>
+          <button onclick="document.getElementById('transformModalBackdrop').style.display='none'"
+            style="border:none;background:transparent;cursor:pointer;font-size:1.2em;color:#94a3b8;">✖</button>
+        </div>
+        <div
+          style="padding: 20px; background: #f8fafc; border-radius: 8px; margin: 15px; display: flex; flex-direction: column; gap: 15px;">
+          <div>
+            <label style="font-weight:bold; display:block; margin-bottom:5px;">От Източник:</label>
+            <select id="transSourceSelect" onchange="onTransformSourceChange()"
+              style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1;"></select>
+          </div>
+          <div>
+            <label style="font-weight:bold; display:block; margin-bottom:5px;">Операция:</label>
+            <select id="transOpSelect" onchange="onTransformOpChange()"
+              style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1;"></select>
+          </div>
+          <div>
+            <label style="font-weight:bold; display:block; margin-bottom:5px;">Количество за трансформиране (Макс: <span
+                id="transMaxQty">0</span> бр.):</label>
+            <input type="number" id="transQtyInput" min="1"
+              style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1; box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="font-weight:bold; display:block; margin-bottom:5px;">Към Цел (само съвместими по BOM):</label>
+            <select id="transTargetSelect"
+              style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1;"></select>
+          </div>
+          <div style="text-align:right; margin-top:10px;">
+            <button class="btn-primary" onclick="executeTransformation()"
+              style="background-color: #6366f1; padding:10px 20px; font-size:1.1em;">Възложи Трансформация</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="modal-backdrop" id="reportModalBackdrop">
+      <div class="modal"
+        style="max-width: 1100px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
+        <div class="modal-header"
+          style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div
+              style="font-size: 1.5em; background: #ccfbf1; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(13, 148, 136, 0.15);">
+              📊</div>
+            <div>
+              <div style="font-size: 1.15em; font-weight: 800; color: #0f172a;">Оперативна сводка и периодичен отчет
+              </div>
+              <div style="font-size: 0.85em; color: #64748b; font-weight: 600; margin-top: 2px;">Производство, брак,
+                критичен склад и сервизни събития</div>
+            </div>
+          </div>
+          <button onclick="closeExecutiveReportModal()"
+            style="border:none; background:#f1f5f9; cursor:pointer; font-size:1.3em; color:#64748b; line-height:1; width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition: all 0.15s ease;"
+            onmouseover="this.style.background='#fee2e2'; this.style.color='#b91c1c';"
+            onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';">✖</button>
+        </div>
+        <div id="reportModalContent" style="padding: 20px; overflow-y: auto; flex: 1; background: #f8fafc;">
+          Зареждане на отчет...
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Валидатор на План -->
+    <div class="modal-backdrop" id="planValidatorModalBackdrop">
+      <div class="modal"
+        style="max-width: 950px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);">
+        <div class="modal-header"
+          style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #ffffff;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div
+              style="font-size: 1.5em; background: #ede9fe; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(124, 58, 237, 0.15);">
+              🔍</div>
+            <div>
+              <div style="font-size: 1.15em; font-weight: 800; color: #0f172a;">Валидатор за готовност на Месечен План
+              </div>
+              <div style="font-size: 0.85em; color: #64748b; font-weight: 600; margin-top: 2px;">Автоматична проверка за
+                липсващи маршрути, BOM спецификации и дефицит на заготовки</div>
+            </div>
+          </div>
+          <button onclick="closePlanValidatorModal()"
+            style="border:none; background:#f1f5f9; cursor:pointer; font-size:1.3em; color:#64748b; line-height:1; width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition: all 0.15s ease;"
+            onmouseover="this.style.background='#fee2e2'; this.style.color='#b91c1c';"
+            onmouseout="this.style.background='#f1f5f9'; this.style.color='#64748b';">✖</button>
+        </div>
+
+        <div
+          style="padding: 14px 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-weight: 700; color: #334155; font-size: 0.9em;">📅 Месец:</label>
+            <select id="validatorMonthSelect"
+              style="padding: 6px 12px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600; outline: none;"></select>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-weight: 700; color: #334155; font-size: 0.9em;">Година:</label>
+            <select id="validatorYearSelect"
+              style="padding: 6px 12px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600; outline: none;"></select>
+          </div>
+          <button type="button" class="btn-primary" onclick="runPlanValidation()"
+            style="background-color: #7c3aed; padding: 7px 18px; font-weight: 700;">🚀 Провери План</button>
+          <div id="validatorStatusText" style="margin-left: auto; font-size: 0.88em; font-weight: 600; color: #64748b;">
+          </div>
+        </div>
+
+        <div id="validatorContent" style="padding: 20px; overflow-y: auto; flex: 1; background: #ffffff;">
+          <div style="text-align: center; color: #94a3b8; padding: 40px;">Изберете месец и натиснете "Провери План"
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Заявки за заготовки от цеха -->
+    <div class="modal-backdrop" id="materialRequestsModalBackdrop">
+      <div class="modal" style="max-width: 820px; width: 95%;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span>🔔 Заявки за заготовки и материали от Цеха</span>
+            <span id="modalReqCountBadge"
+              style="background:#ea580c; color:white; padding:3px 9px; border-radius:12px; font-size:0.75em; font-weight:800;">0
+              чакащи</span>
+          </div>
+          <button onclick="closeMaterialRequestsModal()"
+            style="border:none;background:transparent;cursor:pointer;font-size:1.3em;">✖</button>
+        </div>
+        <div id="materialRequestsList" style="max-height: 60vh; overflow-y: auto; padding: 4px;">
+          <!-- Dynamic requests list -->
+        </div>
+        <div class="modal-actions" style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.82em; color: #64748b;">Заявките се изпращат от операторите при блокирани детайли на
+            терминала.</span>
+          <button type="button" class="btn-secondary" onclick="closeMaterialRequestsModal()">Затвори</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Datalists for intelligent autocomplete in forms -->
+  <datalist id="dl_nomenklatura"></datalist>
+  <datalist id="dl_machines"></datalist>
+</body>
+
 </html>

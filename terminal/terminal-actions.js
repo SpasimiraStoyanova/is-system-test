@@ -372,7 +372,48 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
             rootOrigin = window.traceRootDeficitOrigin(taskData.name, taskData.opNum, taskData.op, missingQty);
         }
 
-        if (rootOrigin) {
+        if (rootOrigin && rootOrigin.isAnomaly) {
+            // СКАЧЕНИ СЪДОВЕ: Установен останал буфер нагоре по маршрута на същия детайл
+            targetPart = rootOrigin.rootPart;
+            targetOpNum = rootOrigin.rootOpNum ? String(rootOrigin.rootOpNum) : '';
+            targetOpName = rootOrigin.rootOpName || '';
+            targetMachine = rootOrigin.rootMachine || 'Обща';
+            targetOperator = `Колега на ${targetMachine}`;
+            intermediateOp = rootOrigin.intermediate;
+
+            let chainInfo = (rootOrigin.chain && rootOrigin.chain.length > 0) ? ` [Верига: ${rootOrigin.chain.join(' ⬅️ ')}]` : '';
+            reasonsText = `Разминаване: отчетени ${val} бр. за ${taskData.name} на ${curOpNum} (${taskData.op}). В склада стои дефицит от -${missingQty} бр. Стартирана автоматична ревизия на Оп. ${targetOpNum} (${targetOpName}) на ${targetMachine}.${chainInfo}`;
+
+            // Създаваме автоматична ревизия (Spot Audit) към машината на Оп. 10
+            try {
+                const spotData = {
+                    target_machine: targetMachine,
+                    target_worker: null,
+                    part_code: taskData.name,
+                    operation: targetOpName,
+                    expected_qty: rootOrigin.anomaly.upstreamOp.availStock,
+                    status: 'PENDING',
+                    created_at: new Date().toISOString(),
+                    notes: JSON.stringify({
+                        type: 'auto_deficit_check',
+                        reported_part: taskData.name,
+                        reported_op_num: taskData.opNum,
+                        reported_op_name: taskData.op,
+                        reported_qty: val,
+                        reported_machine: (currentMachine && currentMachine !== 'ВСИЧКИ') ? currentMachine : (taskData.machine || 'Обща'),
+                        missing_qty: missingQty,
+                        upstream_op_num: rootOrigin.anomaly.upstreamOp.opNum,
+                        upstream_op_name: rootOrigin.anomaly.upstreamOp.opName,
+                        upstream_machine: rootOrigin.anomaly.upstreamOp.machine,
+                        intermediate_ops: rootOrigin.intermediateOps
+                    })
+                };
+                await client.from('spot_audits').insert([spotData]);
+            } catch(sErr) {
+                console.warn('spot_audits insert error:', sErr);
+            }
+
+        } else if (rootOrigin) {
             targetPart = rootOrigin.rootPart;
             targetOpNum = rootOrigin.rootOpNum ? String(rootOrigin.rootOpNum) : '';
             targetOpName = rootOrigin.rootOpName || '';
@@ -446,6 +487,7 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
             created_at: new Date().toISOString(),
             notes: JSON.stringify({
                 type: 'discrepancy',
+                phase: (rootOrigin && rootOrigin.isAnomaly) ? 'spot_audit_pending' : 'standard',
                 is_prev_op: isPrevOp,
                 reported_by_part: taskData.name,
                 reported_qty: val,
@@ -454,11 +496,16 @@ async function sendDiscrepancyAlerts(taskData, val, prevStock, missingQty) {
                 reported_by_operator: currentOperator,
                 reported_by_op_num: taskData.opNum,
                 reported_by_op_name: taskData.op,
+                reported_machine: myMachine,
                 target_part: targetPart,
                 target_machine: targetMachine,
                 target_op_num: targetOpNum,
                 target_op_name: targetOpName,
                 target_operator: targetOperator,
+                upstream_op_num: (rootOrigin && rootOrigin.isAnomaly) ? rootOrigin.anomaly.upstreamOp.opNum : null,
+                upstream_op_name: (rootOrigin && rootOrigin.isAnomaly) ? rootOrigin.anomaly.upstreamOp.opName : null,
+                upstream_machine: (rootOrigin && rootOrigin.isAnomaly) ? rootOrigin.anomaly.upstreamOp.machine : null,
+                intermediate_ops: (rootOrigin && rootOrigin.isAnomaly) ? rootOrigin.intermediateOps : [],
                 intermediate_part: intermediateOp ? intermediateOp.part : null,
                 intermediate_op_num: intermediateOp ? intermediateOp.opNum : null,
                 intermediate_op_name: intermediateOp ? intermediateOp.opName : null,

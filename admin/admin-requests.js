@@ -82,19 +82,58 @@ function showAdminRequestToast(req) {
     try { if (req.notes && req.notes.startsWith('{')) parsedObj = JSON.parse(req.notes); } catch(e) {}
 
     if (parsedObj && parsedObj.type === 'discrepancy') {
+        let badgeTitle = '⚠️ РАЗМИНАВАНЕ В ОТЧЕТИТЕ';
+        let detailHtml = '';
+
+        if (parsedObj.phase === 'spot_audit_pending') {
+            badgeTitle = '🔍 ЕКСПРЕСНА РЕВИЗИЯ (ДЕФИЦИТ)';
+            detailHtml = `
+                <div style="font-size:0.88em; color:#1e293b; font-weight:700;">
+                    <b>${req.operator || 'Оператор'}</b> отчете <b>${parsedObj.reported_qty} бр.</b> за <span style="color:#0284c7;">${req.part_name}</span> (Оп. ${parsedObj.reported_by_op_num || ''})!
+                </div>
+                <div style="font-size:0.82em; color:#854d0e; background:#fefce8; padding:4px 8px; border-radius:6px; border:1px solid #fef08a;">
+                    🔍 Стартирана експресна ревизия на <b>Оп. ${parsedObj.upstream_op_num || ''} (${parsedObj.upstream_machine || ''})</b> за <b>${parsedObj.missing_qty} бр.</b> Очаква се потвърждение на наличността.
+                </div>
+            `;
+        } else if (parsedObj.phase === 'reconciliation_cascade') {
+            badgeTitle = '🔄 ДООТЧИТАНЕ ПО КАСКАДА';
+            detailHtml = `
+                <div style="font-size:0.88em; color:#1e293b; font-weight:700;">
+                    Детайл: <span style="color:#0284c7;">${req.part_name}</span> (липсват <b>${parsedObj.missing_qty} бр.</b>)
+                </div>
+                <div style="font-size:0.82em; color:#166534; background:#f0fdf4; padding:4px 8px; border-radius:6px; border:1px solid #bbf7d0;">
+                    👉 Оп. ${parsedObj.upstream_op_num || ''} потвърди 0 бр. налични (транзит). Сигнал за доотчитане към <b>${parsedObj.target_machine}</b> (Оп. ${parsedObj.target_op_num || ''} ${parsedObj.target_op_name || ''}).
+                </div>
+            `;
+        } else if (parsedObj.phase === 'over_reporting_detected') {
+            badgeTitle = '🚨 ГРЕШКА: НАДПИСАНИ БРОЙКИ';
+            detailHtml = `
+                <div style="font-size:0.88em; color:#991b1b; font-weight:800;">
+                    Оп. ${parsedObj.upstream_op_num || ''} потвърди наличност от ${parsedObj.upstream_confirmed_qty || ''} бр.!
+                </div>
+                <div style="font-size:0.82em; color:#991b1b; background:#fef2f2; padding:4px 8px; border-radius:6px; border:1px solid #fecaca;">
+                    🚨 Грешка при отчет на Оп. ${parsedObj.reported_by_op_num || ''} за ${req.part_name} - надписани ${parsedObj.missing_qty} бр. Сигнал към Началник смяна!
+                </div>
+            `;
+        } else {
+            detailHtml = `
+                <div style="font-size:0.88em; color:#1e293b; font-weight:700;">
+                    <b>${req.operator || 'Оператор'}</b> отчете <b>${parsedObj.reported_qty} бр.</b> за <span style="color:#0284c7;">${req.part_name}</span> (Оп. ${parsedObj.reported_by_op_num || ''})!
+                </div>
+                <div style="font-size:0.82em; color:#854d0e; background:#fefce8; padding:4px 8px; border-radius:6px; border:1px solid #fef08a;">
+                    👉 Липсват <b>${parsedObj.missing_qty} бр.</b> от първоизточник <b>${parsedObj.target_part || 'детайл'}</b> (${parsedObj.target_machine || ''})${parsedObj.intermediate_machine ? ' (транзит през ' + parsedObj.intermediate_machine + ')' : ''}. Чака се доотчитане.
+                </div>
+            `;
+        }
+
         toast.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div style="font-weight:900; color:#ea580c; font-size:0.92em; display:flex; align-items:center; gap:6px;">
-                    <span>⚠️</span> РАЗМИНАВАНЕ В ОТЧЕТИТЕ
+                    <span>⚠️</span> ${badgeTitle}
                 </div>
                 <span style="font-size:0.75em; color:#94a3b8;">току-що</span>
             </div>
-            <div style="font-size:0.88em; color:#1e293b; font-weight:700;">
-                <b>${req.operator || 'Оператор'}</b> отчете <b>${parsedObj.reported_qty} бр.</b> за <span style="color:#0284c7;">${req.part_name}</span> (Оп. ${parsedObj.reported_by_op_num || ''})!
-            </div>
-            <div style="font-size:0.82em; color:#854d0e; background:#fefce8; padding:4px 8px; border-radius:6px; border:1px solid #fef08a;">
-                👉 Липсват <b>${parsedObj.missing_qty} бр.</b> от първоизточник <b>${parsedObj.target_part || 'детайл'}</b> (${parsedObj.target_machine || ''})${parsedObj.intermediate_machine ? ' (транзит през ' + parsedObj.intermediate_machine + ')' : ''}. Чака се доотчитане.
-            </div>
+            ${detailHtml}
         `;
     } else {
         toast.innerHTML = `
@@ -206,9 +245,17 @@ function updatePlanningBadgesAndBanner() {
 
             let summaryText = '';
             if (tObj && tObj.type === 'discrepancy') {
-                const missingTargetName = tObj.target_part ? `детайл <b style="color:#0369a1;">${tObj.target_part}</b> ` : (tObj.target_op_num ? `Оп. ${tObj.target_op_num} ` : '');
-                const intermInfo = (tObj.intermediate_machine && tObj.intermediate_machine !== tObj.target_machine) ? ` (транзит през ${tObj.intermediate_machine})` : '';
-                summaryText = `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> отчете <b>${tObj.reported_qty} бр.</b> за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> ➔ <b style="color:#c2410c;">разминаване: липсват ${tObj.missing_qty} бр.</b> от ${missingTargetName}(${tObj.target_machine})${intermInfo}`;
+                if (tObj.phase === 'spot_audit_pending') {
+                    summaryText = `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> отчете <b>${tObj.reported_qty} бр.</b> за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> (Оп. ${tObj.reported_by_op_num || ''}) ➔ <b style="color:#c2410c;">дефицит -${tObj.missing_qty} бр.</b>! Стартирана експресна ревизия на Оп. ${tObj.upstream_op_num || ''} (${tObj.upstream_machine || ''})`;
+                } else if (tObj.phase === 'reconciliation_cascade') {
+                    summaryText = `В ${dateStr} ч. ревизията на Оп. ${tObj.upstream_op_num || ''} потвърди 0 бр. (транзит) ➔ <b style="color:#15803d;">Чака се доотчитане на ${tObj.missing_qty} бр.</b> от <b style="color:#0369a1;">${tObj.target_machine}</b> (Оп. ${tObj.target_op_num || ''} ${tObj.target_op_name || ''})`;
+                } else if (tObj.phase === 'over_reporting_detected') {
+                    summaryText = `🚨 В ${dateStr} ч. Оп. ${tObj.upstream_op_num || ''} потвърди наличност ➔ <b style="color:#dc2626;">Грешка в отчет на Оп. ${tObj.reported_by_op_num || ''} за ${first.part_name}</b> (надписани ${tObj.missing_qty} бр. / чужд кашон)`;
+                } else {
+                    const missingTargetName = tObj.target_part ? `детайл <b style="color:#0369a1;">${tObj.target_part}</b> ` : (tObj.target_op_num ? `Оп. ${tObj.target_op_num} ` : '');
+                    const intermInfo = (tObj.intermediate_machine && tObj.intermediate_machine !== tObj.target_machine) ? ` (транзит през ${tObj.intermediate_machine})` : '';
+                    summaryText = `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> отчете <b>${tObj.reported_qty} бр.</b> за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> ➔ <b style="color:#c2410c;">разминаване: липсват ${tObj.missing_qty} бр.</b> от ${missingTargetName}(${tObj.target_machine})${intermInfo}`;
+                }
             } else {
                 summaryText = count === 1 
                     ? `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> (машина ${first.machine || 'Обща'}) чака за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span>${targetMachineTxt}`
@@ -332,9 +379,12 @@ function renderMaterialRequestsList() {
 
         let statusPill = '';
         if (isDiscrepancy) {
+            let pillText = '⚠️ Чака доотчитане';
+            if (targetObj && targetObj.phase === 'spot_audit_pending') pillText = '🔍 Експресна ревизия в ход';
+            else if (targetObj && targetObj.phase === 'over_reporting_detected') pillText = '🚨 Надписани бройки';
             statusPill = isPending 
-                ? `<span style="background: #fff7ed; color: #ea580c; border: 1.5px solid #fed7aa; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">⚠️ Чака доотчитане</span>`
-                : `<span style="background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">🟢 Доотчетено</span>`;
+                ? `<span style="background: #fff7ed; color: #ea580c; border: 1.5px solid #fed7aa; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">${pillText}</span>`
+                : `<span style="background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">🟢 Доотчетено / Занулено</span>`;
         } else {
             statusPill = isPending 
                 ? `<span style="background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; padding: 3px 10px; border-radius: 14px; font-weight: 800; font-size: 0.82em;">🟡 Чакаща заготовка</span>`

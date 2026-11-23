@@ -452,6 +452,12 @@ async function submitSpotAuditResponse(auditId, expectedQty, reportedQty) {
     Swal.fire({ title: 'Запис на ревизията...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
     try {
+        const targetAudit = activeSpotAudits.find(a => a.id === auditId);
+        let auditNotes = {};
+        try {
+            auditNotes = JSON.parse((targetAudit && targetAudit.notes) || '{}');
+        } catch(e) {}
+
         const worker = currentOperator || 'ОПЕРАТОР';
         const nowIso = new Date().toISOString();
         const status = isDiscrepancy ? 'DISCREPANCY' : 'MATCH';
@@ -468,6 +474,11 @@ async function submitSpotAuditResponse(auditId, expectedQty, reportedQty) {
             .eq('id', auditId);
 
         if (error) throw error;
+
+        // Автоматична обработка при ревизия за дефицит
+        if (auditNotes && auditNotes.type === 'auto_deficit_check') {
+            await handleAutoDeficitAuditResult(targetAudit, auditNotes, reportedQty, worker);
+        }
 
         window.pendingBlockingSpotAudit = null;
 
@@ -522,4 +533,139 @@ document.addEventListener('DOMContentLoaded', () => {
     // Периодична фонова проверка на всеки 25 секунди
     setInterval(checkPendingSpotAudits, 25000);
 });
+
+async function handleAutoDeficitAuditResult(audit, auditNotes, reportedQty, worker) {
+    try {
+        const partName = auditNotes.reported_part || (audit && audit.part_code);
+        const missingQty = parseFloat(auditNotes.missing_qty) || 0;
+        const intermediateOps = auditNotes.intermediate_ops || [];
+        const upstreamOpNum = auditNotes.upstream_op_num;
+        const upstreamOpName = auditNotes.upstream_op_name;
+        const upstreamMachine = auditNotes.upstream_machine;
+        const reportedOpNum = auditNotes.reported_op_num;
+        const reportedOpName = auditNotes.reported_op_name;
+        const reportedMachine = auditNotes.reported_machine;
+
+        if (reportedQty === 0) {
+            // СЛУЧАЙ А: Работникът на Оп. 10 потвърждава 0 бр. налични (детайлите са преминали транзит!)
+            // 1. Нулираме буфера на Оп. 10 в inventory (тъй като физически детайлите са напуснали тази операция)
+            try {
+                await client
+                    .from('inventory')
+                    .update({ 'Количество': 0 })
+                    .ilike('ID Детайл', partName.trim())
+                    .ilike('Операция', upstreamOpName.trim());
+            } catch(invErr) {
+                console.warn('Inventory adjust error:', invErr);
+            }
+
+            // 2. Насочваме каскадата към първата междинна операция (напр. Оп. 20 Пудрене 2)
+            if (intermediateOps.length > 0) {
+                const nextOp = intermediateOps[0];
+                const remainingOps = intermediateOps.slice(1);
+
+                const { data: existingReqs } = await client
+                    .from('material_requests')
+                    .select('*')
+                    .ilike('part_name', partName.trim())
+                    .eq('status', 'Чакаща')
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                const nextNotes = {
+                    type: 'discrepancy',
+                    phase: 'reconciliation_cascade',
+                    reported_by_part: partName,
+                    reported_qty: auditNotes.reported_qty,
+                    missing_qty: missingQty,
+                    current_reconcile_op: nextOp,
+                    remaining_cascade_ops: remainingOps,
+                    upstream_op_num: upstreamOpNum,
+                    upstream_op_name: upstreamOpName,
+                    upstream_machine: upstreamMachine,
+                    target_part: partName,
+                    target_op_num: nextOp.opNum,
+                    target_op_name: nextOp.opName,
+                    target_machine: nextOp.machine,
+                    audit_confirmed_by: worker,
+                    audit_result: 'TRANSIT_CONFIRMED'
+                };
+
+                const nextReasons = `Разминаване в отчетите: Ревизията на Оп. ${upstreamOpNum} (${upstreamOpName}) на ${upstreamMachine} потвърди 0 бр. налични (детайлите са преминали транзит). Моля, доотчетете ${missingQty} бр. на Оп. ${nextOp.opNum} (${nextOp.opName}) на ${nextOp.machine}!`;
+
+                if (existingReqs && existingReqs.length > 0) {
+                    await client
+                        .from('material_requests')
+                        .update({
+                            target_part: partName,
+                            target_op_num: String(nextOp.opNum),
+                            target_op_name: nextOp.opName,
+                            target_machine: nextOp.machine,
+                            reasons: nextReasons,
+                            notes: JSON.stringify(nextNotes)
+                        })
+                        .eq('id', existingReqs[0].id);
+                } else {
+                    await client
+                        .from('material_requests')
+                        .insert([{
+                            task_id: 'reconcile_' + Date.now(),
+                            part_name: partName,
+                            op_name: nextOp.opName,
+                            machine: nextOp.machine,
+                            operator: worker,
+                            status: 'Чакаща',
+                            reasons: nextReasons,
+                            target_part: partName,
+                            target_op_num: String(nextOp.opNum),
+                            target_op_name: nextOp.opName,
+                            target_machine: nextOp.machine,
+                            notes: JSON.stringify(nextNotes)
+                        }]);
+                }
+            }
+        } else {
+            // СЛУЧАЙ Б: Работникът на Оп. 10 потвърждава, че детайлите са налични пред него!
+            // Грешка при отчитането на Оп. 40 (надписване / грешен кашон)
+            const alertNotes = {
+                type: 'discrepancy',
+                phase: 'over_reporting_detected',
+                reported_by_part: partName,
+                reported_qty: auditNotes.reported_qty,
+                missing_qty: missingQty,
+                upstream_op_num: upstreamOpNum,
+                upstream_op_name: upstreamOpName,
+                upstream_machine: upstreamMachine,
+                upstream_confirmed_qty: reportedQty,
+                audit_confirmed_by: worker,
+                audit_result: 'STOCK_PRESENT'
+            };
+
+            const alertReasons = `🚨 Внимание: Оп. ${upstreamOpNum} (${upstreamOpName}) на ${upstreamMachine} потвърди физическа наличност от ${reportedQty} бр.! Грешка при отчет на Оп. ${reportedOpNum} (${reportedOpName}) - надписани ${missingQty} бр. Сигнал към Началник смяна.`;
+
+            const { data: existingReqs } = await client
+                .from('material_requests')
+                .select('*')
+                .ilike('part_name', partName.trim())
+                .eq('status', 'Чакаща')
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (existingReqs && existingReqs.length > 0) {
+                await client
+                    .from('material_requests')
+                    .update({
+                        target_machine: reportedMachine || 'Склад',
+                        target_op_num: String(reportedOpNum),
+                        target_op_name: reportedOpName,
+                        reasons: alertReasons,
+                        notes: JSON.stringify(alertNotes)
+                    })
+                    .eq('id', existingReqs[0].id);
+            }
+        }
+    } catch(err) {
+        console.error('handleAutoDeficitAuditResult error:', err);
+    }
+}
 
