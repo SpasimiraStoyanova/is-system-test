@@ -714,13 +714,27 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
         let startedAt = window['startTime_' + taskData.id] || (taskData && taskData.startedAt) || new Date().toISOString();
         let inserts = [{ "ID План": taskData.plan_id, "ID Детайл": taskData.name, "Оператор": currentOperator, "Количество": val, "Операция": taskData.op, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt }];
 
+        let savedMaterials = [];
         allChildren.forEach(child => {
             let cName = String(child['ID Компонент']).trim();
             let multiplier = parseFloat(child['Количество']) || 1; 
             let qty = val * multiplier;
             if (!scrappedChildrenNames.includes(cName)) {
-                let cRoutes = globalRoutesByDetail[normalizeStr(cName)] || globalRoutesByDetail[cName] || []; 
-                let opToLog = cRoutes.length > 0 ? String(cRoutes[cRoutes.length - 1]['Име на операция']).trim() : "Готово"; 
+                let cRoutes = (typeof globalRoutesByDetail !== 'undefined' && (globalRoutesByDetail[normalizeStr(cName)] || globalRoutesByDetail[cName])) ? (globalRoutesByDetail[normalizeStr(cName)] || globalRoutesByDetail[cName]) : []; 
+                let isMat = false;
+                if (typeof globalNomData !== 'undefined' && globalNomData) {
+                    let nomItem = globalNomData.find(n => normalizeStr(n['ID Детайл']) === normalizeStr(cName));
+                    if (nomItem && nomItem['Тип'] && String(nomItem['Тип']).toLowerCase().includes('материал')) {
+                        isMat = true;
+                    }
+                }
+                if (!isMat && cRoutes.length === 0) isMat = true;
+
+                if (isMat) {
+                    savedMaterials.push({ name: cName, qty: qty });
+                }
+
+                let opToLog = isMat ? "Склад Материали" : (cRoutes.length > 0 ? String(cRoutes[cRoutes.length - 1]['Име на операция']).trim() : "Склад Материали"); 
                 inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Спасен)", "Количество": qty, "Операция": opToLog, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
             } else {
                 inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Бракуван Компонент)", "Количество": qty, "Операция": "Бракуван в " + taskData.name, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt });
@@ -729,6 +743,34 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
 
         const { error } = await client.from('otcheti').insert(inserts);
         if (error) throw error; 
+
+        // За спасените суровини/материали: възстановяваме ги в Склад Материали (sklad)
+        // и гарантираме, че НЕ остават в Склад Готови Детайли (inventory)
+        if (savedMaterials.length > 0) {
+            for (let mat of savedMaterials) {
+                try {
+                    const { data: skRows } = await client.from('sklad').select('ID Детайл, Изразходено, Остатък').ilike('ID Детайл', mat.name).limit(1);
+                    if (skRows && skRows.length > 0) {
+                        let curUsed = parseFloat(skRows[0]['Изразходено']) || 0;
+                        let curRem = parseFloat(skRows[0]['Остатък']) || 0;
+                        let newUsed = Math.max(0, curUsed - mat.qty);
+                        let newRem = curRem + mat.qty;
+                        await client.from('sklad').update({
+                            'Изразходено': newUsed,
+                            'Остатък': newRem
+                        }).eq('ID Детайл', skRows[0]['ID Детайл']);
+                    }
+                } catch(skErr) {
+                    console.warn('Грешка при възстановяване на материал в sklad:', skErr);
+                }
+
+                try {
+                    await client.from('inventory').delete().ilike('ID Детайл', mat.name);
+                } catch(invErr) {
+                    console.warn('Грешка при изтриване на спасен материал от inventory:', invErr);
+                }
+            }
+        } 
 
         if (isDiscrepancyAccepted) {
             await sendDiscrepancyAlerts(taskData, val, prevStock, missingQty);
@@ -744,8 +786,16 @@ async function executeScrapLogic(taskData, val, allChildren, scrappedChildrenNam
                 let multiplier = parseFloat(child['Количество']) || 1; 
                 let qty = val * multiplier;
                 if (!scrappedChildrenNames.includes(cName)) {
-                    let cRoutes = globalRoutesByDetail[normalizeStr(cName)] || globalRoutesByDetail[cName] || []; 
-                    let opToLog = cRoutes.length > 0 ? String(cRoutes[cRoutes.length - 1]['Име на операция']).trim() : "Готово"; 
+                    let cRoutes = (typeof globalRoutesByDetail !== 'undefined' && (globalRoutesByDetail[normalizeStr(cName)] || globalRoutesByDetail[cName])) ? (globalRoutesByDetail[normalizeStr(cName)] || globalRoutesByDetail[cName]) : []; 
+                    let isMat = false;
+                    if (typeof globalNomData !== 'undefined' && globalNomData) {
+                        let nomItem = globalNomData.find(n => normalizeStr(n['ID Детайл']) === normalizeStr(cName));
+                        if (nomItem && nomItem['Тип'] && String(nomItem['Тип']).toLowerCase().includes('материал')) {
+                            isMat = true;
+                        }
+                    }
+                    if (!isMat && cRoutes.length === 0) isMat = true;
+                    let opToLog = isMat ? "Склад Материали" : (cRoutes.length > 0 ? String(cRoutes[cRoutes.length - 1]['Име на операция']).trim() : "Склад Материали"); 
                     inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Спасен)", "Количество": qty, "Операция": opToLog, "Статус": "Отчетено", "Дата": new Date().toISOString(), "Време Старт": startedAt });
                 } else {
                     inserts.push({ "ID План": taskData.plan_id, "ID Детайл": cName, "Оператор": "СИСТЕМА (Бракуван Компонент)", "Количество": qty, "Операция": "Бракуван в " + taskData.name, "Статус": "Брак", "Дата": new Date().toISOString(), "Време Старт": startedAt });
