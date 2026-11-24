@@ -982,6 +982,42 @@ async function loadCurrentTableData(forceRefresh = false) {
             }
         }
 
+        if (currentTab === 'bom') {
+            rows.sort((a, b) => {
+                const pA = String(a['ID Родител'] || '').trim();
+                const pB = String(b['ID Родител'] || '').trim();
+                const cmpParent = pA.localeCompare(pB, 'bg', { numeric: true, sensitivity: 'base' });
+                if (cmpParent !== 0) return cmpParent;
+
+                const rawOpA = a['Влага се на Оп. №'];
+                const rawOpB = b['Влага се на Оп. №'];
+                const opA = (rawOpA !== null && rawOpA !== undefined && String(rawOpA).trim() !== '') ? (parseFloat(rawOpA) || 0) : -1;
+                const opB = (rawOpB !== null && rawOpB !== undefined && String(rawOpB).trim() !== '') ? (parseFloat(rawOpB) || 0) : -1;
+                if (opA !== opB) return opA - opB;
+
+                const cA = String(a['ID Компонент'] || '').trim();
+                const cB = String(b['ID Компонент'] || '').trim();
+                return cA.localeCompare(cB, 'bg', { numeric: true, sensitivity: 'base' });
+            });
+        }
+
+        if (currentTab === 'marshruti') {
+            rows.sort((a, b) => {
+                const dA = String(a['Код на детайла'] || '').trim();
+                const dB = String(b['Код на детайла'] || '').trim();
+                const cmpDetail = dA.localeCompare(dB, 'bg', { numeric: true, sensitivity: 'base' });
+                if (cmpDetail !== 0) return cmpDetail;
+
+                const opA = parseFloat(a['№ Операция']);
+                const opB = parseFloat(b['№ Операция']);
+                const numA = isNaN(opA) ? Number.MAX_SAFE_INTEGER : opA;
+                const numB = isNaN(opB) ? Number.MAX_SAFE_INTEGER : opB;
+                if (numA !== numB) return numA - numB;
+
+                return (parseInt(a.id || 0, 10) || 0) - (parseInt(b.id || 0, 10) || 0);
+            });
+        }
+
         if (currentTab !== requestedTab) return;
         // ⚡ Записваме в локалния кеш
         adminTabCache[requestedTab] = rows;
