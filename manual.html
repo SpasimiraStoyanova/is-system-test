@@ -241,17 +241,31 @@
     .toc-sub a.active { color: var(--primary); font-weight: 800; background: var(--primary-soft); }
 
     /* Content Area */
+    ::selection { background: #bfdbfe; color: #0f172a; }
+    ::-moz-selection { background: #bfdbfe; color: #0f172a; }
     .manual-content { min-width: 0; }
     .hero-banner {
       background: linear-gradient(135deg, #1e3a8a 0%, #4338ca 55%, #2563eb 100%);
-      color: #fff;
+      color: #ffffff;
       border-radius: 16px;
       padding: 26px 28px;
       margin-bottom: 24px;
       box-shadow: 0 10px 25px rgba(30, 58, 138, 0.18);
     }
-    .hero-banner h1 { margin: 0 0 8px; font-size: 1.75rem; font-weight: 900; }
-    .hero-banner p { margin: 0; font-size: 0.98rem; opacity: 0.94; max-width: 860px; }
+    .hero-banner::selection,
+    .hero-banner *::selection,
+    .hdr-btn-primary::selection,
+    .cat-pill.active::selection {
+      background: #fde047;
+      color: #0f172a;
+    }
+    .hero-banner::-moz-selection,
+    .hero-banner *::-moz-selection {
+      background: #fde047;
+      color: #0f172a;
+    }
+    .hero-banner h1 { margin: 0 0 8px; font-size: 1.75rem; font-weight: 900; color: #ffffff; }
+    .hero-banner p { margin: 0; font-size: 0.98rem; color: #f8fafc; opacity: 1; max-width: 860px; }
     .hero-stats {
       display: flex;
       gap: 10px;
@@ -259,8 +273,9 @@
       margin-top: 16px;
     }
     .hero-stat {
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.24);
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      color: #ffffff;
       padding: 6px 12px;
       border-radius: 10px;
       font-size: 0.82rem;
@@ -485,9 +500,9 @@
 
     /* Search Highlight */
     mark.hl {
-      background: #fef08a;
-      color: #854d0e;
-      padding: 0 2px;
+      background: #fde047;
+      color: #0f172a;
+      padding: 0 3px;
       border-radius: 3px;
       font-weight: 800;
     }
