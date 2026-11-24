@@ -138,15 +138,29 @@ html, body {
 }
 
 .window-tiela,
-.window-predni,
-.window-zadni,
 .window-mpr {
   flex: 1;
   min-width: max-content;
 }
 
+.caps-stack-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-width: max-content;
+}
+.window-predni {
+  flex: 0 1 auto;
+  min-width: max-content;
+}
+.window-zadni {
+  flex: 1 1 auto;
+  min-width: max-content;
+}
+
 .window-rotors {
-  flex: 2;
+  flex: 2.2;
   min-width: max-content;
 }
 .window-rotors .lane {

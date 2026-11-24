@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Жив Монитор на Производството</title>
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=19">
+  <link rel="stylesheet" href="style.css?v=20">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js?v=46" defer></script>
 </head>
@@ -30,30 +30,36 @@
   <div class="layout-wrapper" id="dashboard-wrapper">
     <svg id="svg-overlay"></svg>
 
-    <!-- ГОРЕН РЕД: 4 ПРОЗОРЕЦА ЕДИН ДО ДРУГ (ТЕЛА | ПРЕДНИ КАПАЦИ | ЗАДНИ КАПАЦИ | МПР) -->
+    <!-- ГОРЕН РЕД: ТЕЛА | ПРЕДНИ+ЗАДНИ КАПАЦИ (ЕДИН ПОД ДРУГ) | МПР | СТАТОРИ -->
     <div class="row-section top-row">
       <div class="window window-tiela">
         <div class="window-header header-tiela">ТЕЛА</div>
         <div class="window-body" id="w-tiela"></div>
       </div>
 
-      <div class="window window-predni">
-        <div class="window-header header-predni">ПРЕДНИ КАПАЦИ</div>
-        <div class="window-body" id="w-predni"></div>
-      </div>
-
-      <div class="window window-zadni">
-        <div class="window-header header-zadni">ЗАДНИ КАПАЦИ</div>
-        <div class="window-body" id="w-zadni"></div>
+      <div class="caps-stack-zone">
+        <div class="window window-predni">
+          <div class="window-header header-predni">ПРЕДНИ КАПАЦИ</div>
+          <div class="window-body" id="w-predni"></div>
+        </div>
+        <div class="window window-zadni">
+          <div class="window-header header-zadni">ЗАДНИ КАПАЦИ</div>
+          <div class="window-body" id="w-zadni"></div>
+        </div>
       </div>
 
       <div class="window window-mpr">
         <div class="window-header header-mpr">МПР</div>
         <div class="window-body" id="w-mpr"></div>
       </div>
+
+      <div class="window window-statori">
+        <div class="window-header header-statori">СТАТОРИ И ТРАНСФОРМАТОРИ</div>
+        <div class="window-body" id="w-statori"></div>
+      </div>
     </div>
 
-    <!-- ДОЛЕН РЕД: РОТОРИ ВЛЯВО, СТАТОРИ И РЕЗОЛВЕРИ ЕДИН ДО ДРУГ ВДЯСНО -->
+    <!-- ДОЛЕН РЕД: РОТОРИ ВЛЯВО, РЕЗОЛВЕРИ ВДЯСНО -->
     <div class="row-section bottom-row">
       <div class="window window-rotors">
         <div class="window-header header-rotors">РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ</div>
@@ -63,11 +69,6 @@
           <div class="lane" style="margin-top: 14px;"><span class="lane-title">ЩИФТОВЕ</span><div id="w-small-pins"></div></div>
           <div class="lane"><span class="lane-title">ЛАГЕРНИ ВЪЗЛИ</span><div id="w-bearings"></div></div>
         </div>
-      </div>
-
-      <div class="window window-statori">
-        <div class="window-header header-statori">СТАТОРИ И ТРАНСФОРМАТОРИ</div>
-        <div class="window-body" id="w-statori"></div>
       </div>
 
       <div class="window window-assembly">
