@@ -1433,6 +1433,7 @@ function drawArrows() {
                 else if (fromLower.includes("25")) color = "#2dd4bf"; // тюркоаз за вар 25
                 else if (fromLower.includes("мулти")) color = "#f472b6"; // розово за мулти
                 else if (fromLower.includes("nr")) color = "#a3e635"; // светлозелено за NR
+                else if (fromLower.includes("тефлон")) color = "#f8fafc"; // чисто бяло за тефлонова макара (за разлика от синьото при отстъп)
                 else color = "#818cf8"; // пастелно индиго
                 
                 let shape = 'circle';
