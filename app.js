@@ -31,18 +31,23 @@ window.onload = async function() {
 
 function initTvControls() {
     let currentZoom = parseFloat(localStorage.getItem('tv_monitor_zoom')) || 1.0;
-    
+
     function applyZoom(z) {
-        currentZoom = Math.min(Math.max(z, 0.7), 1.6);
+        currentZoom = Math.min(Math.max(z, 0.5), 1.6);
         currentZoom = Math.round(currentZoom * 10) / 10;
         localStorage.setItem('tv_monitor_zoom', currentZoom.toFixed(1));
+        window._currentMonitorZoom = currentZoom;
         const valEl = document.getElementById('tv-zoom-val');
         if (valEl) valEl.innerText = Math.round(currentZoom * 100) + '%';
-        
-        document.body.style.zoom = currentZoom;
+
+        const wrapper = document.getElementById('dashboard-wrapper');
+        document.body.style.zoom = '';
+        if (wrapper) {
+            wrapper.style.zoom = currentZoom;
+        }
         setTimeout(() => {
             if (typeof drawArrows === 'function') drawArrows();
-        }, 100);
+        }, 80);
     }
 
     const btnIn = document.getElementById('btn-zoom-in');
@@ -832,65 +837,20 @@ function calculateOperationStates(node, children, allNodesMap) {
     return { allChildrenDone, stateMachine, hasActive };
 }
 
-// --- AUTO-ADAPTIVE DASHBOARD ENGINE (АВТОМАТИЧНО НАМЕСТВАНЕ СПРЯМО ПЛАНА) ---
+// --- AUTO-ADAPTIVE DASHBOARD ENGINE (СВОБОДНО МАЩАБИРАНЕ КАТО РЕАЛНИЯ МОНИТОР) ---
 function autoAdjustDashboardToPlan(nodes) {
     if (!nodes) return;
-
-    const rotors11 = (nodes.rotors_var11 || nodes.var11 || []);
-    const rotors25 = (nodes.rotors_var25 || nodes.var25 || []);
-    const bearings = (nodes.bearings || []);
-    const totalRotorsCount = rotors11.length + rotors25.length + bearings.length;
-
-    const statori = (nodes.statori || []);
-    const assembly = (nodes.assembly || []);
-
+    // Изчистваме евентуални стари инлайн стилове, така че всички прозорци да се разтягат свободно и пропорционално
     const topRowEl = document.querySelector('.top-row');
     const bottomRowEl = document.querySelector('.bottom-row');
     const winRotorsEl = document.querySelector('.window-rotors');
     const winStatoriEl = document.querySelector('.window-statori');
     const winAssemblyEl = document.querySelector('.window-assembly');
-
-    // 1. Динамичен баланс на височината между Горен и Долен ред
-    if (topRowEl && bottomRowEl) {
-        if (totalRotorsCount >= 11) {
-            // Тежък план за ротори (като Ноември с 14-15 детайла) -> повече височина за роторите
-            topRowEl.style.flex = '1 1 35%';
-            bottomRowEl.style.flex = '1.85 1 65%';
-        } else if (totalRotorsCount >= 8) {
-            topRowEl.style.flex = '1 1 38%';
-            bottomRowEl.style.flex = '1.6 1 62%';
-        } else {
-            // Нормален/по-лек план (като Септември с 5-7 детайла)
-            topRowEl.style.flex = '1 1 42%';
-            bottomRowEl.style.flex = '1.38 1 58%';
-        }
-    }
-
-    // 2. Динамична гъстота на Ротори при много детайли (за да се поберат 100% на екрана без скрол)
-    if (winRotorsEl) {
-        if (totalRotorsCount >= 10) {
-            winRotorsEl.classList.add('dense-rotors');
-        } else {
-            winRotorsEl.classList.remove('dense-rotors');
-        }
-    }
-
-    // 3. Динамично съотношение между Статори и Резолвери
-    if (winStatoriEl && winAssemblyEl) {
-        if (assembly.length >= 10 && statori.length <= 3) {
-            winStatoriEl.style.flex = '0.75 1 34%';
-            winAssemblyEl.style.flex = '1.45 1 66%';
-        } else if (statori.length > 4) {
-            winStatoriEl.style.flex = '1.1 1 50%';
-            winAssemblyEl.style.flex = '1.1 1 50%';
-        } else if (statori.length === 4) {
-            winStatoriEl.style.flex = '0.95 1 41%';
-            winAssemblyEl.style.flex = '1.35 1 59%';
-        } else {
-            winStatoriEl.style.flex = '0.85 1 38%';
-            winAssemblyEl.style.flex = '1.4 1 62%';
-        }
-    }
+    if (topRowEl) topRowEl.style.flex = '';
+    if (bottomRowEl) bottomRowEl.style.flex = '';
+    if (winRotorsEl) winRotorsEl.classList.remove('dense-rotors');
+    if (winStatoriEl) winStatoriEl.style.flex = '';
+    if (winAssemblyEl) winAssemblyEl.style.flex = '';
 }
 
 // --- RENDERING ---
@@ -1274,25 +1234,28 @@ function generateNodeHTML(node, parentMap, childMap, allNodesMap) {
 
 function drawArrows() {
     const svg = document.getElementById('svg-overlay');
-    if (!svg) return;
-    
-    const scrollH = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, window.innerHeight);
-    const scrollW = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth, window.innerWidth);
+    const wrapper = document.getElementById('dashboard-wrapper');
+    if (!svg || !wrapper) return;
+
+    const zoom = window._currentMonitorZoom || 1.0;
+    const wrapRect = wrapper.getBoundingClientRect();
+    const scrollH = Math.max(wrapper.scrollHeight, wrapper.offsetHeight);
+    const scrollW = Math.max(wrapper.scrollWidth, wrapper.offsetWidth);
     svg.style.height = scrollH + "px";
     svg.style.width = scrollW + "px";
-    
+
     let html = `<defs>
         <marker id="arrow" viewBox="0 0 14 14" refX="10" refY="7" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 14 7 L 0 14 z" fill="#64748b" /></marker>
         <marker id="arrow-spool" viewBox="0 0 14 14" refX="10" refY="7" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 14 7 L 0 14 z" fill="#f3f3f3" /></marker>
     </defs>`;
 
-    // Generate strict clip paths for each window body to lock arrows inside their window
+    // Generate strict clip paths for each window body in wrapper-local coordinates
     const windowBodies = document.querySelectorAll('.window-body');
     windowBodies.forEach((wb, i) => {
         const rect = wb.getBoundingClientRect();
-        const clipX = rect.left + window.scrollX;
-        const clipY = rect.top + window.scrollY;
-        html += `<clipPath id="clip_win_${i}"><rect x="${clipX}" y="${clipY}" width="${rect.width}" height="${rect.height}" /></clipPath>`;
+        const clipX = (rect.left - wrapRect.left) / zoom;
+        const clipY = (rect.top - wrapRect.top) / zoom;
+        html += `<clipPath id="clip_win_${i}"><rect x="${clipX}" y="${clipY}" width="${rect.width / zoom}" height="${rect.height / zoom}" /></clipPath>`;
         wb.dataset.clipId = `clip_win_${i}`;
     });
     
@@ -1318,18 +1281,11 @@ function drawArrows() {
                 const rsTitle = sourceTitle.getBoundingClientRect();
                 const rsQty = sourceQty ? sourceQty.getBoundingClientRect() : rsTitle;
                 const rt = targetEl.getBoundingClientRect();
-                const winRect = winChild.getBoundingClientRect();
 
-                // If either node is scrolled out of view vertically, do not draw arrow outside window
-                if (rsTitle.bottom < winRect.top || rsTitle.top > winRect.bottom ||
-                    rt.bottom < winRect.top || rt.top > winRect.bottom) {
-                    return;
-                }
-
-                const startX = rsQty.right + window.scrollX + 4;
-                const startY = rsTitle.top + window.scrollY + (rsTitle.height / 2);
-                const endX = rt.left - 6 + window.scrollX;
-                const endY = rt.top + window.scrollY + (rt.height / 2);
+                const startX = (rsQty.right - wrapRect.left) / zoom + 4;
+                const startY = ((rsTitle.top + rsTitle.height / 2) - wrapRect.top) / zoom;
+                const endX = (rt.left - wrapRect.left) / zoom - 6;
+                const endY = ((rt.top + rt.height / 2) - wrapRect.top) / zoom;
                 
                 const cpX = startX + (endX - startX) * 0.4;
                 

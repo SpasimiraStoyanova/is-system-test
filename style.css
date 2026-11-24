@@ -11,15 +11,14 @@
 ::-webkit-scrollbar { display: none; }
 * { scrollbar-width: none; box-sizing: border-box; }
 
-html, body { 
-  font-family: 'Sofia Sans', sans-serif; 
-  background-color: var(--bg-color); 
-  margin: 0; 
-  padding: 6px; 
-  color: var(--text-main); 
-  height: 100vh;
-  max-height: 100vh;
-  overflow: hidden; /* Заключване на изгледа: заглавията никога не излизат от екрана на ТВ */
+html, body {
+  font-family: 'Sofia Sans', sans-serif;
+  background-color: var(--bg-color);
+  margin: 0;
+  padding: 8px;
+  color: var(--text-main);
+  min-height: 100vh;
+  overflow: auto; /* Свободно платно като реалния монитор: нищо не се отрязва и всички прозорци се мащабират заедно */
 }
 
 #loading { 
@@ -94,216 +93,85 @@ html, body {
   color: #f8fafc;
 }
 
-/* СТРУКТУРА НА ТАБЛОТО */
-.layout-wrapper { 
-  display: flex; 
-  flex-direction: column; 
-  gap: 8px; 
-  height: calc(100vh - 12px); 
-  max-height: calc(100vh - 12px); 
+/* СТРУКТУРА НА ТАБЛОТО (Свободно пропорционално табло без заключване на 100vh) */
+.layout-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: calc(100vh - 16px);
+  min-width: max-content;
   width: 100%;
-  position: relative; 
-  z-index: 10; 
-  overflow: hidden;
+  position: relative;
+  z-index: 10;
+  padding-right: 12px;
+  padding-bottom: 16px;
 }
 
-.row-section { 
-  display: flex; 
-  gap: 8px; 
-  width: 100%; 
-  min-height: 0;
+.row-section {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  min-width: max-content;
+  width: 100%;
+  align-items: stretch;
 }
 
-/* ГОРЕН РЕД: ТЕЛА, КАПАЦИ (СТАК ЕДИН НАД ДРУГ), МПР (~40% ОТ ВИСОЧИНАТА) */
-.top-row { 
-  flex: 1 1 40%; 
-  min-height: 0;
+.top-row {
+  flex: 1;
 }
 
-/* ДОЛЕН РЕД: РОТОРИ ВЛЯВО, СТАК СТАТОРИ/РЕЗОЛВЕРИ ВДЯСНО (~60% ОТ ВИСОЧИНАТА) */
-.bottom-row { 
-  flex: 1.48 1 60%; 
-  min-height: 0;
+.bottom-row {
+  flex: 1.4;
 }
 
 /* ОБЩ СТИЛ ЗА ПРОЗОРЦИ */
-.window { 
-  background: var(--header-bg); 
-  border: 1px solid var(--border-color); 
-  border-radius: 6px; 
-  display: flex; 
-  flex-direction: column; 
-  box-shadow: 0 4px 14px rgba(0,0,0,0.4); 
-  overflow: hidden; 
-  min-width: 0;
-  min-height: 0;
-}
-
-/* ПРОПОРЦИИ НА ПРОЗОРЦИТЕ В ГОРНИЯ РЕД */
-/* 1. ТЕЛА (ВЛЯВО) ~24% */
-.window-tiela { 
-  flex: 1 1 24%; 
-  min-width: 0;
-}
-
-/* 2. СРЕДНА КОЛОНА: ПРЕДНИ И ЗАДНИ КАПАЦИ ЕДИН НАД ДРУГ ~30% */
-.caps-stack-zone {
-  flex: 1.2 1 30%;
+.window {
+  background: var(--header-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  min-height: 0;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+  overflow: hidden;
+  flex: 1;
+  min-width: max-content;
 }
 
-.window-predni { 
-  flex: 1 1 46%; 
-  min-height: 0;
-}
-.window-predni .family-row {
-  padding: 2px 0;
-}
-
-.window-zadni { 
-  flex: 1.15 1 54%; 
-  min-height: 0;
-}
-.window-zadni .family-row {
-  padding: 2px 0;
+.window-tiela,
+.window-predni,
+.window-zadni,
+.window-mpr {
+  flex: 1;
+  min-width: max-content;
 }
 
-/* 3. МПР (ВДЯСНО - ШИРОК ~46%) */
-.window-mpr { 
-  flex: 1.8 1 46%; 
-  min-width: 0;
-}
-
-/* ПРОПОРЦИИ НА ПРОЗОРЦИТЕ В ДОЛНИЯ РЕД */
-/* 1. РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ (ВЛЯВО - ЗАЕМА ЦЯЛАТА ОСТАНАЛА ШИРИНА) */
-.window-rotors { 
-  flex: 1 1 0; 
-  min-width: 0;
+.window-rotors {
+  flex: 2;
+  min-width: max-content;
 }
 .window-rotors .lane {
   margin-bottom: 6px;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
 }
 
-/* ДИНАМИЧЕН КОМПАКТЕН РЕЖИМ ПРИ НАТОВАРЕНИ ПЛАНОВЕ С МНОГО ВАЛОВЕ (ПРИМЕРНО НОЕМВРИ) */
-.dense-rotors .lane {
-  margin-bottom: 2px !important;
-  padding-bottom: 1px !important;
-}
-.dense-rotors .family-row {
-  padding: 1px 0 !important;
-}
-.dense-rotors .plan-group {
-  margin-bottom: 2px !important;
-  padding-left: 8px !important;
-}
-.dense-rotors .lane-title {
-  font-size: 11.5px !important;
-  margin-bottom: 1px !important;
-}
-.dense-rotors .vsm-title {
-  font-size: 15px !important;
-}
-.dense-rotors .vsm-qty {
-  font-size: 12px !important;
-}
-.dense-rotors .op-focus {
-  font-size: 15px !important;
-}
-.dense-rotors .op-past {
-  font-size: 12px !important;
-}
-.dense-rotors .op-future {
-  font-size: 11px !important;
-}
-.dense-rotors .op-text {
-  max-width: 165px !important;
+.window-statori,
+.window-assembly {
+  flex: 1;
+  min-width: max-content;
 }
 
-/* 2. ДЯСНА КОЛОНА: СТАТОРИ (ГОРЕ) И РЕЗОЛВЕРИ (ДОЛУ) ЕДИН НАД ДРУГ */
-.right-stack-zone {
-  flex: 0 0 clamp(680px, 41%, 940px); /* По-широка дясна колона за статори и резолвери за сметка на празното място при роторите */
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  min-height: 0;
+.window-statori .bom-column,
+.window-assembly .bom-column {
+  gap: 8px;
 }
-
-@media (max-width: 1450px) {
-  .right-stack-zone {
-    flex: 0 0 42%;
-  }
-}
-
-/* СТАТОРИ (ГОРЕ В ДЯСНАТА КОЛОНА) */
-.window-statori {
-  flex: 0.9 1 40%;
-  min-height: 0;
-}
-
-.window-statori .bom-column {
-  gap: 3px;
-}
-.window-statori .family-row {
-  padding: 2px 0;
-  gap: 12px;
-}
-.window-statori .plan-group {
-  gap: 2px;
-  margin-bottom: 3px;
+.window-statori .family-row,
+.window-assembly .family-row {
+  padding: 3px 0;
+  gap: 18px;
 }
 .window-statori .op-text,
 .window-assembly .op-text {
-  max-width: 260px;
-}
-
-/* РЕЗОЛВЕРИ (ДОЛУ В ДЯСНАТА КОЛОНА) */
-.window-assembly {
-  flex: 1.35 1 60%;
-  min-height: 0;
-}
-
-.window-assembly .bom-column {
-  gap: 4px;
-}
-.window-assembly .plan-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 2px;
-}
-.window-assembly .plan-label {
-  margin-bottom: 2px;
-}
-.window-assembly .family-row {
-  padding: 1px 0;
-  gap: 12px;
-}
-.window-assembly .vsm-title {
-  font-size: 15px;
-}
-.window-assembly .vsm-qty {
-  font-size: 12.5px;
-}
-.window-statori .vsm-title {
-  font-size: 15.5px;
-}
-.window-statori .op-focus,
-.window-assembly .op-focus {
-  font-size: 15px;
-}
-.window-statori .op-past,
-.window-assembly .op-past {
-  font-size: 12.5px;
-}
-.window-statori .op-future,
-.window-assembly .op-future {
-  font-size: 11.5px;
+  max-width: 240px;
 }
 
 .window-header { 
@@ -327,14 +195,12 @@ html, body {
 .header-rotors { border-top: 3px solid #94a3b8; background: linear-gradient(180deg, rgba(148,163,184,0.18) 0%, transparent 100%); }
 .header-assembly { border-top: 3px solid #38bdf8; background: linear-gradient(180deg, rgba(56,189,248,0.18) 0%, transparent 100%); }
 
-.window-body { 
-  padding: 8px 12px; 
-  display: flex; 
-  flex-direction: column; 
-  gap: 8px; 
-  flex-grow: 1; 
-  overflow-y: auto; 
-  overflow-x: auto; 
+.window-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-grow: 1;
 }
 
 /* ЗОНИ И ЛЕНТИ */

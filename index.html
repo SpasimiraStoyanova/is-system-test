@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Жив Монитор на Производството</title>
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=19">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=45" defer></script>
+  <script src="app.js?v=46" defer></script>
 </head>
 <body>
 
@@ -15,72 +15,64 @@
     <div>Сглобяване на VSM потока... ⚙️</div>
     <div id="error-box"></div>
   </div>
-  
-  <svg id="svg-overlay"></svg>
 
   <!-- ТВ ЛЕНТА С КОНТРОЛИ (ФУЛСКРИЙН, МАЩАБИРАНЕ, ПОСЛЕДНО ОБНОВЯВАНЕ) -->
   <div class="tv-control-bar">
     <div id="tv-last-sync" class="tv-status-badge">🔄 Зареждане...</div>
     <div class="tv-zoom-actions">
-      <button class="tv-btn" id="btn-zoom-out" title="Намали шрифта (A-)">A-</button>
+      <button class="tv-btn" id="btn-zoom-out" title="Намали мащаба (A-)">A-</button>
       <span id="tv-zoom-val" class="tv-zoom-indicator" title="Възстанови 100%">100%</span>
-      <button class="tv-btn" id="btn-zoom-in" title="Увеличи шрифта (A+)">A+</button>
+      <button class="tv-btn" id="btn-zoom-in" title="Увеличи мащаба (A+)">A+</button>
       <button class="tv-btn" id="btn-fullscreen" title="Цял екран (F11)">⛶</button>
     </div>
   </div>
 
   <div class="layout-wrapper" id="dashboard-wrapper">
-    <!-- ГОРЕН РЕД: ТЕЛА (ВЛЯВО), ПРЕДНИ И ЗАДНИ КАПАЦИ (В СРЕДАТА ЕДИН НАД ДРУГ), МПР (ВДЯСНО - ШИРОК) -->
+    <svg id="svg-overlay"></svg>
+
+    <!-- ГОРЕН РЕД: 4 ПРОЗОРЕЦА ЕДИН ДО ДРУГ (ТЕЛА | ПРЕДНИ КАПАЦИ | ЗАДНИ КАПАЦИ | МПР) -->
     <div class="row-section top-row">
-      <!-- ТЕЛА -->
       <div class="window window-tiela">
         <div class="window-header header-tiela">ТЕЛА</div>
         <div class="window-body" id="w-tiela"></div>
       </div>
 
-      <!-- СРЕДНА КОЛОНА: ПРЕДНИ И ЗАДНИ КАПАЦИ ЕДИН НАД ДРУГ -->
-      <div class="caps-stack-zone">
-        <div class="window window-predni">
-          <div class="window-header header-predni">ПРЕДНИ КАПАЦИ</div>
-          <div class="window-body" id="w-predni"></div>
-        </div>
-        <div class="window window-zadni">
-          <div class="window-header header-zadni">ЗАДНИ КАПАЦИ</div>
-          <div class="window-body" id="w-zadni"></div>
-        </div>
+      <div class="window window-predni">
+        <div class="window-header header-predni">ПРЕДНИ КАПАЦИ</div>
+        <div class="window-body" id="w-predni"></div>
       </div>
 
-      <!-- МПР (ШИРОК ПРОЗОРЕЦ, 46%) -->
+      <div class="window window-zadni">
+        <div class="window-header header-zadni">ЗАДНИ КАПАЦИ</div>
+        <div class="window-body" id="w-zadni"></div>
+      </div>
+
       <div class="window window-mpr">
         <div class="window-header header-mpr">МПР</div>
         <div class="window-body" id="w-mpr"></div>
       </div>
     </div>
-    
-    <!-- ДОЛЕН РЕД: РОТОРИ ВЛЯВО (72%), СТАТОРИ НАД РЕЗОЛВЕРИ ВДЯСНО (28%) -->
+
+    <!-- ДОЛЕН РЕД: РОТОРИ ВЛЯВО, СТАТОРИ И РЕЗОЛВЕРИ ЕДИН ДО ДРУГ ВДЯСНО -->
     <div class="row-section bottom-row">
-      <!-- 1. РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ (ВЛЯВО - ~72% ШИРИНА) -->
       <div class="window window-rotors">
         <div class="window-header header-rotors">РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ</div>
         <div class="window-body" id="w-rotors-body">
           <div class="lane"><span class="lane-title">ВАР. 11</span><div id="w-var11"></div></div>
           <div class="lane"><span class="lane-title">ВАР. 25</span><div id="w-var25"></div></div>
-          <div class="lane" style="margin-top: 10px;"><span class="lane-title">ЩИФТОВЕ</span><div id="w-small-pins"></div></div>
+          <div class="lane" style="margin-top: 14px;"><span class="lane-title">ЩИФТОВЕ</span><div id="w-small-pins"></div></div>
           <div class="lane"><span class="lane-title">ЛАГЕРНИ ВЪЗЛИ</span><div id="w-bearings"></div></div>
         </div>
       </div>
 
-      <!-- 2. ДЯСНА КОЛОНА: СТАТОРИ (ГОРЕ) И РЕЗОЛВЕРИ (ДОЛУ) ЕДИН НАД ДРУГ (~28% ШИРИНА, 480-500px) -->
-      <div class="right-stack-zone">
-        <div class="window window-statori">
-          <div class="window-header header-statori">СТАТОРИ И ТРАНСФОРМАТОРИ</div>
-          <div class="window-body" id="w-statori"></div>
-        </div>
-        
-        <div class="window window-assembly">
-          <div class="window-header header-assembly">РЕЗОЛВЕРИ</div>
-          <div class="window-body" id="w-assembly"></div>
-        </div>
+      <div class="window window-statori">
+        <div class="window-header header-statori">СТАТОРИ И ТРАНСФОРМАТОРИ</div>
+        <div class="window-body" id="w-statori"></div>
+      </div>
+
+      <div class="window window-assembly">
+        <div class="window-header header-assembly">РЕЗОЛВЕРИ</div>
+        <div class="window-body" id="w-assembly"></div>
       </div>
     </div>
   </div>
