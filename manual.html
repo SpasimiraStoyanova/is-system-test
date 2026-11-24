@@ -1,0 +1,1885 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AMCI | Пълни Инструкции за Употреба на Системата</title>
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --bg-page: #f1f5f9;
+      --bg-card: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-light: #64748b;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --primary: #4338ca;
+      --primary-soft: #eef2ff;
+      --accent: #2563eb;
+      --success: #16a34a;
+      --success-soft: #f0fdf4;
+      --warn: #d97706;
+      --warn-soft: #fffbeb;
+      --danger: #dc2626;
+      --danger-soft: #fef2f2;
+      --purple: #7c3aed;
+      --purple-soft: #f5f3ff;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      background: var(--bg-page);
+      color: var(--text-main);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Sticky Header */
+    .manual-header {
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+      padding: 12px 24px;
+    }
+    .header-top {
+      max-width: 1480px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .brand-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 900;
+      font-size: 1.1rem;
+      color: #1e3a8a;
+      white-space: nowrap;
+    }
+    .brand-box img {
+      height: 32px;
+      width: 32px;
+      border-radius: 7px;
+      object-fit: cover;
+    }
+    .search-wrap {
+      flex: 1;
+      min-width: 240px;
+      max-width: 540px;
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .search-wrap input {
+      width: 100%;
+      padding: 9px 78px 9px 14px;
+      border: 1.5px solid var(--border-strong);
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text-main);
+      background: #f8fafc;
+      outline: none;
+      transition: all 0.15s;
+    }
+    .search-wrap input:focus {
+      border-color: var(--primary);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.12);
+    }
+    .search-clear-btn {
+      position: absolute;
+      right: 8px;
+      border: none;
+      background: #e2e8f0;
+      color: #475569;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: none;
+    }
+    .search-count {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--primary);
+      white-space: nowrap;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      flex-wrap: wrap;
+    }
+    .hdr-btn {
+      padding: 8px 13px;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      background: #fff;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 0.84rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      transition: all 0.15s;
+    }
+    .hdr-btn:hover { background: #f8fafc; border-color: #94a3b8; }
+    .hdr-btn-primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .hdr-btn-primary:hover { background: #3730a3; border-color: #3730a3; }
+
+    /* Category Filter Bar */
+    .cat-bar {
+      max-width: 1480px;
+      margin: 10px auto 0;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .cat-pill {
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border-strong);
+      background: #fff;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .cat-pill:hover { background: #f1f5f9; }
+    .cat-pill.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    /* Layout */
+    .manual-layout {
+      max-width: 1480px;
+      margin: 22px auto 60px;
+      padding: 0 24px;
+      display: grid;
+      grid-template-columns: 290px minmax(0, 1fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    /* Sidebar TOC */
+    .toc-sidebar {
+      position: sticky;
+      top: 112px;
+      max-height: calc(100vh - 130px);
+      overflow-y: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 14px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+    }
+    .toc-title {
+      font-size: 0.78rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-light);
+      margin: 0 0 10px 8px;
+    }
+    .toc-group { margin-bottom: 12px; }
+    .toc-group-label {
+      display: block;
+      padding: 6px 8px;
+      font-size: 0.84rem;
+      font-weight: 800;
+      color: #1e293b;
+      text-decoration: none;
+      border-radius: 8px;
+    }
+    .toc-group-label:hover { background: #f1f5f9; }
+    .toc-group-label.active { background: var(--primary-soft); color: var(--primary); }
+    .toc-sub {
+      list-style: none;
+      margin: 2px 0 0 10px;
+      padding: 0 0 0 10px;
+      border-left: 2px solid #e2e8f0;
+    }
+    .toc-sub a {
+      display: block;
+      padding: 4px 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-radius: 6px;
+    }
+    .toc-sub a:hover { background: #f8fafc; color: var(--primary); }
+    .toc-sub a.active { color: var(--primary); font-weight: 800; background: var(--primary-soft); }
+
+    /* Content Area */
+    .manual-content { min-width: 0; }
+    .hero-banner {
+      background: linear-gradient(135deg, #1e3a8a 0%, #4338ca 55%, #2563eb 100%);
+      color: #fff;
+      border-radius: 16px;
+      padding: 26px 28px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 25px rgba(30, 58, 138, 0.18);
+    }
+    .hero-banner h1 { margin: 0 0 8px; font-size: 1.75rem; font-weight: 900; }
+    .hero-banner p { margin: 0; font-size: 0.98rem; opacity: 0.94; max-width: 860px; }
+    .hero-stats {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .hero-stat {
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      padding: 6px 12px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .doc-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 26px;
+      margin-bottom: 22px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+      scroll-margin-top: 118px;
+    }
+    .doc-section.hidden-by-filter { display: none !important; }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      border-bottom: 2px solid #f1f5f9;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+    .section-head h2 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 900;
+      color: #1e293b;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-tag {
+      font-size: 0.76rem;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    h3 {
+      font-size: 1.06rem;
+      font-weight: 800;
+      color: #1e293b;
+      margin: 22px 0 10px;
+      scroll-margin-top: 118px;
+    }
+    h4 {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: #334155;
+      margin: 14px 0 8px;
+    }
+    p { margin: 0 0 10px; color: var(--text-muted); font-size: 0.94rem; }
+    ul, ol { margin: 6px 0 12px; padding-left: 20px; color: var(--text-muted); font-size: 0.93rem; }
+    li { margin-bottom: 5px; }
+    li strong, p strong { color: var(--text-main); }
+
+    /* UI Badges representing actual system buttons/tabs */
+    .ui-btn, .ui-tab, .ui-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.84em;
+      font-weight: 800;
+      vertical-align: baseline;
+      white-space: nowrap;
+    }
+    .ui-btn {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      color: #0f172a;
+    }
+    .ui-btn.blue { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+    .ui-btn.green { background: #f0fdf4; border-color: #86efac; color: #15803d; }
+    .ui-btn.orange { background: #fff7ed; border-color: #fdba74; color: #c2410c; }
+    .ui-btn.red { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
+    .ui-btn.purple { background: #f5f3ff; border-color: #c4b5fd; color: #6d28d9; }
+    .ui-tab {
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      color: #3730a3;
+    }
+    .ui-badge {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #475569;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.86em;
+      background: #f1f5f9;
+      color: #334155;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    /* Callouts */
+    .callout {
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin: 12px 0;
+      font-size: 0.91rem;
+      border-left: 4px solid;
+    }
+    .callout-info { background: #eff6ff; border-color: #2563eb; color: #1e3a8a; }
+    .callout-warn { background: #fffbeb; border-color: #d97706; color: #78350f; }
+    .callout-danger { background: #fef2f2; border-color: #dc2626; color: #7f1d1d; }
+    .callout-success { background: #f0fdf4; border-color: #16a34a; color: #14532d; }
+    .callout-title { font-weight: 800; margin-bottom: 4px; display: block; }
+
+    /* Tables */
+    .table-scroll {
+      overflow-x: auto;
+      margin: 10px 0 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    table.doc-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      background: #fff;
+    }
+    table.doc-table th {
+      background: #f8fafc;
+      color: #334155;
+      text-align: left;
+      font-weight: 800;
+      padding: 10px 12px;
+      border-bottom: 2px solid var(--border);
+    }
+    table.doc-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: top;
+      color: var(--text-muted);
+    }
+    table.doc-table tr:last-child td { border-bottom: none; }
+    table.doc-table tr.search-hidden { display: none; }
+
+    /* Expandable Module / Tab Cards */
+    details.item-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 10px;
+      background: #ffffff;
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    details.item-card[open] {
+      border-color: #c7d2fe;
+      box-shadow: 0 2px 8px rgba(67, 56, 202, 0.06);
+    }
+    details.item-card.search-hidden { display: none; }
+    details.item-card > summary {
+      list-style: none;
+      padding: 12px 15px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      color: #1e293b;
+      background: #f8fafc;
+      user-select: none;
+      flex-wrap: wrap;
+    }
+    details.item-card > summary::-webkit-details-marker { display: none; }
+    details.item-card > summary::after {
+      content: '▾';
+      font-size: 0.9rem;
+      color: #64748b;
+      margin-left: auto;
+      transition: transform 0.15s;
+    }
+    details.item-card[open] > summary::after { transform: rotate(180deg); }
+    .card-body {
+      padding: 14px 16px;
+      border-top: 1px solid #f1f5f9;
+    }
+    .card-meta {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    /* Color Swatches */
+    .color-legend {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+      margin: 10px 0 14px;
+    }
+    .color-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #f8fafc;
+      font-size: 0.87rem;
+    }
+    .color-swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 5px;
+      flex-shrink: 0;
+      margin-top: 3px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+    }
+
+    /* Search Highlight */
+    mark.hl {
+      background: #fef08a;
+      color: #854d0e;
+      padding: 0 2px;
+      border-radius: 3px;
+      font-weight: 800;
+    }
+    .no-results-box {
+      display: none;
+      text-align: center;
+      padding: 40px 20px;
+      background: #fff;
+      border: 1px dashed var(--border-strong);
+      border-radius: 14px;
+      color: var(--text-light);
+      font-weight: 700;
+    }
+
+    .back-top-btn {
+      position: fixed;
+      bottom: 22px;
+      right: 22px;
+      z-index: 150;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      font-size: 1.15rem;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(67, 56, 202, 0.35);
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    @media (max-width: 980px) {
+      .manual-layout {
+        grid-template-columns: 1fr;
+        padding: 0 14px;
+      }
+      .toc-sidebar {
+        position: static;
+        max-height: none;
+      }
+      .manual-header { padding: 10px 14px; }
+    }
+
+    @media print {
+      .manual-header, .toc-sidebar, .back-top-btn, .hdr-btn, .cat-bar { display: none !important; }
+      body { background: #fff; }
+      .manual-layout { display: block; margin: 0; padding: 0; max-width: 100%; }
+      .doc-section { box-shadow: none; border: 1px solid #cbd5e1; page-break-inside: avoid; }
+      details.item-card { break-inside: avoid; }
+      details.item-card > summary::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="manual-header">
+    <div class="header-top">
+      <div class="brand-box">
+        <img src="icon.png" alt="AMCI" onerror="this.style.display='none'">
+        <span>AMCI • Инструкции за Системата</span>
+      </div>
+      <div class="search-wrap">
+        <input type="text" id="manualSearchInput" placeholder="🔍 Търси таб, бутон, цвят, правило (напр. брак, 20-то, ревизия, EMCO)...">
+        <button type="button" id="manualSearchClear" class="search-clear-btn">✖</button>
+      </div>
+      <span id="manualSearchCount" class="search-count"></span>
+      <div class="header-actions">
+        <button type="button" class="hdr-btn" id="btnExpandAll">↕️ Разгъни / Свий</button>
+        <button type="button" class="hdr-btn" onclick="window.print()">🖨️ Печат / PDF</button>
+        <a href="admin.html" class="hdr-btn hdr-btn-primary">⬅️ Към Админ</a>
+      </div>
+    </div>
+    <div class="cat-bar" id="manualCatBar">
+      <button type="button" class="cat-pill active" data-cat="all">📚 Всичко</button>
+      <button type="button" class="cat-pill" data-cat="overview">🧭 Общ преглед</button>
+      <button type="button" class="cat-pill" data-cat="admin-nav">🛠️ Админ: Менюта и Бутони</button>
+      <button type="button" class="cat-pill" data-cat="admin-tabs">📑 Админ: Всички 20 таба</button>
+      <button type="button" class="cat-pill" data-cat="admin-modals">⚙️ Админ: Модали и Процеси</button>
+      <button type="button" class="cat-pill" data-cat="terminal">📱 Терминал</button>
+      <button type="button" class="cat-pill" data-cat="monitors">📺 Живи Монитори</button>
+      <button type="button" class="cat-pill" data-cat="standalone">🧩 Помощни екрани</button>
+      <button type="button" class="cat-pill" data-cat="rules">⚡ Автоматизации и Правила</button>
+    </div>
+  </header>
+
+  <div class="manual-layout">
+    <aside class="toc-sidebar" id="tocSidebar">
+      <div class="toc-title">Съдържание</div>
+
+      <div class="toc-group">
+        <a href="#sec-overview" class="toc-group-label">1. Общ преглед и потоци</a>
+      </div>
+
+      <div class="toc-group">
+        <a href="#sec-admin-nav" class="toc-group-label">2. Админ: Ленти и Бутони</a>
+        <ul class="toc-sub">
+          <li><a href="#sub-auth">Автентикация и търсене</a></li>
+          <li><a href="#sub-dropdowns">Падащи менюта (4 бр.)</a></li>
+          <li><a href="#sub-contextual">Контекстни бутони</a></li>
+          <li><a href="#sub-mass">Масови действия</a></li>
+          <li><a href="#sub-row-actions">Бутони по редове</a></li>
+        </ul>
+      </div>
+
+      <div class="toc-group">
+        <a href="#sec-admin-tabs" class="toc-group-label">3. Админ: Всички 20 таба</a>
+        <ul class="toc-sub">
+          <li><a href="#sub-visible-tabs">Видими табове (16 бр.)</a></li>
+          <li><a href="#sub-hidden-tabs">Скрити табове (4 бр.)</a></li>
+        </ul>
+      </div>
+
+      <div class="toc-group">
+        <a href="#sec-admin-modals" class="toc-group-label">4. Админ: Модали и Модули</a>
+        <ul class="toc-sub">
+          <li><a href="#mod-requests">Заявки &amp; Експресни ревизии</a></li>
+          <li><a href="#mod-orders">Поръчки &amp; 20-то число</a></li>
+          <li><a href="#mod-tooling">Екипировка, Метрология, Протоколи</a></li>
+          <li><a href="#mod-validator">Валидатор &amp; Логистика &amp; MRP</a></li>
+          <li><a href="#mod-resolver">Резолвер, Трансформация, Spotlight</a></li>
+          <li><a href="#mod-personnel">Персонал, Досиета &amp; Локация</a></li>
+          <li><a href="#mod-salaries">Заплати, Бонуси &amp; Сводка</a></li>
+          <li><a href="#mod-calendar">Календар, Поддръжка &amp; Push</a></li>
+          <li><a href="#mod-probi-3s-rooms">Проби, 3S, Стаи &amp; Инвентаризация</a></li>
+        </ul>
+      </div>
+
+      <div class="toc-group">
+        <a href="#sec-terminal" class="toc-group-label">5. Терминал на оператора</a>
+        <ul class="toc-sub">
+          <li><a href="#term-login">Вход, GPS 200м и Горна лента</a></li>
+          <li><a href="#term-machine">Машини, Инструменти, Уреди</a></li>
+          <li><a href="#term-alerts">Аларми, Филтри и Панели</a></li>
+          <li><a href="#term-cards">Карти и Бутони по задачи</a></li>
+          <li><a href="#term-extras">Ревизия, 08:35, Протоколи, Досие</a></li>
+        </ul>
+      </div>
+
+      <div class="toc-group">
+        <a href="#sec-monitors" class="toc-group-label">6. Живи Монитори</a>
+        <ul class="toc-sub">
+          <li><a href="#mon-vsm">Жив Монитор (VSM)</a></li>
+          <li><a href="#mon-hr">HR Монитор Персонал</a></li>
+          <li><a href="#mon-montaj">Монитор Монтаж (Вар. 11/25)</a></li>
+        </ul>
+      </div>
+
+      <div class="toc-group">
+        <a href="#sec-standalone" class="toc-group-label">7. Специализирани екрани</a>
+        <ul class="toc-sub">
+          <li><a href="#page-active">Активни работни екрани</a></li>
+          <li><a href="#page-legacy">Специализирани / Legacy</a></li>
+        </ul>
+      </div>
+
+      <div class="toc-group">
+        <a href="#sec-rules" class="toc-group-label">8. Автоматизации и Правила</a>
+      </div>
+    </aside>
+
+    <main class="manual-content">
+      <div class="hero-banner">
+        <h1>📖 Пълно Ръководство на AMCI Производствената Система</h1>
+        <p>Подробно описание на всеки таб, бутон, падащо меню, модал, цветови индикатор и автоматизирано правило в Админ панела, Терминала на операторите, Живите монитори и помощните екрани.</p>
+        <div class="hero-stats">
+          <span class="hero-stat">📑 20 Админ таба (16 видими + 4 скрити)</span>
+          <span class="hero-stat">⚙️ 15+ специализирани админ модула</span>
+          <span class="hero-stat">📱 Терминал + 5-табово Лично досие</span>
+          <span class="hero-stat">📺 3 Живи монитора + 7 помощни екрана</span>
+        </div>
+      </div>
+
+      <div id="noResultsBox" class="no-results-box">
+        🔍 Няма намерени съвпадения за въведеното търсене. Опитайте с друга ключова дума.
+      </div>
+
+      <!-- SECTION 1: OVERVIEW -->
+      <section class="doc-section" id="sec-overview" data-cat="overview">
+        <div class="section-head">
+          <h2>🧭 1. Общ преглед и архитектура на системата</h2>
+          <span class="section-tag">Архитектура</span>
+        </div>
+        <p>Системата свързва планирането, складовете, цеховите терминали и телевизионните монитори в реално време чрез обща Supabase база данни:</p>
+        <ul>
+          <li><strong>Административен панел (<code>admin.html</code>)</strong> — командният център за планиране, номенклатура, BOM спецификации, маршрути, складове, поръчки, заплати, 3S одити, проби, инвентаризация, досиета и справки.</li>
+          <li><strong>Операторски Терминал (<code>terminal.html</code>)</strong> — работното място на таблета/телефона в цеха за чекиране (GPS 200 м), поемане и отчитане на операции, брак, заявки за заготовки/инструменти, експресни ревизии и лично досие с ПИН.</li>
+          <li><strong>Живи Монитори (<code>index.html</code>, <code>monitor-hr.html</code>, <code>monitor-montaj.html</code>)</strong> — визуални табла за цеха и HR без нужда от ръчно презареждане.</li>
+          <li><strong>Специализирани екрани</strong> — <code>workplace-tasks.html</code> (Kanban по машини), <code>planner-bobini.html</code> (график бобиньорки), <code>traceability.html</code> (Инвентарен Детектив), <code>accounting.html</code> (INVOICE USD), <code>statistics.html</code> (Нормовремена &amp; Гант), <code>audit-3s.html</code> (мобилен 3S формуляр) и <code>packing-list.html</code> (печат на кашони).</li>
+        </ul>
+        <div class="callout callout-info">
+          <span class="callout-title">💡 Как работят данните и кешът в Админ панела</span>
+          Табовете в Админ панела кешират заредените данни за <strong>2.5 минути</strong> за по-бърза работа. Натискането на активния таб повторно или кликът върху бутона <span class="ui-btn">🔄</span> до търсачката изчиства кеша и тегли най-новите данни от базата веднага.
+        </div>
+      </section>
+
+      <!-- SECTION 2: ADMIN TOP BAR & BUTTONS -->
+      <section class="doc-section" id="sec-admin-nav" data-cat="admin-nav">
+        <div class="section-head">
+          <h2>🛠️ 2. Админ панел: Горна лента, Менюта и Бутони</h2>
+          <span class="section-tag">Навигация</span>
+        </div>
+
+        <h3 id="sub-auth">2.1. Лента за сесия, търсене и общи бутони</h3>
+        <ul>
+          <li><strong>Сесия (<code>#navAuthArea</code>):</strong> Показва имейла на влезлия администратор (<code>Активна защитена сесия</code>).</li>
+          <li><span class="ui-btn">🔑 Смени парола</span> — отваря прозорец за промяна на паролата на администратора директно в Supabase Auth.</li>
+          <li><span class="ui-btn">🚪 Изход</span> — след потвърждение излиза от сесията, изчиства <code>sessionStorage</code> и презарежда страницата.</li>
+          <li><span class="ui-btn">📖 Инструкции</span> — отваря настоящото ръководство (<code>manual.html</code>) в нов прозорец.</li>
+          <li><strong>Бързо търсене (<code>#searchInput</code>):</strong> Търси моментално във всички колони на текущо отворения таб (с нормализирани интервали). В табовете <code>🧪 Проби</code> и <code>🧹 3S Одити</code> автоматично пренасочва търсенето към техните специализирани изгледи. Под всяка колона на стандартна таблица има и индивидуален филтър <code>🔍 Филтър...</code>.</li>
+          <li><span class="ui-btn">🔄</span> — принудително опреснява данните за текущия таб от сървъра.</li>
+          <li><span class="ui-btn purple">🔍 Единно Досие <kbd>Ctrl+K</kbd></span> — отваря универсалната търсачка (Spotlight) през Номенклатура, Склад Материали, Склад Детайли, Планове, Маршрути и BOM (работи от всеки таб с клавишна комбинация <code>Ctrl+K</code> / <code>Cmd+K</code>).</li>
+          <li><span class="ui-btn green">📥 Свали в Excel</span> — експортира текущо видимите (филтрирани) редове от активната таблица в <code>.xlsx</code> файл.</li>
+          <li><span class="ui-btn blue">➕ Добави Нов Запис</span> — добавя нов ред в текущия таб (в <code>🧪 Проби</code> се сменя на <span class="ui-btn blue">➕ Нова Проба</span>, а в <code>🦺 Протоколи</code> на <span class="ui-btn blue">🦺 Нов Протокол за Зачисляване</span>; скрит е в табовете само за четене, с изключение на <code>🏭 Склад</code>).</li>
+        </ul>
+
+        <h3 id="sub-dropdowns">2.2. Четирите падащи менюта в горната лента</h3>
+        <div class="table-scroll">
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th style="width: 190px;">Меню</th>
+                <th style="width: 260px;">Пункт в менюто</th>
+                <th>Какво прави и къде води</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td rowspan="4"><strong>🖥️ Монитори</strong></td>
+                <td><span class="ui-btn">📺 Жив Монитор (VSM)</span></td>
+                <td>Отваря <code>index.html</code> (общия производствен поток по секции и стрелки) в нов таб.</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn">👥 HR Монитор Персонал</span></td>
+                <td>Отваря <code>monitor-hr.html</code> (кой е на смяна, свършена работа и активни задачи) в нов таб.</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn">🔧 Монтаж 1 (Вар. 11)</span></td>
+                <td>Отваря <code>monitor-montaj.html?v=11</code> (монитор монтаж и пакети за вариант 11).</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn">🔧 Монтаж 2 (Вар. 25)</span></td>
+                <td>Отваря <code>monitor-montaj.html?v=25</code> (монитор монтаж и пакети за вариант 25).</td>
+              </tr>
+
+              <tr>
+                <td rowspan="8"><strong>🎯 Планиране</strong><br><small>(червен бадж при чакащи заявки/нужди)</small></td>
+                <td><span class="ui-btn orange">🔔 Заявки за Заготовки от Цеха</span></td>
+                <td>Отваря модала със заявки от операторите за липсващи заготовки, материали и каскадни сигнали за разминаване.</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn blue">🛒 Поръчки на Материали &amp; Доставки</span></td>
+                <td>Отваря дневника с поръчки на суровини/материали към доставчици, приемане в склада и изпращане на имейл.</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn purple">📅 Нужди на цеха (20-то число)</span></td>
+                <td>Отваря калкулатора на дефицити по буфери (след 20-то число) за поръчка с 1 клик.</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn orange">🛠️ Заявки за Инструменти &amp; Пластини</span></td>
+                <td>Отваря заявките от машините за пластини/инструменти, поръчка към доставчик и заприходяване.</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn purple">🔍 Валидатор на План</span></td>
+                <td>Проверява избрания месечен план за липсващи маршрути, липсващи машини, липсващ BOM и дефицити на материали.</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn blue">🎯 Табло Машини &amp; Задачи</span></td>
+                <td>Отваря <code>workplace-tasks.html</code> (Kanban по машини, приоритети, прехвърляне, бележки, експресни ревизии).</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn">📝 Планьор Бобиньорки</span></td>
+                <td>Отваря <code>planner-bobini.html</code> (седмичен и месечен календар за бобиньорките).</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn">📦 Логистика на План</span></td>
+                <td>Отваря обобщението по месеци за готови/опаковани редове, печат на Packing List и масова експедиция (<code>🚚 Изпрати План</code>).</td>
+              </tr>
+
+              <tr>
+                <td rowspan="6"><strong>📊 Справки &amp; Финанси</strong></td>
+                <td><span class="ui-btn green">💰 Заплати &amp; Бонуси</span></td>
+                <td>Отваря скрития таб <code>salaries</code> за изчисляване на бонуси, оправдаване на закъснения/3S, фишове и публикуване към терминалите.</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn blue">🕵️ Инвентарен Детектив</span></td>
+                <td>Отваря <code>traceability.html</code> (визуално проследяване на хронологията на бройките на даден детайл).</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn">💼 Счетоводство</span></td>
+                <td>Отваря <code>accounting.html</code> (себестойност, HTS кодове, USD INVOICE фактуриране и архив).</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn">⏱️ Анализи на Нормовремена &amp; Гант</span></td>
+                <td>Отваря <code>statistics.html</code> (реално време спрямо норма и диаграма на Гант по оператори).</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn">📑 Сводка &amp; Периодичен Отчет</span></td>
+                <td>Отваря модала за оперативна сводка (произведено, брак, критични наличности, предстоящи сервизи, копиране за Viber, Excel и Push).</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn">🕒 Хронология на промените (Audit)</span></td>
+                <td>Отваря журнала на всички корекции и промени по таблиците с търсене и проследяване на вложени компоненти.</td>
+              </tr>
+
+              <tr>
+                <td rowspan="6"><strong>⚙️ Система</strong><br><small>(червен/оранжев бадж при сервизни задачи)</small></td>
+                <td><span class="ui-btn">📅 Календар &amp; Поддръжка</span></td>
+                <td>Отваря календара на завода, насрочените задачи по машини/ЗБУТ/инфраструктура, сервизния дневник с разходи и справочника на машините.</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn">📢 Изпрати Известие до Цеха</span></td>
+                <td>Изпраща OneSignal Push + записва съобщение в таблица <code>chekiraniya</code> (вижда се и в пощенската кутия <code>📬</code> на терминала).</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn blue">🔔 Тествай Известие към Телефона</span></td>
+                <td>Изпраща тестово Push известие през Google Apps Script Webhook (<code>sendAmciPushNotification</code>).</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn red">🔄 Синхронизирай Терминалите</span></td>
+                <td>Записва команда <code>reload_terminals</code> в <code>system_commands</code>, която принудително рестартира/презарежда всички таблети в цеха.</td>
+              </tr>
+              <tr>
+                <td><span class="ui-btn blue">📖 Инструкции за употреба</span></td>
+                <td>Отваря тази страница с пълна документация (<code>manual.html</code>) в нов таб.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="sub-contextual">2.3. Контекстни бутони (появяват се само в конкретен таб)</h3>
+        <ul>
+          <li><span class="ui-btn green">📥 Зареди от PDF</span> — само в таб <span class="ui-tab">📅 Месечен План</span>. Чете PDF поръчка, разпознава кодове и бройки, добавя автоматични задни капаци, проверява Номенклатурата и създава начален snapshot за месеца.</li>
+          <li><span class="ui-btn blue">🛒 Поръчки на Материали</span> — само в таб <span class="ui-tab">📦 Склад Материали</span>. Отваря дневника на поръчките на материали.</li>
+          <li><span class="ui-btn purple">📅 Нужди на цеха (20-то)</span> — само в таб <span class="ui-tab">📦 Склад Материали</span>. Отваря калкулатора за дефицити под минималния буфер.</li>
+          <li><span class="ui-btn red">🚨 Анализ на доставките</span> — в табове <span class="ui-tab">📦 Склад Материали</span> и <span class="ui-tab">🛒 Поръчки материали</span>. Разгръща рекурсивно BOM на активните планове и показва дефицитните материали с бутон <span class="ui-btn">➕ Поръчай</span>.</li>
+          <li><span class="ui-btn purple">🔄 Трансформация на Резолвери</span> — само в таб <span class="ui-tab">🏭 Склад</span>. Позволява прехвърляне на наличност между съвместими по BOM резолвери с <code>#</code> в името без повторно изписване на компоненти.</li>
+          <li><span class="ui-btn orange">🛠️ Заявки &amp; Поръчки от Цеха</span> — само в таб <span class="ui-tab">🛠️ Склад Инструментална Екипировка</span>. Отваря заявките за пластини/инструменти.</li>
+          <li><span class="ui-btn purple">📍 Проверка локация</span> и <span class="ui-btn">📜 Дневник Проверки</span> — само в таб <span class="ui-tab">⏱️ Хронология Чекирания</span>. Изпращат тиха GPS проверка до телефона/терминала на служител и показват историята.</li>
+          <li><span class="ui-btn blue">🔄 Зареди машини от Маршрути</span> — само в скрития таб <span class="ui-tab">🏭 Работни Места &amp; Машини</span>. Добавя липсващите машини от <code>marshruti</code> в <code>factory_machines</code>.</li>
+        </ul>
+
+        <h3 id="sub-mass">2.4. Масови действия (<code>#massActionBar</code>)</h3>
+        <p>Появява се автоматично, когато отметнете един или повече редове чрез чекбокса вляво (само в редактируемите табове — не се показва в табовете само за четене):</p>
+        <ul>
+          <li><span class="ui-btn">Отказ</span> — премахва всички отметки.</li>
+          <li><span class="ui-btn green">✅ Приеми поръчките</span> — само в <span class="ui-tab">🛒 Поръчки материали</span>. Приема маркираните поръчки със статус ≠ <code>Прието</code>, записва днешна дата на приемане и автоматично увеличава <code>Доставено</code> и <code>Остатък</code> в <code>sklad</code>.</li>
+          <li><span class="ui-btn blue">🎯 Смени Статус</span> — само в <span class="ui-tab">📅 Месечен План</span>. Масово задава <code>Активен</code>, <code>Завършен</code> или <code>📦 Опакован</code> (без <code>🚚 Изпратен</code>, защото експедицията прави складови проверки).</li>
+          <li><span class="ui-btn purple">📅 Смени Период</span> — само в <span class="ui-tab">📅 Месечен План</span>. Променя месеца и годината на маркираните планове.</li>
+          <li><span class="ui-btn orange">⚙️ Смени Машина</span> — само в <span class="ui-tab">🔄 Маршрутни карти</span>. Масово сменя машината на избраните операции.</li>
+          <li><span class="ui-btn green">📥 Свали избраните</span> — сваля само маркираните редове в Excel.</li>
+          <li><span class="ui-btn red">🗑️ Изтрий маркираните</span> — изтрива избраните записи след потвърждение.</li>
+        </ul>
+
+        <h3 id="sub-row-actions">2.5. Бутони на ниво ред в таблиците</h3>
+        <ul>
+          <li><span class="ui-btn">✏️</span> (Редакция) и <span class="ui-btn red">🗑️</span> (Изтриване) — във всички стандартни табове. При изтриване в <code>sklad</code> проверява и старите стойности на <code>Изразходено</code>/<code>Начална наличност</code> за защита от паралелни промени.</li>
+          <li>Клик върху <strong>ID Детайл</strong> (в <code>plan</code>, <code>nomenklatura</code>, <code>sklad_inventory</code>, <code>sklad</code>) — отваря визуалния <strong>BOM Резолвер</strong> за детайла.</li>
+          <li>В <span class="ui-tab">📦 Склад Материали</span>: <span class="ui-btn orange">🛒</span> (бърза поръчка за материала) и <span class="ui-btn blue">📜</span> (Картон на материала с баланс, къде се влага и история на поръчките).</li>
+          <li>В <span class="ui-tab">📐 Малки Инструменти &amp; Уреди</span>: <span class="ui-btn blue">📏</span> (ново метрологично замерване) и <span class="ui-btn">📋</span> (дневник на проверките).</li>
+          <li>В <span class="ui-tab">🦺 Протоколи</span>: <span class="ui-btn">👁️</span> (преглед на протокола и бутон за отбелязване като върнат).</li>
+          <li>В <span class="ui-tab">📁 Месечни Архиви</span>: <span class="ui-btn blue">👁️ Преглед (BOM)</span>, <span class="ui-btn green">📥 Ексел</span> и <span class="ui-btn red">🗑️</span>.</li>
+          <li>В <span class="ui-tab">⏱️ Хронология Чекирания</span>: линк <span class="ui-btn">📍 Карта</span> при GPS координати (отваря Google Maps). В <code>Номенклатура</code> и <code>Маршрутни карти</code>: линк <span class="ui-btn">🔗 Отвори</span> за чертежи и СОП.</li>
+        </ul>
+      </section>
+
+      <!-- SECTION 3: ALL 20 ADMIN TABS -->
+      <section class="doc-section" id="sec-admin-tabs" data-cat="admin-tabs">
+        <div class="section-head">
+          <h2>📑 3. Админ панел: Подробно описание на всички 20 таба</h2>
+          <span class="section-tag">Табове</span>
+        </div>
+
+        <h3 id="sub-visible-tabs">3.1. Видими табове в горната лента (16 броя)</h3>
+
+        <details class="item-card" open>
+          <summary>
+            <span>1. 📅 Месечен План (<code>plan</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: plan</span><span class="ui-btn green">📥 Зареди от PDF</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Управлява производствените поръчки по месеци. Сортира първо активните/неизпратените планове, а накрая завършените/изпратените.</p>
+            <ul>
+              <li><strong>Колони:</strong> <code>ID Детайл</code> (линк към Резолвер), <code>Вътрешно име</code>, <code>Целево количество</code>, <code>Изработени / Остават</code> (с баджове <code>🟢 +X свръх</code>, <code>⏳ -X ост.</code>, <code>✅ Изпълнен</code>), <code>% Изпълнение</code> (цветна лента), <code>Месец</code>, <code>Година</code>, <code>Статус</code> (<code>Активен</code>, <code>Завършен</code>, <code>📦 Опакован</code>, <code>🚚 Изпратен</code>).</li>
+              <li><strong>Как се смята напредъкът:</strong> Сумира реалните отчети по <code>ID План</code> (или по детайл+месец) на последната операция от маршрута, добавя опакованите бройки по кашони (напр. <code>50 бр в кашон № 1</code>), а свободната складова наличност (след изваждане на вече опакованите в кашони бройки!) се разпределя последователно към по-старите активни планове без собствени отчети.</li>
+              <li><strong>Добавяне/Редакция:</strong> При добавяне автоматично създава т.нар. фантомни задни капаци за кодовете <code>575-91001-9</code> (→ <code>Ф63.4 204J</code>), <code>h25-f1e</code> (→ <code>Кв. Фл. 22108201Е</code>) и <code>575-60021</code> (→ <code>Капак с китайски отливки</code>).</li>
+              <li><strong>Преминаване към <code>🚚 Изпратен</code>:</strong> Проверява последната операция и наличността в <code>inventory</code>; при достатъчно бройки вкарва отрицателен отчет <code>СИСТЕМА (Експедиция)</code> в <code>otcheti</code> и при приключване на целия месец автоматично генерира Месечен архив.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>2. 🧪 Проби (<code>probi</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: probi</span><span class="ui-btn blue">➕ Нова Проба</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Специализиран R&amp;D модул за опитни серии и прототипи с отделен склад (<code>probi_inventory</code>), без да замърсява основното серийно производство до официалното им одобрение.</p>
+            <ul>
+              <li><strong>Филтри и бутони:</strong> Чипове <code>Всички</code>, <code>Чернови</code>, <code>⚡ В производство</code>, <code>✅ Одобрени</code>, <code>❌ Отхвърлени</code>, търсачка, <span class="ui-btn">📦 Склад Проби</span>, <span class="ui-btn blue">➕ Нова Проба</span>.</li>
+              <li><strong>Функции:</strong> Конструктор на BOM и нови детайли/маршрути, флаг за спешност (<span class="ui-btn red">⚡ Спешна</span>), следене на напредъка (<code>Готови / В изработка / Липсващи</code>), одобряване/отхвърляне и <strong>Експорт в серийно производство</strong> (прехвърля в <code>Номенклатура</code>, <code>marshruti</code>, <code>bom</code> и по избор наличностите от <code>probi_inventory</code> → <code>inventory</code>).</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>3. 🧹 3S Одити &amp; Настройки (<code>audit_3s</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: audit_3s_logs</span><span class="ui-btn">📱 Отвори Мобилен Формуляр</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Настройка и история на 3S проверките (Sort, Set in Order, Sweep, Standardize) по 3 цехови звена: <code>🔧 Измерване и монтаж</code>, <code>🧵 Бобиньорки</code>, <code>⚙️ Машини</code>.</p>
+            <ul>
+              <li><strong>Подтаб 1 (<code>⚙️ Настройки на Въпроси &amp; Звена</code>):</strong> Управление на въпросите и точковата скала 0–4 т. (<code>audit_3s_templates</code>), назначаване на проверяващ (<code>audit_3s_auditors</code>), списък на служителите в звеното (<code>audit_3s_workers</code>) и общите части/зони (<code>audit_3s_areas</code>).</li>
+              <li><strong>Подтаб 2 (<code>📊 История и Резултати</code>):</strong> Филтър по звено, Excel експорт (<span class="ui-btn green">📥 Свали в Excel</span>), преглед на оценка (<code>>=85%</code> зелено, <code>>=65%</code> жълто, <code>&lt;65%</code> червено), детайлни отговори и снимки на нередности.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>4. 👥 Персонал &amp; Досиета (<code>personal</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: personal</span><span class="ui-badge">Странична лента: Лични Досиета</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Списък на служителите (<code>Имейл</code>, <code>Име</code>, <code>Длъжност</code>, <code>Базов бонус</code>, <code>Статус</code>: <code>🟢 Активен</code> / <code>🛑 Блокиран</code>).</p>
+            <ul>
+              <li>Редовете със статус <code>Блокиран</code> светят в светлочервено и нямат достъп до терминала.</li>
+              <li>Отляво се отваря панелът <strong>📁 Лични Досиета</strong> за активните служители. Клик върху имейл отваря 6-табовото досие на служителя (Присъствие, Свършена работа, Документи, 3S Одити, Бонуси &amp; Заплата, Зачислено Оборудване + ПИН за достъп).</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>5. ⏱️ Хронология Чекирания (<code>chekiraniya</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Само за четене</span><span class="ui-btn purple">📍 Проверка локация</span><span class="ui-btn">📜 Дневник Проверки</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Показва всички чекирания на персонала, подредени от най-новите към по-старите. При отваряне автоматично синхронизира успешните тихи проверки от <code>location_ping_requests</code>.</p>
+            <ul>
+              <li><strong>Колони:</strong> <code>Време</code>, <code>Служител</code>, <code>Имейл</code>, <code>Действие</code> (<code>🟢 Влизане</code>, <code>🔴 Излизане</code>, <code>🕒 Авто излизане</code>, <code>📍 Проверка локация</code>), <code>Локация</code> (с линк <code>📍 Карта</code>), <code>Бележка</code>.</li>
+              <li><strong>Цветови акценти:</strong> Червен ред при влизане след <code>08:00 ч.</code> или бележка <code>ИЗВЪН ОБЕКТА</code>; жълт при <code>Авто излизане</code>; лилав при <code>Проверка локация</code>.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>6. 🏭 Склад (<code>sklad_inventory</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Динамично изчисление</span><span class="ui-btn purple">🔄 Трансформация на Резолвери</span><span class="ui-btn blue">➕ Нов запис в Склад</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Показва текущите наличности на <strong>изработени детайли (Готов продукт)</strong> и <strong>полуфабрикати по междинни операции (WIP / Буфер)</strong>.</p>
+            <ul>
+              <li><strong>Колони:</strong> <code>ID Детайл</code>, <code>Име</code>, <code>Локация</code> (взима се от Номенклатура или от инструкцията за оставяне в маршрута), <code>Операция</code>, <code>Общо</code>, <code>Запазени</code> (бройките в неекспедирани кашони, напр. <code>120 бр в Кашон №1</code>), <code>Свободни</code> (<code>Общо - Запазени</code>), <code>Минимално количество/Буфер</code>, <code>% Свръхпроизводство</code>.</li>
+              <li><strong>Дефицити:</strong> Отрицателни количества се оцветяват в оранжево с предупреждение <code>⚠️ X бр. (Дефицит)</code>. Показва и нулеви редове за позиции с зададен буфер или % свръхпроизводство.</li>
+              <li><strong>Ръчна корекция (<span class="ui-btn blue">➕ Нов запис в Склад</span>):</strong> Специална форма с dropdown по Номенклатура и операции от маршрута. Позволява въвеждане на физическа корекция (или <code>БРАК</code>, взаимно изключващи се), промяна на буфер и % свръхпроизводство. Автоматично нормализира последната операция като <code>готов продукт</code> и логва промяната в <code>audit_logs</code> и <code>otcheti</code>.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>7. 🗂️ Номенклатура (<code>nomenklatura</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: Номенклатура</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Основният каталог на всички изделия, детайли, възли и материали.</p>
+            <ul>
+              <li><strong>Колони:</strong> <code>ID Детайл</code> (линк към Резолвер), <code>Вътрешно име</code>, <code>Описание</code>, <code>Тип</code>, <code>ID Родител</code> (използва се за изходна суровина/заготовка), <code>Разходна норма</code>, <code>Единици</code>, <code>📦 Опаковка / Кутия</code> (<code>pack_size</code> — записва се само ако <code>Тип = материал</code> и стойността е &gt; 0), <code>Линк към чертеж</code> (<code>🔗 Отвори</code>).</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>8. 📦 Склад Материали (<code>sklad</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: sklad</span><span class="ui-btn blue">🛒 Поръчки на Материали</span><span class="ui-btn purple">📅 Нужди (20-то)</span><span class="ui-btn red">🚨 Анализ доставки</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Склад за суровини, прътов материал, проводници, лакове, опаковки и купени компоненти.</p>
+            <ul>
+              <li><strong>Колони:</strong> <code>ID Детайл</code>, <code>Мерна единица</code>, <code>Начална наличност</code>, <code>Доставено</code>, <code>Изразходено</code>, <code>Остатък</code> (при <code>Остатък &lt;= Минимално количество &gt; 0</code> показва червен бадж <code>⚠️ X (Критично)</code>), <code>Минимално количество</code>, <code>📦 Опаковка / Разфасовка</code>, <code>Бележки</code>.</li>
+              <li><strong>Удобства във формата:</strong> При редакция показва панел <strong>⚡ Бързи складови операции</strong> с полета <span class="ui-btn orange">🔴 Изпиши (- бр.)</span> и <span class="ui-btn green">🟢 Заприходи (+ бр.)</span>, които автоматично пресмятат <code>Остатък</code>, плюс бутон <span class="ui-btn blue">📜 Виж Картон на материала</span>. При добавяне следи на живо за дубликати по код.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>9. 🧩 БОМ (Разбивка) (<code>bom</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: bom</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Дефинира вложените компоненти и разходните норми за сглобяемите изделия (<code>ID Родител</code>, <code>ID Компонент</code>, <code>Количество</code>, <code>Влага се на Оп. №</code>). Захранва Резолвера, Валидатора, MRP анализа, Трансформацията и автоматичното изписване/връщане при отчитане и брак.</p>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>10. 🔄 Маршрутни карти (<code>marshruti</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: marshruti</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Технологичните операции за всеки детайл: <code>Код на детайла</code>, <code>№ Операция</code>, <code>Име на операция</code>, <code>Машина</code> (с autocomplete списък), <code>Норма (мин/бр)</code>, <code>Описание</code>, <code>Инструкция за оставяне</code>, <code>Линк към чертеж</code>, <code>Линк към СОП</code>. Поддържа масова смяна на машина чрез <span class="ui-btn orange">⚙️ Смени Машина</span>.</p>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>11. 📊 Отчети (Log) (<code>otcheti</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: otcheti</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Пълният дневник на всички производствени събития (<code>Отчетено</code>, <code>Брак</code>, <code>Изпратено</code>, <code>Започната</code>, <code>Прекъсната</code>, системни корекции). Показва четимо име на плана, <code>ID Детайл</code>, <code>Операция</code>, <code>Количество</code>, <code>Статус</code> (при чакащо доотчитане маркира реда в оранжево с <code>⚠️ Отчетено (Чака доотчитане)</code>), <code>Оператор</code>, <code>Време Старт</code> и <code>Време Край</code>.</p>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>12. 🗑️ Папка БРАК (<code>brak</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Само за четене</span><span class="ui-badge">Филтър: Статус = Брак</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Обособен преглед само на бракуваните детайли от <code>otcheti</code> (подредени по дата от най-новите): <code>Дата</code>, <code>ID Детайл</code>, <code>Количество</code>, <code>Операция</code>, <code>Оператор</code>, <code>Статус</code>.</p>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>13. 📁 Месечни Архиви (<code>archives</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: plan_archives</span><span class="ui-btn blue">Снеми Архив за Месец</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Запечатани месечни отчети с начално и крайно салдо, брак и BOM йерархия. Създават се <strong>автоматично</strong>, когато всички позиции от даден месец преминат в статус <code>🚚 Изпратен</code>, или <strong>ръчно</strong> чрез бутона <span class="ui-btn blue">Снеми Архив за Месец</span>. За всеки архив има <span class="ui-btn blue">👁️ Преглед (BOM)</span> (интерактивно дърво), <span class="ui-btn green">📥 Ексел</span> (с 2 листа: BOM йерархия и склад) и <span class="ui-btn red">🗑️</span>.</p>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>14. 🛠️ Склад Инструментална Екипировка (<code>tooling_sklad</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: tooling_inventory</span><span class="ui-btn orange">🛠️ Заявки &amp; Поръчки от Цеха</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Склад за пластини, фрези, свредла и режеща екипировка.</p>
+            <ul>
+              <li><strong>Колони:</strong> <code>Код / Тип</code>, <code>Наименование / Описание</code>, <code>За коя машина / пост</code>, <code>Текуща наличност</code> (с брой кутии), <code>Минимален буфер</code>, <code>📦 Бр. в кутия / опаковка</code>, <code>Мярка</code>, <code>Доставчик</code>, <code>Статус на доставка</code> (<code>Налично</code>, <code>Критично (за поръчка)</code>, <code>Поръчано</code>, <code>Чака доставка</code>), <code>Забележки</code>.</li>
+              <li><strong>Избор на машина (мулти-селект):</strong> Във формата полето <code>За коя машина / пост</code> има чекбокс <span class="ui-btn blue">🌐 Общо / Всички машини</span> и чекбоксове с търсене за избор на <strong>една или няколко конкретни машини</strong>. Терминалът прави точно сравнение по име на машина (без да смесва напр. <code>EMCO</code> и <code>EMCO (стар)</code>).</li>
+              <li><strong>Поръчка по имейл:</strong> При промяна на статуса на <code>Поръчано</code> директно отваря Gmail чернова с изчислени кутии/бройки и запомнен имейл на доставчика.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>15. 🏢 Опис по стаи / Инвентаризация (<code>rooms_inventory</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: factory_rooms</span><span class="ui-badge">Опис и паспорти</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Пълна инвентаризация на завода по стаи и етажи — работни постове, стационарни машини и малки уреди/инструменти, с печат на описи за врата и проследяване на калибрации (подробно в раздел 4.9).</p>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>16. 🦺 Приемо-Предавателни Протоколи (<code>equipment_protocols</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Таблица: equipment_protocols</span><span class="ui-btn blue">🦺 Нов Протокол за Зачисляване</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Регистър на зачисленото работно облекло, ЛПС и инструменти на служителите: <code>Протокол №</code> (формат <code>ППП-YYYY-XXX</code>), <code>Служител</code>, <code>Имейл</code>, <code>Предал</code>, <code>Статус</code> (<code>⏳ Чака подпис</code>, <code>🟢 Приет</code>, <code>🔄 Върнат</code>, <code>🗑️ Бракуван</code>), <code>Подписан на</code>, <code>Забележки</code>. Подписват се с личния ПИН от терминала на служителя.</p>
+          </div>
+        </details>
+
+        <h3 id="sub-hidden-tabs">3.2. Скрити / Специализирани табове (4 броя — не се показват в горната лента)</h3>
+        <div class="table-scroll">
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Таб (ключ)</th>
+                <th>Откъде се отваря</th>
+                <th>Какво съдържа</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>💰 Заплати &amp; Бонуси</strong> (<code>salaries</code>)</td>
+                <td>Меню <strong>📊 Справки &amp; Финанси</strong> → <span class="ui-btn green">💰 Заплати &amp; Бонуси</span> или от Досие → <code>📊 Отвори цялата Ведомост</code></td>
+                <td>Месечна ведомост за бонуси, закъснения, 3S удръжки, ръчни корекции, печат на фишове и публикуване към терминалите.</td>
+              </tr>
+              <tr>
+                <td><strong>🛒 Поръчки материали</strong> (<code>porachki</code>)</td>
+                <td>Табличен вид на <code>porachki_materiali</code> (достъпен програмно/чрез превключване; в UI се ползва главно модалът <code>openMaterialOrdersModal</code>)</td>
+                <td><code>Материал</code>, <code>Дата на поръчка</code>, <code>Доставчик</code>, <code>Имейл</code>, <code>Количество</code>, <code>Дата на приемане</code>, <code>Статус</code>. Поддържа масово приемане <span class="ui-btn green">✅ Приеми поръчките</span> и Gmail бланка при <code>Поръчано</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>📐 Малки Инструменти &amp; Уреди</strong> (<code>factory_tools</code>)</td>
+                <td>Управлява се през таб <strong>🏢 Опис по стаи</strong> (инвентар по стаи и паспорти)</td>
+                <td>Регистър на шублери, микрометри, вътромери и др. (<code>tool_code</code>, <code>tool_name</code>, <code>category</code>, <code>workstation_name</code>, <code>serial_number</code>, <code>calibration_date</code>, <code>calibration_due</code> с баджове <code>🚨 Изтекъл</code> / <code>⚠️ След X дни</code>) + метрологични бутони <span class="ui-btn blue">📏</span> и <span class="ui-btn">📋</span>.</td>
+              </tr>
+              <tr>
+                <td><strong>🏭 Работни Места &amp; Машини</strong> (<code>workstations</code>)</td>
+                <td>Управлява се през <strong>🏢 Опис по стаи</strong> и подтаб <strong>⚙️ Справочник Машини</strong> в Календара</td>
+                <td>Списък на машините и постовете (<code>code</code>, <code>name</code>, <code>room_number</code>, <code>floor</code>, <code>department</code>, <code>model</code>, <code>status</code>) + бутон <span class="ui-btn blue">🔄 Зареди машини от Маршрути</span>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SECTION 4: ADMIN MODALS & SPECIALIZED MODULES -->
+      <section class="doc-section" id="sec-admin-modals" data-cat="admin-modals">
+        <div class="section-head">
+          <h2>⚙️ 4. Админ панел: Специализирани модули и модали</h2>
+          <span class="section-tag">Модали</span>
+        </div>
+
+        <details class="item-card" id="mod-requests" open>
+          <summary>
+            <span>4.1. Заявки за Заготовки от Цеха &amp; Експресни Ревизии</span>
+            <span class="card-meta"><span class="ui-badge">admin-requests.js</span><span class="ui-badge">Polling 15 сек + Realtime</span></span>
+          </summary>
+          <div class="card-body">
+            <h4>🔔 Заявки за заготовки и разминавания</h4>
+            <ul>
+              <li><strong>Отваряне:</strong> <strong>🎯 Планиране</strong> → <span class="ui-btn orange">🔔 Заявки за Заготовки от Цеха</span>, от банера <span class="ui-btn">📋 Преглед на заявките</span> или от изскачащ Toast. При нова заявка пуска двутонен звуков сигнал и червен бадж.</li>
+              <li><strong>Филтри и бутони:</strong> <span class="ui-btn">Чакащи</span>, <span class="ui-btn">Осигурени</span>, <span class="ui-btn">Всички</span>, отметка <span class="ui-btn">Звуков сигнал 🔊</span> (и тест <span class="ui-btn">🔊</span> в банера), <span class="ui-btn">Затвори</span>.</li>
+              <li><strong>Видове сигнали:</strong>
+                <ul>
+                  <li><em>Стандартна заявка за заготовка:</em> показва детайла, операцията, машината и към кого е насочена (към предходна машина или <code>Склад Материали</code>).</li>
+                  <li><em>Разминаване в отчетите:</em> показва фазата (<code>🔍 ЕКСПРЕСНА РЕВИЗИЯ (ДЕФИЦИТ)</code>, <code>🔄 ДООТЧИТАНЕ ПО КАСКАДА</code>, <code>🚨 ГРЕШКА: НАДПИСАНИ БРОЙКИ</code>, <code>⚠️ РАЗМИНАВАНЕ В ОТЧЕТИТЕ</code>), отчетеното vs предходното количество и веригата назад.</li>
+                </ul>
+              </li>
+              <li><strong>Действия по ред:</strong> <span class="ui-btn green">✅ Маркирай като Осигурена</span> (само за <code>Чакаща</code>) и <span class="ui-btn red">🗑️</span> (изтриване).</li>
+            </ul>
+
+            <h4>🎯 Експресни Ревизии (Spot Audits)</h4>
+            <ul>
+              <li><strong>Realtime известяване:</strong> Слуша таблица <code>spot_audits</code> в реално време. При <code>DISCREPANCY</code> (разминаване) или <code>MATCH</code>/<code>TRANSIT_CONFIRMED</code> звъни и показва прозорец с <span class="ui-btn purple">📋 Отвори прозореца с ревизията</span> / <span class="ui-btn">Супер, разбрах</span>.</li>
+              <li><strong>Контроли в модала:</strong> Филтри <span class="ui-btn">Всички</span>, <span class="ui-btn">⏳ Чакащи</span>, <span class="ui-btn red">🔴 Разминавания</span>, <span class="ui-btn green">🟢 Точни</span>; бутони <span class="ui-btn">✓ Маркирай като прегледани</span>, <span class="ui-btn">🔄 Опресни</span>, <span class="ui-btn blue">🎯 Отвори в Табло Машини</span>, <span class="ui-btn">Затвори</span>.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card" id="mod-orders">
+          <summary>
+            <span>4.2. Поръчки на Материали &amp; Месечни Нужди (20-то число)</span>
+            <span class="card-meta"><span class="ui-badge">admin-material-orders.js</span><span class="ui-badge">Polling 20 сек</span></span>
+          </summary>
+          <div class="card-body">
+            <h4>🛒 Дневник на поръчките за материали</h4>
+            <ul>
+              <li><strong>Отваряне:</strong> <strong>🎯 Планиране</strong> → <span class="ui-btn blue">🛒 Поръчки на Материали &amp; Доставки</span>, контекстния бутон <span class="ui-btn blue">🛒 Поръчки на Материали</span> в таб <code>📦 Склад Материали</code> или <span class="ui-btn orange">🛒</span> до конкретен материал.</li>
+              <li><strong>Филтри и бутони:</strong> Чипове <span class="ui-btn">Всички</span>, <span class="ui-btn">⏳ Чакащи доставка</span>, <span class="ui-btn green">🟢 Приети в склада</span>, търсене по материал/доставчик/имейл, <span class="ui-btn purple">📅 Нужди на цеха (20-то)</span>, <span class="ui-btn blue">➕ Нова Поръчка</span>, <span class="ui-btn">🔄</span>.</li>
+              <li><strong>Действия по поръчка:</strong>
+                <ul>
+                  <li><span class="ui-btn green">📦 Приеми</span> (при <code>Поръчано</code>) — пита за реално пристигналото количество, сменя статуса на <code>Прието</code> с днешна дата, автоматично увеличава <code>Доставено</code> и <code>Остатък</code> в <code>sklad</code> и записва <code>DELIVERY_RECEIVE</code> в <code>audit_logs</code>.</li>
+                  <li><span class="ui-btn">✉️</span> — отваря повторно Gmail бланката към доставчика.</li>
+                  <li><span class="ui-btn red">🗑️</span> — изтрива поръчката.</li>
+                </ul>
+              </li>
+              <li><strong>Форма „Нова Поръчка“:</strong> Пресмята препоръчителното количество (<code>Мин. буфер - Наличност</code>), динамично показва броя кутии спрямо опаковката и помни имейла на всеки доставчик. Бутонът <span class="ui-btn blue">🛒 Запази и Отвори Имейл</span> записва поръчката и отваря готов имейл в Gmail.</li>
+            </ul>
+
+            <h4>📅 Месечно пресмятане на нуждите (след 20-то число)</h4>
+            <ul>
+              <li><strong>Формула:</strong> За всички материали в <code>sklad</code> с <code>Минимално количество &gt; 0</code> и <code>Остатък &lt; Минимално количество</code> изчислява <code>Дефицит = Минимум - Остатък</code>, изважда вече поръчаните бройки (<code>Поръчано</code>) и дава <code>Нужно за поръчка</code>.</li>
+              <li><strong>Автоматичен сигнал след 20-то число:</strong> На и след 20-то число от месеца при наличие на непокрити дефицити системата показва 16-секундно известие <code>📅 20-то число: Нужди на цеха!</code> с бутон <span class="ui-btn">🛒 Прегледай &amp; Поръчай</span> и изпраща Push известие до телефона.</li>
+              <li><strong>KPI, филтри и действия:</strong> 4 KPI карти (<code>Артикули с буфер</code>, <code>Позиции с дефицит</code>, <code>Вече поръчани</code>, <code>За поръчка сега</code>), филтри <span class="ui-btn">Всички дефицити</span>, <span class="ui-btn">🛒 Само за поръчка</span>, <span class="ui-btn">⏳ Вече поръчани</span>, търсене, <span class="ui-btn">🧪 Демо пример</span> (тестов дефицит за Стомана Ф5), редактиране на количество/доставчик/имейл директно в таблицата, единична поръчка <span class="ui-btn blue">🛒 Поръчай</span>, чернова <span class="ui-btn">✉️</span> и групова поръчка <span class="ui-btn green">🚀 Поръчай ВСИЧКИ с 1 клик</span> (групира по доставчик и отваря Gmail за всеки).</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card" id="mod-tooling">
+          <summary>
+            <span>4.3. Заявки за Екипировка, Метрология &amp; Протоколи</span>
+            <span class="card-meta"><span class="ui-badge">admin-tooling.js</span><span class="ui-badge">Polling 15 сек + Push</span></span>
+          </summary>
+          <div class="card-body">
+            <h4>🛠️ Заявки за Инструменти &amp; Пластини</h4>
+            <ul>
+              <li><strong>Отваряне и известяване:</strong> <strong>🎯 Планиране</strong> → <span class="ui-btn orange">🛠️ Заявки за Инструменти &amp; Пластини</span> или <span class="ui-btn orange">🛠️ Заявки &amp; Поръчки от Цеха</span> в таб <code>tooling_sklad</code>. При нова чакаща заявка звъни, показва Toast и праща телефонен Push.</li>
+              <li><strong>Филтри и действия:</strong> <span class="ui-btn">Всички</span>, <span class="ui-btn">⏳ Чакащи</span>, <span class="ui-btn blue">🛒 Поръчани</span>, <span class="ui-btn green">🟢 Осигурени</span>, <span class="ui-btn">🔄 Опресни</span>.
+                <ul>
+                  <li><span class="ui-btn blue">🛒 Поръчай</span> — намира размера на кутията от <code>tooling_inventory</code>, пресмята кутии, при <span class="ui-btn blue">🛒 Запази и Отвори Имейл</span> маркира заявката <code>Поръчана</code>, сменя статуса в склада на <code>Поръчано</code> и отваря Gmail.</li>
+                  <li><span class="ui-btn green">✅ Осигурена</span> / <span class="ui-btn green">📦 Приеми / Заприходи</span> — добавя полученото количество в <code>tooling_inventory</code>, връща статус <code>Налично</code>, маркира заявката <code>Осигурена</code> и логва <code>DELIVERY_RECEIPT</code> в <code>audit_logs</code>.</li>
+                  <li><span class="ui-btn red">🗑️</span> — изтрива заявката.</li>
+                </ul>
+              </li>
+            </ul>
+
+            <h4>📏 Метрологичен контрол на измервателни уреди</h4>
+            <ul>
+              <li><strong>Отваряне:</strong> Чрез <span class="ui-btn blue">📏</span> (замерване) и <span class="ui-btn">📋</span> (дневник) на ред в <code>factory_tools</code> или от Паспорта на уред в <strong>🏢 Опис по стаи</strong>.</li>
+              <li><strong>Как работи:</strong> Задава се дата, проверяващ, вид проверка (Вътрешна с еталони / Външна калибрация), срок на валидност (<code>3</code>, <code>6</code> или <code>12</code> месеца) и контролни точки (начално 10.00, 25.00, 50.00 mm + бутон <span class="ui-btn">➕ Добави точка</span>).</li>
+              <li><strong>Автоматично заключение по макс. отклонение:</strong> <code>&le; 0.02 mm</code> → <code>Годен (В допуск)</code> (зелено); <code>&le; 0.04 mm</code> → <code>Условно годен</code> (оранжево); <code>&gt; 0.04 mm</code> → <code>Брак / Извън допуск</code> (червено и прехвърля уреда в статус <code>repair</code>). Записва в <code>factory_tool_calibrations</code>.</li>
+            </ul>
+
+            <h4>🦺 Приемо-Предавателни Протоколи</h4>
+            <ul>
+              <li>Бутон <span class="ui-btn blue">🦺 Нов Протокол за Зачисляване</span> (или от досието на служител): генерира № <code>ППП-YYYY-XXX</code>, избира активен служител и вещи (работно облекло, ЛПС, инструмент, оборудване, с бутон <span class="ui-btn">➕ Добави вещ</span>). Записва се със статус <code>Чака подпис</code> за ПИН подпис в терминала.</li>
+              <li>Бутон <span class="ui-btn">👁️</span>: показва детайли и дата/ПИН на подпис; при приет протокол има бутон <span class="ui-btn orange">🔄 Отбележи като върнати в склада</span> (статус <code>Върнат</code>).</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card" id="mod-validator">
+          <summary>
+            <span>4.4. Валидатор на План, Логистика на План, MRP Анализ &amp; Хронология (Audit)</span>
+            <span class="card-meta"><span class="ui-badge">admin-validator.js</span><span class="ui-badge">admin-core.js</span></span>
+          </summary>
+          <div class="card-body">
+            <h4>🔍 Валидатор за готовност на Месечен План</h4>
+            <ul>
+              <li>Избирате <strong>Месец</strong> и <strong>Година</strong> и натискате <span class="ui-btn purple">🚀 Провери План</span>. Филтри: <span class="ui-btn">Всички</span>, <span class="ui-btn red">Блокиращи</span>, <span class="ui-btn orange">Препоръки</span>, <span class="ui-btn green">Напълно готови</span>.</li>
+              <li><strong>Проверки:</strong> (1) Липса на маршрут в <code>marshruti</code> (блокиращо) или операция без назначена машина (препоръка); (2) Липса на BOM/родител (препоръка) или дефицит на материал в <code>sklad</code> спрямо нужното за плана (блокиращо); (3) Под-детайли без маршрут/под-BOM.</li>
+              <li><strong>Бързи бутони в картите:</strong> <span class="ui-btn blue">🌳 Състав (Резолвер)</span>, <span class="ui-btn">📐 Чертеж</span>, <span class="ui-btn">➕ Добави Маршрут</span> (отваря таб <code>marshruti</code> директно във форма за добавяне с попълнен код), <span class="ui-btn">➕ Задай в Номенклатура</span>.</li>
+            </ul>
+
+            <h4>📦 Логистика на План</h4>
+            <ul>
+              <li>От <strong>🎯 Планиране</strong> → <span class="ui-btn">📦 Логистика на План</span>. Групира плановете по <code>Месец Година</code> и показва колко позиции са готови/опаковани.</li>
+              <li>Бутони: <span class="ui-btn">📄 Печат Пакинг Лист</span> (отваря <code>packing-list.html</code>) и <span class="ui-btn green">🚚 Изпрати План</span> (активен само когато завършените позиции са 100% опаковани — отписва количествата с <code>Експедиция</code> в <code>otcheti</code>, маркира опакованите отчети <code>Изпратено</code>, сменя плановете на <code>🚚 Изпратен</code> и пуска архивиране).</li>
+            </ul>
+
+            <h4>🚨 Анализ на доставките (MRP)</h4>
+            <ul>
+              <li>От табове <code>sklad</code> / <code>porachki</code>. Рекурсивно разгръща BOM на всички <code>Активни</code> планове, пресмята <code>Свободно = Наличност - Нужно за Планове</code> и показва списък с дефицити (<code>Свободно &lt; Минимум</code>) с бутон <span class="ui-btn blue">➕ Поръчай</span>.</li>
+            </ul>
+
+            <h4>🕒 Хронология на промените (Audit)</h4>
+            <ul>
+              <li>От <strong>📊 Справки &amp; Финанси</strong> → <span class="ui-btn">🕒 Хронология на промените (Audit)</span>. Филтри по таблица и търсачка, бутон <span class="ui-btn blue">🔄 Обнови</span>. Показва последните 200 записа от <code>audit_logs</code>; при въведен детайл комбинира <code>audit_logs</code> + <code>otcheti</code> (до 300 записа) и засича в кое родителско изделие е вложен детайлът (±3 сек).</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card" id="mod-resolver">
+          <summary>
+            <span>4.5. Визуален Резолвер, Трансформация, PDF Импорт &amp; Единно Досие (Ctrl+K)</span>
+            <span class="card-meta"><span class="ui-badge">admin-resolver.js</span><span class="ui-badge">admin-transform.js</span><span class="ui-badge">admin-pdf.js</span><span class="ui-badge">admin-spotlight.js</span></span>
+          </summary>
+          <div class="card-body">
+            <h4>🌳 Визуален Резолвер &amp; BOM Explorer</h4>
+            <ul>
+              <li>Отваря се при клик върху <code>ID Детайл</code> в таблиците или от Валидатора. Показва навигационна пътека (breadcrumbs), калкулатор <span class="ui-btn">🧮 За количество: X бр.</span>, превключвател <span class="ui-btn">📋 Подреден състав</span> / <span class="ui-btn">🌳 Дърво</span>, <span class="ui-btn">📜 Картон / Движения</span>, <span class="ui-btn">🕵️ Детектив</span> и <span class="ui-btn">🔄 Обнови</span>.</li>
+              <li>Показва складовите наличности (Готов продукт, WIP по операции, Суровини), вложените полуфабрикати (с клик надолу), материали, маршрута и <strong>Обратен BOM</strong> („Къде се влага този материал?“).</li>
+            </ul>
+
+            <h4>🔄 Трансформация на Резолвери</h4>
+            <ul>
+              <li>Само в таб <code>🏭 Склад</code>. Избирате източник (резолвер с <code>#</code> в името и наличност &gt; 0), операция, количество и целеви резолвер (системата позволява избор <strong>само на 100% съвместими по BOM рецепта</strong> цели).</li>
+              <li>Бутон <span class="ui-btn purple">Възложи Трансформация</span> премества наличностите между източника и целта в <code>inventory</code> и вписва 2 корекционни реда <code>СИСТЕМА (Корекция - Трансформация)</code> в <code>otcheti</code>, без да изписва втори път BOM материалите.</li>
+            </ul>
+
+            <h4>📥 Зареди от PDF (Импорт на месечен план)</h4>
+            <ul>
+              <li>Само в таб <code>📅 Месечен План</code>. Пита за <strong>Месец</strong> и <strong>Година</strong>, парсва количествата и кодовете от PDF поръчката, автоматично добавя 3-те фантомни задни капака, оцветява липсващите в Номенклатурата в червено, и при <span class="ui-btn green">🚀 Зареди в плана</span> вкарва редовете в <code>plan</code> + записва начален snapshot в <code>plan_snapshots</code>.</li>
+            </ul>
+
+            <h4>🔍 Единно Досие (Spotlight <code>Ctrl+K</code>)</h4>
+            <ul>
+              <li>Без въведен текст показва последните 10 активни детайла от плана. При писане търси едновременно в <code>Номенклатура</code>, <code>Склад Материали</code> и <code>План</code>.</li>
+              <li>Кликът отваря обобщено досие на детайла: 4 KPI карти (Готов продукт, В процес WIP, Склад суровина, Месечен план), наличности по операции, маршрут (с линк към таб <code>Маршрутни карти</code>), вложени BOM компоненти, бутони <span class="ui-btn">📐 Чертеж</span>, <span class="ui-btn">📋 СОП</span>, <span class="ui-btn purple">🌳 BOM Resolver</span> и 4 бутона за бърз скок в табовете <code>План</code>, <code>Склад</code>, <code>Номенклатура</code> и <code>Отчети</code> с попълнен филтър.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card" id="mod-personnel">
+          <summary>
+            <span>4.6. Персонал, 6-табово Лично Досие, Авто-излизане &amp; Тиха Проверка на Локация</span>
+            <span class="card-meta"><span class="ui-badge">admin-personnel.js</span><span class="ui-badge">admin-core.js</span></span>
+          </summary>
+          <div class="card-body">
+            <h4>📁 Досие на служител (от страничната лента в таб „Персонал“)</h4>
+            <ul>
+              <li><strong>Горен ПИН бар:</strong> <span class="ui-btn">🔑 Парола / ПИН</span> + <span class="ui-btn blue">💾 Запази</span> — задава ПИН за достъп до Досието в терминала, за подписване на протоколи и за 3S мобилния одит.</li>
+              <li><strong>6 вътрешни таба:</strong>
+                <ol>
+                  <li><span class="ui-tab">⏱️ Присъствие</span> — последните 100 чекирания (червено при &gt; 08:00 или <code>ИЗВЪН ОБЕКТА</code>, жълто при <code>Авто излизане</code>) + линкове <span class="ui-btn">📍 Карта</span>.</li>
+                  <li><span class="ui-tab">🛠️ Свършена Работа</span> — последните 50 отчета от <code>otcheti</code> (<code>Отчетено</code> vs <code>Брак</code>).</li>
+                  <li><span class="ui-tab">📑 Документи</span> — качване на файлове в Storage bucket <code>dosieta</code> по категории (<code>💶 Фиш за заплата</code>, <code>📑 Трудов договор / Анекс</code>, <code>🩺 Медицинско / Инструктаж</code>, <code>📝 Заявление / Молба</code>, <code>📄 Друг фирмен документ</code>) с бутон <span class="ui-btn blue">⬆️ Качи документ</span>, филтри и бутони <span class="ui-btn">👁️ Отвори</span>, <span class="ui-btn">⬇️ Свали</span>, <span class="ui-btn red">🗑️</span>.</li>
+                  <li><span class="ui-tab">🧹 3S Одити</span> — одитите на служителя с цветни проценти, забележки и бутон <span class="ui-btn">📷 Виж снимката</span>.</li>
+                  <li><span class="ui-tab">💰 Бонуси &amp; Заплата</span> — текуща прогноза за месеца (Базов бонус, Закъснения &gt;08:05, 3S одити &lt;80%, Брак) + бутон <span class="ui-btn blue">📊 Отвори цялата Ведомост ➔</span>.</li>
+                  <li><span class="ui-tab">🦺 Зачислено Оборудване</span> — протоколи за ЛПС и инструменти + бутони <span class="ui-btn blue">➕ Нов Протокол за този служител</span> и <span class="ui-btn">👁️ Преглед / Връщане</span>.</li>
+                </ol>
+              </li>
+            </ul>
+
+            <h4>🕒 Автоматично излизане (17:00)</h4>
+            <p>При отваряне на Админ панела системата проверява незавършени смени (<code>Влизане</code> без <code>Излизане</code> от предходен ден или след 17:00 ч.) и записва <code>Авто излизане</code> с час 17:00 ч. + изчиства незавършени записи <code>Започната</code>.</p>
+
+            <h4>📍 Дискретна проверка на локация (в таб „Хронология Чекирания“)</h4>
+            <ul>
+              <li><span class="ui-btn purple">📍 Проверка локация</span> — избира служител (приоритетно тези на смяна днес), по желание изпраща прикрито Push известие с рутинен текст (напр. „Синхронизиране на работния плот“), и чака до 12 сек отговор от терминала. Показва дали е <code>🟢 В ОБЕКТА</code> или <code>🚨 ИЗВЪН ОБЕКТА</code> (&gt;200 м) с Google Maps линк.</li>
+              <li><span class="ui-btn">📜 Дневник Проверки</span> — последните 100 проверки от <code>location_ping_requests</code> с бутон <span class="ui-btn purple">📍 Нова проверка сега</span>.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card" id="mod-salaries">
+          <summary>
+            <span>4.7. Заплати &amp; Бонуси и Оперативна Сводка</span>
+            <span class="card-meta"><span class="ui-badge">admin-salaries.js</span><span class="ui-badge">admin-report.js</span></span>
+          </summary>
+          <div class="card-body">
+            <h4>💰 Ведомост Заплати &amp; Бонуси</h4>
+            <ul>
+              <li><strong>Бутони в горната лента:</strong> Селектор Месец/Година, <span class="ui-btn blue">⚡ Пресметни</span>, <span class="ui-btn">⚙️ Правила (Заповед)</span>, <span class="ui-btn green">📥 Excel Ведомост</span>, <span class="ui-btn">💾 Запази чернова</span>, <span class="ui-btn green">📤 Одобри и Публикувай към терминалите</span> (или <span class="ui-btn orange">↩️ Свали от терминалите</span>).</li>
+              <li><strong>Вградени правила (редактируеми в <code>⚙️ Правила</code>):</strong>
+                <ul>
+                  <li><code>LATE_ARRIVAL</code> (активно): смяната започва в <code>08:00 ч.</code> с 5 мин толеранс; на всеки <strong>3 закъснения</strong> (&gt;08:05 ч.) се удържат <strong>10%</strong> от базовия бонус (или фиксирана сума €).</li>
+                  <li><code>FAILED_3S</code> (активно): за всеки <strong>1 одит</strong> с резултат <strong>&lt; 80%</strong> се удържат <strong>20%</strong>.</li>
+                  <li><code>WRONG_REPORT</code> (по подразбиране изключено): на всеки 3 отчета с <code>Брак</code> → 15% удръжка.</li>
+                  <li><code>PERFECT_ATTENDANCE</code> (по подразбиране изключено): премия при 0 закъснения и поне 10 влизания.</li>
+                </ul>
+              </li>
+              <li><strong>Интерактивна редакция:</strong> Клик върху закъсненията или 3S одитите отваря списък с бутон <span class="ui-btn green">🕊️ Оправдай</span> / <span class="ui-btn">↩️ Отмени</span> (иска причина) и поле за ръчна глоба + бутон <span class="ui-btn">Авто</span>. Има и колона за ръчна корекция (<code>+/- €</code>), бележка и бутон <span class="ui-btn">📜 Фиш</span> с опция <span class="ui-btn">🖨️ Разпечатай фиша</span>.</li>
+            </ul>
+
+            <h4>📑 Оперативна сводка &amp; Периодичен Отчет</h4>
+            <ul>
+              <li>Периоди: <span class="ui-btn">📅 Днес</span>, <span class="ui-btn">🗓️ Последните 7 дни</span>, <span class="ui-btn">📆 Този месец</span>, <span class="ui-btn">⚙️ Персонализиран</span> (+ <span class="ui-btn blue">Приложи</span>).</li>
+              <li>Експорт и споделяне: <span class="ui-btn">📋 Копирай за Viber / Имейл</span>, <span class="ui-btn blue">📲 Изпрати Push</span>, <span class="ui-btn green">📊 Excel (.xlsx)</span> (3 листа: Производство, Оператори, Критичен Склад), <span class="ui-btn">🖨️ Печат</span>.</li>
+              <li>Показва предупреждение за чакащи разминавания, 4 KPI карти (Произведено, Брак и % брак, Критични наличности, Предстоящи сервизи до 7 дни) и 4 детайлни таблици.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card" id="mod-calendar">
+          <summary>
+            <span>4.8. Календар, Планова Поддръжка, Сервизен Дневник &amp; Push Известия</span>
+            <span class="card-meta"><span class="ui-badge">admin-calendar.js</span><span class="ui-badge">admin-notif.js</span></span>
+          </summary>
+          <div class="card-body">
+            <h4>📅 Календар &amp; Поддръжка</h4>
+            <ul>
+              <li><strong>Горни бутони:</strong> <span class="ui-btn">🔄 Обнови</span>, <span class="ui-btn blue">➕ Насрочи задача</span>, <span class="ui-btn orange">✍️ Впиши ремонт</span>.</li>
+              <li><strong>4 подтаба:</strong>
+                <ol>
+                  <li><span class="ui-tab">📅 Календар &amp; График</span> — месечна решетка (навигация <code>◀</code>, <code>Днес</code>, <code>▶</code>), филтри по категория (<code>Машини</code>, <code>ЗБУТ / ЧР</code>, <code>Инфраструктура</code>, <code>Автопарк</code>, <code>Администрация</code>, <code>Общи</code>) и машина. Клик на ден отваря нова задача; в модала има бързи срокове <span class="ui-btn">5д</span> <span class="ui-btn">15д</span> <span class="ui-btn">30д</span> <span class="ui-btn">60д</span>, настройка за периодичност и отметка <strong>„Позволи отчитане директно от Терминала“</strong> (достъпна само за категория <code>Машини</code>).</li>
+                  <li><span class="ui-tab">📋 Всички насрочени задачи</span> — списък с баджове <code>🚨 Просрочено с X дни</code>, <code>⚠️ ДНЕС</code>, <code>🔔 УТРЕ</code> и бутон <span class="ui-btn">👁️ Детайли</span> (вътре: <span class="ui-btn red">🗑️ Изтрий</span>, <span class="ui-btn">✏️ Редакция</span>, <span class="ui-btn green">✅ Отчети като изпълнено</span>). При приключване на периодична задача автоматично се създава следващата.</li>
+                  <li><span class="ui-tab">📋 Сервизен дневник (История)</span> — история на ремонти и профилактики с търсене, филтър по машина, сумиране на общия разход (<code>лв.</code>) и бутон <span class="ui-btn">✍️ Впиши извънреден ремонт</span>.</li>
+                  <li><span class="ui-tab">⚙️ Справочник Машини</span> — карти на машините с брой задачи и сервизи, бутони <span class="ui-btn">✏️</span>, <span class="ui-btn red">🗑️</span>, <span class="ui-btn">📋 Сервизен дневник</span>, <span class="ui-btn">📅 Задачи</span>, <span class="ui-btn">➕ Насрочи</span> и <span class="ui-btn blue">➕ Добави нова машина</span>.</li>
+                </ol>
+              </li>
+              <li><strong>Глобални аларми:</strong> На всеки 60 сек обновява баджа на <code>⚙️ Система</code> и показва до 3 цветни предупредителни ленти най-отгоре в Админ панела за просрочени/днешни/утрешни задачи.</li>
+            </ul>
+
+            <h4>📢 Push Известия</h4>
+            <ul>
+              <li><span class="ui-btn">📢 Изпрати Известие до Цеха</span> — избор на <code>Всички (Активен персонал)</code> или конкретен служител, заглавие, текст и бутон <span class="ui-btn blue">Изпрати 🚀</span> (OneSignal Push + запис в <code>chekiraniya</code>).</li>
+              <li><span class="ui-btn blue">🔔 Тествай Известие към Телефона</span> — изпраща тестов сигнал през Google Apps Script Webhook.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card" id="mod-probi-3s-rooms">
+          <summary>
+            <span>4.9. Проби, 3S Система &amp; Опис по Стаи / Инвентаризация</span>
+            <span class="card-meta"><span class="ui-badge">admin-probi.js</span><span class="ui-badge">admin-3s.js</span><span class="ui-badge">admin-rooms.js</span></span>
+          </summary>
+          <div class="card-body">
+            <h4>🧪 Модул „Проби“ (Пълен цикъл)</h4>
+            <p>1) <span class="ui-btn blue">➕ Нова Проба</span> (име, бройка, отметка <code>⚡ Спешна проба</code>) → статус <code>Чернова</code>; 2) Конструктор: вляво каталог <code>Номенклатура</code> (<span class="ui-btn">➕ Добави</span>), вдясно дърво (<code>↳ ➕ Под-детайл</code>, <span class="ui-btn">✨ Създай НОВ детайл</span> с материал и операции); 3) Пускане в производство (статус <code>В производство</code>); 4) Преглед на напредък; 5) <span class="ui-btn green">✅ Одобри (Годна)</span> или <span class="ui-btn red">❌ Отхвърли</span>; 6) <strong>Експорт в серийно производство</strong> (прехвърля рецептата, маршрутите и по избор наличностите от <code>probi_inventory</code> в <code>inventory</code>).</p>
+
+            <h4>🧹 3S Система</h4>
+            <p>Настройва въпроси по 5 категории с критерии 0–4 т. (<span class="ui-btn blue">➕ Добави Въпрос</span>, <span class="ui-btn">✏️ Редакция</span>, <span class="ui-btn red">🗑️</span>), назначава проверяващ, служители и общи части за всяко от 3-те звена, дава бърз линк <span class="ui-btn">📱 Отвори Мобилен Формуляр</span> (<code>audit-3s.html</code>) и експортира историята в Excel.</p>
+
+            <h4>🏢 Опис по стаи / Инвентаризация</h4>
+            <ul>
+              <li><strong>Горни бутони:</strong> <span class="ui-btn blue">➕ Нова Стая</span>, <span class="ui-btn">👥 Нов работен пост</span>, <span class="ui-btn">🏭 Нова машина</span> (37 вградени шаблона), <span class="ui-btn">📏 Нов уред / инструмент</span> (22 шаблона + автоматично генериране на инвентарен код <code>Стая-Код-01</code>), <span class="ui-btn">🔄 Опресни</span>.</li>
+              <li><strong>Филтри:</strong> Чипове <span class="ui-btn">Всички локации</span>, <span class="ui-btn">Етаж 1</span>, <span class="ui-btn">Етаж 2</span>, <span class="ui-btn">Етаж 3</span>, <span class="ui-btn">📦 Складове &amp; Коридори</span> + търсачка по стая/отговорник/машина/уред.</li>
+              <li><strong>Карти на стаите и Паспорти:</strong> Показват баджове за изтекли/изтичащи калибрации, бутони <span class="ui-btn">🖨️</span> (печат на опис за врата), <span class="ui-btn">✏️</span>, <span class="ui-btn red">🗑️</span>. При отваряне на стая има табове <code>📋 Всичко</code>, <code>👥 Постове</code>, <code>🏭 Машини</code>, <code>📏 Уреди &amp; Инструменти</code>, бутони за зачисляване/преместване в друга стая, а клик върху уред отваря паспорта му с бутони <span class="ui-btn blue">📏 Ново замерване</span> и <span class="ui-btn">📋 Дневник проверки</span>.</li>
+            </ul>
+          </div>
+        </details>
+      </section>
+
+      <!-- SECTION 5: TERMINAL -->
+      <section class="doc-section" id="sec-terminal" data-cat="terminal">
+        <div class="section-head">
+          <h2>📱 5. Терминал на оператора (<code>terminal.html</code>)</h2>
+          <span class="section-tag">Цех</span>
+        </div>
+
+        <h3 id="term-login">5.1. Вход в смяна, GPS проверка и Горна лента</h3>
+        <ul>
+          <li><strong>Разпознаване на служител:</strong> По имейл в таблица <code>personal</code>. Ако операторът още не е чекиран за днешния ден, работният екран е заключен зад големия бутон <span class="ui-btn green">🟢 ВХОД ЗА СМЯНА</span>.</li>
+          <li><strong>GPS проверка (радиус 200 м):</strong> Сверява координатите спрямо цеха (41.893865, 23.487354). При изключен или блокиран GPS дава диалог с бутон <span class="ui-btn orange">⚠️ Продължи без локация</span>, което маркира записа с <code>⚠️ НЕПРАВИЛНО ЧЕКИРАНЕ (ИЗКЛЮЧЕНА ЛОКАЦИЯ)</code>. Влизане след 08:00 ч. произнася гласово съобщение за закъснение.</li>
+          <li><strong>Лява зона (Профил):</strong> Лого, надпис <code>AMCI (ТЕСТ)</code> и име на оператора. Кликът отваря <strong>Профил Работник</strong> с бутони <span class="ui-btn">🔔 Поискай известия (Ръчно)</span>, <span class="ui-btn">🔒 Админ</span> (води към <code>admin.html</code>) и <span class="ui-btn blue">📁 Досие</span> (изисква личен ПИН).</li>
+          <li><strong>Дясна зона бутони:</strong>
+            <ul>
+              <li><span class="ui-btn orange">🔧 ПОДДРЪЖКА</span> (с червен бадж при задачи за профилактика) — отваря модал с предстоящите задачи по поддръжка и сервизната история.</li>
+              <li><span class="ui-btn blue">📺 МОНИТОР</span> — отваря Живия Монитор (<code>index.html</code>).</li>
+              <li><span class="ui-btn red">🔴 ИЗХОД</span> — чекиране за край на смяна (<code>Излизане</code>).</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h3 id="term-machine">5.2. Избор на работно място, Пластини/Инструменти и Уреди</h3>
+        <ul>
+          <li><strong>Лента <code>Работно място: [машина] ✏️</code>:</strong> Отваря списък с машините от <code>marshruti</code> с чекбоксове и бутони <span class="ui-btn">☑️ Всички</span> / <span class="ui-btn">☐ Изчисти</span>. Изборът се записва в базата (<code>worker_machines</code>).</li>
+          <li><span class="ui-btn orange">🛠️ Заявка за пластини / инструмент</span> — работи, когато е избрана <strong>една конкретна машина</strong> (не „ВСИЧКИ“). Отваря модал с:
+            <ul>
+              <li><strong>Търсим падащ списък с бутон <code>▼</code>:</strong> зарежда инструментите от <code>tooling_inventory</code> точно за избраната машина (или <code>Общо</code>), показвайки код/име, <code>📦 брой в кутия</code> (автопопълва полето <code>Количество</code>) и текуща складова наличност. При писане филтрира в реално време и позволява свободен текст (<code>✍️ Използвай въведения текст</code>).</li>
+              <li><strong>Спешност:</strong> <code>🟢 Нормална</code>, <code>🟡 Спешна</code> (по подразбиране), <code>🔴 КРИТИЧНО</code> (<code>Машината спира!</code>).</li>
+              <li><strong>Количество и Забележка</strong> + бутон <span class="ui-btn orange">🚀 Изпрати към Админ</span>.</li>
+            </ul>
+          </li>
+          <li><span class="ui-btn blue">🧰 Уреди</span> — отваря модал <strong>Налични уреди &amp; инструменти</strong> с избор по <strong>стая / цехова локация</strong> и статус на калибрация (<code>🚨 ИЗТЕКЛА</code>, <code>⚠️ До ... (X дни)</code>, <code>🟢 До ...</code>, <code>Без срок</code>).</li>
+        </ul>
+
+        <h3 id="term-alerts">5.3. Банери, Филтри за задачи и Плаващи панели</h3>
+        <ul>
+          <li><strong>Зони за известия над задачите:</strong> Push банер, Андон сигнали (с бутони <span class="ui-btn">👌 Скрий сигнала</span> / <span class="ui-btn">👌 Разбрах / Работя по него</span>), Експресна ревизия (лилав неблокиращ банер), Приемо-предавателни протоколи (оранжев банер), Профилактика/поддръжка на машини (оранжеви и червени карти с бутон <span class="ui-btn green">✅ ОТЧЕТИ КАТО ИЗПЪЛНЕНО</span>).</li>
+          <li><strong>Филтри:</strong> <span class="ui-btn">Всички</span> (вкл. блокирани), <span class="ui-btn green">🟢 Мога</span> (активен по подразбиране — само готовите за работа задачи), <span class="ui-btn">⏳ Поети задачи</span> (текущо стартираните от оператора).</li>
+          <li><strong>Плаващи бутони долу вдясно:</strong>
+            <ul>
+              <li><span class="ui-btn">🕒</span> — отваря панела <strong>История (последни 10)</strong> с последните 10 реални отчета на оператора от базата (<code>Отчетено</code> и <code>Брак</code>).</li>
+              <li><span class="ui-btn blue">📬</span> — отваря <strong>Всички съобщения</strong> от администрацията.</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h3 id="term-cards">5.4. Цветове на картите и бутони по задачите</h3>
+        <div class="color-legend">
+          <div class="color-item"><span class="color-swatch" style="background:#3b82f6;"></span><div><strong>Синя карта (<code>ПЛАН: ...</code>)</strong> — редовна задача по текущия месечен план (или компонент по BOM).</div></div>
+          <div class="color-item"><span class="color-swatch" style="background:#16a34a;"></span><div><strong>Зелена карта (<code>ЗЕЛЕНА КАРТА</code>)</strong> — производство за попълване на минимален складов <strong>Буфер</strong>.</div></div>
+          <div class="color-item"><span class="color-swatch" style="background:#38bdf8;"></span><div><strong>Светлосиня карта</strong> — резерв за брак или <code>⚠️ СВРЪХПРОИЗВОДСТВО</code> (над основното планово количество).</div></div>
+          <div class="color-item"><span class="color-swatch" style="background:#8b5cf6;"></span><div><strong>Лилава / Червена карта (<code>🧪 ПРОБА</code>)</strong> — опитна серия от модул „Проби“ (червена с бадж <code>⚡ СПЕШНА ПРОБА</code>).</div></div>
+          <div class="color-item"><span class="color-swatch" style="background:#ea580c;"></span><div><strong>Оранжева карта (<code>⚠️ ИЗВЪНРЕДНО ДООТЧИТАНЕ</code>)</strong> — сигнал, че следваща операция е отчела повече бройки от наличните след вашата. Бутон: <span class="ui-btn orange">📝 ДООТЧЕТИ X бр. СЕГА</span>.</div></div>
+        </div>
+        <p>Допълнителни етикети на картите: <span class="ui-btn red">⭐ ПРИОРИТЕТ #1..10</span> (ръчно зададен приоритет), <span class="ui-btn purple">🔄 ПРЕХВЪРЛЕНА ОТ ...</span> (прехвърлена задача от друга машина) и синя кутия <code>💬 Бележка: ...</code> от планьора.</p>
+
+        <h4>Бутони върху картата (Свободно състояние)</h4>
+        <ul>
+          <li>Ако заготовките са налични: бадж <code>📦 Възможни: X бр.</code> (или <code>⚡ Първа стъпка</code>) и бутон <span class="ui-btn blue">🚀 ПОЕМИ ЗАДАЧА</span> (записва <code>Започната</code> в <code>otcheti</code>, стартира 5-сек таймер и превключва в <code>⏳ Поети задачи</code>).</li>
+          <li>Ако заготовките липсват (блокирана): червен бадж <code>🚫 Липсва: ...</code>, неактивен бутон <span class="ui-btn">🛑 БЛОКИРАНА ЗАДАЧА</span> и бутон <span class="ui-btn orange">🔔 Заяви заготовка от склад</span> (изчислява автоматично предходната машина или <code>Склад Материали</code> и праща заявка).</li>
+        </ul>
+
+        <h4>Бутони върху картата (Поето състояние — <code>🟢 В ПРОЦЕС НА РАБОТА</code>)</h4>
+        <ul>
+          <li><span class="ui-btn blue">📐 Отвори Чертеж</span> (и клик върху името на детайла) и <span class="ui-btn orange">📑 Отвори СОП</span> — при въведени линкове в номенклатурата/маршрута.</li>
+          <li>Информационни кутии: <code>🛒 Вземи компоненти</code> (ако е сглобяване по BOM), жълта кутия с описание <code>💡</code> и зелена кутия <code>📍 Остави на: ...</code>.</li>
+          <li>Поле за бройки + <span class="ui-btn green">✅ ОТЧЕТИ</span> — изисква минимум 5 секунди от поемането (защита <code>⚡ Светкавица!</code>). При въвеждане на повече бройки от наличното предупреждава, и при потвърждение <span class="ui-btn">👍 Да, детайлите са при мен</span> автоматично задейства проследяване на дефицита (ревизия / доотчитане). При липса на интернет записът влиза в локална опашка и се изпраща автоматично при връщане онлайн.</li>
+          <li><span class="ui-btn red">БРАК</span> — записва бракуваните бройки в <code>otcheti</code> (под името на оператора, отчел брака) и в <code>Папка БРАК</code>. За операциите <strong>зареждане</strong>, <strong>хонинговане</strong> и <strong>сглобяване + измерване</strong> отваря списък за отмаркиране на <strong>спасени BOM компоненти</strong> (отмаркираните здрави материали се връщат директно в <code>Склад Материали</code>, а счупените се отчитат като бракуван компонент).</li>
+          <li><span class="ui-btn">📋 ВРЪЩАНЕ НАЗАД</span> — паузира/освобождава поетата задача (записва <code>Прекъсната</code>) и връща към списъка с готови задачи.</li>
+        </ul>
+
+        <h3 id="term-extras">5.5. Ревизии, 08:35 / 10-мин Напомняния, Протоколи и Лично Досие</h3>
+        <ul>
+          <li><strong>Експресна ревизия:</strong> Появява се като лилав неблокиращ банер най-отгоре. Операторът въвежда преброените физически бройки пред машината и натиска <span class="ui-btn purple">🚀 ИЗПРАТИ РЕВИЗИЯ</span>. (При автоматична проверка за дефицит и въведени <code>0</code> бр., системата потвърждава транзита и препраща искане за доотчитане към предходната междинна операция.)</li>
+          <li><strong>Блокиращо напомняне (08:35 ч. и на 10 мин. престой):</strong> Проверява на всеки 30 сек след <strong>08:35 ч.</strong>, само ако операторът няма поета задача, има поне 1 свободна синя задача и са минали 10 мин. без действие. Блокира целия екран до натискане на <span class="ui-btn green">✅ РАЗБРАХ, ПОЕМАМ ЗАДАЧА</span>.</li>
+          <li><strong>Подпис на протоколи:</strong> При зачислено работно облекло/уреди се появява оранжев банер с бутони <span class="ui-btn orange">✍️ Подпиши с ПИН код</span> (потвърждава с личния ПИН) и <span class="ui-btn">📁 Всички зачислени</span>.</li>
+          <li><strong>Лично Досие (5 таба, защитено с ПИН):</strong>
+            <ol>
+              <li><span class="ui-tab">📁 Документи</span> — филтри (<code>Всички</code>, <code>💶 Фишове</code>, <code>📑 Договори</code>, <code>🩺 Медицински</code>, <code>📄 Други</code>) + <span class="ui-btn">👁️ Отвори</span> / <span class="ui-btn">⬇️ Свали</span>.</li>
+              <li><span class="ui-tab">💰 Бонуси &amp; Фиш</span> — преглед по месеци на публикуваните (<code>Одобрено</code>) фишове с разбивка на закъснения, 3S удръжки, корекции и бутон <span class="ui-btn">🖨️ Принтирай фиша</span>.</li>
+              <li><span class="ui-tab">🦺 Зачислено Оборудване</span> — списък с протоколите и ПИН подписване.</li>
+              <li><span class="ui-tab">🛠️ Свършена работа</span> — последните 60 отчета (<code>Отчетено</code>, <code>Брак</code>, <code>Авто</code>).</li>
+              <li><span class="ui-tab">🕒 Чекирания</span> — последните 50 чекирания с GPS статус (<code>✅ В обекта</code>, <code>⚠️ Извън обекта</code>, <code>⚠️ Без GPS</code>).</li>
+            </ol>
+          </li>
+        </ul>
+      </section>
+
+      <!-- SECTION 6: LIVE MONITORS -->
+      <section class="doc-section" id="sec-monitors" data-cat="monitors">
+        <div class="section-head">
+          <h2>📺 6. Живи Монитори (Телевизионни екрани в цеха и офиса)</h2>
+          <span class="section-tag">Монитори</span>
+        </div>
+
+        <details class="item-card" id="mon-vsm" open>
+          <summary>
+            <span>6.1. Жив Монитор на Производството VSM (<code>index.html</code>)</span>
+            <span class="card-meta"><span class="ui-badge">app.js + style.css</span><span class="ui-badge">Realtime поток</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Показва целия производствен поток по месечния план на 7 секции (<strong>ТЕЛА</strong>, <strong>ПРЕДНИ КАПАЦИ</strong>, <strong>ЗАДНИ КАПАЦИ</strong>, <strong>МПР</strong>, <strong>РОТОРИ - ВАЛОВЕ - ЛАГЕРНИ ВЪЗЛИ</strong> [с ленти ВАР. 11, ВАР. 25, ЩИФТОВЕ, ЛАГЕРНИ ВЪЗЛИ], <strong>СТАТОРИ И ТРАНСФОРМАТОРИ</strong> и <strong>РЕЗОЛВЕРИ</strong>), свързани със стрелки на влагане по BOM.</p>
+            <p><strong>Горна лента контроли:</strong> Индикатор за последна синхронизация, бутони <span class="ui-btn">A-</span>, <span class="ui-btn">100%</span>, <span class="ui-btn">A+</span> (мащабиране на шрифта) и <span class="ui-btn">⛶</span> (цял екран).</p>
+
+            <h4>Цветове на заглавията на картите</h4>
+            <div class="color-legend">
+              <div class="color-item"><span class="color-swatch" style="background:#22c55e;"></span><div><strong>Зелено:</strong> Всички операции за детайла са 100% завършени (списъкът с операции се скрива).</div></div>
+              <div class="color-item"><span class="color-swatch" style="background:#facc15;"></span><div><strong>Жълто (светещо):</strong> Главно изделие (напр. Резолвер), чиито всички вложени компоненти са готови и чака финалния монтаж.</div></div>
+              <div class="color-item"><span class="color-swatch" style="background:#60a5fa;"></span><div><strong>Синьо:</strong> По детайла има поне една започната задача или частично отчетена операция (в т.ч. и отчетен брак при започната операция без готова бройка — вече коректно се отчита като приключено събитие).</div></div>
+              <div class="color-item"><span class="color-swatch" style="background:#cbd5e1;"></span><div><strong>Светлосиво:</strong> Операциите по детайла все още не са започнати.</div></div>
+            </div>
+
+            <h4>Цветове на отделните операции вътре в картата и стрелките</h4>
+            <ul>
+              <li><strong style="color:#16a34a;">Зелено:</strong> Завършена операция / завършен детайл.</li>
+              <li><strong style="color:#2563eb;">Синьо:</strong> Текуща активна (започната или частично изработена) операция.</li>
+              <li><strong style="color:#475569;">Светлосиво:</strong> Текуща операция, готова за пускане (0 бр., незапочната).</li>
+              <li><strong style="color:#334155;">Тъмносиво:</strong> Бъдеща операция напред в маршрута.</li>
+              <li><strong>Форми и цветове на стрелките:</strong> Триъгълник за <em>роторен пакет</em>, диамант за <em>щифт</em>, кръг за <em>макари/други</em>; пунктирана сива линия за връзки в същия контейнер; цветови кодове по тип (напр. отстъп — синьо, процеп — червено, напудрена — оранжево, едн. чел. — зелено, двуст. — лилаво, вар. 11 — жълто, вар. 25 — тюркоаз).</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card" id="mon-hr">
+          <summary>
+            <span>6.2. HR Монитор Персонал &amp; Производителност (<code>monitor-hr.html</code>)</span>
+            <span class="card-meta"><span class="ui-badge">monitor-hr.js</span><span class="ui-badge">Обновяване на 15 сек</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Горна лента: заглавие <strong>HR &amp; ПРОИЗВОДИТЕЛНОСТ</strong>, календар за дата и бутон <span class="ui-btn blue">📊 АНАЛИЗИ И ГАНТ</span> (отваря <code>statistics.html</code>). Разделен е на 3 прозореца:</p>
+            <ol>
+              <li><strong>👤 НА СМЯНА В МОМЕНТА:</strong> Показва чекираните служители за деня (картите с активна работа имат зелена лява лента, останалите синя).</li>
+              <li><strong>✅ ИЗВЪРШЕНА РАБОТА (ЗА ДЕНЯ):</strong> Класация на операторите по общо изработени бройки за избраната дата.</li>
+              <li><strong>⚡ АКТИВНИ ЗАДАЧИ (КОЙ КАКВО РАБОТИ В МОМЕНТА):</strong> Карти със светещ циан за името на оператора, детайла, текущата операция и началния час.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="item-card" id="mon-montaj">
+          <summary>
+            <span>6.3. Монитор Монтаж (<code>monitor-montaj.html?v=11</code> / <code>?v=25</code>)</span>
+            <span class="card-meta"><span class="ui-badge">monitor-montaj.js</span><span class="ui-badge">Обновяване на 15 сек</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Специализиран екран за монтажистите (филтриран по <strong>Вариант 11</strong> или <strong>Вариант 25</strong>). Поддържа и режим <code>?view=machine</code>.</p>
+            <ul>
+              <li><strong>Секция „РЕЗОЛВЕРИ“:</strong> 3 колони по BOM йерархия — Ниво 2 (внуци), Ниво 1 (деца) и Ниво 0 (главни резолвери), свързани със стрелки (жълти за вар. 11, тюркоаз за вар. 25).</li>
+              <li><strong>Секция „ПАКЕТИ (РОТОРНИ / СТАТОРНИ)“:</strong> Състояние на пакетите за съответния вариант.</li>
+              <li>Използва същата цветова легенда като Живия Монитор + бутон <span class="ui-btn">⋯</span> за скриване/показване на завършените минали операции.</li>
+            </ul>
+          </div>
+        </details>
+      </section>
+
+      <!-- SECTION 7: STANDALONE PAGES -->
+      <section class="doc-section" id="sec-standalone" data-cat="standalone">
+        <div class="section-head">
+          <h2>🧩 7. Специализирани екрани и помощни страници</h2>
+          <span class="section-tag">Екрани</span>
+        </div>
+
+        <h3 id="page-active">7.1. Активни екрани, достъпни от Админ панела</h3>
+
+        <details class="item-card" open>
+          <summary>
+            <span>7.1.1. Табло Машини &amp; Задачи (<code>workplace-tasks.html</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Kanban</span><span class="ui-badge">Приоритети &amp; Ревизии</span></span>
+          </summary>
+          <div class="card-body">
+            <ul>
+              <li><strong>Горна лента:</strong> <span class="ui-btn orange">🔔 Напомняния (8:35)</span> (дневник на напомнянията с <span class="ui-btn">Провери сега</span>), <span class="ui-btn purple">🎯 Експресна Ревизия</span> (таб за изпращане на изненадваща проверка към конкретен служител/машина + таб Дневник с филтри и <span class="ui-btn">Маркирай като прегледани</span>), и бързи линкове към Админ, Жив Монитор, Терминал и Счетоводство.</li>
+              <li><strong>Филтри и контроли:</strong> Година, Месечен план, търсене по машина и детайл, <span class="ui-btn">Опресни</span>, <span class="ui-btn green">Excel</span>, <span class="ui-btn orange">Запази Приоритетите</span> (свети оранжево при незапазени промени), чипове <span class="ui-btn">Всички</span> / <span class="ui-btn green">🟢 Само готови</span> / <span class="ui-btn orange">🟡 Изчакващи заготовки</span> / <span class="ui-btn">✅ Завършени</span>, <span class="ui-btn">Свий всички</span> / <span class="ui-btn">Разгъни всички</span>, отметка <code>Показвай само машини със задачи</code>.</li>
+              <li><strong>Карти по машини и задачи:</strong>
+                <ul>
+                  <li>Статуси на задачите: <strong style="color:#16a34a;">Зелено</strong> (готова), <strong style="color:#d97706;">Жълто/Кехлибар</strong> (чака заготовка), <strong style="color:#64748b;">Сиво</strong> (завършена).</li>
+                  <li><strong>Действия по задача:</strong> Drag-and-drop пренареждане, звезда за приоритет (<code>⭐ 1..3</code>), прехвърляне на друга машина (позволено между <code>EMCO (стар)</code>, <code>EMCO</code>, <code>HAAS ST 10</code> + бутон <span class="ui-btn">↩️ Върни</span>), икона Чертеж, лилав бутон за бърза Експресна ревизия и поле <code>Бележка към оператора...</code> (показва се на терминала). Показва и чакащи заявки за пластини на машината.</li>
+                </ul>
+              </li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>7.1.2. Планьор Бобиньорки (<code>planner-bobini.html</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Обновяване 20 сек</span><span class="ui-badge">График Пн–Пт</span></span>
+          </summary>
+          <div class="card-body">
+            <ul>
+              <li><strong>Изгледи:</strong> <span class="ui-btn">📅 Седмица (Пн - Пт)</span> (навигация <code>◀ Предна</code>, <code>📍 Тази седмица</code>, <code>Следваща ▶</code>) и <span class="ui-btn">📊 Месечен обзор &amp; Засечка</span> (периоди <code>Цял месец</code>, <code>Седмица 1</code>, <code>Седмици 1-2</code>, <code>1-3</code>, <code>4</code>, KPI, таблици и матрица за дни 1–31).</li>
+              <li><strong>Бутони:</strong> <span class="ui-btn blue">📥 Свободни задачи</span>, <span class="ui-btn purple">⚡ Бърз разпределител</span> (Wizard с автоматично разпределяне по норми <code>4–20 бр./ден</code> и оператори), <span class="ui-btn">🔄 Преизчисли график</span> (коригира оставащите дни спрямо реално отчетеното), <span class="ui-btn orange">🛑 Почивки: ИЗКЛ/ВКЛ</span> (клик на клетка слага <code>Х</code>) и <span class="ui-btn red">🗑️ Изчисти Месеца</span> (пази отчетените и почивните дни).</li>
+              <li>Клик върху клетка позволява бързо задаване (<code>5/10/15/20/30 бр.</code>) или редакция / разпъване за седмицата (<span class="ui-btn">» Разпъни напред за седмицата</span>).</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>7.1.3. Инвентарен Детектив (<code>traceability.html</code>)</span>
+            <span class="card-meta"><span class="ui-badge">VSM Проследяване</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Проследява движението на бройки за избран детайл и период (полета <code>ОТ:</code> / <code>ДО:</code>, код, бутон <span class="ui-btn blue">АНАЛИЗИРАЙ</span>). Показва вляво BOM децата, в средата операциите на детайла, вдясно BOM родителите и долу хронологична лента на отчетите.</p>
+            <p><strong>Цветове:</strong> <strong style="color:#10b981;">Зелено</strong> = Произведено, <strong style="color:#ef4444;">Червено</strong> = Брак, <strong style="color:#f59e0b;">Оранжево</strong> = Консумирано. Клик върху възел отваря <span class="ui-btn">📋 Засечи наличност (Ревизия)</span>, с който може да се коригира <code>inventory</code> със запис в <code>inventory_checks</code> и <code>audit_logs</code>.</p>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>7.1.4. Счетоводство &amp; USD Фактури (<code>accounting.html</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Handsontable</span><span class="ui-badge">INVOICE USD</span></span>
+          </summary>
+          <div class="card-body">
+            <p>6 таба с Excel-подобни таблици (поддържащи директно копиране/поставяне от Excel): <strong>Номенклатура</strong>, <strong>Данни (HTS)</strong>, <strong>План</strong> (<span class="ui-btn">Извлечи плана за месеца</span>, <span class="ui-btn">Само активни</span>), <strong>Материали</strong>, <strong>INVOICE USD (Резултат)</strong> (<span class="ui-btn blue">Генерирай INVOICE</span>, <span class="ui-btn">Печат / PDF</span>, <span class="ui-btn green">Изтегли Excel</span>, <span class="ui-btn">💾 Запази в Архив</span>, <span class="ui-btn">Изчисти</span> — автоматично тегли курса USD/EUR по дата) и <strong>📁 Архив Фактури</strong>.</p>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>7.1.5. Анализи на Нормовремена &amp; Гант (<code>statistics.html</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Времена &amp; Gantt</span></span>
+          </summary>
+          <div class="card-body">
+            <p>Бързи периоди (<span class="ui-btn">Днес</span>, <span class="ui-btn">Седмица</span>, <span class="ui-btn">Месец</span>, <span class="ui-btn">🌐 Цялата история</span>), дати и филтър по служител + <span class="ui-btn green">📥 Excel</span>. Вляво сравнява средното реално време с нормата (<span class="ui-btn">Обобщено</span> / <span class="ui-btn">По служители</span>, баджове <code>⚡</code> / <code>✓</code> / <code>▲</code>), а вдясно рисува времева линия (Gantt) на операторите.</p>
+          </div>
+        </details>
+
+        <details class="item-card">
+          <summary>
+            <span>7.1.6. Мобилен 3S Одит (<code>audit-3s.html</code>) и Печат Пакинг Лист (<code>packing-list.html</code>)</span>
+            <span class="card-meta"><span class="ui-badge">Мобилен 3S</span><span class="ui-badge">A4 Печат</span></span>
+          </summary>
+          <div class="card-body">
+            <ul>
+              <li><strong><code>audit-3s.html</code>:</strong> Проверяващият избира името си, отключва с ПИН, избира <span class="ui-btn">👤 Служител</span> или <span class="ui-btn">🏢 Обща част</span>, оценява въпросите от 0 до 4 т., може да прикачи компресирана снимка (<span class="ui-btn">📷 Направи / Прикачи снимка</span> → bucket <code>dosieta/audit_3s/</code>), вижда % в реално време (<code>&ge;85%</code> зелено) и натиска <span class="ui-btn green">💾 Запиши Одит</span>.</li>
+              <li><strong><code>packing-list.html</code>:</strong> Печатна A4 бланка за опакованите кашони (<code>?month=&amp;year=&amp;box=</code>) с бутони <span class="ui-btn">🖨️ Принтирай</span> и <span class="ui-btn">❌ Затвори</span>.</li>
+            </ul>
+          </div>
+        </details>
+
+        <h3 id="page-legacy">7.2. Самостоятелни / Помощни страници (нелинкнати в основното меню)</h3>
+        <div class="table-scroll">
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Страница</th>
+                <th>Предназначение и бутони</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>packing-terminal.html</code><br><small>(<code>packing-tasks.js</code>, <code>packing-actions.js</code>)</small></td>
+                <td>Специализиран терминал за опаковане с 3 таба: <strong>🟢 Опаковане</strong> (полева бройка + <code>MAX</code>, <code>Кашон №</code>, бутони <span class="ui-btn green">✅ ОТЧЕТИ КАТО ОПАКОВАНИ</span> / <span class="ui-btn blue">📦 ЗАПИШИ В КАШОН № ...</span>), <strong>📦 За кашони</strong> (<span class="ui-btn blue">📦 ПРИБЕРИ В КАШОНА</span>), <strong>📋 Кашони</strong> (<span class="ui-btn">🖨️ Отвори Packing List</span>, <span class="ui-btn">🖨️ Принт</span>, <span class="ui-btn">✏️ Промени №</span>, <span class="ui-btn orange">↩️ Разопаковай</span>). Няма функционалност за „палета“ — работи само с кашони.</td>
+              </tr>
+              <tr>
+                <td><code>my-dossier.html</code></td>
+                <td>По-стар самостоятелен личен портал (до голяма степен заменен от 5-табовото досие в <code>terminal.html</code>). Единствен има отделен банер <strong>🧹 3S Оценка на работното място</strong> с бутон <code>🔍 Преглед на детайлите</code>, 3 KPI карти и списък документи.</td>
+              </tr>
+              <tr>
+                <td><code>checkin.html</code></td>
+                <td>Стара QR страница само за чекиране (<code>?action=in</code> / <code>?action=out</code>) с бутони <span class="ui-btn green">Потвърди ВЛИЗАНЕ</span> / <span class="ui-btn red">Потвърди ИЗЛИЗАНЕ</span> и същата 200м GPS логика (днес поета от <code>terminal.html</code>).</td>
+              </tr>
+              <tr>
+                <td><code>report.html</code></td>
+                <td>Стара опростена форма за ръчен отчет към SQL изгледа <code>активни_задачи_за_отчитане</code> с бутон <span class="ui-btn">Изпрати отчет</span>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SECTION 8: RULES & AUTOMATIONS -->
+      <section class="doc-section" id="sec-rules" data-cat="rules">
+        <div class="section-head">
+          <h2>⚡ 8. Ключови автоматизации, защити и бизнес правила</h2>
+          <span class="section-tag">Правила</span>
+        </div>
+
+        <ul>
+          <li><strong>Свободна складова наличност при нов Месечен План (резервации от опаковане):</strong> При изчисляване на наличността на <code>Готов продукт</code> за нови или активни планове (в Админ таб <code>План</code>, в Терминала и в Таблото за задачи) системата изважда количествата от активните (неекспедирани) записи с операция <code>Опаковане</code>. Така опакованите бройки по кашони стоят като <code>Запазени</code> в Склада и <strong>не затварят автоматично нов план</strong>.</li>
+          <li><strong>Разминавания между операции &amp; Каскада (Spot Audit → Доотчитане):</strong> Когато оператор на следваща операция потвърди, че има физически детайли, надвишаващи отчетеното на предходната операция, системата проследява веригата назад:
+            <ul>
+              <li>Ако проблемната операция е по-назад и има междинна операция — първо праща автоматична неблокираща <strong>Експресна ревизия</strong> на предходната операция. Ако там преброят <code>0</code> бр. (потвърден транзит), сигналът се препраща каскадно към следващото звено като <strong>оранжева карта за доотчитане</strong>.</li>
+              <li>Един и същ детайл/верига се комбинира в единен сигнал за доотчитане, за да не се дублират задачи.</li>
+            </ul>
+          </li>
+          <li><strong>Брак и Спасени BOM компоненти:</strong> Всеки отчетен брак се записва в досието и отчетите под името на оператора, който го е отчел (и в <code>Папка БРАК</code>). При брак на операциите <code>зареждане</code>, <code>хонинговане</code> или <code>сглобяване + измерване</code>, отмаркираните (спасените) BOM компоненти се връщат директно обратно в <strong>Склад Материали</strong> (<code>sklad</code>), а записът за консумация в <code>inventory</code> се премахва, за да не се дублират в склада за изработени детайли.</li>
+          <li><strong>Жив Монитор при 100% брак (без готова бройка):</strong> Когато започната операция бъде отчетена изцяло като <code>Брак</code> (0 добри бройки), статусът в <code>otcheti</code> става терминален (не остава „висящо започната“), така че картата на Живия Монитор спира да свети в активно синьо, ако няма други започнати бройки.</li>
+          <li><strong>Офлайн защита на Терминала:</strong> Ако таблетът в цеха загуби интернет по време на отчитане, отчетът се запазва в локалната опашка (<code>offlineReportsQueue</code>) и се изпраща автоматично в Supabase веднага след възстановяване на връзката.</li>
+          <li><strong>5-секундна защита срещу случайно натискане:</strong> Бутонът <span class="ui-btn green">✅ ОТЧЕТИ</span> блокира отчитане по-рано от 5 секунди след натискането на <span class="ui-btn blue">🚀 ПОЕМИ ЗАДАЧА</span>.</li>
+          <li><strong>Автоматично зачисляване на 17:00 ч.:</strong> Забравено <code>Излизане</code> от смяна се затваря автоматично като <code>Авто излизане</code> в 17:00 ч., а висящите <code>Започната</code> операции се изчистват/маркират <code>Авто приключена</code>.</li>
+          <li><strong>20-то число (Месечно пресмятане на материали):</strong> От 20-то число до края на месеца Админ панелът автоматично проверява <code>Остатък &lt; Минимално количество</code> минус вече пуснатите поръчки и известява за поръчка с 1 клик.</li>
+          <li><strong>Закъснения и Бонуси:</strong> Работният ден започва в 08:00 ч. (5 мин толеранс до 08:05 ч.). На всеки 3 неоправдани закъснения се удържат 10% от базовия бонус, а за всеки 3S одит под 80% — 20% (настройваемо в <code>⚙️ Правила</code> на модул Заплати).</li>
+        </ul>
+      </section>
+
+    </main>
+  </div>
+
+  <button type="button" id="backTopBtn" class="back-top-btn" title="Горе">↑</button>
+
+  <script>
+    (function () {
+      const searchInput = document.getElementById('manualSearchInput');
+      const searchClear = document.getElementById('manualSearchClear');
+      const searchCount = document.getElementById('manualSearchCount');
+      const catBar = document.getElementById('manualCatBar');
+      const btnExpandAll = document.getElementById('btnExpandAll');
+      const backTopBtn = document.getElementById('backTopBtn');
+      const noResultsBox = document.getElementById('noResultsBox');
+      const sections = Array.from(document.querySelectorAll('.doc-section'));
+      const allCards = Array.from(document.querySelectorAll('details.item-card'));
+      const tocLinks = Array.from(document.querySelectorAll('.toc-sidebar a'));
+
+      let activeCategory = 'all';
+      let expandToggleState = false;
+
+      // Save pristine HTML for search highlight restoration
+      const originalBlocks = Array.from(document.querySelectorAll('.doc-section p, .doc-section li, .doc-section summary > span:first-child, .doc-section td, .doc-section h3, .doc-section h4'));
+      originalBlocks.forEach(el => {
+        el.dataset.origHtml = el.innerHTML;
+      });
+
+      function escapeRegExp(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+
+      function highlightNode(el, regex) {
+        el.innerHTML = el.dataset.origHtml;
+        if (!regex) return;
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+        const textNodes = [];
+        let n;
+        while ((n = walker.nextNode())) {
+          if (n.nodeValue && regex.test(n.nodeValue)) textNodes.push(n);
+          regex.lastIndex = 0;
+        }
+        textNodes.forEach(tn => {
+          const frag = document.createDocumentFragment();
+          let lastIdx = 0;
+          tn.nodeValue.replace(regex, (match, offset) => {
+            if (offset > lastIdx) frag.appendChild(document.createTextNode(tn.nodeValue.slice(lastIdx, offset)));
+            const mark = document.createElement('mark');
+            mark.className = 'hl';
+            mark.textContent = match;
+            frag.appendChild(mark);
+            lastIdx = offset + match.length;
+            return match;
+          });
+          if (lastIdx < tn.nodeValue.length) {
+            frag.appendChild(document.createTextNode(tn.nodeValue.slice(lastIdx)));
+          }
+          tn.parentNode.replaceChild(frag, tn);
+        });
+      }
+
+      function applyFilters() {
+        const q = searchInput.value.trim().toLowerCase();
+        searchClear.style.display = q ? 'inline-block' : 'none';
+        const regex = q ? new RegExp(escapeRegExp(q), 'gi') : null;
+
+        let visibleSections = 0;
+        let matchingCards = 0;
+
+        originalBlocks.forEach(el => highlightNode(el, regex));
+
+        sections.forEach(sec => {
+          const catMatch = activeCategory === 'all' || sec.dataset.cat === activeCategory;
+          if (!catMatch) {
+            sec.classList.add('hidden-by-filter');
+            return;
+          }
+
+          const secCards = Array.from(sec.querySelectorAll('details.item-card'));
+          const secRows = Array.from(sec.querySelectorAll('table.doc-table tbody tr'));
+
+          if (!q) {
+            sec.classList.remove('hidden-by-filter');
+            secCards.forEach(c => c.classList.remove('search-hidden'));
+            secRows.forEach(r => r.classList.remove('search-hidden'));
+            visibleSections++;
+            return;
+          }
+
+          let anyMatchInSection = false;
+
+          // Filter expandable cards
+          secCards.forEach(card => {
+            const text = card.textContent.toLowerCase();
+            if (text.includes(q)) {
+              card.classList.remove('search-hidden');
+              card.open = true;
+              anyMatchInSection = true;
+              matchingCards++;
+            } else {
+              card.classList.add('search-hidden');
+            }
+          });
+
+          // Filter table rows outside cards (or inside)
+          secRows.forEach(row => {
+            if (row.closest('details.item-card')) return;
+            const text = row.textContent.toLowerCase();
+            if (text.includes(q)) {
+              row.classList.remove('search-hidden');
+              anyMatchInSection = true;
+            } else {
+              row.classList.add('search-hidden');
+            }
+          });
+
+          // Check direct paragraphs/lists outside cards and tables
+          if (!anyMatchInSection) {
+            const clone = sec.cloneNode(true);
+            clone.querySelectorAll('details.item-card, table.doc-table').forEach(x => x.remove());
+            if (clone.textContent.toLowerCase().includes(q)) {
+              anyMatchInSection = true;
+            }
+          }
+
+          if (anyMatchInSection) {
+            sec.classList.remove('hidden-by-filter');
+            visibleSections++;
+          } else {
+            sec.classList.add('hidden-by-filter');
+          }
+        });
+
+        noResultsBox.style.display = visibleSections === 0 ? 'block' : 'none';
+        if (q) {
+          searchCount.textContent = matchingCards > 0
+            ? `${matchingCards} разд. с попадения`
+            : (visibleSections > 0 ? `${visibleSections} секции` : '0 резултата');
+        } else {
+          searchCount.textContent = '';
+        }
+      }
+
+      searchInput.addEventListener('input', applyFilters);
+      searchClear.addEventListener('click', () => {
+        searchInput.value = '';
+        applyFilters();
+        searchInput.focus();
+      });
+
+      // Category pills
+      catBar.querySelectorAll('.cat-pill').forEach(btn => {
+        btn.addEventListener('click', () => {
+          catBar.querySelectorAll('.cat-pill').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          activeCategory = btn.dataset.cat;
+          applyFilters();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      });
+
+      // Expand / Collapse all details cards
+      btnExpandAll.addEventListener('click', () => {
+        expandToggleState = !expandToggleState;
+        allCards.forEach(c => { c.open = expandToggleState; });
+      });
+
+      // Ensure TOC links expand target card or switch to 'all' category if filtered
+      tocLinks.forEach(link => {
+        link.addEventListener('click', () => {
+          const href = link.getAttribute('href');
+          if (!href || !href.startsWith('#')) return;
+          const target = document.querySelector(href);
+          if (!target) return;
+          const parentSec = target.closest('.doc-section');
+          if (parentSec && parentSec.classList.contains('hidden-by-filter')) {
+            catBar.querySelector('[data-cat="all"]').click();
+          }
+          if (target.tagName === 'DETAILS') target.open = true;
+          const nestedCard = target.closest('details.item-card');
+          if (nestedCard) nestedCard.open = true;
+        });
+      });
+
+      // Keyboard shortcut Ctrl+K / '/' to focus search
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          searchInput.focus();
+          searchInput.select();
+        } else if (e.key === '/' && document.activeElement !== searchInput) {
+          e.preventDefault();
+          searchInput.focus();
+        }
+      });
+
+      // Back to top + active TOC highlighting
+      window.addEventListener('scroll', () => {
+        backTopBtn.style.display = window.scrollY > 360 ? 'flex' : 'none';
+        let currentId = '';
+        sections.forEach(sec => {
+          if (sec.classList.contains('hidden-by-filter')) return;
+          const rect = sec.getBoundingClientRect();
+          if (rect.top <= 160) currentId = sec.id;
+        });
+        tocLinks.forEach(a => {
+          if (a.classList.contains('toc-group-label')) {
+            a.classList.toggle('active', a.getAttribute('href') === '#' + currentId);
+          }
+        });
+      }, { passive: true });
+
+      backTopBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -179,8 +179,17 @@
               <button type="button" class="admin-dropdown-item" onclick="window.forceReloadTerminals()"
                 style="color: #dc2626; font-weight: 700;" title="Принудително рестартира всички таблети в цеха">🔄
                 Синхронизирай Терминалите</button>
+              <div class="admin-dropdown-divider"></div>
+              <button type="button" class="admin-dropdown-item" onclick="window.open('manual.html', '_blank')"
+                style="color: #4338ca; font-weight: 800;" title="Отвори пълните инструкции за употреба на системата">📖
+                Инструкции за употреба</button>
             </div>
           </div>
+
+          <button type="button" class="btn-dropdown" onclick="window.open('manual.html', '_blank')"
+            title="Пълни инструкции за употреба на системата">
+            <span>📖 Инструкции</span>
+          </button>
 
           <!-- Контекстен бутон Поръчки на Материали (само в таб Склад Материали) -->
           <button type="button" class="btn-primary" id="materialOrdersBtn" onclick="openMaterialOrdersModal()"
