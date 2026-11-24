@@ -30,34 +30,90 @@ window.onload = async function() {
 };
 
 function initTvControls() {
+    let zoomMode = localStorage.getItem('tv_monitor_zoom_mode') || 'auto';
     let currentZoom = parseFloat(localStorage.getItem('tv_monitor_zoom')) || 1.0;
 
-    function applyZoom(z) {
-        currentZoom = Math.min(Math.max(z, 0.5), 1.6);
-        currentZoom = Math.round(currentZoom * 10) / 10;
-        localStorage.setItem('tv_monitor_zoom', currentZoom.toFixed(1));
-        window._currentMonitorZoom = currentZoom;
+    function updateZoomControlsUI(scale) {
         const valEl = document.getElementById('tv-zoom-val');
-        if (valEl) valEl.innerText = Math.round(currentZoom * 100) + '%';
+        const btnAuto = document.getElementById('btn-zoom-auto');
+        if (valEl) valEl.innerText = Math.round(scale * 100) + '%';
+        if (btnAuto) btnAuto.classList.toggle('active', zoomMode === 'auto');
+    }
+
+    function applyManualZoom(z) {
+        zoomMode = 'manual';
+        localStorage.setItem('tv_monitor_zoom_mode', 'manual');
+        currentZoom = Math.min(Math.max(z, 0.45), 1.6);
+        currentZoom = Math.round(currentZoom * 20) / 20;
+        localStorage.setItem('tv_monitor_zoom', currentZoom.toFixed(2));
+        window._currentMonitorZoom = currentZoom;
 
         const wrapper = document.getElementById('dashboard-wrapper');
         document.body.style.zoom = '';
         if (wrapper) {
+            wrapper.style.width = '100%';
+            wrapper.style.minHeight = 'calc(100vh - 16px)';
             wrapper.style.zoom = currentZoom;
         }
-        setTimeout(() => {
+        balanceDashboardColumns();
+        updateZoomControlsUI(currentZoom);
+        requestAnimationFrame(() => {
             if (typeof drawArrows === 'function') drawArrows();
-        }, 80);
+        });
     }
 
+    function applyAutoFit() {
+        zoomMode = 'auto';
+        localStorage.setItem('tv_monitor_zoom_mode', 'auto');
+        const wrapper = document.getElementById('dashboard-wrapper');
+        if (!wrapper) return;
+
+        document.body.style.zoom = '';
+        wrapper.style.zoom = '1';
+        wrapper.style.width = 'max-content';
+        wrapper.style.minHeight = '0';
+
+        balanceDashboardColumns();
+
+        const natW = Math.max(wrapper.scrollWidth, wrapper.offsetWidth, 1);
+        const natH = Math.max(wrapper.scrollHeight, wrapper.offsetHeight, 1);
+        const availW = Math.max(window.innerWidth - 20, 320);
+        const availH = Math.max(window.innerHeight - 20, 240);
+
+        const rawScale = Math.min(availW / natW, availH / natH);
+        const clamped = Math.min(Math.max(rawScale, 0.45), 1.35);
+        const fitScale = Math.max(0.45, Math.floor(clamped * 100) / 100 - 0.01);
+
+        currentZoom = fitScale;
+        window._currentMonitorZoom = fitScale;
+        wrapper.style.zoom = fitScale;
+        wrapper.style.width = Math.floor(availW / fitScale) + 'px';
+        wrapper.style.minHeight = Math.floor(availH / fitScale) + 'px';
+
+        updateZoomControlsUI(fitScale);
+        requestAnimationFrame(() => {
+            if (typeof drawArrows === 'function') drawArrows();
+        });
+    }
+
+    window.applyMonitorLayoutAndZoom = function() {
+        if (zoomMode === 'auto') {
+            applyAutoFit();
+        } else {
+            applyManualZoom(currentZoom);
+        }
+    };
+
+    const btnAuto = document.getElementById('btn-zoom-auto');
     const btnIn = document.getElementById('btn-zoom-in');
     const btnOut = document.getElementById('btn-zoom-out');
     const btnVal = document.getElementById('tv-zoom-val');
     const btnFs = document.getElementById('btn-fullscreen');
 
-    if (btnIn) btnIn.onclick = () => applyZoom(currentZoom + 0.1);
-    if (btnOut) btnOut.onclick = () => applyZoom(currentZoom - 0.1);
-    if (btnVal) btnVal.onclick = () => applyZoom(1.0);
+    if (btnAuto) btnAuto.onclick = () => applyAutoFit();
+    if (btnIn) btnIn.onclick = () => applyManualZoom((window._currentMonitorZoom || currentZoom) + 0.05);
+    if (btnOut) btnOut.onclick = () => applyManualZoom((window._currentMonitorZoom || currentZoom) - 0.05);
+    if (btnVal) btnVal.onclick = () => applyManualZoom(1.0);
     if (btnFs) btnFs.onclick = () => {
         if (!document.fullscreenElement) {
             document.documentElement.requestFullscreen().catch(() => {});
@@ -66,9 +122,7 @@ function initTvControls() {
         }
     };
 
-    if (currentZoom !== 1.0) {
-        applyZoom(currentZoom);
-    }
+    updateZoomControlsUI(currentZoom);
 }
 
 function getDomId(realId) {
@@ -94,7 +148,13 @@ function toggleHarmony(idStr) {
             btnEl.style.color = '';
             btnEl.style.background = '';
         }
-        setTimeout(() => drawArrows(), 50);
+        setTimeout(() => {
+            if (typeof window.applyMonitorLayoutAndZoom === 'function') {
+                window.applyMonitorLayoutAndZoom();
+            } else {
+                drawArrows();
+            }
+        }, 50);
     }
 }
 
@@ -837,10 +897,9 @@ function calculateOperationStates(node, children, allNodesMap) {
     return { allChildrenDone, stateMachine, hasActive };
 }
 
-// --- AUTO-ADAPTIVE DASHBOARD ENGINE (СВОБОДНО МАЩАБИРАНЕ КАТО РЕАЛНИЯ МОНИТОР) ---
+// --- AUTO-ADAPTIVE DASHBOARD ENGINE (БАЛАНСИРАНЕ НА КОЛОНИ & ТВ АВТО-ПОБИРАНЕ) ---
 function autoAdjustDashboardToPlan(nodes) {
     if (!nodes) return;
-    // Изчистваме евентуални стари инлайн стилове, така че всички прозорци да се разтягат свободно и пропорционално
     const topRowEl = document.querySelector('.top-row');
     const bottomRowEl = document.querySelector('.bottom-row');
     const winRotorsEl = document.querySelector('.window-rotors');
@@ -851,6 +910,64 @@ function autoAdjustDashboardToPlan(nodes) {
     if (winRotorsEl) winRotorsEl.classList.remove('dense-rotors');
     if (winStatoriEl) winStatoriEl.style.flex = '';
     if (winAssemblyEl) winAssemblyEl.style.flex = '';
+}
+
+function splitPlanGroupsToTwoCols(containerId, minRowsPerGroup) {
+    const el = document.getElementById(containerId);
+    if (!el) return false;
+    let changed = false;
+    el.querySelectorAll('.plan-group').forEach(pg => {
+        const rows = pg.querySelectorAll(':scope > .family-row');
+        if (rows.length >= minRowsPerGroup) {
+            pg.classList.add('two-col-plan');
+            changed = true;
+        }
+    });
+    return changed;
+}
+
+function balanceDashboardColumns() {
+    document.querySelectorAll('.plan-group.two-col-plan').forEach(pg => pg.classList.remove('two-col-plan'));
+
+    const topRow = document.querySelector('.top-row');
+    const bottomRow = document.querySelector('.bottom-row');
+    const winTiela = document.querySelector('.window-tiela');
+    const capsZone = document.querySelector('.caps-stack-zone');
+    const winMpr = document.querySelector('.window-mpr');
+    const winStatori = document.querySelector('.window-statori');
+    const winRotors = document.querySelector('.window-rotors');
+    const winAssembly = document.querySelector('.window-assembly');
+
+    if (topRow) topRow.style.alignItems = 'flex-start';
+    if (bottomRow) bottomRow.style.alignItems = 'flex-start';
+
+    if (winTiela && capsZone && winMpr && winStatori) {
+        const hTiela = winTiela.offsetHeight;
+        const hCaps = capsZone.offsetHeight;
+        const hMpr = winMpr.offsetHeight;
+        const hStatori = winStatori.offsetHeight;
+
+        const baseTopMax = Math.max(hMpr, hStatori, 1);
+        if (hCaps > Math.max(hTiela, hMpr, hStatori) * 1.15) {
+            splitPlanGroupsToTwoCols('w-zadni', 4);
+            splitPlanGroupsToTwoCols('w-predni', 5);
+        }
+        if (hTiela > Math.max(capsZone.offsetHeight, baseTopMax) * 1.18) {
+            splitPlanGroupsToTwoCols('w-tiela', 6);
+        }
+        if (hStatori > Math.max(winTiela.offsetHeight, capsZone.offsetHeight, hMpr) * 1.18) {
+            splitPlanGroupsToTwoCols('w-statori', 5);
+        }
+    }
+
+    if (winRotors && winAssembly) {
+        if (winAssembly.offsetHeight > winRotors.offsetHeight * 1.12) {
+            splitPlanGroupsToTwoCols('w-assembly', 6);
+        }
+    }
+
+    if (topRow) topRow.style.alignItems = '';
+    if (bottomRow) bottomRow.style.alignItems = '';
 }
 
 // --- RENDERING ---
@@ -1107,8 +1224,11 @@ function drawDashboard(jsonString) {
     }
 
     setTimeout(() => {
-        drawArrows();
-        setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+        if (typeof window.applyMonitorLayoutAndZoom === 'function') {
+            window.applyMonitorLayoutAndZoom();
+        } else {
+            drawArrows();
+        }
     }, 50);
 }
 
@@ -1356,7 +1476,17 @@ function drawArrows() {
     svg.innerHTML = html;
 }
 
-window.addEventListener('resize', () => requestAnimationFrame(drawArrows));
+let resizeFitTimer = null;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeFitTimer);
+    resizeFitTimer = setTimeout(() => {
+        if (typeof window.applyMonitorLayoutAndZoom === 'function') {
+            window.applyMonitorLayoutAndZoom();
+        } else {
+            requestAnimationFrame(drawArrows);
+        }
+    }, 80);
+});
 
 // Моментално синхронизиране на стрелки, кръгчета и триъгълничета при скрол в който и да е прозорец
 document.addEventListener('scroll', () => {

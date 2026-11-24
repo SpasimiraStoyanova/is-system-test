@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Жив Монитор на Производството</title>
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20">
+  <link rel="stylesheet" href="style.css?v=21">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=46" defer></script>
+  <script src="app.js?v=47" defer></script>
 </head>
 <body>
 
@@ -16,10 +16,11 @@
     <div id="error-box"></div>
   </div>
 
-  <!-- ТВ ЛЕНТА С КОНТРОЛИ (ФУЛСКРИЙН, МАЩАБИРАНЕ, ПОСЛЕДНО ОБНОВЯВАНЕ) -->
+  <!-- ТВ ЛЕНТА С КОНТРОЛИ (АВТО-ПОБИРАНЕ, МАЩАБИРАНЕ, ФУЛСКРИЙН) -->
   <div class="tv-control-bar">
     <div id="tv-last-sync" class="tv-status-badge">🔄 Зареждане...</div>
     <div class="tv-zoom-actions">
+      <button class="tv-btn tv-btn-auto active" id="btn-zoom-auto" title="Автоматично побиране на целия екран (TV Auto-Fit)">АВТО</button>
       <button class="tv-btn" id="btn-zoom-out" title="Намали мащаба (A-)">A-</button>
       <span id="tv-zoom-val" class="tv-zoom-indicator" title="Възстанови 100%">100%</span>
       <button class="tv-btn" id="btn-zoom-in" title="Увеличи мащаба (A+)">A+</button>
