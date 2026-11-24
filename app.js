@@ -883,9 +883,12 @@ function autoAdjustDashboardToPlan(nodes) {
         } else if (statori.length > 4) {
             winStatoriEl.style.flex = '1.1 1 50%';
             winAssemblyEl.style.flex = '1.1 1 50%';
+        } else if (statori.length === 4) {
+            winStatoriEl.style.flex = '0.95 1 41%';
+            winAssemblyEl.style.flex = '1.35 1 59%';
         } else {
-            winStatoriEl.style.flex = '0.85 1 37%';
-            winAssemblyEl.style.flex = '1.45 1 63%';
+            winStatoriEl.style.flex = '0.85 1 38%';
+            winAssemblyEl.style.flex = '1.4 1 62%';
         }
     }
 }

@@ -226,37 +226,51 @@ html, body {
 
 /* 2. ДЯСНА КОЛОНА: СТАТОРИ (ГОРЕ) И РЕЗОЛВЕРИ (ДОЛУ) ЕДИН НАД ДРУГ */
 .right-stack-zone {
-  flex: 0 0 600px; /* 600px широчина - достатъчна за веригите на статорите и единичната колона на резолверите */
+  flex: 0 0 clamp(680px, 41%, 940px); /* По-широка дясна колона за статори и резолвери за сметка на празното място при роторите */
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 580px;
+  min-width: 0;
   min-height: 0;
 }
 
-/* СТАТОРИ (ГОРЕ В ДЯСНАТА КОЛОНА - 37% височина, точно за 3-те детайла) */
-.window-statori { 
-  flex: 0.85 1 37%; 
+@media (max-width: 1450px) {
+  .right-stack-zone {
+    flex: 0 0 42%;
+  }
+}
+
+/* СТАТОРИ (ГОРЕ В ДЯСНАТА КОЛОНА) */
+.window-statori {
+  flex: 0.9 1 40%;
   min-height: 0;
 }
 
 .window-statori .bom-column {
-  gap: 4px;
+  gap: 3px;
 }
 .window-statori .family-row {
   padding: 2px 0;
   gap: 12px;
 }
 .window-statori .plan-group {
+  gap: 2px;
   margin-bottom: 3px;
 }
+.window-statori .op-text,
+.window-assembly .op-text {
+  max-width: 260px;
+}
 
-/* РЕЗОЛВЕРИ (ДОЛУ В ДЯСНАТА КОЛОНА - 63% височина, ЕДНА КОЛОНА ЗА ВСИЧКИ 10 ДЕТАЙЛА) */
-.window-assembly { 
-  flex: 1.45 1 63%; 
+/* РЕЗОЛВЕРИ (ДОЛУ В ДЯСНАТА КОЛОНА) */
+.window-assembly {
+  flex: 1.35 1 60%;
   min-height: 0;
 }
 
+.window-assembly .bom-column {
+  gap: 4px;
+}
 .window-assembly .plan-group {
   display: flex;
   flex-direction: column;
@@ -268,12 +282,28 @@ html, body {
 }
 .window-assembly .family-row {
   padding: 1px 0;
+  gap: 12px;
 }
 .window-assembly .vsm-title {
   font-size: 15px;
 }
 .window-assembly .vsm-qty {
   font-size: 12.5px;
+}
+.window-statori .vsm-title {
+  font-size: 15.5px;
+}
+.window-statori .op-focus,
+.window-assembly .op-focus {
+  font-size: 15px;
+}
+.window-statori .op-past,
+.window-assembly .op-past {
+  font-size: 12.5px;
+}
+.window-statori .op-future,
+.window-assembly .op-future {
+  font-size: 11.5px;
 }
 
 .window-header { 
