@@ -1461,7 +1461,117 @@ function buildForm(data = null) {
         group.appendChild(label);
         let input;
 
-        if (f.name === 'machine_name' || f.name === 'workstation_name') {
+        if (f.name === 'machine_name' && currentTab === 'tooling_sklad') {
+            input = document.createElement('div');
+            input.style.cssText = 'border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc;';
+
+            const hiddenInp = document.createElement('input');
+            hiddenInp.type = 'hidden';
+            hiddenInp.id = 'inp_' + f.name;
+            input.appendChild(hiddenInp);
+
+            const currVal = (data && data[f.name] !== undefined && data[f.name] !== null) ? String(data[f.name]).trim() : (f.def || '');
+            const currTokens = currVal ? currVal.split(/[,;]+/).map(s => s.trim()).filter(Boolean) : [];
+            const isInitiallyGlobal = currTokens.some(t => t.toLowerCase() === 'общо' || t.toLowerCase() === 'всички');
+            const selectedLowerSet = new Set(currTokens.map(t => t.toLowerCase()));
+
+            const summaryEl = document.createElement('div');
+            summaryEl.style.cssText = 'font-size: 0.85em; font-weight: 700; color: #1e293b; margin-bottom: 8px; padding: 6px 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px;';
+            input.appendChild(summaryEl);
+
+            const topRow = document.createElement('div');
+            topRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px;';
+
+            const globalLabel = document.createElement('label');
+            globalLabel.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 6px; font-weight: 700; font-size: 0.85em; color: #0369a1; cursor: pointer;';
+            const globalChk = document.createElement('input');
+            globalChk.type = 'checkbox';
+            globalChk.checked = isInitiallyGlobal;
+            globalLabel.appendChild(globalChk);
+            globalLabel.appendChild(document.createTextNode('🌐 Общо / Всички машини'));
+            topRow.appendChild(globalLabel);
+
+            const filterInp = document.createElement('input');
+            filterInp.type = 'text';
+            filterInp.placeholder = '🔍 Филтрирай машина...';
+            filterInp.style.cssText = 'flex: 1; min-width: 150px; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85em;';
+            topRow.appendChild(filterInp);
+            input.appendChild(topRow);
+
+            const grid = document.createElement('div');
+            grid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 6px; max-height: 170px; overflow-y: auto; padding: 4px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px;';
+            input.appendChild(grid);
+
+            const macList = [...(window.cachedFactoryMachines || [])];
+            const knownLower = new Set(macList.map(m => String(m.name || '').trim().toLowerCase()));
+            currTokens.forEach(tok => {
+                const tl = tok.toLowerCase();
+                if (tl !== 'общо' && tl !== 'всички' && !knownLower.has(tl)) {
+                    macList.push({ name: tok, code: null });
+                    knownLower.add(tl);
+                }
+            });
+
+            const machineChecks = [];
+            macList.forEach(m => {
+                const lbl = document.createElement('label');
+                lbl.style.cssText = 'display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 5px; font-size: 0.84em; color: #334155; cursor: pointer; background: #f8fafc; border: 1px solid #e2e8f0;';
+                const chk = document.createElement('input');
+                chk.type = 'checkbox';
+                chk.value = m.name;
+                chk.checked = !isInitiallyGlobal && selectedLowerSet.has(String(m.name || '').trim().toLowerCase());
+                lbl.appendChild(chk);
+                const txt = document.createElement('span');
+                txt.innerText = m.code ? `${m.name} (№ ${m.code})` : m.name;
+                lbl.appendChild(txt);
+                grid.appendChild(lbl);
+                machineChecks.push({ chk, lbl, name: m.name });
+            });
+
+            const syncMachineSelection = () => {
+                if (globalChk.checked) {
+                    hiddenInp.value = 'Общо';
+                    grid.style.opacity = '0.5';
+                    summaryEl.innerText = '🌐 Общо / Всички машини (ще излиза навсякъде)';
+                    summaryEl.style.color = '#0369a1';
+                } else {
+                    grid.style.opacity = '1';
+                    const chosen = machineChecks.filter(x => x.chk.checked).map(x => x.name);
+                    hiddenInp.value = chosen.join(', ');
+                    if (chosen.length > 0) {
+                        summaryEl.innerText = `🏭 Избрани (${chosen.length}): ${chosen.join(', ')}`;
+                        summaryEl.style.color = '#15803d';
+                    } else {
+                        summaryEl.innerText = '⚠️ Не е избрана машина (ще се вижда на всички машини)';
+                        summaryEl.style.color = '#b45309';
+                    }
+                }
+            };
+
+            globalChk.addEventListener('change', () => {
+                if (globalChk.checked) {
+                    machineChecks.forEach(x => { x.chk.checked = false; });
+                }
+                syncMachineSelection();
+            });
+
+            machineChecks.forEach(x => {
+                x.chk.addEventListener('change', () => {
+                    if (x.chk.checked) globalChk.checked = false;
+                    syncMachineSelection();
+                });
+            });
+
+            filterInp.addEventListener('input', () => {
+                const q = filterInp.value.trim().toLowerCase();
+                machineChecks.forEach(x => {
+                    const match = !q || x.lbl.innerText.toLowerCase().includes(q);
+                    x.lbl.style.display = match ? 'flex' : 'none';
+                });
+            });
+
+            syncMachineSelection();
+        } else if (f.name === 'machine_name' || f.name === 'workstation_name') {
             input = document.createElement('select');
             input.id = 'inp_' + f.name;
             input.className = 'form-input';

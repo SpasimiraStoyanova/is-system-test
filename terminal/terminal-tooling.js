@@ -12,6 +12,15 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function toolMatchesMachine(toolMachineName, currentMach) {
+    const raw = String(toolMachineName || '').trim();
+    if (!raw) return true;
+    const machNorm = String(currentMach || '').trim().toLowerCase();
+    const parts = raw.split(/[,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (parts.length === 0) return true;
+    return parts.some(p => p === 'общо' || p === 'всички' || p === machNorm);
+}
+
 window.openTerminalToolingRequestModal = async function() {
     let mach = (typeof currentMachine !== 'undefined' && currentMachine) ? currentMachine : (localStorage.getItem('mes_machine') || 'ВСИЧКИ');
     if (!mach || mach === 'ВСИЧКИ' || mach === 'Всички' || mach.includes(',')) {
@@ -23,26 +32,34 @@ window.openTerminalToolingRequestModal = async function() {
         return;
     }
 
-    // Зареждаме типичните пластини/консумативи за това работно място от tooling_inventory
-    let toolOptionsHtml = '';
+    // Зареждаме пластините/инструментите за това работно място от tooling_inventory
+    let machTools = [];
     let toolPackSizeMap = {};
     try {
         const { data: invTools } = await client.from('tooling_inventory')
-            .select('item_code, name, machine_name, pack_size')
+            .select('item_code, name, machine_name, pack_size, quantity, unit')
             .order('item_code');
-        
-        let machTools = (invTools || []).filter(t => !t.machine_name || t.machine_name.includes(mach) || mach.includes(t.machine_name) || t.machine_name.toLowerCase() === 'общо');
-        if (machTools.length > 0) {
-            toolOptionsHtml = machTools.map(t => {
-                let codeKey = String(t.item_code).trim().toLowerCase();
-                let fullKey = `${t.item_code} - ${t.name}`.trim().toLowerCase();
-                let pSize = parseFloat(t.pack_size) || 10;
-                toolPackSizeMap[codeKey] = pSize;
-                toolPackSizeMap[fullKey] = pSize;
-                let packText = pSize > 1 ? ` (📦 ${pSize} бр./кут.)` : '';
-                return `<option value="${escapeHtml(t.item_code)} - ${escapeHtml(t.name)}">${escapeHtml(t.item_code)} - ${escapeHtml(t.name)}${packText}</option>`;
-            }).join('');
-        }
+
+        machTools = (invTools || [])
+            .filter(t => toolMatchesMachine(t.machine_name, mach))
+            .map(t => {
+                const code = String(t.item_code || '').trim();
+                const name = String(t.name || '').trim();
+                const value = (name && name.toLowerCase() !== code.toLowerCase()) ? `${code} - ${name}` : code;
+                const packSize = parseFloat(t.pack_size) || 10;
+                const qty = parseFloat(t.quantity) || 0;
+                const unit = String(t.unit || 'бр.').trim() || 'бр.';
+                const machineRaw = String(t.machine_name || '').trim();
+                const machineLabel = (!machineRaw || machineRaw.toLowerCase() === 'общо' || machineRaw.toLowerCase() === 'всички')
+                    ? '🌐 Общо'
+                    : machineRaw;
+
+                toolPackSizeMap[code.toLowerCase()] = packSize;
+                toolPackSizeMap[value.toLowerCase()] = packSize;
+                if (name) toolPackSizeMap[`${code} - ${name}`.toLowerCase()] = packSize;
+
+                return { code, name, value, packSize, qty, unit, machineLabel };
+            });
     } catch(e) {}
 
     window._tempToolPackSizeMap = toolPackSizeMap;
@@ -56,17 +73,22 @@ window.openTerminalToolingRequestModal = async function() {
                     <input type="text" value="${escapeHtml(mach)}" readonly style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; background: #f8fafc; font-weight: 800; color: #1e293b; box-sizing: border-box;">
                 </div>
                 <div>
-                    <label style="font-weight: 700; color: #475569;">📦 Изискван инструмент / пластина: *</label>
-                    <input type="text" id="swalToolItem" list="dl_tool_items" oninput="
-                        let val = this.value.trim().toLowerCase();
-                        let map = window._tempToolPackSizeMap || {};
-                        let ps = map[val] || (val.split(' - ')[0] && map[val.split(' - ')[0].trim()]) || 10;
-                        let badge = document.getElementById('swalToolPackSizeBadge');
-                        if (badge) badge.innerText = '📦 В опаковка: ' + ps + ' бр.';
-                        let qtyInp = document.getElementById('swalToolQty');
-                        if (qtyInp && (!qtyInp.value || qtyInp.value === '10' || qtyInp.value === '1')) qtyInp.value = ps;
-                    " placeholder="напр. Пластина WNMG 080408, Фреза ф10..." style="width: 100%; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 700; box-sizing: border-box;">
-                    <datalist id="dl_tool_items">${toolOptionsHtml}</datalist>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px;">
+                        <label style="font-weight: 700; color: #475569;">📦 Изискван инструмент / пластина: *</label>
+                        <span style="font-size: 0.78em; font-weight: 700; color: ${machTools.length > 0 ? '#0369a1' : '#64748b'}; background: ${machTools.length > 0 ? '#e0f2fe' : '#f1f5f9'}; padding: 2px 8px; border-radius: 999px; white-space: nowrap;">
+                            ${machTools.length > 0 ? `📋 ${machTools.length} поз. за машината` : '✍️ Свободен текст'}
+                        </span>
+                    </div>
+                    <div id="swalToolPickerWrap" style="position: relative;">
+                        <div style="position: relative; display: flex; align-items: center;">
+                            <input type="text" id="swalToolItem" autocomplete="off"
+                                placeholder="${machTools.length > 0 ? 'Изберете от списъка или напишете за търсене...' : 'напр. Пластина WNMG 080408, Фреза ф10...'}"
+                                style="width: 100%; padding: 10px 38px 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 700; box-sizing: border-box;">
+                            <button type="button" id="swalToolToggleBtn" tabindex="-1" aria-label="Покажи списъка"
+                                style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border: none; background: #f1f5f9; color: #475569; border-radius: 6px; cursor: pointer; font-size: 0.85em; display: flex; align-items: center; justify-content: center;">▼</button>
+                        </div>
+                        <div id="swalToolDropdown" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; background: #ffffff; border: 1.5px solid #94a3b8; border-radius: 10px; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.18); z-index: 10000;"></div>
+                    </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <div>
@@ -91,6 +113,151 @@ window.openTerminalToolingRequestModal = async function() {
                 </div>
             </div>
         `,
+        didOpen: (popup) => {
+            const htmlCont = popup.querySelector('.swal2-html-container');
+            if (htmlCont) htmlCont.style.overflow = 'visible';
+
+            const wrap = document.getElementById('swalToolPickerWrap');
+            const input = document.getElementById('swalToolItem');
+            const toggleBtn = document.getElementById('swalToolToggleBtn');
+            const dropdown = document.getElementById('swalToolDropdown');
+            const badge = document.getElementById('swalToolPackSizeBadge');
+            const qtyInp = document.getElementById('swalToolQty');
+            if (!wrap || !input || !toggleBtn || !dropdown) return;
+
+            let lastAutoQty = 10;
+
+            const applyPackSize = (ps) => {
+                const pack = parseFloat(ps) || 10;
+                if (badge) badge.innerText = `📦 Опаковка: ${pack} бр.`;
+                if (qtyInp && (!qtyInp.value || parseFloat(qtyInp.value) === lastAutoQty || qtyInp.value === '1')) {
+                    qtyInp.value = pack;
+                    lastAutoQty = pack;
+                }
+            };
+
+            const closeDropdown = () => {
+                dropdown.style.display = 'none';
+                toggleBtn.innerText = '▼';
+            };
+
+            const renderDropdown = (filterText, showAll) => {
+                const rawQuery = String(filterText || '').trim();
+                const q = rawQuery.toLowerCase();
+                const filtered = (showAll || !q)
+                    ? machTools
+                    : machTools.filter(t =>
+                        t.code.toLowerCase().includes(q) ||
+                        t.name.toLowerCase().includes(q) ||
+                        t.value.toLowerCase().includes(q)
+                    );
+
+                let rowsHtml = '';
+                filtered.forEach(t => {
+                    const origIdx = machTools.indexOf(t);
+                    const stockBg = t.qty > 0 ? '#dcfce7' : '#fee2e2';
+                    const stockClr = t.qty > 0 ? '#15803d' : '#b91c1c';
+                    const nameExtra = (t.name && t.name.toLowerCase() !== t.code.toLowerCase())
+                        ? ` <span style="font-weight: 500; color: #475569;">— ${escapeHtml(t.name)}</span>`
+                        : '';
+                    rowsHtml += `
+                        <div class="swal-tool-option" data-tool-idx="${origIdx}"
+                            style="padding: 9px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.12s;">
+                            <div style="font-weight: 800; color: #0f172a; font-size: 0.95em;">${escapeHtml(t.code)}${nameExtra}</div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; font-size: 0.78em;">
+                                <span style="background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 5px; font-weight: 700;">📦 ${t.packSize} бр./кут.</span>
+                                <span style="background: ${stockBg}; color: ${stockClr}; padding: 1px 6px; border-radius: 5px; font-weight: 700;">Склад: ${t.qty} ${escapeHtml(t.unit)}</span>
+                                <span style="background: #f1f5f9; color: #475569; padding: 1px 6px; border-radius: 5px; font-weight: 600;">🏭 ${escapeHtml(t.machineLabel)}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                const hasExact = q && machTools.some(t => t.value.toLowerCase() === q || t.code.toLowerCase() === q);
+                if (q && !hasExact) {
+                    rowsHtml += `
+                        <div class="swal-tool-free" style="padding: 9px 12px; cursor: pointer; background: #fffbeb; color: #92400e; font-weight: 700; font-size: 0.88em;">
+                            ✍️ Използвай въведения текст: „${escapeHtml(rawQuery)}“
+                        </div>
+                    `;
+                } else if (machTools.length === 0 && !q) {
+                    rowsHtml = `
+                        <div style="padding: 12px; color: #64748b; font-size: 0.86em; text-align: center;">
+                            Няма въведени инструменти за „${escapeHtml(mach)}“ в Склад Инструментална Екипировка.<br>Можете да въведете текста ръчно по-горе.
+                        </div>
+                    `;
+                }
+
+                dropdown.innerHTML = rowsHtml;
+
+                dropdown.querySelectorAll('.swal-tool-option').forEach(el => {
+                    el.addEventListener('mouseenter', () => { el.style.background = '#f8fafc'; });
+                    el.addEventListener('mouseleave', () => { el.style.background = '#ffffff'; });
+                    el.addEventListener('mousedown', (e) => e.preventDefault());
+                    el.addEventListener('click', () => {
+                        const idx = parseInt(el.getAttribute('data-tool-idx'), 10);
+                        const chosen = machTools[idx];
+                        if (chosen) {
+                            input.value = chosen.value;
+                            applyPackSize(chosen.packSize);
+                        }
+                        closeDropdown();
+                    });
+                });
+
+                const freeEl = dropdown.querySelector('.swal-tool-free');
+                if (freeEl) {
+                    freeEl.addEventListener('mousedown', (e) => e.preventDefault());
+                    freeEl.addEventListener('click', () => closeDropdown());
+                }
+            };
+
+            const openDropdown = (showAll) => {
+                renderDropdown(input.value, showAll);
+                dropdown.style.display = 'block';
+                toggleBtn.innerText = '▲';
+            };
+
+            input.addEventListener('focus', () => openDropdown(true));
+            input.addEventListener('click', () => openDropdown(true));
+            input.addEventListener('input', () => {
+                const val = input.value.trim().toLowerCase();
+                const map = window._tempToolPackSizeMap || {};
+                const ps = map[val] || (val.split(' - ')[0] && map[val.split(' - ')[0].trim()]) || 10;
+                applyPackSize(ps);
+                openDropdown(false);
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && dropdown.style.display !== 'none') {
+                    e.stopPropagation();
+                    closeDropdown();
+                }
+            });
+
+            toggleBtn.addEventListener('mousedown', (e) => e.preventDefault());
+            toggleBtn.addEventListener('click', () => {
+                if (dropdown.style.display === 'none') {
+                    openDropdown(true);
+                    input.focus();
+                } else {
+                    closeDropdown();
+                }
+            });
+
+            if (window._toolPickerOutsideClick) {
+                document.removeEventListener('mousedown', window._toolPickerOutsideClick);
+            }
+            window._toolPickerOutsideClick = (e) => {
+                if (!wrap.contains(e.target)) closeDropdown();
+            };
+            document.addEventListener('mousedown', window._toolPickerOutsideClick);
+        },
+        didDestroy: () => {
+            if (window._toolPickerOutsideClick) {
+                document.removeEventListener('mousedown', window._toolPickerOutsideClick);
+                window._toolPickerOutsideClick = null;
+            }
+        },
         focusConfirm: false,
         showCancelButton: true,
         confirmButtonText: '🚀 Изпрати към Админ',
