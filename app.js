@@ -738,7 +738,7 @@ function categorizeParts(mergedNodes, reportsData, explicitPlanItems, connection
         else if (typeStr.includes("лагер")) n.bucket = 'bearings';
         else if (typeStr.includes("щифт")) n.bucket = 'small_pins';
         else if (typeStr.includes("шпилк")) n.bucket = 'small_studs';
-        else if (typeStr.includes("макар") || n.code.toLowerCase().includes("мак.")) n.bucket = 'temp_spools';
+        else if ((typeStr.includes("макар") && !typeStr.includes("безмакар")) || n.code.toLowerCase().includes("мак.")) n.bucket = 'temp_spools';
         else if (isDirectlyInPlan || isHashVariantOfPlan || typeStr.includes("резолвер") || n.code.startsWith("575") || n.code.toUpperCase().startsWith("H25") || n.code.toUpperCase().startsWith("DC25")) {
             n.bucket = 'assembly';
         } 
@@ -1414,8 +1414,8 @@ function drawArrows() {
                 let fromCode = (sourceTitle.innerText || '').toLowerCase();
                 let toCode = (targetEl.innerText || '').toLowerCase();
 
-                let isFromSpool = fromType.trim().toLowerCase() === "макарички" || fromCode.includes("макара");
-                let isToSpool = toType.trim().toLowerCase() === "макарички" || toCode.includes("макара");
+                let isFromSpool = fromType.trim().toLowerCase() === "макарички" || (fromCode.includes("макара") && !fromCode.includes("без макара"));
+                let isToSpool = toType.trim().toLowerCase() === "макарички" || (toCode.includes("макара") && !toCode.includes("без макара"));
                 let isFromRotorPacket = fromType.toLowerCase().includes("роторен пакет") || fromCode.includes("роторен пак");
                 let isToRotorPacket = toType.toLowerCase().includes("роторен пакет") || toCode.includes("роторен пак");
                 let isFromPin = fromType.toLowerCase().includes("щифт") || fromCode.includes("щифт");
