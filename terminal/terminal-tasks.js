@@ -2091,8 +2091,8 @@ window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1
         };
     }
 
-    // 2. СТИГНАЛИ СМЕ ДО ПЪРВАТА ОПЕРАЦИЯ НА ТОЗИ ДЕТАЙЛ (или няма маршрут)
-    if (curIndex === 0 && routes.length > 0) {
+    // 2. СТИГНАЛИ СМЕ ДО ПЪРВАТА ОПЕРАЦИЯ НА ТОЗИ ДЕТАЙЛ (само при връщане нагоре от по-горна операция, не и за самата Оп. 10)
+    if (visited.size > 1 && curIndex === 0 && routes.length > 0) {
         const firstOp = routes[0];
         const firstOpNum = firstOp['№ Операция'];
         const firstOpName = String(firstOp['Име на операция']).trim();
@@ -2825,12 +2825,20 @@ async function checkTerminalAndonAlerts() {
                     👉 <b>Към вас:</b> Моля, ако сте изработили бройките, натиснете зеления бутон долу за автоматично доотчитане на вашата операция и отпушване на веригата!
                 `;
             } else {
+                const reportedPart = tObj.reported_by_part || alertItem.part_name || targetPart;
+                const isChildDiff = normalizeStr(reportedPart) !== normalizeStr(targetPart);
+                const missingTargetInfo = isChildDiff
+                    ? `за влагания детайл <b style="color:#0369a1;">${targetPart}</b> (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>)`
+                    : `от вашата операция (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>)`;
+                const targetOpActionLabel = isChildDiff
+                    ? `<b style="color:#0369a1;">${targetPart}</b> — <b>${targetOpNum ? 'Оп. ' + targetOpNum : ''} (${targetOpName})</b>`
+                    : `<b>${targetOpNum ? 'Оп. ' + targetOpNum : ''} (${targetOpName})</b>`;
                 bodyText = `
                     Колегата <b>${reqOperator}</b> (машина <b>${reqMachine}</b>${reqOp ? ', оп. ' + reqOp : ''}) 
-                    отчете <b style="color: #16a34a; font-size: 1.1em;">${tObj.reported_qty || ''} бр.</b> от детайл <b style="color:#0369a1;">${targetPart}</b>, 
-                    но от вашата операция (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>) в системата са отчетени само <b>${tObj.prev_qty || 0} бр.</b> (липсват <b>${tObj.missing_qty || ''} бр.</b>)!
+                    отчете <b style="color: #16a34a; font-size: 1.1em;">${tObj.reported_qty || ''} бр.</b> от детайл <b style="color:#0369a1;">${reportedPart}</b>, 
+                    но в системата ${missingTargetInfo} са отчетени само <b>${tObj.prev_qty || 0} бр.</b> (липсват <b>${tObj.missing_qty || ''} бр.</b>)!
                     <br><br>
-                    👉 <b>Към вас:</b> Моля, ако имате изработени детайли, доотчетете си бройките на <b>${targetOpNum ? 'Оп. ' + targetOpNum : ''} (${targetOpName})</b> на терминала!
+                    👉 <b>Към вас:</b> Моля, ако имате изработени детайли, доотчетете си бройките на ${targetOpActionLabel} на терминала!
                 `;
             }
 
