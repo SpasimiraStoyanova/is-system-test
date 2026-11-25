@@ -514,6 +514,143 @@ function renderCalendarMonthView() {
 // ----------------------------------------------------
 // ДЕТАЙЛИ НА СЪБИТИЕ И ОТЧИТАНЕ КАТО ИЗПЪЛНЕНО
 // ----------------------------------------------------
+let adminCompMaintPhotoBlob = null;
+let adminManualMaintPhotoBlob = null;
+
+function extractAdminMaintPhotoAndNotes(log) {
+    let rawNotes = (log && log.notes) ? String(log.notes) : '';
+    let photoUrl = (log && log.photo_url) ? String(log.photo_url).trim() : '';
+    const match = rawNotes.match(/\[📷\s*Снимка:\s*(https?:\/\/[^\]]+)\]/i);
+    if (match) {
+        if (!photoUrl) photoUrl = match[1].trim();
+        rawNotes = rawNotes.replace(match[0], '').trim();
+    }
+    return { photoUrl, cleanNotes: rawNotes };
+}
+
+window.previewAdminMaintPhoto = function(url) {
+    if (!url) return;
+    Swal.fire({
+        imageUrl: url,
+        imageAlt: 'Снимка от Сервизния дневник',
+        width: 720,
+        showCloseButton: true,
+        confirmButtonText: 'Затвори',
+        confirmButtonColor: '#4338ca'
+    });
+};
+
+function compressAdminMaintImage(file, maxWidth = 1200, maxHeight = 1200, quality = 0.8) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+                let w = img.width;
+                let h = img.height;
+                if (w > maxWidth || h > maxHeight) {
+                    if (w > h) {
+                        h = Math.round((h * maxWidth) / w);
+                        w = maxWidth;
+                    } else {
+                        w = Math.round((w * maxHeight) / h);
+                        h = maxHeight;
+                    }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                canvas.toBlob((blob) => resolve(blob || file), 'image/jpeg', quality);
+            };
+            img.onerror = () => resolve(file);
+            img.src = ev.target.result;
+        };
+        reader.onerror = () => resolve(file);
+        reader.readAsDataURL(file);
+    });
+}
+
+async function uploadAdminMaintPhoto(photoBlob) {
+    if (!photoBlob) return null;
+    const cleanFileName = `maint_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
+    const filePath = `maintenance/${cleanFileName}`;
+    const { error: uploadError } = await client.storage
+        .from('dosieta')
+        .upload(filePath, photoBlob, { contentType: 'image/jpeg' });
+    if (uploadError) {
+        throw new Error('Грешка при качване на снимката: ' + uploadError.message);
+    }
+    const { data: pubData } = client.storage.from('dosieta').getPublicUrl(filePath);
+    return pubData ? pubData.publicUrl : null;
+}
+
+async function insertAdminMaintLogSafe(payload) {
+    const cleanPayload = { ...payload };
+    const photoUrl = cleanPayload.photo_url || null;
+    if (!photoUrl) delete cleanPayload.photo_url;
+
+    const { error } = await client.from('factory_maintenance_log').insert([cleanPayload]);
+    if (!error) return;
+
+    if (photoUrl && String(error.message || '').toLowerCase().includes('photo_url')) {
+        const fallbackPayload = { ...cleanPayload };
+        delete fallbackPayload.photo_url;
+        const noteText = (fallbackPayload.notes || '').trim();
+        fallbackPayload.notes = noteText
+            ? `${noteText}\n[📷 Снимка: ${photoUrl}]`
+            : `[📷 Снимка: ${photoUrl}]`;
+        const { error: retryErr } = await client.from('factory_maintenance_log').insert([fallbackPayload]);
+        if (retryErr) throw retryErr;
+        return;
+    }
+    throw error;
+}
+
+window.onAdminMaintPhotoSelected = async function(inputEl, mode) {
+    const file = inputEl && inputEl.files && inputEl.files[0];
+    if (!file) return;
+    const prefix = mode === 'comp' ? 'compPhoto' : 'manualLogPhoto';
+    const previewEl = document.getElementById(prefix + 'Preview');
+    const removeBtn = document.getElementById(prefix + 'RemoveBtn');
+    const statusEl = document.getElementById(prefix + 'Status');
+
+    if (statusEl) statusEl.innerText = '⏳ Обработка...';
+    const compressed = await compressAdminMaintImage(file, 1200, 1200, 0.8);
+    if (mode === 'comp') adminCompMaintPhotoBlob = compressed;
+    else adminManualMaintPhotoBlob = compressed;
+
+    const sizeKb = Math.round((compressed.size || file.size) / 1024);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        if (previewEl) {
+            previewEl.src = ev.target.result;
+            previewEl.style.display = 'block';
+        }
+        if (removeBtn) removeBtn.style.display = 'inline-block';
+        if (statusEl) statusEl.innerText = `✅ Готова (${sizeKb} KB)`;
+    };
+    reader.readAsDataURL(compressed);
+};
+
+window.clearAdminMaintPhoto = function(mode) {
+    if (mode === 'comp') adminCompMaintPhotoBlob = null;
+    else adminManualMaintPhotoBlob = null;
+    const prefix = mode === 'comp' ? 'compPhoto' : 'manualLogPhoto';
+    const inputEl = document.getElementById(prefix + 'Input');
+    const previewEl = document.getElementById(prefix + 'Preview');
+    const removeBtn = document.getElementById(prefix + 'RemoveBtn');
+    const statusEl = document.getElementById(prefix + 'Status');
+    if (inputEl) inputEl.value = '';
+    if (previewEl) {
+        previewEl.src = '';
+        previewEl.style.display = 'none';
+    }
+    if (removeBtn) removeBtn.style.display = 'none';
+    if (statusEl) statusEl.innerText = '';
+};
+
 window.openEventDetailsModal = function(eventId) {
     const ev = calendarState.events.find(e => e.id === eventId);
     if (!ev) return;
@@ -553,13 +690,24 @@ window.openEventDetailsModal = function(eventId) {
         const relatedLog = calendarState.logs.find(l => l.event_id === ev.id) || 
                            calendarState.logs.find(l => l.title === ev.title && (l.machine_name === ev.machine_name || l.machine_name === getEventObjectDisplay(ev)));
         if (relatedLog && compBox) {
+            const { photoUrl, cleanNotes } = extractAdminMaintPhotoAndNotes(relatedLog);
             compBox.style.display = 'block';
             document.getElementById('evDetailCompDate').innerText = formatDateDisplay(relatedLog.completed_date);
             document.getElementById('evDetailCompBy').innerText = relatedLog.completed_by || '-';
             const costVal = parseFloat(relatedLog.cost) || 0;
             document.getElementById('evDetailCompCost').innerText = costVal > 0 ? `${costVal.toFixed(2)} лв.` : '0.00 лв.';
             document.getElementById('evDetailCompParts').innerText = relatedLog.parts_replaced || 'Няма';
-            document.getElementById('evDetailCompNotes').innerText = relatedLog.notes || 'Няма въведени забележки';
+            document.getElementById('evDetailCompNotes').innerText = cleanNotes || 'Няма въведени забележки';
+            const photoBox = document.getElementById('evDetailCompPhotoBox');
+            if (photoBox) {
+                if (photoUrl) {
+                    photoBox.style.display = 'block';
+                    photoBox.innerHTML = `<button type="button" onclick="previewAdminMaintPhoto('${escapeHtml(photoUrl)}')" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: 5px 12px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 0.88em;">📷 Виж прикачената снимка</button>`;
+                } else {
+                    photoBox.style.display = 'none';
+                    photoBox.innerHTML = '';
+                }
+            }
         } else if (compBox) {
             compBox.style.display = 'none';
         }
@@ -608,6 +756,7 @@ window.openCompleteEventModal = function(eventId) {
     document.getElementById('compNotesInput').value = '';
     document.getElementById('compPartsInput').value = '';
     document.getElementById('compCostInput').value = '';
+    clearAdminMaintPhoto('comp');
 
     modal.style.display = 'flex';
 };
@@ -631,8 +780,13 @@ window.saveEventCompletion = async function(e) {
 
     showCalendarLoading(true);
     try {
+        let uploadedPhotoUrl = null;
+        if (adminCompMaintPhotoBlob) {
+            uploadedPhotoUrl = await uploadAdminMaintPhoto(adminCompMaintPhotoBlob);
+        }
+
         // 1. Вписване в сервизния дневник (factory_maintenance_log)
-        const { error: logErr } = await client.from('factory_maintenance_log').insert([{
+        await insertAdminMaintLogSafe({
             event_id: ev.id,
             machine_name: ev.machine_name || 'Цял завод',
             activity_type: ev.category === 'Машини' ? 'Планова поддръжка' : ev.category,
@@ -642,9 +796,10 @@ window.saveEventCompletion = async function(e) {
             source: 'admin',
             notes: notes,
             parts_replaced: partsReplaced,
+            photo_url: uploadedPhotoUrl,
             cost: cost
-        }]);
-        if (logErr) throw logErr;
+        });
+        adminCompMaintPhotoBlob = null;
 
         // 2. Маркиране на текущото събитие като completed
         const { error: updErr } = await client.from('factory_events').update({
@@ -996,7 +1151,9 @@ function renderMaintenanceLogTable() {
         return;
     }
 
-    tbody.innerHTML = filtered.map(log => `
+    tbody.innerHTML = filtered.map(log => {
+        const { photoUrl, cleanNotes } = extractAdminMaintPhotoAndNotes(log);
+        return `
         <tr>
             <td style="font-weight: 700; color: #1e293b; white-space: nowrap;">${formatDateDisplay(log.completed_date)}</td>
             <td>
@@ -1007,8 +1164,9 @@ function renderMaintenanceLogTable() {
             <td><span class="activity-type-badge">${escapeHtml(log.activity_type || 'Поддръжка')}</span></td>
             <td>
                 <div style="font-weight: 700; color: #0f172a;">${escapeHtml(log.title)}</div>
-                ${log.notes ? `<div style="font-size: 0.85em; color: #64748b; margin-top: 3px;">${escapeHtml(log.notes)}</div>` : ''}
+                ${cleanNotes ? `<div style="font-size: 0.85em; color: #64748b; margin-top: 3px;">${escapeHtml(cleanNotes)}</div>` : ''}
                 ${log.parts_replaced ? `<div style="font-size: 0.8em; color: #4338ca; margin-top: 3px;">📦 Вложени части: ${escapeHtml(log.parts_replaced)}</div>` : ''}
+                ${photoUrl ? `<div style="margin-top: 5px;"><button type="button" onclick="previewAdminMaintPhoto('${escapeHtml(photoUrl)}')" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: 3px 9px; border-radius: 6px; font-weight: 700; font-size: 0.8em; cursor: pointer;">📷 Виж снимката</button></div>` : ''}
             </td>
             <td style="text-align: right; white-space: nowrap;">
                 ${(parseFloat(log.cost) > 0)
@@ -1026,7 +1184,8 @@ function renderMaintenanceLogTable() {
                 <button class="action-btn btn-delete" onclick="deleteLogEntry(${log.id})" title="Изтрий запис">🗑️</button>
             </td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 }
 
 window.filterLogBySpecificMachine = function(macName) {
@@ -1056,6 +1215,7 @@ window.openAddManualLogModal = function() {
     document.getElementById('manualLogNotes').value = '';
     document.getElementById('manualLogParts').value = '';
     document.getElementById('manualLogCost').value = '';
+    clearAdminMaintPhoto('manual');
 
     modal.style.display = 'flex';
 };
@@ -1080,22 +1240,28 @@ window.saveManualLogEntry = async function(e) {
         return;
     }
 
-    const payload = {
-        machine_name: machine,
-        activity_type: document.getElementById('manualLogActivityType').value,
-        title: title,
-        completed_date: document.getElementById('manualLogDate').value,
-        completed_by: document.getElementById('manualLogBy').value.trim() || 'Администратор',
-        source: 'admin',
-        notes: document.getElementById('manualLogNotes').value.trim() || null,
-        parts_replaced: document.getElementById('manualLogParts').value.trim() || null,
-        cost: parseFloat(document.getElementById('manualLogCost').value) || 0
-    };
-
     showCalendarLoading(true);
     try {
-        const { error } = await client.from('factory_maintenance_log').insert([payload]);
-        if (error) throw error;
+        let uploadedPhotoUrl = null;
+        if (adminManualMaintPhotoBlob) {
+            uploadedPhotoUrl = await uploadAdminMaintPhoto(adminManualMaintPhotoBlob);
+        }
+
+        const payload = {
+            machine_name: machine,
+            activity_type: document.getElementById('manualLogActivityType').value,
+            title: title,
+            completed_date: document.getElementById('manualLogDate').value,
+            completed_by: document.getElementById('manualLogBy').value.trim() || 'Администратор',
+            source: 'admin',
+            notes: document.getElementById('manualLogNotes').value.trim() || null,
+            parts_replaced: document.getElementById('manualLogParts').value.trim() || null,
+            photo_url: uploadedPhotoUrl,
+            cost: parseFloat(document.getElementById('manualLogCost').value) || 0
+        };
+
+        await insertAdminMaintLogSafe(payload);
+        adminManualMaintPhotoBlob = null;
 
         closeAddManualLogModal();
         await reloadAllCalendarData();
@@ -1667,6 +1833,7 @@ function initCalendarModalHtml() {
                         <div><span style="color: #047857; font-weight: 700;">Вложени части:</span> <span id="evDetailCompParts" style="font-weight: 700; color: #1e293b;"></span></div>
                     </div>
                     <div id="evDetailCompNotesBox" style="margin-top: 8px; font-size: 0.88em; color: #065f46; border-top: 1px dashed #a7f3d0; padding-top: 6px;"><span style="font-weight: 700;">Забележки при отчитане:</span> <span id="evDetailCompNotes" style="color: #1e293b;"></span></div>
+                    <div id="evDetailCompPhotoBox" style="display: none; margin-top: 8px;"></div>
                 </div>
             </div>
             <div id="evDetailActions" style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e2e8f0; padding-top: 16px;"></div>
@@ -1702,6 +1869,16 @@ function initCalendarModalHtml() {
                     <div>
                         <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Бележки и констатации за Сервизния дневник:</label>
                         <textarea id="compNotesInput" rows="3" placeholder="Опишете какво точно беше извършено, има ли препоръки..." style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; font-family: inherit;"></textarea>
+                    </div>
+                    <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 10px 12px;">
+                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 6px;">📷 Прикачи снимка (по желание):</label>
+                        <input type="file" id="compPhotoInput" accept="image/*" onchange="onAdminMaintPhotoSelected(this, 'comp')" style="display: none;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" onclick="document.getElementById('compPhotoInput').click()" style="background: #0284c7; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; cursor: pointer;">📷 Избери снимка</button>
+                            <button type="button" id="compPhotoRemoveBtn" onclick="clearAdminMaintPhoto('comp')" style="display: none; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; padding: 6px 10px; border-radius: 6px; font-weight: 700; cursor: pointer;">❌ Премахни</button>
+                            <span id="compPhotoStatus" style="font-size: 0.85em; color: #059669; font-weight: 700;"></span>
+                        </div>
+                        <img id="compPhotoPreview" style="display: none; margin-top: 8px; max-width: 100%; max-height: 160px; border-radius: 8px; border: 1px solid #cbd5e1; object-fit: contain;" alt="Преглед">
                     </div>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
@@ -1868,6 +2045,16 @@ function initCalendarModalHtml() {
                     <div>
                         <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Подробни бележки:</label>
                         <textarea id="manualLogNotes" rows="2" placeholder="Опишете детайли по ремонта..." style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; font-family: inherit;"></textarea>
+                    </div>
+                    <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 10px 12px;">
+                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 6px;">📷 Прикачи снимка (по желание):</label>
+                        <input type="file" id="manualLogPhotoInput" accept="image/*" onchange="onAdminMaintPhotoSelected(this, 'manual')" style="display: none;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" onclick="document.getElementById('manualLogPhotoInput').click()" style="background: #0284c7; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; cursor: pointer;">📷 Избери снимка</button>
+                            <button type="button" id="manualLogPhotoRemoveBtn" onclick="clearAdminMaintPhoto('manual')" style="display: none; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; padding: 6px 10px; border-radius: 6px; font-weight: 700; cursor: pointer;">❌ Премахни</button>
+                            <span id="manualLogPhotoStatus" style="font-size: 0.85em; color: #059669; font-weight: 700;"></span>
+                        </div>
+                        <img id="manualLogPhotoPreview" style="display: none; margin-top: 8px; max-width: 100%; max-height: 160px; border-radius: 8px; border: 1px solid #cbd5e1; object-fit: contain;" alt="Преглед">
                     </div>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
@@ -2049,15 +2236,217 @@ window.checkAdminCalendarAlertsOnLoad = async function(isSilent = false) {
     }
 };
 
+// ========================================================
+// ИЗВЕСТИЯ ПРИ ОТЧЕТЕН РЕМОНТ / ПОДДРЪЖКА ОТ ТЕРМИНАЛ
+// ========================================================
+const MAINT_LAST_SEEN_STORAGE_KEY = 'amci_last_seen_maint_log_id';
+let unreadTerminalMaintLogs = [];
+let maintLogRealtimeBound = false;
+let isCheckingMaintLogs = false;
+
+window.openMaintenanceLogFromAlert = async function() {
+    unreadTerminalMaintLogs = [];
+    renderAdminMaintCompletedBanner();
+    await openCalendarModal();
+    switchCalendarSubTab('log');
+};
+
+window.dismissAdminMaintBanner = function() {
+    unreadTerminalMaintLogs = [];
+    renderAdminMaintCompletedBanner();
+};
+
+function renderAdminMaintCompletedBanner() {
+    const globalBanner = document.getElementById('adminGlobalAlertBanner');
+    if (!globalBanner || !globalBanner.parentNode) return;
+
+    let maintBanner = document.getElementById('adminMaintCompletedBanner');
+    if (!maintBanner) {
+        maintBanner = document.createElement('div');
+        maintBanner.id = 'adminMaintCompletedBanner';
+        maintBanner.style.cssText = 'display: none; margin-bottom: 12px; width: 100%;';
+        globalBanner.parentNode.insertBefore(maintBanner, globalBanner.nextSibling);
+    }
+
+    if (!unreadTerminalMaintLogs || unreadTerminalMaintLogs.length === 0) {
+        maintBanner.innerHTML = '';
+        maintBanner.style.display = 'none';
+        return;
+    }
+
+    const latest = unreadTerminalMaintLogs[0];
+    const { photoUrl, cleanNotes } = extractAdminMaintPhotoAndNotes(latest);
+    const count = unreadTerminalMaintLogs.length;
+
+    const summaryHtml = count === 1
+        ? `<strong>${escapeHtml(latest.completed_by || 'Оператор')}</strong> отчете на <strong>${escapeHtml(latest.machine_name || 'Машина')}</strong>: <span style="color:#0f766e; font-weight:800;">${escapeHtml(latest.title)}</span>`
+            + (latest.parts_replaced ? ` <span style="color:#4338ca;">(📦 Части: ${escapeHtml(latest.parts_replaced)})</span>` : '')
+            + (cleanNotes && cleanNotes !== 'Отчетено през таблет на машината' ? ` — <em>${escapeHtml(cleanNotes)}</em>` : '')
+            + (photoUrl ? ' 📷' : '')
+        : `Има <strong>${count} нови отчета за ремонт / поддръжка</strong> от цеха (последен: <strong>${escapeHtml(latest.machine_name || '')}</strong> — ${escapeHtml(latest.title)} от ${escapeHtml(latest.completed_by || 'Оператор')})`;
+
+    maintBanner.innerHTML = `
+        <div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #6ee7b7; border-left: 5px solid #059669; color: #065f46; padding: 11px 16px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; box-shadow: 0 2px 6px rgba(5,150,105,0.14);">
+            <div style="display: flex; align-items: center; gap: 10px; font-size: 0.93em;">
+                <span style="font-size: 1.35em;">🔧</span>
+                <span>${summaryHtml}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                ${photoUrl ? `<button type="button" onclick="previewAdminMaintPhoto('${escapeHtml(photoUrl)}')" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: 7px 11px; border-radius: 8px; font-weight: 800; font-size: 0.84em; cursor: pointer;">📷 Снимка</button>` : ''}
+                <button type="button" onclick="openMaintenanceLogFromAlert()" style="background: #059669; color: white; border: none; padding: 7px 14px; border-radius: 8px; font-weight: 800; font-size: 0.85em; cursor: pointer; box-shadow: 0 2px 4px rgba(5,150,105,0.25);">
+                    📋 Отвори Сервизен дневник
+                </button>
+                <button type="button" onclick="dismissAdminMaintBanner()" style="background: #ffffff; color: #065f46; border: 1px solid #a7f3d0; padding: 7px 11px; border-radius: 8px; font-weight: 700; font-size: 0.84em; cursor: pointer;">
+                    👌 Разбрах
+                </button>
+            </div>
+        </div>
+    `;
+    maintBanner.style.display = 'block';
+}
+
+function showMaintenanceCompletedToast(log) {
+    if (!log) return;
+    let toastContainer = document.getElementById('adminToastContainer');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'adminToastContainer';
+        toastContainer.style.cssText = 'position:fixed; top:20px; right:20px; z-index:99999; display:flex; flex-direction:column; gap:10px; max-width:400px; pointer-events:none;';
+        document.body.appendChild(toastContainer);
+    }
+
+    const { photoUrl, cleanNotes } = extractAdminMaintPhotoAndNotes(log);
+    const toast = document.createElement('div');
+    toast.style.cssText = 'background:#ffffff; border:1px solid #a7f3d0; border-left:6px solid #059669; border-radius:12px; padding:12px 16px; box-shadow:0 8px 24px rgba(0,0,0,0.18); pointer-events:auto; display:flex; flex-direction:column; gap:4px; cursor:pointer; transition:transform 0.15s;';
+    toast.onmouseover = () => toast.style.transform = 'scale(1.02)';
+    toast.onmouseout = () => toast.style.transform = 'scale(1)';
+
+    toast.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:900; color:#059669; font-size:0.92em; display:flex; align-items:center; gap:6px;">
+                <span>🔧</span> ОТЧЕТЕН РЕМОНТ / ПОДДРЪЖКА
+            </div>
+            <span style="font-size:0.75em; color:#94a3b8;">току-що</span>
+        </div>
+        <div style="font-size:0.88em; color:#1e293b; font-weight:700;">
+            <b>${escapeHtml(log.completed_by || 'Оператор')}</b> на машина <span style="color:#0284c7;">${escapeHtml(log.machine_name || 'Цех')}</span>:
+        </div>
+        <div style="font-size:0.94em; color:#065f46; background:#ecfdf5; padding:6px 10px; border-radius:6px; font-weight:800; border:1px solid #a7f3d0;">
+            👉 ${escapeHtml(log.title)}
+        </div>
+        ${log.parts_replaced ? `<div style="font-size:0.82em; color:#4338ca; font-weight:700;">📦 Части: ${escapeHtml(log.parts_replaced)}</div>` : ''}
+        ${cleanNotes && cleanNotes !== 'Отчетено през таблет на машината' ? `<div style="font-size:0.8em; color:#475569;">📝 ${escapeHtml(cleanNotes)}</div>` : ''}
+        ${photoUrl ? `<div style="font-size:0.8em; color:#1d4ed8; font-weight:700;">📷 Има прикачена снимка (кликни за преглед)</div>` : ''}
+    `;
+
+    toast.onclick = () => {
+        openMaintenanceLogFromAlert();
+        toast.remove();
+    };
+    toastContainer.appendChild(toast);
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 12000);
+}
+
+window.checkNewTerminalMaintenanceLogs = async function() {
+    if (typeof client === 'undefined' || isCheckingMaintLogs) return;
+    const appContent = document.getElementById('appContent');
+    if (!appContent || appContent.style.display === 'none') return;
+
+    isCheckingMaintLogs = true;
+    try {
+        const storedRaw = localStorage.getItem(MAINT_LAST_SEEN_STORAGE_KEY);
+        const lastSeenId = storedRaw !== null ? parseInt(storedRaw, 10) : NaN;
+
+        if (isNaN(lastSeenId)) {
+            const { data: latestRow, error: initErr } = await client
+                .from('factory_maintenance_log')
+                .select('id')
+                .order('id', { ascending: false })
+                .limit(1);
+            if (initErr) return;
+            const maxId = (latestRow && latestRow.length > 0) ? parseInt(latestRow[0].id, 10) : 0;
+            localStorage.setItem(MAINT_LAST_SEEN_STORAGE_KEY, String(maxId));
+            return;
+        }
+
+        const { data: newLogs, error } = await client
+            .from('factory_maintenance_log')
+            .select('*')
+            .eq('source', 'terminal')
+            .gt('id', lastSeenId)
+            .order('id', { ascending: false })
+            .limit(20);
+
+        if (error) return;
+        if (!newLogs || newLogs.length === 0) return;
+
+        const maxNewId = Math.max(...newLogs.map(l => parseInt(l.id, 10) || 0));
+        if (maxNewId > lastSeenId) {
+            localStorage.setItem(MAINT_LAST_SEEN_STORAGE_KEY, String(maxNewId));
+        }
+
+        unreadTerminalMaintLogs = [...newLogs, ...unreadTerminalMaintLogs].slice(0, 20);
+
+        if (typeof playNotificationChime === 'function') {
+            playNotificationChime();
+        }
+        newLogs.slice(0, 3).forEach(log => showMaintenanceCompletedToast(log));
+        renderAdminMaintCompletedBanner();
+
+        // Push известие към телефона за най-новия отчет
+        const newest = newLogs[0];
+        if (window.sendAmciPushNotification && newest) {
+            const { cleanNotes } = extractAdminMaintPhotoAndNotes(newest);
+            const partsTxt = newest.parts_replaced ? `\nЧасти: ${newest.parts_replaced}` : '';
+            const notesTxt = (cleanNotes && cleanNotes !== 'Отчетено през таблет на машината') ? `\nБележка: ${cleanNotes}` : '';
+            window.sendAmciPushNotification(
+                `🔧 Отчетен ремонт: ${newest.machine_name || 'Цех'}`,
+                `${newest.title}\nИзвършил: ${newest.completed_by || 'Оператор'}${partsTxt}${notesTxt}`
+            );
+        }
+
+        // Ако Календарът е отворен, презареждаме данните му веднага
+        const calModal = document.getElementById('calendarModalBackdrop');
+        if (calModal && calModal.style.display === 'flex') {
+            reloadAllCalendarData();
+        }
+    } catch (err) {
+        console.warn('Грешка при проверка за отчетени ремонти:', err);
+    } finally {
+        isCheckingMaintLogs = false;
+    }
+};
+
+function initMaintenanceLogsRealtime() {
+    if (maintLogRealtimeBound || typeof client === 'undefined' || !client.channel) return;
+    maintLogRealtimeBound = true;
+    try {
+        client
+            .channel('admin-maint-log-inserts')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'factory_maintenance_log' }, () => {
+                checkNewTerminalMaintenanceLogs();
+            })
+            .subscribe();
+    } catch (e) {
+        console.warn('Maint realtime subscribe skipped:', e);
+    }
+}
+
 // Автоматичен старт при зареждане на админ панела
 function bootAdminCalendarAlerts() {
     setTimeout(() => {
         checkAdminCalendarAlertsOnLoad();
+        checkNewTerminalMaintenanceLogs();
+        initMaintenanceLogsRealtime();
     }, 1200);
 
     setInterval(() => {
         checkAdminCalendarAlertsOnLoad(true);
     }, 60000);
+
+    setInterval(() => {
+        checkNewTerminalMaintenanceLogs();
+    }, 15000);
 }
 
 if (document.readyState === 'loading') {

@@ -280,11 +280,152 @@ function renderTerminalMaintenanceCards(activeItems) {
                 </div>
 
                 <button class="maint-btn-done" onclick="completeTerminalMaintenance(${ev.id})">
-                    <span>✅ ОТЧЕТИ КАТО ИЗПЪЛНЕНО</span>
+                    <span>✅ ОТЧЕТИ ИЗВЪРШЕНОТО (Части, Бележка, Снимка)</span>
                 </button>
             </div>
         `;
     }).join('');
+}
+
+function extractMaintPhotoAndNotes(log) {
+    let rawNotes = (log && log.notes) ? String(log.notes) : '';
+    let photoUrl = (log && log.photo_url) ? String(log.photo_url).trim() : '';
+    const match = rawNotes.match(/\[📷\s*Снимка:\s*(https?:\/\/[^\]]+)\]/i);
+    if (match) {
+        if (!photoUrl) photoUrl = match[1].trim();
+        rawNotes = rawNotes.replace(match[0], '').trim();
+    }
+    return { photoUrl, cleanNotes: rawNotes };
+}
+
+function compressMaintImage(file, maxWidth = 1200, maxHeight = 1200, quality = 0.8) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+                let w = img.width;
+                let h = img.height;
+                if (w > maxWidth || h > maxHeight) {
+                    if (w > h) {
+                        h = Math.round((h * maxWidth) / w);
+                        w = maxWidth;
+                    } else {
+                        w = Math.round((w * maxHeight) / h);
+                        h = maxHeight;
+                    }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                canvas.toBlob((blob) => resolve(blob || file), 'image/jpeg', quality);
+            };
+            img.onerror = () => resolve(file);
+            img.src = ev.target.result;
+        };
+        reader.onerror = () => resolve(file);
+        reader.readAsDataURL(file);
+    });
+}
+
+async function uploadMaintPhotoToStorage(photoBlob) {
+    if (!photoBlob) return null;
+    const cleanFileName = `maint_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
+    const filePath = `maintenance/${cleanFileName}`;
+    const { error: uploadError } = await client.storage
+        .from('dosieta')
+        .upload(filePath, photoBlob, { contentType: 'image/jpeg' });
+    if (uploadError) {
+        throw new Error('Грешка при качване на снимката: ' + uploadError.message);
+    }
+    const { data: pubData } = client.storage.from('dosieta').getPublicUrl(filePath);
+    return pubData ? pubData.publicUrl : null;
+}
+
+async function insertMaintenanceLogSafe(payload) {
+    const cleanPayload = { ...payload };
+    const photoUrl = cleanPayload.photo_url || null;
+    if (!photoUrl) delete cleanPayload.photo_url;
+
+    const { error } = await client.from('factory_maintenance_log').insert([cleanPayload]);
+    if (!error) return;
+
+    if (photoUrl && String(error.message || '').toLowerCase().includes('photo_url')) {
+        const fallbackPayload = { ...cleanPayload };
+        delete fallbackPayload.photo_url;
+        const noteText = (fallbackPayload.notes || '').trim();
+        fallbackPayload.notes = noteText
+            ? `${noteText}\n[📷 Снимка: ${photoUrl}]`
+            : `[📷 Снимка: ${photoUrl}]`;
+        const { error: retryErr } = await client.from('factory_maintenance_log').insert([fallbackPayload]);
+        if (retryErr) throw retryErr;
+        return;
+    }
+    throw error;
+}
+
+window.previewTerminalMaintPhoto = function(url) {
+    if (!url) return;
+    Swal.fire({
+        imageUrl: url,
+        imageAlt: 'Снимка от обслужване',
+        width: 650,
+        showCloseButton: true,
+        confirmButtonText: 'Затвори',
+        confirmButtonColor: '#0f766e'
+    });
+};
+
+function bindMaintPhotoInputHandlers(stateRef) {
+    const fileInp = document.getElementById('swalMaintPhotoInput');
+    const pickBtn = document.getElementById('swalMaintPickPhotoBtn');
+    const removeBtn = document.getElementById('swalMaintRemovePhotoBtn');
+    const previewImg = document.getElementById('swalMaintPhotoPreview');
+    const statusText = document.getElementById('swalMaintPhotoStatus');
+    if (!fileInp || !pickBtn) return;
+
+    pickBtn.onclick = () => fileInp.click();
+
+    fileInp.onchange = async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (statusText) statusText.innerText = '⏳ Обработка на снимката...';
+        try {
+            const compressed = await compressMaintImage(file, 1200, 1200, 0.8);
+            stateRef.photoBlob = compressed;
+            const sizeKb = Math.round((compressed.size || file.size) / 1024);
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                if (previewImg) {
+                    previewImg.src = ev.target.result;
+                    previewImg.style.display = 'block';
+                }
+                if (removeBtn) removeBtn.style.display = 'inline-block';
+                if (statusText) statusText.innerText = `✅ Готова за качване (${sizeKb} KB)`;
+                pickBtn.innerText = '🔄 Смени снимката';
+            };
+            reader.readAsDataURL(compressed);
+        } catch (err) {
+            stateRef.photoBlob = file;
+            if (statusText) statusText.innerText = '✅ Снимката е избрана';
+        }
+    };
+
+    if (removeBtn) {
+        removeBtn.onclick = () => {
+            stateRef.photoBlob = null;
+            fileInp.value = '';
+            if (previewImg) {
+                previewImg.src = '';
+                previewImg.style.display = 'none';
+            }
+            removeBtn.style.display = 'none';
+            if (statusText) statusText.innerText = '';
+            pickBtn.innerText = '📷 Направи / Прикачи снимка';
+        };
+    }
 }
 
 // Отчитане на задача за поддръжка от оператора директно на терминала
@@ -304,8 +445,11 @@ window.completeTerminalMaintenance = async function(eventId) {
         ? currentOperator 
         : (localStorage.getItem('mes_operator') || 'Оператор');
 
+    const photoState = { photoBlob: null };
+
     const { value: formValues } = await Swal.fire({
         title: '✅ Отчитане на поддръжка',
+        width: '560px',
         html: `
             <div style="text-align: left; font-size: 0.95em; display: flex; flex-direction: column; gap: 12px;">
                 <div style="background: #f1f5f9; padding: 10px 14px; border-radius: 8px;">
@@ -317,8 +461,26 @@ window.completeTerminalMaintenance = async function(eventId) {
                     <input id="swalMaintBy" class="swal2-input" value="${escapeHtml(defaultOperator)}" style="margin: 0; width: 100%; box-sizing: border-box; font-size: 1em;">
                 </div>
                 <div>
-                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Бележка / сменено масло / части (по избор):</label>
-                    <textarea id="swalMaintNotes" class="swal2-textarea" placeholder="напр. Сменено масло Shell Tellus 46, почистен филтър..." style="margin: 0; width: 100%; box-sizing: border-box; font-size: 0.95em; height: 75px; font-family: inherit;"></textarea>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Сменени / вложени части и консумативи (по избор):</label>
+                    <input id="swalMaintParts" class="swal2-input" placeholder="напр. Клинов ремък, лагер 6204, масло 2 л..." style="margin: 0; width: 100%; box-sizing: border-box; font-size: 0.95em;">
+                </div>
+                <div>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Какво точно е извършено / Забележки (по избор):</label>
+                    <textarea id="swalMaintNotes" class="swal2-textarea" placeholder="Опишете какво е направено, дали е сменено и нещо допълнително..." style="margin: 0; width: 100%; box-sizing: border-box; font-size: 0.95em; height: 82px; font-family: inherit;"></textarea>
+                </div>
+                <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 10px 12px;">
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 6px;">📷 Снимка (по избор):</label>
+                    <input type="file" id="swalMaintPhotoInput" accept="image/*" style="display: none;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" id="swalMaintPickPhotoBtn" style="background: #0284c7; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 700; font-size: 0.9em; cursor: pointer;">
+                            📷 Направи / Прикачи снимка
+                        </button>
+                        <button type="button" id="swalMaintRemovePhotoBtn" style="display: none; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; padding: 8px 12px; border-radius: 8px; font-weight: 700; font-size: 0.85em; cursor: pointer;">
+                            ❌ Премахни
+                        </button>
+                        <span id="swalMaintPhotoStatus" style="font-size: 0.82em; color: #059669; font-weight: 700;"></span>
+                    </div>
+                    <img id="swalMaintPhotoPreview" style="display: none; margin-top: 10px; max-width: 100%; max-height: 180px; border-radius: 8px; border: 1px solid #cbd5e1; object-fit: contain;" alt="Преглед на снимка">
                 </div>
             </div>
         `,
@@ -327,6 +489,7 @@ window.completeTerminalMaintenance = async function(eventId) {
         confirmButtonText: 'Потвърди и завърши',
         cancelButtonText: 'Отказ',
         confirmButtonColor: '#059669',
+        didOpen: () => bindMaintPhotoInputHandlers(photoState),
         preConfirm: () => {
             const by = document.getElementById('swalMaintBy').value.trim();
             if (!by) {
@@ -335,7 +498,9 @@ window.completeTerminalMaintenance = async function(eventId) {
             }
             return {
                 completedBy: by,
-                notes: document.getElementById('swalMaintNotes').value.trim()
+                parts: document.getElementById('swalMaintParts').value.trim(),
+                notes: document.getElementById('swalMaintNotes').value.trim(),
+                photoBlob: photoState.photoBlob
             };
         }
     });
@@ -346,9 +511,13 @@ window.completeTerminalMaintenance = async function(eventId) {
 
     try {
         const todayStr = new Date().toISOString().split('T')[0];
+        let uploadedPhotoUrl = null;
+        if (formValues.photoBlob) {
+            uploadedPhotoUrl = await uploadMaintPhotoToStorage(formValues.photoBlob);
+        }
 
         // 1. Вписване в сервизния дневник (бъдещ паспорт на машината)
-        const { error: logErr } = await client.from('factory_maintenance_log').insert([{
+        await insertMaintenanceLogSafe({
             event_id: ev.id,
             machine_name: ev.machine_name || 'Машина',
             activity_type: 'Планова поддръжка',
@@ -356,10 +525,11 @@ window.completeTerminalMaintenance = async function(eventId) {
             completed_date: todayStr,
             completed_by: formValues.completedBy,
             source: 'terminal',
+            parts_replaced: formValues.parts || null,
             notes: formValues.notes || 'Отчетено през таблет на машината',
+            photo_url: uploadedPhotoUrl,
             cost: 0
-        }]);
-        if (logErr) throw logErr;
+        });
 
         // 2. Маркиране на събитието като completed
         const { error: updErr } = await client.from('factory_events').update({
@@ -487,24 +657,35 @@ window.openTerminalCalendarModal = async function() {
         if (!recentLogs || recentLogs.length === 0) {
             logsHtml = '<div style="color: #64748b; padding: 15px; text-align: center; font-weight: 600;">Няма скорошни сервизни записи за тази машина.</div>';
         } else {
-            logsHtml = recentLogs.map(l => `
-                <div style="border-bottom: 1px dashed #e2e8f0; padding: 8px 0; font-size: 0.9em;">
-                    <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 0.85em;">
-                        <span>📅 ${formatDateDisplay(l.completed_date)}</span>
-                        <span>👤 ${escapeHtml(l.completed_by || '-')} (${l.source === 'terminal' ? 'Таблет' : 'Админ'})</span>
+            logsHtml = recentLogs.map(l => {
+                const { photoUrl, cleanNotes } = extractMaintPhotoAndNotes(l);
+                return `
+                    <div style="border-bottom: 1px dashed #e2e8f0; padding: 8px 0; font-size: 0.9em;">
+                        <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 0.85em;">
+                            <span>📅 ${formatDateDisplay(l.completed_date)}</span>
+                            <span>👤 ${escapeHtml(l.completed_by || '-')} (${l.source === 'terminal' ? 'Таблет' : 'Админ'})</span>
+                        </div>
+                        <div style="font-weight: 700; color: #1e293b; margin-top: 2px;">
+                            ${escapeHtml(l.machine_name ? l.machine_name + ': ' : '')}${escapeHtml(l.title)}
+                        </div>
+                        ${l.parts_replaced ? `<div style="font-size: 0.85em; color: #4338ca; font-weight: 700; margin-top: 2px;">📦 Сменени части: ${escapeHtml(l.parts_replaced)}</div>` : ''}
+                        ${cleanNotes ? `<div style="font-size: 0.85em; color: #475569; margin-top: 2px;">${escapeHtml(cleanNotes)}</div>` : ''}
+                        ${photoUrl ? `<div style="margin-top: 4px;"><button type="button" onclick="previewTerminalMaintPhoto('${escapeHtml(photoUrl)}')" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: 3px 9px; border-radius: 6px; font-weight: 700; font-size: 0.82em; cursor: pointer;">📷 Виж снимката</button></div>` : ''}
                     </div>
-                    <div style="font-weight: 700; color: #1e293b; margin-top: 2px;">
-                        ${escapeHtml(l.machine_name ? l.machine_name + ': ' : '')}${escapeHtml(l.title)}
-                    </div>
-                    ${l.notes ? `<div style="font-size: 0.85em; color: #475569; margin-top: 2px;">${escapeHtml(l.notes)}</div>` : ''}
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         Swal.fire({
             title: `📅 Сервизен дневник: ${escapeHtml(machineTitle)}`,
             html: `
                 <div style="text-align: left; max-height: 65vh; overflow-y: auto;">
+                    <div style="margin-bottom: 14px;">
+                        <button type="button" onclick="Swal.close(); openTerminalManualMaintModal();" style="width: 100%; background: #0d9488; color: white; border: none; padding: 10px 14px; border-radius: 10px; font-weight: 800; font-size: 0.95em; cursor: pointer; box-shadow: 0 2px 6px rgba(13,148,136,0.25);">
+                            ✍️ Впиши извънреден ремонт / смяна на част
+                        </button>
+                    </div>
+
                     <h4 style="margin: 0 0 10px 0; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; font-size: 1.05em;">
                         ⏳ Предстоящи задачи за обслужване:
                     </h4>
@@ -525,6 +706,155 @@ window.openTerminalCalendarModal = async function() {
 
     } catch (err) {
         Swal.fire('Грешка', err.message, 'error');
+    }
+};
+
+window.openTerminalManualMaintModal = async function() {
+    const rawMachine = (typeof currentMachine !== 'undefined' && currentMachine)
+        ? currentMachine
+        : (localStorage.getItem('mes_machine') || '');
+    const selectedList = (rawMachine && rawMachine !== 'ВСИЧКИ')
+        ? rawMachine.split(',').map(m => m.trim()).filter(Boolean)
+        : [];
+
+    let machineOptions = [];
+    try {
+        const { data: macs } = await client.from('factory_machines').select('name').order('name');
+        machineOptions = (macs || []).map(m => m.name).filter(Boolean);
+    } catch (e) {}
+
+    selectedList.forEach(m => {
+        if (m && !machineOptions.includes(m)) machineOptions.unshift(m);
+    });
+
+    const defaultMachine = selectedList.length === 1 ? selectedList[0] : '';
+    const defaultOperator = (typeof currentOperator !== 'undefined' && currentOperator)
+        ? currentOperator
+        : (localStorage.getItem('mes_operator') || 'Оператор');
+    const photoState = { photoBlob: null };
+
+    const { value: formValues } = await Swal.fire({
+        title: '✍️ Впиши ремонт / смяна на част',
+        width: '560px',
+        html: `
+            <div style="text-align: left; font-size: 0.95em; display: flex; flex-direction: column; gap: 11px;">
+                <div>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Машина: *</label>
+                    <select id="swalManualMaintMachine" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; font-size: 0.95em; height: 42px;">
+                        <option value="">-- Изберете машина --</option>
+                        ${machineOptions.map(m => `<option value="${escapeHtml(m)}" ${m === defaultMachine ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
+                    </select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div>
+                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Вид дейност:</label>
+                        <select id="swalManualMaintType" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; font-size: 0.9em; height: 42px;">
+                            <option value="Смяна на част / консуматив">🔧 Смяна на част</option>
+                            <option value="Извънреден ремонт">🚨 Извънреден ремонт</option>
+                            <option value="Планова поддръжка">🛠️ Профилактика</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Извършил: *</label>
+                        <input id="swalManualMaintBy" class="swal2-input" value="${escapeHtml(defaultOperator)}" style="margin: 0; width: 100%; box-sizing: border-box; font-size: 0.95em;">
+                    </div>
+                </div>
+                <div>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Какво е извършено (Заглавие): *</label>
+                    <input id="swalManualMaintTitle" class="swal2-input" placeholder="напр. Смяна на ремък и обтяжна ролка..." style="margin: 0; width: 100%; box-sizing: border-box; font-size: 0.95em;">
+                </div>
+                <div>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Сменени / вложени части и консумативи (по избор):</label>
+                    <input id="swalManualMaintParts" class="swal2-input" placeholder="напр. Ремък 10x750, лагер 6204..." style="margin: 0; width: 100%; box-sizing: border-box; font-size: 0.95em;">
+                </div>
+                <div>
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Подробни бележки (по избор):</label>
+                    <textarea id="swalManualMaintNotes" class="swal2-textarea" placeholder="Опишете причината, състоянието или други забележки..." style="margin: 0; width: 100%; box-sizing: border-box; font-size: 0.95em; height: 75px; font-family: inherit;"></textarea>
+                </div>
+                <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 10px 12px;">
+                    <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 6px;">📷 Снимка (по избор):</label>
+                    <input type="file" id="swalMaintPhotoInput" accept="image/*" style="display: none;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" id="swalMaintPickPhotoBtn" style="background: #0284c7; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 700; font-size: 0.9em; cursor: pointer;">
+                            📷 Направи / Прикачи снимка
+                        </button>
+                        <button type="button" id="swalMaintRemovePhotoBtn" style="display: none; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; padding: 8px 12px; border-radius: 8px; font-weight: 700; font-size: 0.85em; cursor: pointer;">
+                            ❌ Премахни
+                        </button>
+                        <span id="swalMaintPhotoStatus" style="font-size: 0.82em; color: #059669; font-weight: 700;"></span>
+                    </div>
+                    <img id="swalMaintPhotoPreview" style="display: none; margin-top: 10px; max-width: 100%; max-height: 180px; border-radius: 8px; border: 1px solid #cbd5e1; object-fit: contain;" alt="Преглед на снимка">
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '💾 Запиши в дневника',
+        cancelButtonText: 'Отказ',
+        confirmButtonColor: '#0d9488',
+        didOpen: () => bindMaintPhotoInputHandlers(photoState),
+        preConfirm: () => {
+            const machine = document.getElementById('swalManualMaintMachine').value.trim();
+            const by = document.getElementById('swalManualMaintBy').value.trim();
+            const title = document.getElementById('swalManualMaintTitle').value.trim();
+            if (!machine) {
+                Swal.showValidationMessage('Моля, изберете машина!');
+                return false;
+            }
+            if (!by) {
+                Swal.showValidationMessage('Моля, посочете кой е извършил дейността!');
+                return false;
+            }
+            if (!title) {
+                Swal.showValidationMessage('Моля, опишете какво е извършено!');
+                return false;
+            }
+            return {
+                machine,
+                activityType: document.getElementById('swalManualMaintType').value,
+                completedBy: by,
+                title,
+                parts: document.getElementById('swalManualMaintParts').value.trim(),
+                notes: document.getElementById('swalManualMaintNotes').value.trim(),
+                photoBlob: photoState.photoBlob
+            };
+        }
+    });
+
+    if (!formValues) return;
+
+    Swal.fire({ title: 'Записване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        let uploadedPhotoUrl = null;
+        if (formValues.photoBlob) {
+            uploadedPhotoUrl = await uploadMaintPhotoToStorage(formValues.photoBlob);
+        }
+
+        await insertMaintenanceLogSafe({
+            machine_name: formValues.machine,
+            activity_type: formValues.activityType,
+            title: formValues.title,
+            completed_date: todayStr,
+            completed_by: formValues.completedBy,
+            source: 'terminal',
+            parts_replaced: formValues.parts || null,
+            notes: formValues.notes || 'Отчетено през таблет на машината',
+            photo_url: uploadedPhotoUrl,
+            cost: 0
+        });
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Записано!',
+            text: 'Дейността беше добавена в Сервизния дневник.',
+            confirmButtonColor: '#0d9488',
+            timer: 2500
+        });
+    } catch (err) {
+        console.error('Грешка при запис на ремонт от терминал:', err);
+        Swal.fire('Грешка', 'Неуспешен запис: ' + err.message, 'error');
     }
 };
 

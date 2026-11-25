@@ -257,7 +257,7 @@ function showAdminLoginModal() {
 
                 try {
                     localStorage.setItem('last_admin_email', email);
-                } catch (e) {}
+                } catch (e) { }
 
                 return data.user;
             } catch (err) {
@@ -291,6 +291,7 @@ function initializeApp() {
         if (res.data) globalActivePlansForDropdown = res.data;
     });
     buildNavbar(); loadCurrentTableData(); runInvisibleAutoCheckout(); loadFormDatalists();
+    if (typeof checkNewTerminalMaintenanceLogs === 'function') checkNewTerminalMaintenanceLogs();
 }
 
 function toggleAdminDropdown(dropdownId) {
@@ -1118,7 +1119,7 @@ function renderDynamicTable(itemsToRender = null) {
                 let done = item['__doneQty'] !== undefined ? item['__doneQty'] : 0;
                 let target = item['__targetQty'] !== undefined ? item['__targetQty'] : (parseFloat(item['Целево количество']) || 0);
                 let remain = item['__remainQty'] !== undefined ? item['__remainQty'] : Math.max(0, target - done);
-                
+
                 let badge = '';
                 if (done > target) {
                     let surplus = done - target;
@@ -1257,8 +1258,8 @@ function renderDynamicTable(itemsToRender = null) {
                 if (!val) {
                     td.innerHTML = '<span style="color:#94a3b8; font-size:0.85em;">Не е въведен</span>';
                 } else {
-                    let today = new Date(); today.setHours(0,0,0,0);
-                    let due = new Date(val); due.setHours(0,0,0,0);
+                    let today = new Date(); today.setHours(0, 0, 0, 0);
+                    let due = new Date(val); due.setHours(0, 0, 0, 0);
                     let diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
                     if (diffDays < 0) {
                         td.innerHTML = `<span style="background:#fee2e2; color:#b91c1c; border:1.5px solid #fca5a5; padding:3px 8px; border-radius:12px; font-weight:800; font-size:0.85em;" title="🚨 Просрочена проверка с ${Math.abs(diffDays)} дни!">🚨 Изтекъл (${val})</span>`;
@@ -1296,7 +1297,7 @@ function renderDynamicTable(itemsToRender = null) {
                     try {
                         let pVal = val; if (!pVal.endsWith('Z') && !pVal.includes('+')) pVal += 'Z';
                         td.innerHTML = `<span style="color:#15803d; font-weight:700; font-size:0.88em;">🔒 ${new Date(pVal).toLocaleString('bg-BG')}</span>`;
-                    } catch(e) {
+                    } catch (e) {
                         td.innerText = val;
                     }
                 }
@@ -3108,10 +3109,10 @@ window.forceReloadTerminals = async function () {
     });
 };
 
-window.openMaterialDossier = async function(materialCode) {
+window.openMaterialDossier = async function (materialCode) {
     if (!materialCode) return;
     const cleanCode = String(materialCode).trim();
-    
+
     Swal.fire({
         title: 'Зареждане на картон...',
         html: `Справка за <b>${cleanCode}</b>`,
@@ -3228,9 +3229,9 @@ window.openMaterialDossier = async function(materialCode) {
                                 </thead>
                                 <tbody>
                                     ${porList.map(p => {
-                                        const isReceived = (p['Статус'] === 'Прието');
-                                        const dateStr = p['Дата на приемане'] || p['Дата на поръчка'] || '—';
-                                        return `
+            const isReceived = (p['Статус'] === 'Прието');
+            const dateStr = p['Дата на приемане'] || p['Дата на поръчка'] || '—';
+            return `
                                             <tr style="border-bottom:1px solid #f8fafc;">
                                                 <td style="padding:4px 6px; color:#475569;">${dateStr}</td>
                                                 <td style="padding:4px 6px; font-weight:600; color:#1e293b;">${p['Доставчик'] || '—'}</td>
@@ -3242,7 +3243,7 @@ window.openMaterialDossier = async function(materialCode) {
                                                 </td>
                                             </tr>
                                         `;
-                                    }).join('')}
+        }).join('')}
                                 </tbody>
                             </table>
                         ` : '<div style="color:#94a3b8; font-size:0.85em; text-align:center; padding:8px;">Няма регистрирани поръчки в таб Поръчки материали.</div>'}
@@ -3301,9 +3302,9 @@ async function sendSilentPingPushNotification(targetEmail, pushText = '🔄 Си
     try {
         const response = await fetch("https://onesignal.com/api/v1/notifications", {
             method: "POST",
-            headers: { 
-                "Content-Type": "application/json; charset=utf-8", 
-                "Authorization": "Key " + ONESIGNAL_API_KEY 
+            headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "Authorization": "Key " + ONESIGNAL_API_KEY
             },
             body: JSON.stringify(payload)
         });
@@ -3313,13 +3314,13 @@ async function sendSilentPingPushNotification(targetEmail, pushText = '🔄 Си
             return false;
         }
         return true;
-    } catch(e) {
+    } catch (e) {
         console.warn("OneSignal Push connection error:", e);
         return false;
     }
 }
 
-window.openSilentLocationCheckModal = async function() {
+window.openSilentLocationCheckModal = async function () {
     Swal.fire({ title: 'Зареждане на служителите...', didOpen: () => Swal.showLoading() });
 
     try {
@@ -3522,7 +3523,7 @@ window.openSilentLocationCheckModal = async function() {
                             }
                         })
                         .subscribe();
-                } catch(e) {}
+                } catch (e) { }
 
                 pollTimer = setInterval(async () => {
                     timeLeft--;
@@ -3577,8 +3578,8 @@ window.openSilentLocationCheckModal = async function() {
             const isOutside = (resultData.result_note && resultData.result_note.includes('ИЗВЪН ОБЕКТА')) || (resultData.result_distance > 200);
             const distStr = resultData.result_distance !== null ? `${resultData.result_distance} м` : 'Неизвестно';
             const coordsStr = (resultData.result_lat && resultData.result_lng) ? `${resultData.result_lat}, ${resultData.result_lng}` : null;
-            const mapsBtn = coordsStr 
-                ? `<div style="margin-top: 14px;"><a href="https://www.google.com/maps?q=${coordsStr}" target="_blank" style="background:#2563eb; color:white; padding:8px 16px; border-radius:8px; font-weight:800; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">📍 Отвори точната локация в Google Maps</a></div>` 
+            const mapsBtn = coordsStr
+                ? `<div style="margin-top: 14px;"><a href="https://www.google.com/maps?q=${coordsStr}" target="_blank" style="background:#2563eb; color:white; padding:8px 16px; border-radius:8px; font-weight:800; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">📍 Отвори точната локация в Google Maps</a></div>`
                 : '';
 
             Swal.fire({
@@ -3636,7 +3637,7 @@ window.openSilentLocationCheckModal = async function() {
 // ==============================================================================
 // ДНЕВНИК / ИСТОРИЯ НА ИЗНЕЗАДВАЩИТЕ ПРОВЕРКИ НА ЛОКАЦИЯ
 // ==============================================================================
-window.openLocationChecksHistoryModal = async function() {
+window.openLocationChecksHistoryModal = async function () {
     Swal.fire({ title: 'Зареждане на дневника...', didOpen: () => Swal.showLoading() });
 
     try {
@@ -3665,7 +3666,7 @@ window.openLocationChecksHistoryModal = async function() {
         }
 
         let rowsHtml = pings.map((p) => {
-            const timeStr = p.responded_at 
+            const timeStr = p.responded_at
                 ? new Date(p.responded_at).toLocaleString('bg-BG', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
                 : (p.created_at ? new Date(p.created_at).toLocaleString('bg-BG', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-');
 
@@ -3682,8 +3683,8 @@ window.openLocationChecksHistoryModal = async function() {
 
             const distStr = p.result_distance !== null ? `<b>${p.result_distance} м</b>` : '<span style="color:#94a3b8;">-</span>';
             const coords = (p.result_lat && p.result_lng) ? `${p.result_lat},${p.result_lng}` : null;
-            const mapLink = coords 
-                ? `<a href="https://www.google.com/maps?q=${coords}" target="_blank" style="color:#2563eb; font-weight:bold; text-decoration:none; font-size:0.88em; background:#eff6ff; padding:2px 6px; border-radius:4px; border:1px solid #bfdbfe;">📍 Карта</a>` 
+            const mapLink = coords
+                ? `<a href="https://www.google.com/maps?q=${coords}" target="_blank" style="color:#2563eb; font-weight:bold; text-decoration:none; font-size:0.88em; background:#eff6ff; padding:2px 6px; border-radius:4px; border:1px solid #bfdbfe;">📍 Карта</a>`
                 : '<span style="color:#94a3b8;">-</span>';
 
             return `
@@ -3732,7 +3733,7 @@ window.openLocationChecksHistoryModal = async function() {
             }
         });
 
-    } catch(err) {
+    } catch (err) {
         Swal.fire('Грешка', err.message, 'error');
     }
 };
