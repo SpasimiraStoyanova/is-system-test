@@ -137,17 +137,24 @@
         }
     }
 
-    function showSpotlightState(state) {
+    window.showSpotlightState = function(state) {
         const resultsEl = document.getElementById('spotlightResultsContainer');
         const dossierEl = document.getElementById('spotlightDossierContainer');
         if (state === 'search') {
-            if (resultsEl) resultsEl.style.display = 'block';
+            if (resultsEl) {
+                resultsEl.style.display = 'block';
+                if (!resultsEl.innerHTML.trim()) {
+                    const inp = document.getElementById('spotlightSearchInput');
+                    handleSpotlightSearch(inp ? inp.value.trim() : '');
+                }
+            }
             if (dossierEl) dossierEl.style.display = 'none';
         } else if (state === 'dossier') {
             if (resultsEl) resultsEl.style.display = 'none';
             if (dossierEl) dossierEl.style.display = 'block';
         }
-    }
+    };
+    const showSpotlightState = window.showSpotlightState;
 
     function renderSpotlightInitialList() {
         const container = document.getElementById('spotlightResultsContainer');
