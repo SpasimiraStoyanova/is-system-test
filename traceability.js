@@ -949,22 +949,23 @@ async function renderVSM(dateKey) {
                 // 2. Проверка за отчет през карта / терминал или служебна корекция от админ
                 let matchOtchet = null;
                 if (globalAllData.rawOtcheti && globalAllData.rawOtcheti.length > 0) {
-                    let targetQty = (oq !== null && nq !== null) ? Math.abs(diffQty) : (nq || 0);
-                    matchOtchet = globalAllData.rawOtcheti.find(r => {
-                        let rTs = parseSafeTs(r['Дата']);
-                        let tDiff = Math.abs(rTs - logTs);
-                        let q = Math.abs(parseFloat(r['Количество']) || 0);
-                        let qtyMatch = Math.abs(q - targetQty) < 0.01;
-                        
-                        // Съвпадение по време (до 10 минути разлика)
-                        if (qtyMatch && tDiff < 600000) return true;
-
-                        // Съвпадение по форматирана дата/час (до минута)
-                        let rLocStr = parseSafeDate(r['Дата']).toLocaleString('bg-BG');
-                        if (qtyMatch && (rLocStr === dStr || rLocStr.slice(0, 16) === dStr.slice(0, 16))) return true;
-
-                        return false;
+                    let expectedDelta = (oq !== null && nq !== null) ? diffQty : (nq || 0);
+                    let targetQty = Math.abs(expectedDelta);
+                    let candidates = globalAllData.rawOtcheti.filter(r => {
+                        let tDiff = Math.abs(parseSafeTs(r['Дата']) - logTs);
+                        let rawQ = parseFloat(r['Количество']) || 0;
+                        let qtyMatch = Math.abs(Math.abs(rawQ) - targetQty) < 0.01;
+                        return qtyMatch && tDiff < 600000; // До 10 минути разлика
                     });
+                    if (candidates.length > 0) {
+                        candidates.sort((a, b) => {
+                            let signA = ((parseFloat(a['Количество']) || 0) >= 0) === (expectedDelta >= 0) ? 0 : 1;
+                            let signB = ((parseFloat(b['Количество']) || 0) >= 0) === (expectedDelta >= 0) ? 0 : 1;
+                            if (signA !== signB) return signA - signB;
+                            return Math.abs(parseSafeTs(a['Дата']) - logTs) - Math.abs(parseSafeTs(b['Дата']) - logTs);
+                        });
+                        matchOtchet = candidates[0];
+                    }
                 }
 
                 let opWorker = matchOtchet ? String(matchOtchet['Оператор'] || '').trim() : '';
@@ -979,7 +980,7 @@ async function renderVSM(dateKey) {
                     if (log.action_type === 'INSERT') {
                         return `<li style="margin-bottom:4px;">🕒 ${dStr}: ${badgeTitle}: добавени първоначални <b>${nq || 0} бр.</b> [Оператор: <b>${opWorker}</b>]</li>`;
                     } else {
-                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: ${badgeTitle}: <span style="${valColor}">+${diffQty} бр.</span> (от ${oq} на <b>${nq} бр.</b>) [Оператор: <b>${opWorker}</b>]</li>`;
+                        return `<li style="margin-bottom:4px;">🕒 ${dStr}: ${badgeTitle}: <span style="${valColor}">${diffSign}${diffQty} бр.</span> (от ${oq} на <b>${nq} бр.</b>) [Оператор: <b>${opWorker}</b>]</li>`;
                     }
                 }
 

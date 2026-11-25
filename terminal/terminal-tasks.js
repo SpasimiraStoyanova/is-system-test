@@ -880,6 +880,7 @@ async function loadTasks(isSilent = false) {
                               }
                           });
                           
+                          if (minSets < maxAllowed) maxAllowed = minSets;
                           if (rawMinSets < displayMaxAllowed) displayMaxAllowed = rawMinSets;
                           if (maxAllowed < totalShortage) {
                               if (!blockingReasons.includes(`Липсващи компоненти`)) blockingReasons.push(`Липсващи компоненти`);

@@ -114,6 +114,22 @@ async function validateRealTimeStock(taskData, val) {
     return { ok: true, maxAllowed: allowedNow };
 }
 
+async function refreshTaskStockBeforeSubmit(taskId, taskData, inputElem) {
+    if (!taskData || !taskData.hasLimit) return taskData;
+    const savedVal = inputElem ? inputElem.value : '';
+    try {
+        await loadTasks(true);
+        const restoredInput = document.getElementById('qty_' + taskId);
+        if (restoredInput && savedVal !== '') restoredInput.value = savedVal;
+        const freshTask = globalTasks.find(t => t.id === taskId);
+        if (freshTask) return freshTask;
+        return Object.assign({}, taskData, { maxAllowed: 0, realMaxAllowed: 0, prevOpStock: 0 });
+    } catch (err) {
+        console.warn("Грешка при опресняване на наличност преди отчет:", err);
+        return taskData;
+    }
+}
+
 function claimCurrentTaskDOM(taskId) {
 
   if (window.pendingIdleTaskReminder && !window.pendingIdleTaskReminder.read_at) {
@@ -212,6 +228,8 @@ async function finishTask(taskId, btn) {
   if(isNaN(val) || val <= 0) { Swal.fire('Грешка', 'Въведи валидна бройка!', 'error'); return; }
   taskData = globalTasks.find(t => t.id === taskId);
   if (!taskData) return;
+
+  taskData = await refreshTaskStockBeforeSubmit(taskId, taskData, inputElem);
 
   let isDiscrepancyAccepted = false;
   let prevStock = (taskData.prevOpStock !== undefined) ? taskData.prevOpStock : (taskData.maxAllowed || 0);
@@ -617,6 +635,8 @@ async function reportScrap(taskId, btn) {
   if(isNaN(val) || val <= 0) { Swal.fire('Грешка', 'Въведи валидна бройка!', 'error'); return; }
   let taskData = globalTasks.find(t => t.id === taskId);
   if (!taskData) return;
+
+  taskData = await refreshTaskStockBeforeSubmit(taskId, taskData, inputElem);
 
   let isDiscrepancyAccepted = false;
   let prevStock = (taskData.prevOpStock !== undefined) ? taskData.prevOpStock : (taskData.maxAllowed || 0);
