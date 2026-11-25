@@ -1865,7 +1865,7 @@ function renderTasks(tasks) {
     let doneTotal = (t.globalMonthlyDone !== undefined && t.globalMonthlyDone !== null && !t.isGreenCard)
         ? parseFloat(t.globalMonthlyDone)
         : Math.max(0, targetTotal - remainingToMake);
-    let labelDone = t.isGreenCard ? '\u041D\u0430 \u0441\u043A\u043B\u0430\u0434:' : '\u0413\u043E\u0442\u043E\u0432\u0438:';
+    let labelDone = t.isGreenCard ? 'На склад:' : 'Покрити по план:';
  
 
 
@@ -1916,7 +1916,6 @@ function renderTasks(tasks) {
           ${dropoffHtml}
           <div style="background-color: #f8fafc; padding: 15px; border-radius: 12px; margin-top: 5px; border: 2px solid #bae6fd;">
             <p style="color: #0369a1; font-weight: 900; text-align:center; margin-top:0; font-size: 1.1em;">🟢 В ПРОЦЕС НА РАБОТА</p>
-            <div style="display:flex; justify-content:space-between; margin-bottom: 5px; font-size: 0.85em; font-weight:bold; color: #64748b;"><span>${labelDone}</span><span>${doneTotal} от ${targetTotal} бр.</span></div>
             <input type="number" id="qty_${t.id}" min="1" value="" placeholder="${t.defaultQty}" ${inputMaxHtml} inputmode="numeric" style="margin-bottom:15px;">
             <div style="display: flex; gap: 10px;">
               <button class="btn" id="btn_${t.id}" onclick="finishTask('${t.id}', this)">✅ ОТЧЕТИ</button>
