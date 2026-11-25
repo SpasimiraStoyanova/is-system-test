@@ -1995,7 +1995,7 @@ window.findRouteBufferAnomaly = function(partName, curOpNum, curOpName, missingQ
     return null;
 };
 
-window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1, visited = new Set()) {
+window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1, visited = new Set(), traceBomDeep = false) {
     if (!partName) return null;
     const norm = normalizeStr(partName);
     const opNorm = normalizeStr(opName || '');
@@ -2134,7 +2134,8 @@ window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1
                 let lastOpName = normalizeStr(cRoutes[cRoutes.length - 1]['Име на операция']);
                 childStock = stockMap[cNorm + '_' + lastOpName] || 0;
             } else {
-                childStock = stockMap[cNorm + '_готов продукт'] || 0;
+                const skladAvail = (typeof getSkladQty === 'function') ? getSkladQty(cNorm) : 0;
+                childStock = (stockMap[cNorm + '_готов продукт'] || 0) + skladAvail;
             }
 
             missingChildren.push({
@@ -2150,21 +2151,41 @@ window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1
         const defChildWithRoute = missingChildren.find(c => c.routes.length > 0 && c.stock < (missingQty * c.multiplier));
 
         if (defChildWithRoute) {
-            // Спираме на първото BOM ниво, което има маршрутна карта (произвеждан детайл)!
             const cRoutes = defChildWithRoute.routes;
             let targetChildOp = cRoutes[0];
+            let targetIdx = 0;
             for (let i = cRoutes.length - 1; i >= 0; i--) {
                 const op = cRoutes[i];
                 const opNameNorm = normalizeStr(op['Име на операция']);
                 const availAtOp = stockMap[defChildWithRoute.norm + '_' + opNameNorm] || 0;
                 if (availAtOp >= (missingQty * defChildWithRoute.multiplier) && availAtOp > 0) {
-                    if (i < cRoutes.length - 1) { targetChildOp = cRoutes[i + 1]; }
-                    else { targetChildOp = cRoutes[i]; }
+                    if (i < cRoutes.length - 1) { targetChildOp = cRoutes[i + 1]; targetIdx = i + 1; }
+                    else { targetChildOp = cRoutes[i]; targetIdx = i; }
                     break;
                 }
-                if (i === 0) { targetChildOp = cRoutes[0]; }
+                if (i === 0) { targetChildOp = cRoutes[0]; targetIdx = 0; }
             }
             const firstOp = targetChildOp;
+
+            // За блокирани задачи ("или ако то липсва - неговия внук"):
+            // ако първата операция на детето също няма наличност от собствените си BOM компоненти, слизаме надолу към внука
+            if (traceBomDeep && targetIdx === 0) {
+                const deeperChild = window.traceRootDeficitOrigin(
+                    defChildWithRoute.code,
+                    firstOp['№ Операция'],
+                    firstOp['Име на операция'],
+                    missingQty * defChildWithRoute.multiplier,
+                    visited,
+                    true
+                );
+                if (deeperChild && deeperChild.isChild) {
+                    deeperChild.chain = [
+                        ...(deeperChild.chain || []),
+                        `${defChildWithRoute.code} (Оп. ${firstOp['№ Операция']} ${firstOp['Име на операция']} / ${firstOp['Машина'] || 'Обща'})`
+                    ];
+                    return deeperChild;
+                }
+            }
 
             return {
                 rootPart: defChildWithRoute.code,
@@ -2179,18 +2200,21 @@ window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1
             };
         }
 
-        const rawChild = missingChildren[0];
-        return {
-            rootPart: rawChild.code,
-            rootOpNum: null,
-            rootOpName: 'Склад Материали',
-            rootMachine: 'Склад Материали',
-            isChild: true,
-            isRaw: true,
-            chain: [`${rawChild.code} (Склад Материали)`],
-            intermediate: null,
-            reason: `Липсва суровина/материал ${rawChild.code} от Склад Материали`
-        };
+        const rawChild = missingChildren.find(c => c.routes.length === 0 && c.stock < (missingQty * c.multiplier));
+        if (rawChild) {
+            return {
+                rootPart: rawChild.code,
+                rootOpNum: null,
+                rootOpName: 'Склад Материали',
+                rootMachine: 'Склад Материали',
+                isChild: true,
+                isRaw: true,
+                chain: [`${rawChild.code} (Склад Материали)`],
+                intermediate: null,
+                reason: `Липсва суровина/материал ${rawChild.code} от Склад Материали`
+            };
+        }
+        if (traceBomDeep) return null;
     }
 
     // 3. Fallback към Склад
@@ -2219,7 +2243,7 @@ function findUpstreamTargetForBlockedTask(taskObj, fallbackPartName, fallbackOpN
     }
 
     if (typeof window.traceRootDeficitOrigin === 'function') {
-        const root = window.traceRootDeficitOrigin(taskObj.name, taskObj.opNum, taskObj.op, 1);
+        const root = window.traceRootDeficitOrigin(taskObj.name, taskObj.opNum, taskObj.op, 1, new Set(), true);
         if (root && root.rootMachine) {
             return {
                 target_part: root.rootPart,

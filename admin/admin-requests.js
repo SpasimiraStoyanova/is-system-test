@@ -144,7 +144,7 @@ function showAdminRequestToast(req) {
                 <span style="font-size:0.75em; color:#94a3b8;">току-що</span>
             </div>
             <div style="font-size:0.88em; color:#1e293b; font-weight:700;">
-                ${req.operator || 'Оператор'} (машина <b>${req.machine || 'Обща'}</b>) чака за <span style="color:#0284c7;">${req.part_name}</span>!
+                ${req.operator || 'Оператор'} (машина <b>${req.machine || 'Обща'}</b>${(req.target_part && req.target_part !== req.part_name) ? `, за ${req.part_name}` : ''}) чака за <span style="color:#0284c7;">${req.target_part || req.part_name}</span>!
             </div>
             ${targetInfo ? `<div style="font-size:0.82em; color:#854d0e; background:#fefce8; padding:4px 8px; border-radius:6px; border:1px solid #fef08a;">${targetInfo}</div>` : ''}
         `;
@@ -257,9 +257,12 @@ function updatePlanningBadgesAndBanner() {
                     summaryText = `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> отчете <b>${tObj.reported_qty} бр.</b> за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> ➔ <b style="color:#c2410c;">разминаване: липсват ${tObj.missing_qty} бр.</b> от ${missingTargetName}(${tObj.target_machine})${intermInfo}`;
                 }
             } else {
+                const tPart = (tObj && tObj.target_part) ? tObj.target_part : (first.target_part || '');
+                const wantedPart = tPart || first.part_name;
+                const parentCtx = (tPart && tPart !== first.part_name) ? `, за ${first.part_name}` : '';
                 summaryText = count === 1 
-                    ? `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> (машина ${first.machine || 'Обща'}) чака за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span>${targetMachineTxt}`
-                    : `<b>${count} чакащи заявки от цеха</b> (последна за <span style="color:#0284c7; font-weight:800;">${first.part_name}</span> от ${first.operator || 'Оператор'})`;
+                    ? `В ${dateStr} ч. <b>${first.operator || 'Оператор'}</b> (машина ${first.machine || 'Обща'}${parentCtx}) чака за <span style="color:#0284c7; font-weight:800;">${wantedPart}</span>${targetMachineTxt}`
+                    : `<b>${count} чакащи заявки от цеха</b> (последна за <span style="color:#0284c7; font-weight:800;">${wantedPart}</span> от ${first.operator || 'Оператор'})`;
             }
 
             banner.innerHTML = `
