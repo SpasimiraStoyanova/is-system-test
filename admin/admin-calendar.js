@@ -2239,21 +2239,32 @@ window.checkAdminCalendarAlertsOnLoad = async function(isSilent = false) {
 // ========================================================
 // ИЗВЕСТИЯ ПРИ ОТЧЕТЕН РЕМОНТ / ПОДДРЪЖКА ОТ ТЕРМИНАЛ
 // ========================================================
-const MAINT_LAST_SEEN_STORAGE_KEY = 'amci_last_seen_maint_log_id';
+const MAINT_ACKED_STORAGE_KEY = 'amci_maint_acked_id';
+const MAINT_ALERTED_STORAGE_KEY = 'amci_maint_alerted_id';
 let unreadTerminalMaintLogs = [];
 let maintLogRealtimeBound = false;
 let isCheckingMaintLogs = false;
 
-window.openMaintenanceLogFromAlert = async function() {
+function acknowledgeAllUnreadMaintLogs() {
+    if (unreadTerminalMaintLogs && unreadTerminalMaintLogs.length > 0) {
+        const maxId = Math.max(...unreadTerminalMaintLogs.map(l => parseInt(l.id, 10) || 0));
+        const curAcked = parseInt(localStorage.getItem(MAINT_ACKED_STORAGE_KEY) || '0', 10) || 0;
+        const curAlerted = parseInt(localStorage.getItem(MAINT_ALERTED_STORAGE_KEY) || '0', 10) || 0;
+        if (maxId > curAcked) localStorage.setItem(MAINT_ACKED_STORAGE_KEY, String(maxId));
+        if (maxId > curAlerted) localStorage.setItem(MAINT_ALERTED_STORAGE_KEY, String(maxId));
+    }
     unreadTerminalMaintLogs = [];
     renderAdminMaintCompletedBanner();
+}
+
+window.openMaintenanceLogFromAlert = async function() {
+    acknowledgeAllUnreadMaintLogs();
     await openCalendarModal();
     switchCalendarSubTab('log');
 };
 
 window.dismissAdminMaintBanner = function() {
-    unreadTerminalMaintLogs = [];
-    renderAdminMaintCompletedBanner();
+    acknowledgeAllUnreadMaintLogs();
 };
 
 function renderAdminMaintCompletedBanner() {
@@ -2354,47 +2365,64 @@ window.checkNewTerminalMaintenanceLogs = async function() {
 
     isCheckingMaintLogs = true;
     try {
-        const storedRaw = localStorage.getItem(MAINT_LAST_SEEN_STORAGE_KEY);
-        const lastSeenId = storedRaw !== null ? parseInt(storedRaw, 10) : NaN;
-
-        if (isNaN(lastSeenId)) {
-            const { data: latestRow, error: initErr } = await client
+        let ackedId = parseInt(localStorage.getItem(MAINT_ACKED_STORAGE_KEY) || '', 10);
+        if (isNaN(ackedId)) {
+            // При първо стартиране приемаме за прочетени само записите по-стари от 24 часа,
+            // за да не се изпускат днешните отчети от терминала при обновяване на страницата.
+            const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            const { data: oldRow, error: initErr } = await client
                 .from('factory_maintenance_log')
                 .select('id')
+                .lt('created_at', cutoff24h)
                 .order('id', { ascending: false })
                 .limit(1);
             if (initErr) return;
-            const maxId = (latestRow && latestRow.length > 0) ? parseInt(latestRow[0].id, 10) : 0;
-            localStorage.setItem(MAINT_LAST_SEEN_STORAGE_KEY, String(maxId));
-            return;
+            ackedId = (oldRow && oldRow.length > 0) ? parseInt(oldRow[0].id, 10) : 0;
+            localStorage.setItem(MAINT_ACKED_STORAGE_KEY, String(ackedId));
         }
 
-        const { data: newLogs, error } = await client
+        let alertedId = parseInt(localStorage.getItem(MAINT_ALERTED_STORAGE_KEY) || '', 10);
+        if (isNaN(alertedId)) {
+            const cutoff1h = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+            const { data: oldAlertRow } = await client
+                .from('factory_maintenance_log')
+                .select('id')
+                .lt('created_at', cutoff1h)
+                .order('id', { ascending: false })
+                .limit(1);
+            alertedId = (oldAlertRow && oldAlertRow.length > 0) ? parseInt(oldAlertRow[0].id, 10) : ackedId;
+            localStorage.setItem(MAINT_ALERTED_STORAGE_KEY, String(alertedId));
+        }
+
+        const { data: unackedLogs, error } = await client
             .from('factory_maintenance_log')
             .select('*')
             .eq('source', 'terminal')
-            .gt('id', lastSeenId)
+            .gt('id', ackedId)
             .order('id', { ascending: false })
             .limit(20);
 
         if (error) return;
-        if (!newLogs || newLogs.length === 0) return;
+        unreadTerminalMaintLogs = unackedLogs || [];
+        renderAdminMaintCompletedBanner();
 
-        const maxNewId = Math.max(...newLogs.map(l => parseInt(l.id, 10) || 0));
-        if (maxNewId > lastSeenId) {
-            localStorage.setItem(MAINT_LAST_SEEN_STORAGE_KEY, String(maxNewId));
+        if (unreadTerminalMaintLogs.length === 0) return;
+
+        const freshLogs = unreadTerminalMaintLogs.filter(l => (parseInt(l.id, 10) || 0) > alertedId);
+        if (freshLogs.length === 0) return;
+
+        const maxFreshId = Math.max(...freshLogs.map(l => parseInt(l.id, 10) || 0));
+        if (maxFreshId > alertedId) {
+            localStorage.setItem(MAINT_ALERTED_STORAGE_KEY, String(maxFreshId));
         }
-
-        unreadTerminalMaintLogs = [...newLogs, ...unreadTerminalMaintLogs].slice(0, 20);
 
         if (typeof playNotificationChime === 'function') {
             playNotificationChime();
         }
-        newLogs.slice(0, 3).forEach(log => showMaintenanceCompletedToast(log));
-        renderAdminMaintCompletedBanner();
+        freshLogs.slice(0, 3).forEach(log => showMaintenanceCompletedToast(log));
 
         // Push известие към телефона за най-новия отчет
-        const newest = newLogs[0];
+        const newest = freshLogs[0];
         if (window.sendAmciPushNotification && newest) {
             const { cleanNotes } = extractAdminMaintPhotoAndNotes(newest);
             const partsTxt = newest.parts_replaced ? `\nЧасти: ${newest.parts_replaced}` : '';
@@ -2430,6 +2458,14 @@ function initMaintenanceLogsRealtime() {
     } catch (e) {
         console.warn('Maint realtime subscribe skipped:', e);
     }
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            checkNewTerminalMaintenanceLogs();
+        }
+    });
+    window.addEventListener('focus', () => {
+        checkNewTerminalMaintenanceLogs();
+    });
 }
 
 // Автоматичен старт при зареждане на админ панела
