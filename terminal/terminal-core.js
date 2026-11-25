@@ -8,6 +8,16 @@ let globalTasks = []; let localHistoryData = []; let globalBomData = []; let glo
 let currentTaskFilter = 'ready'; let activeTaskId = null; let isUserCheckedIn = false; 
 const WORKSHOP_LAT = 41.893865; const WORKSHOP_LNG = 23.487354; const WORKSHOP_RADIUS = 200;
 
+// Коректно парсване на UTC дати от Postgres без 'Z' (напр. otcheti['Дата']), за да се показват в локално време
+window.parseSafeUtcDate = function(dStr) {
+    if (!dStr) return new Date();
+    let s = String(dStr).trim();
+    if (s.includes('T') && !s.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(s)) {
+        s += 'Z';
+    }
+    return new Date(s);
+};
+
 async function verifyUserAccess(email) {
     try {
         const { data, error } = await client.from('personal').select('Статус, Име').eq('Имейл', email).limit(1);

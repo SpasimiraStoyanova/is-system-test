@@ -419,7 +419,8 @@ function renderTermWorkList() {
 
     let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
     currentTermWork.forEach(r => {
-        const dateStr = r['Дата'] ? new Date(r['Дата']).toLocaleString('bg-BG', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        const parsedDate = r['Дата'] ? ((typeof window.parseSafeUtcDate === 'function') ? window.parseSafeUtcDate(r['Дата']) : new Date(r['Дата'])) : null;
+        const dateStr = parsedDate ? parsedDate.toLocaleString('bg-BG', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
         const qty = parseFloat(r['Количество']) || 0;
         const status = String(r['Статус'] || 'Отчетено');
 

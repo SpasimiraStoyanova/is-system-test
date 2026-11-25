@@ -2828,15 +2828,15 @@ async function checkTerminalAndonAlerts() {
                 const reportedPart = tObj.reported_by_part || alertItem.part_name || targetPart;
                 const isChildDiff = normalizeStr(reportedPart) !== normalizeStr(targetPart);
                 const missingTargetInfo = isChildDiff
-                    ? `за влагания детайл <b style="color:#0369a1;">${targetPart}</b> (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>)`
-                    : `от вашата операция (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>)`;
+                    ? `за влагания детайл <b style="color:#0369a1;">${targetPart}</b> (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>) имаше налични само`
+                    : `от вашата операция (<b>${targetOpNum ? 'Оп. ' + targetOpNum + ' - ' : ''}${targetOpName}</b>) са отчетени само`;
                 const targetOpActionLabel = isChildDiff
                     ? `<b style="color:#0369a1;">${targetPart}</b> — <b>${targetOpNum ? 'Оп. ' + targetOpNum : ''} (${targetOpName})</b>`
                     : `<b>${targetOpNum ? 'Оп. ' + targetOpNum : ''} (${targetOpName})</b>`;
                 bodyText = `
                     Колегата <b>${reqOperator}</b> (машина <b>${reqMachine}</b>${reqOp ? ', оп. ' + reqOp : ''}) 
                     отчете <b style="color: #16a34a; font-size: 1.1em;">${tObj.reported_qty || ''} бр.</b> от детайл <b style="color:#0369a1;">${reportedPart}</b>, 
-                    но в системата ${missingTargetInfo} са отчетени само <b>${tObj.prev_qty || 0} бр.</b> (липсват <b>${tObj.missing_qty || ''} бр.</b>)!
+                    но в системата ${missingTargetInfo} <b>${tObj.prev_qty || 0} бр.</b> (недостиг: <b>${tObj.missing_qty || ''} бр.</b>)!
                     <br><br>
                     👉 <b>Към вас:</b> Моля, ако имате изработени детайли, доотчетете си бройките на ${targetOpActionLabel} на терминала!
                 `;

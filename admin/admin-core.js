@@ -1703,12 +1703,13 @@ function buildForm(data = null) {
     });
 
     if (currentTab === 'sklad') {
+        const roundQty = (n) => Math.round((Number(n) || 0) * 10000) / 10000;
         const updateSkladOstatuk = () => {
             const start = parseFloat(document.getElementById('inp_Начална наличност')?.value) || 0;
             const deliv = parseFloat(document.getElementById('inp_Доставено')?.value) || 0;
             const used = parseFloat(document.getElementById('inp_Изразходено')?.value) || 0;
             const ostEl = document.getElementById('inp_Остатък');
-            if (ostEl) ostEl.value = (start + deliv - used);
+            if (ostEl) ostEl.value = roundQty(start + deliv - used);
         };
 
         if (isEditMode && data) {
@@ -1751,7 +1752,7 @@ function buildForm(data = null) {
                         const val = parseFloat(qDeduct.value) || 0;
                         const el = document.getElementById('inp_Изразходено');
                         if (el) {
-                            el.value = baseUsed + val;
+                            el.value = roundQty(baseUsed + val);
                             updateSkladOstatuk();
                         }
                     });
@@ -1761,7 +1762,7 @@ function buildForm(data = null) {
                         const val = parseFloat(qAdd.value) || 0;
                         const el = document.getElementById('inp_Доставено');
                         if (el) {
-                            el.value = baseDeliv + val;
+                            el.value = roundQty(baseDeliv + val);
                             updateSkladOstatuk();
                         }
                     });
@@ -2197,15 +2198,16 @@ async function saveForm(e) {
     });
     if (currentTab === 'nomenklatura') {
         const isMat = payload['Тип'] && String(payload['Тип']).trim().toLowerCase() === 'материал';
-        if (!isMat || !payload['pack_size'] || payload['pack_size'] <= 0) {
-            payload['pack_size'] = null;
-        }
+        const parsedPack = parseFloat(String(payload['pack_size'] ?? '').replace(',', '.'));
+        payload['pack_size'] = (isMat && !isNaN(parsedPack) && parsedPack > 0) ? parsedPack : null;
     }
     if (currentTab === 'sklad') {
         let startQty = parseFloat(payload['Начална наличност']) || 0;
         let delivQty = parseFloat(payload['Доставено']) || 0;
         let usedQty = parseFloat(payload['Изразходено']) || 0;
-        payload['Остатък'] = startQty + delivQty - usedQty;
+        payload['Остатък'] = Math.round((startQty + delivQty - usedQty) * 10000) / 10000;
+        const parsedPack = parseFloat(String(payload['pack_size'] ?? '').replace(',', '.'));
+        payload['pack_size'] = (!isNaN(parsedPack) && parsedPack > 0) ? parsedPack : null;
 
         if (!isEditMode) {
             const newCode = String(payload['ID Детайл'] || '').trim().toLowerCase();
