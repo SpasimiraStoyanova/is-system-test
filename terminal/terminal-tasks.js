@@ -1872,7 +1872,7 @@ function renderTasks(tasks) {
     let pct = targetTotal > 0 ? Math.min(100, Math.round((doneTotal / targetTotal) * 100)) : 0;
     let progressFillClass = pct >= 100 ? 'task-progress-fill completed' : 'task-progress-fill';
     
-    let progressBarHtml = `
+    let progressBarHtml = t.isGreenCard ? '' : `
       <div class="task-progress-box">
         <div class="task-progress-header">
           <span>Напредък: <b>${pct}%</b></span>
