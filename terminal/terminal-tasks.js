@@ -794,6 +794,7 @@ async function loadTasks(isSilent = false) {
                   availableHere -= takenScrap;
                   let scrapShortage = currentPlanScrapTarget - takenScrap;
                   
+                  let freeForBuffer = availableHere;
                   let takenBuffer = Math.min(currentBufferTarget, availableHere);
                   availableHere -= takenBuffer;
                   let bufferShortage = currentBufferTarget - takenBuffer;
@@ -1050,20 +1051,26 @@ async function loadTasks(isSilent = false) {
                               let globalMonthlyTarget = 0;
                               let globalMonthlyDone = 0;
 
-                              planSources.forEach(ps => {
-                                  let gNorm = normalizeStr(ps);
-                                  if (monthlyPlanTargets[gNorm] && monthlyPlanTargets[gNorm][partNorm]) {
-                                      globalMonthlyTarget += monthlyPlanTargets[gNorm][partNorm];
-                                  }
-                                  let dKey = gNorm + '___' + partNorm + '___' + opNorm;
-                                  if (monthlyReportedByOp[dKey]) {
-                                      globalMonthlyDone += monthlyReportedByOp[dKey];
-                                  }
-                              });
-
-                              if (globalMonthlyTarget <= 0) {
-                                  globalMonthlyTarget = originalTarget;
+                              if (typeSuffix === '_green') {
+                                  totalDone = Math.max(0, freeForBuffer);
+                                  globalMonthlyTarget = totalDone + shortage;
                                   globalMonthlyDone = totalDone;
+                              } else {
+                                  planSources.forEach(ps => {
+                                      let gNorm = normalizeStr(ps);
+                                      if (monthlyPlanTargets[gNorm] && monthlyPlanTargets[gNorm][partNorm]) {
+                                          globalMonthlyTarget += monthlyPlanTargets[gNorm][partNorm];
+                                      }
+                                      let dKey = gNorm + '___' + partNorm + '___' + opNorm;
+                                      if (monthlyReportedByOp[dKey]) {
+                                          globalMonthlyDone += monthlyReportedByOp[dKey];
+                                      }
+                                  });
+
+                                  if (globalMonthlyTarget <= 0) {
+                                      globalMonthlyTarget = originalTarget;
+                                      globalMonthlyDone = totalDone;
+                                  }
                               }
                               
                               let monitorKey = normalizeStr(pNameOverride) + '___' + partNorm + '___' + opNorm;
@@ -1862,21 +1869,24 @@ function renderTasks(tasks) {
 
     let remainingToMake = (t.pureQty !== undefined && t.pureQty !== null) ? parseFloat(t.pureQty) : (parseFloat(t.totalNeed) || 0);
     if (t.isGreenCard && t.totalNeed !== undefined) remainingToMake = parseFloat(t.totalNeed) || 0;
-    let doneTotal = (t.globalMonthlyDone !== undefined && t.globalMonthlyDone !== null && !t.isGreenCard)
+    let doneTotal = (t.globalMonthlyDone !== undefined && t.globalMonthlyDone !== null)
         ? parseFloat(t.globalMonthlyDone)
         : Math.max(0, targetTotal - remainingToMake);
     let labelDone = t.isGreenCard ? 'На склад:' : 'Покрити по план:';
+    let progressQtyText = t.isGreenCard
+        ? `${labelDone} <b>${doneTotal}</b> бр.`
+        : `${labelDone} <b>${doneTotal}</b> от ${targetTotal} бр.`;
  
 
 
     let pct = targetTotal > 0 ? Math.min(100, Math.round((doneTotal / targetTotal) * 100)) : 0;
     let progressFillClass = pct >= 100 ? 'task-progress-fill completed' : 'task-progress-fill';
     
-    let progressBarHtml = t.isGreenCard ? '' : `
+    let progressBarHtml = `
       <div class="task-progress-box">
         <div class="task-progress-header">
           <span>Напредък: <b>${pct}%</b></span>
-          <span>${labelDone} <b>${doneTotal}</b> от ${targetTotal} бр.</span>
+          <span>${progressQtyText}</span>
         </div>
         <div class="task-progress-track">
           <div class="${progressFillClass}" style="width: ${pct}%;"></div>
