@@ -96,8 +96,107 @@ function addLogToHistory(type, qty, taskId) {
     updateHistoryUI();
 }
 
+// Бърза и жива проверка директно в inventory + sklad за конкретната задача (~80ms, без теглене на всички таблици и без прерисуване на DOM)
+async function fetchLiveTaskStockLimits(taskData) {
+    if (!taskData || !taskData.hasLimit) return null;
+    if (taskData.isProba || taskData.isGreenCard) return null; // За Проби/Буфери се ползва пълното пресмятане
+
+    const [invRes, skladRes] = await Promise.all([
+        client.from('inventory').select('*').limit(10000),
+        client.from('sklad').select('"ID Детайл", Остатък').limit(10000)
+    ]);
+    if (invRes.error || skladRes.error) return null;
+
+    const freshStock = {};
+    (invRes.data || []).forEach(r => {
+        const code = normalizeStr(r['ID Детайл']);
+        let op = normalizeStr(r['Операция']);
+        if (op === 'готов продукт') {
+            const routes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[code]) ? globalRoutesByDetail[code] : [];
+            if (routes && routes.length > 0) {
+                op = normalizeStr(routes[routes.length - 1]['Име на операция']);
+            }
+        }
+        const key = code + '_' + op;
+        freshStock[key] = (freshStock[key] || 0) + (parseFloat(r['Количество']) || 0);
+    });
+    if (window.globalPackedDeductions) {
+        Object.keys(window.globalPackedDeductions).forEach(k => {
+            if (freshStock[k] !== undefined) {
+                freshStock[k] = Math.max(0, freshStock[k] - window.globalPackedDeductions[k]);
+            }
+        });
+    }
+
+    const freshSkladMap = {};
+    (skladRes.data || []).forEach(s => {
+        const sc = normalizeStr(s['ID Детайл']);
+        if (sc) freshSkladMap[sc] = (parseFloat(s['Остатък']) || 0);
+    });
+
+    const code = normalizeStr(taskData.name);
+    const routes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[code]) ? globalRoutesByDetail[code] : [];
+    const currentOpNum = parseInt(taskData.opNum) || 0;
+    let curOpIdx = routes.findIndex(r => parseInt(r['№ Операция']) === currentOpNum);
+    if (curOpIdx === -1 && taskData.op) {
+        curOpIdx = routes.findIndex(r => normalizeStr(r['Име на операция']) === normalizeStr(taskData.op));
+    }
+
+    let limit = Infinity;
+    let livePrevOpStock = taskData.prevOpStock || 0;
+
+    if (taskData.hasPrevOp && taskData.prevOpName) {
+        livePrevOpStock = freshStock[code + '_' + normalizeStr(taskData.prevOpName)] || 0;
+        limit = livePrevOpStock;
+    }
+
+    const bomData = (typeof globalBomData !== 'undefined' && globalBomData) ? globalBomData : [];
+    const children = bomData.filter(b => normalizeStr(b['ID Родител']) === code);
+    const relevantChildren = children.filter(c => {
+        const opNum = c['Влага се на Оп. №'] ? parseFloat(c['Влага се на Оп. №']) : 0;
+        if (opNum > 0) return opNum === currentOpNum;
+        return (curOpIdx === 0);
+    });
+
+    if (relevantChildren.length > 0) {
+        let minSets = Infinity;
+        relevantChildren.forEach(child => {
+            const cCode = normalizeStr(child['ID Компонент']);
+            const mult = parseFloat(child['Количество']) || 1;
+            const childRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[cCode]) ? globalRoutesByDetail[cCode] : [];
+            let wipAvail = 0;
+            if (childRoutes.length > 0) {
+                const lastChildOp = normalizeStr(childRoutes[childRoutes.length - 1]['Име на операция']);
+                wipAvail = freshStock[cCode + '_' + lastChildOp] || 0;
+            }
+            const skladAvail = freshSkladMap[cCode] || 0;
+            const sets = Math.floor((wipAvail + skladAvail) / mult);
+            if (sets < minSets) minSets = sets;
+        });
+        if (minSets < limit) limit = minSets;
+    }
+
+    if (limit === Infinity) return null;
+    if (limit < 0) limit = 0;
+    if (String(taskData.id || '').endsWith('_scrap') && taskData.scrapAllowance > 0) {
+        limit = Math.min(limit, taskData.scrapAllowance);
+    }
+
+    return { maxAllowed: limit, prevOpStock: livePrevOpStock };
+}
+
 async function validateRealTimeStock(taskData, val) {
     if (!taskData.hasLimit) return { ok: true };
+
+    try {
+        const live = await fetchLiveTaskStockLimits(taskData);
+        if (live) {
+            if (val > live.maxAllowed) return { ok: false, maxAllowed: live.maxAllowed };
+            return { ok: true, maxAllowed: live.maxAllowed };
+        }
+    } catch (err) {
+        console.warn("Грешка при бърза проверка на наличност:", err);
+    }
 
     try {
         await loadTasks(true);
@@ -116,6 +215,19 @@ async function validateRealTimeStock(taskData, val) {
 
 async function refreshTaskStockBeforeSubmit(taskId, taskData, inputElem) {
     if (!taskData || !taskData.hasLimit) return taskData;
+    try {
+        const live = await fetchLiveTaskStockLimits(taskData);
+        if (live) {
+            return Object.assign({}, taskData, {
+                maxAllowed: live.maxAllowed,
+                realMaxAllowed: live.maxAllowed,
+                prevOpStock: taskData.hasPrevOp ? live.prevOpStock : taskData.prevOpStock
+            });
+        }
+    } catch (err) {
+        console.warn("Грешка при бързо опресняване на наличност:", err);
+    }
+
     const savedVal = inputElem ? inputElem.value : '';
     try {
         await loadTasks(true);

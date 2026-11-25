@@ -373,14 +373,18 @@ async function changeMachine(isInitial = false) {
 }
 
 async function loadTasks(isSilent = false) {
-  isUserCheckedIn = await fetchUserCheckInStatus();
-  
-  if (!isUserCheckedIn) {
-      document.getElementById('mainAppContent').style.display = 'none';
-      document.getElementById('bigLoginScreen').style.display = 'flex';
-      return; 
+  let checkInPromise = null;
+  if (isSilent && isUserCheckedIn) {
+      checkInPromise = fetchUserCheckInStatus();
+  } else {
+      isUserCheckedIn = await fetchUserCheckInStatus();
+      if (!isUserCheckedIn) {
+          document.getElementById('mainAppContent').style.display = 'none';
+          document.getElementById('bigLoginScreen').style.display = 'flex';
+          return;
+      }
   }
-  
+
   document.getElementById('bigLoginScreen').style.display = 'none';
   document.getElementById('mainAppContent').style.display = 'block';
 
@@ -388,14 +392,24 @@ async function loadTasks(isSilent = false) {
   if (!isSilent) container.innerHTML = '<div id="loadingMsg" style="text-align:center; padding: 40px; font-weight:bold; color:#64748b; font-size: 1.2em;">Търсене на задачи... 🔄</div>';
   
   try {
-      const [plansRes, bomRes, routesRes, reportsRes, skladRes, nomRes, bufferRes, invRes, prioRes] = await Promise.all([
+      const [plansRes, bomRes, routesRes, reportsRes, skladRes, nomRes, bufferRes, invRes, prioRes, activeProbiRes, pendingMatReqRes, silentCheckIn] = await Promise.all([
           fetchAllRows('plan', '*', q => q.in('Статус', ['Активен', 'Завършен', '📦 Опакован'])), fetchAllRows('bom'),
           fetchAllRows('marshruti'), fetchAllRows('otcheti', '*', null, { col: 'Дата', asc: false }, 2000), 
           fetchAllRows('sklad'), fetchAllRows('Номенклатура'),
           fetchAllRows('sklad_bufferi'),
           fetchAllRows('inventory'),
-          fetchAllRows('task_priorities', '*').catch(() => ({ data: [] }))
+          fetchAllRows('task_priorities', '*').catch(() => ({ data: [] })),
+          client.from('probi').select('*').eq('status', 'В производство').then(r => r).catch(() => ({ data: [] })),
+          client.from('material_requests').select('*').eq('status', 'Чакаща').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
+          checkInPromise || Promise.resolve(true)
       ]);
+
+      if (!silentCheckIn) {
+          isUserCheckedIn = false;
+          document.getElementById('mainAppContent').style.display = 'none';
+          document.getElementById('bigLoginScreen').style.display = 'flex';
+          return;
+      }
 
       if (plansRes.error) throw plansRes.error; if (bomRes.error) throw bomRes.error;
       if (routesRes.error) throw routesRes.error; if (reportsRes.error) throw reportsRes.error;
@@ -532,6 +546,7 @@ async function loadTasks(isSilent = false) {
 
       // Приспадаме опакованите (запазени в кашони) бройки на опакованите планове от наличността на последната операция,
       // за да не се броят като свободни за новите активни планове
+      window.globalPackedDeductions = {};
       if (reportsRes && reportsRes.data) {
           reportsRes.data.forEach(r => {
               if (String(r['Статус'] || '').trim() !== 'Отчетено') return;
@@ -545,6 +560,7 @@ async function loadTasks(isSilent = false) {
                       let routes = (globalRoutesByDetail && globalRoutesByDetail[code]) ? globalRoutesByDetail[code] : [];
                       let lastOpName = (routes && routes.length > 0) ? normalizeStr(routes[routes.length - 1]['Име на операция']) : 'готов продукт';
                       let stockKey = code + '_' + lastOpName;
+                      window.globalPackedDeductions[stockKey] = (window.globalPackedDeductions[stockKey] || 0) + qty;
                       if (physicalStock[stockKey] !== undefined) {
                           physicalStock[stockKey] = Math.max(0, physicalStock[stockKey] - qty);
                       }
@@ -1179,7 +1195,7 @@ async function loadTasks(isSilent = false) {
       // 🧪 ЗАРЕЖДАНЕ НА АКТИВНИ ПРОБИ (R&D СЕРИИ)
       // ==========================================
       try {
-          const { data: activeProbi } = await client.from('probi').select('*').eq('status', 'В производство');
+          const activeProbi = activeProbiRes ? activeProbiRes.data : null;
           if (activeProbi && activeProbi.length > 0) {
               const probaIds = activeProbi.map(p => p.id);
               const { data: probaComps } = await client.from('probi_components').select('*').in('proba_id', probaIds);
@@ -1620,11 +1636,7 @@ async function loadTasks(isSilent = false) {
       // Зареждане на извънредни задачи за доотчитане на дефицит (независими от месечния план)
       let emergencyReconcileTasks = [];
       try {
-          const { data: mReqs } = await client
-              .from('material_requests')
-              .select('*')
-              .eq('status', 'Чакаща')
-              .order('created_at', { ascending: false });
+          const mReqs = pendingMatReqRes ? pendingMatReqRes.data : null;
 
           if (mReqs && mReqs.length > 0) {
               mReqs.forEach(req => {
