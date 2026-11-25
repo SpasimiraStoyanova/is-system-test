@@ -695,7 +695,7 @@ window.openEventDetailsModal = function(eventId) {
             document.getElementById('evDetailCompDate').innerText = formatDateDisplay(relatedLog.completed_date);
             document.getElementById('evDetailCompBy').innerText = relatedLog.completed_by || '-';
             const costVal = parseFloat(relatedLog.cost) || 0;
-            document.getElementById('evDetailCompCost').innerText = costVal > 0 ? `${costVal.toFixed(2)} лв.` : '0.00 лв.';
+            document.getElementById('evDetailCompCost').innerText = costVal > 0 ? `${costVal.toFixed(2)} €` : '0.00 €';
             document.getElementById('evDetailCompParts').innerText = relatedLog.parts_replaced || 'Няма';
             document.getElementById('evDetailCompNotes').innerText = cleanNotes || 'Няма въведени забележки';
             const photoBox = document.getElementById('evDetailCompPhotoBox');
@@ -1143,7 +1143,7 @@ function renderMaintenanceLogTable() {
     const totalCost = filtered.reduce((acc, cur) => acc + (parseFloat(cur.cost) || 0), 0);
     const totalCostEl = document.getElementById('calLogTotalCostVal');
     if (totalCostEl) {
-        totalCostEl.innerText = `${totalCost.toFixed(2)} лв.`;
+        totalCostEl.innerText = `${totalCost.toFixed(2)} €`;
     }
 
     if (filtered.length === 0) {
@@ -1170,7 +1170,7 @@ function renderMaintenanceLogTable() {
             </td>
             <td style="text-align: right; white-space: nowrap;">
                 ${(parseFloat(log.cost) > 0)
-                    ? `<span style="background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 0.95em; white-space: nowrap; display: inline-block;">💰 ${parseFloat(log.cost).toFixed(2)} лв.</span>`
+                    ? `<span style="background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 0.95em; white-space: nowrap; display: inline-block;">💰 ${parseFloat(log.cost).toFixed(2)} €</span>`
                     : `<span style="color: #94a3b8; font-size: 0.88em;">—</span>`
                 }
             </td>
@@ -1732,7 +1732,7 @@ function initCalendarModalHtml() {
                             <option value="all">Всички машини и обекти</option>
                         </select>
                         <div id="calLogTotalCostBox" style="background: #f0fdf4; border: 1px solid #86efac; color: #166534; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 0.9em; white-space: nowrap;">
-                            💰 Общ разход: <span id="calLogTotalCostVal">0.00 лв.</span>
+                            💰 Общ разход: <span id="calLogTotalCostVal">0.00 €</span>
                         </div>
                     </div>
                     <button class="btn-cal-action" onclick="openAddManualLogModal()" style="background: #0d9488; color: white;">
@@ -1863,7 +1863,7 @@ function initCalendarModalHtml() {
                         <input type="text" id="compPartsInput" placeholder="напр. Масло Shell Tellus 46 (15л), Филтър F-12..." style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
                     </div>
                     <div>
-                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Стойност / Разход в лв. (по желание):</label>
+                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Стойност / Разход в € (EUR) (по желание):</label>
                         <input type="number" step="0.01" id="compCostInput" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
                     </div>
                     <div>
@@ -2038,7 +2038,7 @@ function initCalendarModalHtml() {
                     </div>
 
                     <div>
-                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Стойност / Разход в лв. (по желание):</label>
+                        <label style="font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">Стойност / Разход в € (EUR) (по желание):</label>
                         <input type="number" step="0.01" id="manualLogCost" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
                     </div>
 
