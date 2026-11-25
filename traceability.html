@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="bg">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,7 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;900&display=swap" rel="stylesheet">
-  
+
   <style>
     :root {
       --bg-color: #0f172a;
@@ -19,53 +20,170 @@
       --danger: #ef4444;
       --warning: #f59e0b;
     }
-    body { font-family: 'Sofia Sans', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh;}
-    
+
+    body {
+      font-family: 'Sofia Sans', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
     .navbar {
-      height: 60px; background: #020617; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid #334155; gap: 15px;
+      height: 60px;
+      background: #020617;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      border-bottom: 1px solid #334155;
+      gap: 15px;
     }
-    .search-input, .date-input { padding: 8px 12px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; outline: none; font-family: 'Sofia Sans'; font-size: 1rem; }
-    .search-input:focus, .date-input:focus { border-color: var(--primary); }
-    .btn { background: var(--primary); color: white; border: none; padding: 8px 18px; border-radius: 4px; cursor: pointer; font-weight: 600; font-family: 'Sofia Sans'; font-size: 1rem; transition: background 0.2s;}
-    .btn:hover { background: #2563eb; }
-    
+
+    .search-input,
+    .date-input {
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: white;
+      outline: none;
+      font-family: 'Sofia Sans';
+      font-size: 1rem;
+    }
+
+    .search-input:focus,
+    .date-input:focus {
+      border-color: var(--primary);
+    }
+
+    .btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-family: 'Sofia Sans';
+      font-size: 1rem;
+      transition: background 0.2s;
+    }
+
+    .btn:hover {
+      background: #2563eb;
+    }
+
     .workspace {
-      flex: 1; padding: 40px; display: flex; align-items: center; justify-content: flex-start; overflow-x: auto;
-      background-image: radial-gradient(#334155 1px, transparent 1px); background-size: 30px 30px;
+      flex: 1;
+      padding: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      overflow-x: auto;
+      background-image: radial-gradient(#334155 1px, transparent 1px);
+      background-size: 30px 30px;
     }
-    
+
     /* VSM Styles */
     .vsm-flow {
-      display: flex; align-items: center; gap: 15px; flex-wrap: nowrap; min-width: max-content; margin: auto;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      flex-wrap: nowrap;
+      min-width: max-content;
+      margin: auto;
     }
+
     .vsm-node {
-      font-size: 1.25rem; font-weight: 900; letter-spacing: 0.5px;
-      display: flex; align-items: center; gap: 8px;
+      font-size: 1.25rem;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
-    .vsm-name { color: #f8fafc; text-transform: uppercase; }
-    .vsm-divider { color: #475569; }
-    .vsm-stat { font-weight: 600; font-size: 1.2rem; }
-    .vsm-stat.prod { color: var(--success); }
-    .vsm-stat.scrap { color: var(--danger); }
-    .vsm-stat.consumed { color: var(--warning); }
-    
+
+    .vsm-name {
+      color: #f8fafc;
+      text-transform: uppercase;
+    }
+
+    .vsm-divider {
+      color: #475569;
+    }
+
+    .vsm-stat {
+      font-weight: 600;
+      font-size: 1.2rem;
+    }
+
+    .vsm-stat.prod {
+      color: var(--success);
+    }
+
+    .vsm-stat.scrap {
+      color: var(--danger);
+    }
+
+    .vsm-stat.consumed {
+      color: var(--warning);
+    }
+
     .vsm-arrow {
-      color: #475569; font-size: 1.2rem; display: flex; align-items: center; padding: 0 10px; font-weight: 900;
+      color: #475569;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      font-weight: 900;
     }
 
     /* Complex Target Node */
     .vsm-target-node {
-      border: 2px solid var(--primary); background: linear-gradient(180deg, rgba(59,130,246,0.1) 0%, rgba(15,23,42,0.9) 100%); 
-      padding: 20px 30px; border-radius: 8px;
-      display: flex; flex-direction: column; gap: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+      border: 2px solid var(--primary);
+      background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, rgba(15, 23, 42, 0.9) 100%);
+      padding: 20px 30px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
       min-width: 300px;
     }
-    .target-title { font-size: 1.8rem; font-weight: 900; color: #f8fafc; text-align: center; border-bottom: 2px dashed #334155; padding-bottom: 15px; text-transform: uppercase;}
-    .target-stats { display: flex; flex-direction: column; gap: 8px; font-size: 1.2rem; }
-    .target-row { display: flex; justify-content: space-between; gap: 40px; align-items: center; }
-    
-    .col-layout { display: flex; flex-direction: column; gap: 20px; }
-    
+
+    .target-title {
+      font-size: 1.8rem;
+      font-weight: 900;
+      color: #f8fafc;
+      text-align: center;
+      border-bottom: 2px dashed #334155;
+      padding-bottom: 15px;
+      text-transform: uppercase;
+    }
+
+    .target-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 1.2rem;
+    }
+
+    .target-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 40px;
+      align-items: center;
+    }
+
+    .col-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
     .vsm-node-clickable {
       cursor: pointer;
       transition: all 0.2s ease;
@@ -74,6 +192,7 @@
       background: rgba(255, 255, 255, 0.03);
       border: 1px dashed #334155;
     }
+
     .vsm-node-clickable:hover {
       background: rgba(59, 130, 246, 0.15);
       border-color: var(--primary);
@@ -82,27 +201,32 @@
     }
   </style>
 </head>
+
 <body>
   <div class="navbar">
     <div style="font-size:1.3rem; font-weight:900; margin-right: 20px; color: var(--primary);">ИНВЕНТАРЕН ДЕТЕКТИВ</div>
-    
-    <input type="text" id="searchInput" class="search-input" list="dl_trace_parts" placeholder="Код или име на детайл..." style="width: 280px;" autocomplete="off">
+
+    <input type="text" id="searchInput" class="search-input" list="dl_trace_parts"
+      placeholder="Код или име на детайл..." style="width: 280px;" autocomplete="off">
     <datalist id="dl_trace_parts"></datalist>
-    
+
     <span style="color:var(--text-muted); font-weight:600; font-size:1rem; margin-left: 10px;">ОТ:</span>
     <input type="date" id="dateFrom" class="date-input">
     <span style="color:var(--text-muted); font-weight:600; font-size:1rem;">ДО:</span>
     <input type="date" id="dateTo" class="date-input">
-    
+
     <button class="btn" onclick="startSearch()">АНАЛИЗИРАЙ</button>
-    <a href="admin.html" style="margin-left:auto; color:#94a3b8; text-decoration:none; font-weight:600; font-size: 1.1rem;">⬅ Обратно</a>
+    <a href="admin.html"
+      style="margin-left:auto; color:#94a3b8; text-decoration:none; font-weight:600; font-size: 1.1rem;">⬅ Обратно</a>
   </div>
 
   <div class="workspace" id="workspace">
-    <div style="margin: auto; color: #475569; font-size: 1.5rem; font-weight:900; letter-spacing: 1px;">ВЪВЕДЕТЕ ДЕТАЙЛ И ПЕРИОД ЗА АНАЛИЗ...</div>
+    <div style="margin: auto; color: #475569; font-size: 1.5rem; font-weight:900; letter-spacing: 1px;">ВЪВЕДЕТЕ ДЕТАЙЛ
+      И ПЕРИОД ЗА АНАЛИЗ...</div>
   </div>
 
-  <div id="timelineContainer" style="height: 100px; background: #020617; border-top: 1px solid #334155; padding: 10px 20px; display:flex; align-items:center; overflow-x:auto; gap: 40px;">
+  <div id="timelineContainer"
+    style="height: 100px; background: #020617; border-top: 1px solid #334155; padding: 10px 20px; display:flex; align-items:center; overflow-x:auto; gap: 40px;">
   </div>
 
   <!-- Dummy elements for scripts if needed -->
@@ -112,6 +236,7 @@
   <div id="filter_all" style="display:none"></div>
 
   <script src="admin/admin-config.js?v=13"></script>
-  <script src="traceability.js?v=26"></script>
+  <script src="traceability.js?v=27"></script>
 </body>
+
 </html>

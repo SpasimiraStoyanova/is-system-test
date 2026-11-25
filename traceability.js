@@ -42,6 +42,11 @@ function isProbaOtchet(r) {
            w.includes('ПРОБА') || pId !== '';
 }
 
+// Нормализация на код / име (запазва '#', '/', '?', '*', '№' като отличителни знаци, напр. "Чаша Вар. 11#" vs "Чаша Вар. 11", "Кух вал #" vs "Кух вал", "1/4\"" vs "№14")
+function normalizePartCode(str) {
+    return String(str || '').replace(/[^а-яА-Яa-zA-Z0-9#/?*№]/g, '').toLowerCase();
+}
+
 // 0. Зареждане на Номенклатура, BOM и Склад Материали
 let nomList = [];
 let nomMap = {}; // normCode -> nom, normName -> nom
@@ -63,8 +68,8 @@ async function loadStaticData() {
             nomRes.data.forEach(n => {
                 let code = String(n['ID Детайл'] || '').trim();
                 let name = String(n['Вътрешно име'] || '').trim();
-                let normC = code.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-                let normN = name.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                let normC = normalizePartCode(code);
+                let normN = normalizePartCode(name);
                 if (normC) nomMap[normC] = n;
                 if (normN) nomMap[normN] = n;
                 if (code && name && code.toLowerCase() !== name.toLowerCase()) {
@@ -85,7 +90,7 @@ async function loadStaticData() {
             skladRes.data.forEach(s => {
                 let code = String(s['ID Детайл'] || '').trim();
                 if (!code) return;
-                let cNorm = code.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                let cNorm = normalizePartCode(code);
                 let entry = {
                     code: code,
                     stock: parseFloat(s['Остатък']) || 0,
@@ -99,7 +104,7 @@ async function loadStaticData() {
         console.warn('Номенклатура/BOM/Склад: грешка при начално зареждане:', e);
     }
 }
-loadStaticData();
+const staticDataPromise = loadStaticData();
 
 window.addEventListener('DOMContentLoaded', () => {
     try {
@@ -178,17 +183,25 @@ window.jumpToPart = function(partName) {
 };
 
 async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
-    let cleanInput = rawInput.trim();
-    let inputNorm = cleanInput.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+    await staticDataPromise;
 
-    // 0. Търсим съответствие в Номенклатура
-    let matchedNom = nomMap[inputNorm] || null;
+    let cleanInput = rawInput.trim();
+    let inputLower = cleanInput.toLowerCase();
+    let inputNorm = normalizePartCode(cleanInput);
+    let inputHasHash = inputNorm.includes('#');
+
+    // 0. Търсим съответствие в Номенклатура (първо точно съвпадение, после нормализирано с '#', накрая частично със същия '#' признак)
+    let matchedNom = nomList.find(n => {
+        let c = String(n['ID Детайл'] || '').trim().toLowerCase();
+        let nm = String(n['Вътрешно име'] || '').trim().toLowerCase();
+        return (c && c === inputLower) || (nm && nm === inputLower);
+    }) || nomMap[inputNorm] || null;
     if (!matchedNom && nomList.length > 0) {
         matchedNom = nomList.find(n => {
-            let c = String(n['ID Детайл'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-            let nm = String(n['Вътрешно име'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-            return (c && (c === inputNorm || inputNorm.includes(c) || c.includes(inputNorm))) ||
-                   (nm && (nm === inputNorm || inputNorm.includes(nm) || nm.includes(inputNorm)));
+            let c = normalizePartCode(n['ID Детайл']);
+            let nm = normalizePartCode(n['Вътрешно име']);
+            return (c && c.includes('#') === inputHasHash && (c === inputNorm || inputNorm.includes(c) || c.includes(inputNorm))) ||
+                   (nm && nm.includes('#') === inputHasHash && (nm === inputNorm || inputNorm.includes(nm) || nm.includes(inputNorm)));
         });
     }
 
@@ -196,9 +209,9 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     let searchName = matchedNom ? String(matchedNom['Вътрешно име'] || '').trim() : cleanInput;
 
     let normCodes = new Set([
-        cleanInput.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase(),
-        searchCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase(),
-        searchName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()
+        inputNorm,
+        normalizePartCode(searchCode),
+        normalizePartCode(searchName)
     ]);
     normCodes.delete('');
 
@@ -217,10 +230,10 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     }
     
     globalAllData.routesSetNorm = new Set();
-    if (rData) rData.forEach(r => globalAllData.routesSetNorm.add(String(r['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()));
+    if (rData) rData.forEach(r => globalAllData.routesSetNorm.add(normalizePartCode(r['Код на детайла'])));
     
     globalAllData.tRoutes = rData ? rData.filter(r => {
-        let dbId = String(r['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let dbId = normalizePartCode(r['Код на детайла']);
         return normCodes.has(dbId);
     }) : [];
     globalAllData.tRoutes.sort((a,b) => parseInt(a['№ Операция']||0) - parseInt(b['№ Операция']||0));
@@ -235,7 +248,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     globalAllData.rawOtcheti = [];
     if (rawOtcheti) {
         rawOtcheti.forEach(r => {
-            let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            let dbId = normalizePartCode(r['ID Детайл']);
             if (!normCodes.has(dbId)) return;
             globalAllData.rawOtcheti.push(r);
             let dTs = parseSafeTs(r['Дата']);
@@ -268,11 +281,11 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
 
     // 3.1 Търсене в BOM таблицата (детайли и материали, вложени в детайла)
     (bomCache || []).forEach(b => {
-        let pNorm = String(b['ID Родител'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let pNorm = normalizePartCode(b['ID Родител']);
         let matchesParent = normCodes.has(pNorm);
         if (matchesParent) {
             let cCode = String(b['ID Компонент'] || '').trim();
-            let cNorm = cCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            let cNorm = normalizePartCode(cCode);
             if (cCode && !seenChildNorms.has(cNorm) && !normCodes.has(cNorm)) {
                 seenChildNorms.add(cNorm);
                 let cNom = nomMap[cNorm] || null;
@@ -292,11 +305,11 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
 
     // 3.2 Търсене в Номенклатура (детайли, чийто ID Родител сочи към текущия детайл)
     (nomList || []).forEach(n => {
-        let pNorm = String(n['ID Родител'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let pNorm = normalizePartCode(n['ID Родител']);
         let matchesParent = normCodes.has(pNorm);
         if (matchesParent) {
             let cCode = String(n['ID Детайл'] || '').trim();
-            let cNorm = cCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            let cNorm = normalizePartCode(cCode);
             if (cCode && !seenChildNorms.has(cNorm) && !normCodes.has(cNorm)) {
                 seenChildNorms.add(cNorm);
                 let cNom = nomMap[cNorm] || null;
@@ -316,7 +329,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     // 3.3 Изходен материал / Заготовка / Суровина на самия детайл (от Номенклатура)
     if (matchedNom) {
         let originMat = String(matchedNom['ID Родител'] || '').trim();
-        let oNorm = originMat.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let oNorm = normalizePartCode(originMat);
         if (originMat && !seenChildNorms.has(oNorm) && !normCodes.has(oNorm)) {
             seenChildNorms.add(oNorm);
             let oNom = nomMap[oNorm] || null;
@@ -340,11 +353,11 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     let seenParentNorms = new Set();
 
     (bomCache || []).forEach(b => {
-        let cNorm = String(b['ID Компонент'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let cNorm = normalizePartCode(b['ID Компонент']);
         let matchesComp = normCodes.has(cNorm);
         if (matchesComp) {
             let pCode = String(b['ID Родител'] || '').trim();
-            let pNorm = pCode.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            let pNorm = normalizePartCode(pCode);
             if (pCode && !seenParentNorms.has(pNorm) && !normCodes.has(pNorm)) {
                 seenParentNorms.add(pNorm);
                 parentsRaw.push(b);
@@ -357,7 +370,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     globalAllData.parentOtcheti = [];
     if (globalAllData.parentsBOM.length > 0) {
         let parentNames = globalAllData.parentsBOM.map(b => String(b['ID Родител'])).filter(Boolean);
-        let pNorms = parentNames.map(p => p.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase());
+        let pNorms = parentNames.map(p => normalizePartCode(p));
         let parentNamesUnique = [...new Set(parentNames)];
         
         globalAllData.parentRoutes = {};
@@ -367,7 +380,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
              let { data: pRoutes } = await client.from('marshruti').select('*').in('Код на детайла', chunk);
              if (pRoutes) {
                  pRoutes.forEach(r => {
-                     let pN = String(r['Код на детайла']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                     let pN = normalizePartCode(r['Код на детайла']);
                      if (!globalAllData.parentRoutes[pN]) globalAllData.parentRoutes[pN] = [];
                      globalAllData.parentRoutes[pN].push(r);
                  });
@@ -377,7 +390,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
              globalAllData.parentRoutes[pN].sort((a,b) => (parseInt(a['№ Операция'])||0) - (parseInt(b['№ Операция'])||0));
         }
         globalAllData.parentsBOM.forEach(b => {
-             let pNorm = String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+             let pNorm = normalizePartCode(b['ID Родител']);
              let injOpNum = parseInt(b['Влага се на Оп. №']);
              let pR = globalAllData.parentRoutes[pNorm] || [];
              let targetOpName = null;
@@ -395,7 +408,7 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
             const { data: pOtch } = await fetchRobustRows('otcheti', '*', 'ID Детайл', pName);
             if (pOtch) {
                 pOtch.forEach(r => {
-                    let dbId = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                    let dbId = normalizePartCode(r['ID Детайл']);
                     if (pNorms.includes(dbId)) {
                         globalAllData.parentOtcheti.push(r);
                         let dTs = parseSafeTs(r['Дата']);
@@ -422,8 +435,8 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
     
     let allStock = invData || [];
     allStock.forEach(i => {
-        let dbId = String(i['ID Детайл'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-        let dbName = String(i['Име'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+        let dbId = normalizePartCode(i['ID Детайл']);
+        let dbName = normalizePartCode(i['Име']);
         if (normCodes.has(dbId) || normCodes.has(dbName)) {
             let qty = (i['Общо'] !== undefined && i['Общо'] !== null) 
                 ? i['Общо'] 
@@ -452,8 +465,8 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
             auditData.forEach(l => {
                 let n = l.new_data || {};
                 let o = l.old_data || {};
-                let id1 = String(n['ID Детайл'] || n['Име'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-                let id2 = String(o['ID Детайл'] || o['Име'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                let id1 = normalizePartCode(n['ID Детайл'] || n['Име']);
+                let id2 = normalizePartCode(o['ID Детайл'] || o['Име']);
                 if (normCodes.has(id1) || normCodes.has(id2)) {
                     globalAllData.auditHistory.push(l);
                 }
@@ -474,8 +487,8 @@ async function fetchDataForPeriod(rawInput, dateFrom, dateTo) {
         
         if (chkData) {
             chkData.forEach(c => {
-                let pId = String(c.part_id || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-                let pNm = String(c.part_name || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                let pId = normalizePartCode(c.part_id);
+                let pNm = normalizePartCode(c.part_name);
                 if (normCodes.has(pId) || normCodes.has(pNm)) {
                     globalAllData.recentChecks.push(c);
                 }
@@ -626,11 +639,11 @@ async function renderVSM(dateKey) {
             let norm = parseFloat(normStr) || 1;
             let consumedChild = Math.round((targetProduced * norm) * 100) / 100;
             let consumedProbaChild = Math.round((targetProba * norm) * 100) / 100;
-            let cNorm = cName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            let cNorm = normalizePartCode(cName);
             let sklEntry = skladMap[cName] || skladMap[cNorm] || null;
             let nomEntry = nomMap[cNorm] || null;
             let unit = (nomEntry ? nomEntry['Единици'] : (sklEntry ? sklEntry.unit : b['Единици'])) || 'бр.';
-            let safeCName = cName.replace(/'/g, "\\'");
+            let safeCName = cName.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
             
             let isProbaConsumed = targetProba > 0;
             let probaBadge = '';
@@ -643,7 +656,7 @@ async function renderVSM(dateKey) {
             }
 
             let isManufactured = (nomEntry && (nomEntry['Тип'] || '').toLowerCase().includes('детайл')) ||
-                                 (bomCache.some(x => String(x['ID Родител'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase() === cNorm));
+                                 (bomCache.some(x => normalizePartCode(x['ID Родител']) === cNorm));
             let icon = isManufactured ? '🔍' : '📦';
             let skladInfoHtml = sklEntry ? `<span style="color:#64748b; font-size:0.85rem;" title="Наличност в Склад материали">(Склад: <b style="color:#94a3b8;">${sklEntry.stock} ${unit}</b>)</span>` : '';
 
@@ -680,7 +693,7 @@ async function renderVSM(dateKey) {
             let dTs = parseSafeTs(r['Дата']);
             let st = String(r['Статус'] || '').trim().toLowerCase();
             if (st === 'отчетено' || st === 'завършено') {
-                let pName = String(r['ID Детайл']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                let pName = normalizePartCode(r['ID Детайл']);
                 let op = String(r['Операция'] || 'Без оп.').trim().toUpperCase();
                 let q = parseFloat(r['Количество']) || 0;
                 let isPr = isProbaOtchet(r);
@@ -712,7 +725,7 @@ async function renderVSM(dateKey) {
         let pNodes = [];
         globalAllData.parentsBOM.forEach(b => {
             let originalName = String(b['ID Родител']).trim().toUpperCase();
-            let pName = String(b['ID Родител']).replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+            let pName = normalizePartCode(b['ID Родител']);
             let normStr = String(b['Количество'] || '1').replace(',', '.');
             let norm = parseFloat(normStr) || 1;
             
@@ -747,7 +760,7 @@ async function renderVSM(dateKey) {
             
             // 🌟 Показваме родителя САМО когато реално са вложени бройки (> 0) в избрания период
             if (consumedHere > 0) {
-                let safePName = originalName.replace(/'/g, "\\'");
+                let safePName = originalName.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 let isProbaParent = consumedProbaHere > 0;
                 let probaPlanNames = parentProbaPlans[pName] ? Array.from(parentProbaPlans[pName]).join(', ') : '';
 
@@ -1348,23 +1361,23 @@ window.openRevisionModal = async function(opName, cBalance, currentStock) {
 
                     // Нормализирани кодове за надеждно намиране
                     let normCodes = new Set([
-                        String(targetId || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase(),
-                        String(targetName || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase()
+                        normalizePartCode(targetId),
+                        normalizePartCode(targetName)
                     ]);
                     normCodes.delete('');
 
                     // Търсим първо запис за конкретната операция
                     let matchedInv = (allInv || []).find(i => {
-                        let dbId = String(i['ID Детайл'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-                        let dbOp = String(i['Операция'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
-                        let curOp = opName.replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                        let dbId = normalizePartCode(i['ID Детайл']);
+                        let dbOp = normalizePartCode(i['Операция']);
+                        let curOp = normalizePartCode(opName);
                         return normCodes.has(dbId) && (dbOp === curOp || dbOp.includes(curOp) || curOp.includes(dbOp));
                     });
 
                     // Ако няма за операцията, търсим записа за готов продукт / склад
                     if (!matchedInv) {
                         matchedInv = (allInv || []).find(i => {
-                            let dbId = String(i['ID Детайл'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                            let dbId = normalizePartCode(i['ID Детайл']);
                             let dbOp = String(i['Операция'] || '').toLowerCase();
                             return normCodes.has(dbId) && (dbOp.includes('готов') || dbOp.includes('склад'));
                         });
@@ -1373,7 +1386,7 @@ window.openRevisionModal = async function(opName, cBalance, currentStock) {
                     // Ако няма, търсим какъвто и да е запис за този детайл
                     if (!matchedInv) {
                         matchedInv = (allInv || []).find(i => {
-                            let dbId = String(i['ID Детайл'] || '').replace(/[^а-яА-Яa-zA-Z0-9]/g, '').toLowerCase();
+                            let dbId = normalizePartCode(i['ID Детайл']);
                             return normCodes.has(dbId);
                         });
                     }

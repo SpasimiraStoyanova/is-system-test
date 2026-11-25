@@ -1587,7 +1587,7 @@
             <span class="card-meta"><span class="ui-badge">VSM Проследяване</span></span>
           </summary>
           <div class="card-body">
-            <p>Проследява движението на бройки за избран детайл и период (полета <code>ОТ:</code> / <code>ДО:</code>, код, бутон <span class="ui-btn blue">АНАЛИЗИРАЙ</span>). Показва вляво BOM децата, в средата операциите на детайла, вдясно BOM родителите и долу хронологична лента на отчетите.</p>
+            <p>Проследява движението на бройки за избран детайл и период (полета <code>ОТ:</code> / <code>ДО:</code>, код, бутон <span class="ui-btn blue">АНАЛИЗИРАЙ</span>). Показва вляво BOM децата, в средата операциите на детайла, вдясно BOM родителите и долу хронологична лента на отчетите. Символът <code>#</code> (както и отличителни знаци като <code>/</code>, <code>?</code>, <code>*</code>, <code>№</code>) се запазва при търсенето, така че двойки родител/дете като <code>Чаша Вар. 11#</code> / <code>Чаша Вар. 11</code> и <code>Кух вал #</code> / <code>Кух вал</code> се проследяват като отделни позиции със собствен маршрут, наличност и BOM връзки.</p>
             <p><strong>Цветове:</strong> <strong style="color:#10b981;">Зелено</strong> = Произведено, <strong style="color:#ef4444;">Червено</strong> = Брак, <strong style="color:#f59e0b;">Оранжево</strong> = Консумирано. Клик върху възел отваря <span class="ui-btn">📋 Засечи наличност (Ревизия)</span>, с който може да се коригира <code>inventory</code> със запис в <code>inventory_checks</code> и <code>audit_logs</code>.</p>
           </div>
         </details>
