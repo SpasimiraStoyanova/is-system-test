@@ -509,11 +509,12 @@ function computeMonitorMetrics(plansData, reportsData, skladData, invData, nomDa
             finalDoneQtyForChildren = doneQty;
         }
 
+        const plannedQtyForChildren = Math.min(n.planQty || 0, finalDoneQtyForChildren);
         (childrenMap[n.id] || []).forEach(childId => {
             let childNode = mergedNodes[childId];
             if (childNode) {
                 let mult = getMultiplier(childNode.code, n.code);
-                childNode.consumedByParents += finalDoneQtyForChildren * mult;
+                childNode.consumedByParents += plannedQtyForChildren * mult;
             }
         });
     });
