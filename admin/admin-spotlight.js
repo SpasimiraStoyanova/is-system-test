@@ -345,20 +345,23 @@
 
         // 1. Номенклатура
         const nom = spotlightCache.nomenclature.find(n => 
-            String(n['ID Детайл']).trim().toLowerCase() === lowerCode || 
-            String(n['Вътрешно име']).trim().toLowerCase() === lowerCode
+            String(n['ID Детайл'] || '').trim().toLowerCase() === lowerCode || 
+            String(n['Вътрешно име'] || '').trim().toLowerCase() === lowerCode
         ) || {};
 
-        const formalCode = nom['ID Детайл'] || cleanCode;
-        const displayName = nom['Вътрешно име'] || formalCode;
+        const formalCode = String(nom['ID Детайл'] || cleanCode).trim();
+        const formalLower = formalCode.toLowerCase();
+        const displayName = String(nom['Вътрешно име'] || formalCode).trim();
         const drawingUrl = nom['Линк към чертеж'] || '';
         const sopUrl = nom['Линк към СОП'] || '';
+
+        const targetKeys = new Set([lowerCode, formalLower].filter(Boolean));
 
         // 2. Склад Готов Продукт & WIP (Междинни операции)
         let gpQty = 0;
         let wipOps = [];
         (spotlightCache.inventory || []).forEach(r => {
-            if (String(r['ID Детайл']).trim().toLowerCase() === lowerCode || String(r['ID Детайл']).trim().toLowerCase() === formalCode.toLowerCase()) {
+            if (targetKeys.has(String(r['ID Детайл'] || '').trim().toLowerCase())) {
                 let op = String(r['Операция'] || '').trim();
                 let q = parseFloat(r['Количество']) || 0;
                 if (op.toLowerCase() === 'готов продукт') {
@@ -370,27 +373,153 @@
         });
 
         // 3. Склад Материали (Суровина)
-        let rawMaterial = spotlightCache.sklad.find(s => String(s['ID Детайл']).trim().toLowerCase() === lowerCode || String(s['ID Детайл']).trim().toLowerCase() === formalCode.toLowerCase());
+        let rawMaterial = spotlightCache.sklad.find(s => targetKeys.has(String(s['ID Детайл'] || '').trim().toLowerCase()));
         let rawStock = rawMaterial ? (parseFloat(rawMaterial['Остатък']) || 0) : null;
         let rawUnit = rawMaterial ? (rawMaterial['Мерна единица'] || 'бр.') : '';
 
-        // 4. Активен Месечен План
-        let activePlans = (spotlightCache.plans || []).filter(p => 
-            String(p['ID Детайл'] || p['Вътрешно име']).trim().toLowerCase() === lowerCode ||
-            String(p['ID Детайл'] || p['Вътрешно име']).trim().toLowerCase() === formalCode.toLowerCase()
-        );
+        // Индексиране на Номенклатура и BOM за рекурсивно проследяване нагоре/надолу
+        const nomResolveMap = {};
+        const nomInternalMap = {};
+        (spotlightCache.nomenclature || []).forEach(n => {
+            const idD = String(n['ID Детайл'] || '').trim();
+            const intN = String(n['Вътрешно име'] || '').trim();
+            if (idD) {
+                nomResolveMap[idD.toLowerCase()] = idD;
+                if (intN) nomInternalMap[idD.toLowerCase()] = intN;
+            }
+            if (intN && idD) nomResolveMap[intN.toLowerCase()] = idD;
+        });
+
+        // Индекс на BOM деца (bom + ID Родител от Номенклатура)
+        const bomChildrenMap = {};
+        const bomEdgeSeen = new Set();
+        (spotlightCache.bom || []).forEach(b => {
+            const pCode = String(b['ID Родител'] || '').trim();
+            const cCode = String(b['ID Компонент'] || '').trim();
+            if (!pCode || !cCode) return;
+            const pKey = pCode.toLowerCase();
+            const edgeKey = pKey + '___' + cCode.toLowerCase();
+            if (!bomChildrenMap[pKey]) bomChildrenMap[pKey] = [];
+            bomChildrenMap[pKey].push({
+                parent: pCode,
+                component: cCode,
+                qty: parseFloat(String(b['Количество'] || '1').replace(',', '.')) || 1
+            });
+            bomEdgeSeen.add(edgeKey);
+        });
+        (spotlightCache.nomenclature || []).forEach(n => {
+            const cCode = String(n['ID Детайл'] || '').trim();
+            const pCode = String(n['ID Родител'] || '').trim();
+            if (!pCode || !cCode) return;
+            const cKey = cCode.toLowerCase();
+            const edgeKey = cKey + '___' + pCode.toLowerCase();
+            if (!bomEdgeSeen.has(edgeKey)) {
+                if (!bomChildrenMap[cKey]) bomChildrenMap[cKey] = [];
+                bomChildrenMap[cKey].push({
+                    parent: cCode,
+                    component: pCode,
+                    qty: parseFloat(String(n['Разходна норма'] || '1').replace(',', '.')) || 1
+                });
+                bomEdgeSeen.add(edgeKey);
+            }
+        });
+
+        // 4. Активен Месечен План (директно + чрез родители/прародители по BOM)
+        const activeOnlyPlans = (spotlightCache.plans || []).filter(p => String(p['Статус'] || '').trim() === 'Активен');
+        let activePlans = activeOnlyPlans.filter(p => {
+            const pRaw = String(p['ID Детайл'] || p['Вътрешно име'] || '').trim().toLowerCase();
+            const resolved = (nomResolveMap[pRaw] || pRaw).toLowerCase();
+            return targetKeys.has(pRaw) || targetKeys.has(resolved);
+        });
+        const directPlanQty = activePlans.reduce((acc, curr) => acc + (parseFloat(curr['Целево количество']) || 0), 0);
+
+        const planDemandMap = {}; // planRootLower + '___' + monthYear -> entry
+        const walkBomForTarget = (nodeCode, multQty, pathArr, visited) => {
+            const nodeKey = nodeCode.toLowerCase();
+            if (visited.has(nodeKey)) return [];
+            const nextVisited = new Set(visited);
+            nextVisited.add(nodeKey);
+
+            let hits = [];
+            const children = bomChildrenMap[nodeKey] || [];
+            children.forEach(ch => {
+                const cKey = ch.component.toLowerCase();
+                const reqHere = multQty * ch.qty;
+                if (targetKeys.has(cKey)) {
+                    hits.push({ qty: reqHere, path: [...pathArr] });
+                } else {
+                    const subHits = walkBomForTarget(ch.component, reqHere, [...pathArr, ch.component], nextVisited);
+                    if (subHits.length > 0) hits = hits.concat(subHits);
+                }
+            });
+            return hits;
+        };
+
+        activeOnlyPlans.forEach(p => {
+            const pRaw = String(p['ID Детайл'] || p['Вътрешно име'] || '').trim();
+            if (!pRaw) return;
+            const rootCode = nomResolveMap[pRaw.toLowerCase()] || pRaw;
+            const rootQty = parseFloat(p['Целево количество']) || 0;
+            if (rootQty <= 0) return;
+
+            const hits = walkBomForTarget(rootCode, rootQty, [rootCode], new Set());
+            if (hits.length > 0) {
+                const monthYear = ((p['Месец'] || '') + ' ' + (p['Година'] || '')).trim();
+                const mapKey = rootCode.toLowerCase() + '___' + monthYear;
+                if (!planDemandMap[mapKey]) {
+                    planDemandMap[mapKey] = {
+                        planCode: rootCode,
+                        internalName: nomInternalMap[rootCode.toLowerCase()] || (String(p['Вътрешно име'] || '').trim() !== rootCode ? String(p['Вътрешно име'] || '').trim() : ''),
+                        monthYear: monthYear,
+                        planQty: 0,
+                        neededQty: 0,
+                        paths: []
+                    };
+                }
+                planDemandMap[mapKey].planQty += rootQty;
+                hits.forEach(h => {
+                    planDemandMap[mapKey].neededQty = Math.round((planDemandMap[mapKey].neededQty + h.qty) * 10000) / 10000;
+                    const pathStr = h.path.join(' ➔ ');
+                    if (pathStr && !planDemandMap[mapKey].paths.includes(pathStr)) {
+                        planDemandMap[mapKey].paths.push(pathStr);
+                    }
+                });
+            }
+        });
+
+        const planDemandEntries = Object.values(planDemandMap);
+        const bomPlanQty = Math.round(planDemandEntries.reduce((acc, e) => acc + e.neededQty, 0) * 10000) / 10000;
+        const activePlanParentSet = new Set(planDemandEntries.map(e => e.planCode.toLowerCase()));
+
+        // Директни BOM родители ("Къде се влага")
+        let bomParents = [];
+        const seenParentKeys = new Set();
+        Object.values(bomChildrenMap).forEach(list => {
+            list.forEach(edge => {
+                if (targetKeys.has(edge.component.toLowerCase())) {
+                    const pk = edge.parent.toLowerCase();
+                    if (!seenParentKeys.has(pk) && !targetKeys.has(pk)) {
+                        seenParentKeys.add(pk);
+                        bomParents.push({ parent: edge.parent, qty: edge.qty });
+                    }
+                }
+            });
+        });
 
         // 5. Маршрутни карти
         let routeOps = (spotlightCache.routes || []).filter(r => 
-            String(r['Код на детайла']).trim().toLowerCase() === lowerCode ||
-            String(r['Код на детайла']).trim().toLowerCase() === formalCode.toLowerCase()
+            targetKeys.has(String(r['Код на детайла'] || '').trim().toLowerCase())
         ).sort((a,b) => (parseInt(a['№ Операция'])||0) - (parseInt(b['№ Операция'])||0));
 
         // 6. БОМ състав (Компоненти)
         let bomChildren = (spotlightCache.bom || []).filter(b => 
-            String(b['ID Родител']).trim().toLowerCase() === lowerCode ||
-            String(b['ID Родител']).trim().toLowerCase() === formalCode.toLowerCase()
+            targetKeys.has(String(b['ID Родител'] || '').trim().toLowerCase())
         );
+
+        let planCardQty = directPlanQty > 0 ? (bomPlanQty > 0 ? `${directPlanQty} + ${bomPlanQty}` : directPlanQty) : bomPlanQty;
+        let planCardSub = directPlanQty > 0
+            ? `${activePlans[0]['Месец']} ${activePlans[0]['Година']}` + (bomPlanQty > 0 ? ` (+ по БОМ в ${planDemandEntries.length} изд.)` : '')
+            : (bomPlanQty > 0 ? `Чрез ${planDemandEntries.length} ${planDemandEntries.length === 1 ? 'изделие' : 'изделия'} в плана` : 'Няма активен');
 
         // Построяване на HTML интерфейса на досието
         let html = `
@@ -450,11 +579,64 @@
                     <div style="background:#faf5ff; border:1.5px solid #e9d5ff; border-radius:10px; padding:12px; text-align:center;">
                         <div style="font-size:0.75em; font-weight:800; color:#6b21a8; text-transform:uppercase;">📅 Месечен План</div>
                         <div style="font-size:1.6em; font-weight:900; color:#7c3aed; margin:4px 0;">
-                            ${activePlans.reduce((acc, curr) => acc + (parseFloat(curr['Целево количество'])||0), 0)} <span style="font-size:0.6em;">бр.</span>
+                            ${planCardQty} <span style="font-size:0.6em;">бр.</span>
                         </div>
-                        <div style="font-size:0.75em; color:#6b21a8;">${activePlans.length > 0 ? activePlans[0]['Месец'] + ' ' + activePlans[0]['Година'] : 'Няма активен'}</div>
+                        <div style="font-size:0.75em; color:#6b21a8;">${planCardSub}</div>
                     </div>
                 </div>
+
+                <!-- Нужда по Активен Месечен План (чрез родители / прародители по BOM) -->
+                ${planDemandEntries.length > 0 ? `
+                    <div style="margin-bottom:14px; border:1.5px solid #d8b4fe; border-radius:10px; overflow:hidden; background:#faf5ff;">
+                        <div style="background:#f3e8ff; padding:8px 12px; font-weight:800; font-size:0.85em; color:#6b21a8; border-bottom:1px solid #e9d5ff; display:flex; justify-content:space-between; align-items:center;">
+                            <span>📅 Нужен по Активен Месечен План (в ${planDemandEntries.length} ${planDemandEntries.length === 1 ? 'изделие' : 'изделия'})</span>
+                            <button type="button" onclick="spotlightNavigateToTab('plan', '')" style="background:none; border:none; color:#7c3aed; font-weight:bold; font-size:0.82em; cursor:pointer; text-decoration:underline;">Към План ➔</button>
+                        </div>
+                        <div style="padding:10px; display:flex; flex-direction:column; gap:6px;">
+                            ${planDemandEntries.map(e => `
+                                <div onclick="openSpotlightPartDossier('${escapeStr(e.planCode)}')"
+                                     style="background:#ffffff; border:1px solid #e9d5ff; border-radius:8px; padding:8px 12px; font-size:0.84em; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;"
+                                     onmouseover="this.style.borderColor='#7c3aed'; this.style.background='#fdfaff';" onmouseout="this.style.borderColor='#e9d5ff'; this.style.background='#ffffff';">
+                                    <div style="min-width:0;">
+                                        <div style="font-weight:800; color:#1e293b;">
+                                            <span style="color:#6b21a8;">${e.planCode}</span>
+                                            ${e.internalName ? `<span style="color:#64748b; font-weight:600; font-size:0.92em;"> (${e.internalName})</span>` : ''}
+                                            <span style="margin-left:6px; background:#f3e8ff; color:#7c3aed; padding:1px 6px; border-radius:4px; font-size:0.85em;">${e.monthYear || 'Активен'}</span>
+                                        </div>
+                                        ${e.paths.length > 0 ? `<div style="font-size:0.85em; color:#64748b; margin-top:2px;">Верига: ${e.paths.join(' | ')} ➔ <b>${formalCode}</b></div>` : ''}
+                                    </div>
+                                    <div style="text-align:right; white-space:nowrap;">
+                                        <div style="font-weight:900; color:#7c3aed; font-size:1.05em;">Нужни: ${e.neededQty} бр.</div>
+                                        <div style="font-size:0.82em; color:#64748b;">План: ${e.planQty} бр.</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+
+                <!-- Къде се влага (BOM Родители) -->
+                ${bomParents.length > 0 ? `
+                    <div style="margin-bottom:14px; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
+                        <div style="background:#f8fafc; padding:8px 12px; font-weight:800; font-size:0.85em; color:#334155; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+                            <span>🔼 Влага се в (BOM Родители: ${bomParents.length} ${bomParents.length === 1 ? 'изделие' : 'изделия'})</span>
+                            <button type="button" onclick="spotlightNavigateToTab('bom', '${escapeStr(formalCode)}')" style="background:none; border:none; color:#2563eb; font-weight:bold; font-size:0.82em; cursor:pointer; text-decoration:underline;">Виж в БОМ ➔</button>
+                        </div>
+                        <div style="padding:10px; display:flex; flex-wrap:wrap; gap:8px;">
+                            ${bomParents.map(p => {
+                                const inActivePlan = activePlanParentSet.has(p.parent.toLowerCase());
+                                const borderCol = inActivePlan ? '#a855f7' : '#cbd5e1';
+                                const bgCol = inActivePlan ? '#faf5ff' : '#f8fafc';
+                                return `
+                                <div onclick="openSpotlightPartDossier('${escapeStr(p.parent)}')"
+                                     style="background:${bgCol}; border:1px solid ${borderCol}; border-radius:6px; padding:6px 10px; font-size:0.82em; cursor:pointer;"
+                                     onmouseover="this.style.borderColor='#4338ca'; this.style.background='#eef2ff';" onmouseout="this.style.borderColor='${borderCol}'; this.style.background='${bgCol}';">
+                                    ${inActivePlan ? '📅 ' : ''}<b style="color:#4338ca;">${p.parent}</b> <span style="color:#64748b;">(×${p.qty})</span>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                    </div>
+                ` : ''}
 
                 <!-- Междинни наличности по операции (ако има WIP) -->
                 ${wipOps.length > 0 ? `
