@@ -176,6 +176,26 @@ async function fetchLiveTaskStockLimits(taskData) {
         if (minSets < limit) limit = minSets;
     }
 
+    if (curOpIdx === 0 && typeof globalNomData !== 'undefined' && globalNomData) {
+        const rootNom = globalNomData.find(n => normalizeStr(n['ID Детайл']) === code);
+        if (rootNom && rootNom['ID Родител'] && normalizeStr(rootNom['ID Родител']) !== '') {
+            const parentCode = normalizeStr(rootNom['ID Родител']);
+            const alreadyInBom = relevantChildren.some(c => normalizeStr(c['ID Компонент']) === parentCode);
+            if (parentCode && !alreadyInBom) {
+                const matNorm = parseFloat(rootNom['Разходна норма']) || 1;
+                const pRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[parentCode]) ? globalRoutesByDetail[parentCode] : [];
+                let wipAvail = 0;
+                if (pRoutes.length > 0) {
+                    const lastChildOp = normalizeStr(pRoutes[pRoutes.length - 1]['Име на операция']);
+                    wipAvail = freshStock[parentCode + '_' + lastChildOp] || 0;
+                }
+                const skladAvail = freshSkladMap[parentCode] || 0;
+                const sets = Math.floor((wipAvail + skladAvail) / matNorm);
+                if (sets < limit) limit = sets;
+            }
+        }
+    }
+
     if (limit === Infinity) return null;
     if (limit < 0) limit = 0;
     if (String(taskData.id || '').endsWith('_scrap') && taskData.scrapAllowance > 0) {
@@ -255,6 +275,13 @@ function claimCurrentTaskDOM(taskId) {
         });
         return;
     }
+    let taskData = globalTasks.find(t => t.id === taskId);
+    if (!taskData || taskData.isBlocked) {
+        if (taskData && taskData.isBlocked) {
+            Swal.fire('Блокирана задача', 'Липсва наличен материал/заготовка в склада за стартиране на задачата.', 'warning');
+        }
+        return;
+    }
     if (navigator.vibrate) navigator.vibrate(50);
     activeTaskId = taskId;
     try { localStorage.removeItem('mes_last_task_idle_start'); } catch (e) { }
@@ -264,7 +291,6 @@ function claimCurrentTaskDOM(taskId) {
         markTaskClaimedInReminders();
     }
 
-    let taskData = globalTasks.find(t => t.id === taskId);
     if (taskData) {
         taskData.isTaken = true;
         client.from('otcheti').insert([{

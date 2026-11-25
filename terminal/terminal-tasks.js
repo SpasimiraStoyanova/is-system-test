@@ -757,6 +757,52 @@ async function loadTasks(isSilent = false) {
       allItemsArray.forEach(item => getDepth(item));
       allItemsArray.sort((a, b) => (depths[a] || 0) - (depths[b] || 0));
 
+      const getNomParentBlankInfo = (partCode, excludedSet, overrideMat, overrideNorm) => {
+          const cNorm = normalizeStr(partCode);
+          const rootNom = (cNorm && nomRes.data) ? nomRes.data.find(n => normalizeStr(n['ID Детайл']) === cNorm) : null;
+          const rawParentCode = (rootNom && rootNom['ID Родител'] && normalizeStr(rootNom['ID Родител']) !== '')
+              ? String(rootNom['ID Родител']).trim()
+              : (overrideMat ? String(overrideMat).trim() : '');
+          const parentCode = normalizeStr(rawParentCode);
+          if (!parentCode || (excludedSet && excludedSet.has(parentCode))) return null;
+
+          const matNorm = (rootNom && rootNom['Разходна норма'])
+              ? (parseFloat(rootNom['Разходна норма']) || 1)
+              : (parseFloat(overrideNorm) || 1);
+          const pNom = nomRes.data ? nomRes.data.find(n => normalizeStr(n['ID Детайл']) === parentCode) : null;
+          const pRoutes = globalRoutesByDetail[parentCode] || [];
+          let wipAvail = 0;
+          if (pRoutes.length > 0) {
+              const lastChildOp = normalizeStr(pRoutes[pRoutes.length - 1]['Име на операция']);
+              wipAvail = physicalStock[parentCode + '_' + lastChildOp] || 0;
+          }
+          const skladAvail = getSkladQty(parentCode);
+          const matAvail = wipAvail + skladAvail;
+          const sets = Math.floor(matAvail / matNorm);
+
+          const locTexts = [];
+          if (wipAvail > 0) {
+              const lastDrop = pRoutes.length > 0 ? String(pRoutes[pRoutes.length - 1]['Инструкция за оставяне'] || '').trim() : '';
+              locTexts.push(`${wipAvail}бр. ${lastDrop ? 'в ' + lastDrop : 'в Буфер'}`);
+          }
+          if (skladAvail > 0) {
+              locTexts.push(`${skladAvail}бр. в Склад`);
+          }
+          if (locTexts.length === 0) {
+              const pLoc = pNom ? String(pNom['Местоположение'] || '').trim() : '';
+              locTexts.push(pLoc ? `0бр. (${pLoc})` : '0бр. налични');
+          }
+
+          return {
+              rawCode: rawParentCode,
+              normCode: parentCode,
+              qty: matNorm,
+              avail: matAvail,
+              sets: sets,
+              loc: locTexts.join(' / ')
+          };
+      };
+
       allItemsArray.forEach((code, nodeIndex) => {
           let currentPlanPureTarget = planPureBom[code] || 0;
           let currentPlanScrapTarget = planScrapBom[code] || 0;
@@ -906,14 +952,19 @@ async function loadTasks(isSilent = false) {
                       }
                       
                       if (i === 0) {
-                          let rootNom = globalNomData.find(n => normalizeStr(n['ID Детайл']) === code);
-                          if (rootNom && rootNom['ID Родител'] && normalizeStr(rootNom['ID Родител']) !== '') {
-                              let parentCode = normalizeStr(rootNom['ID Родител']);
-                              if (parentCode) {
-                                  let pNom = globalNomData.find(n => normalizeStr(n['ID Детайл']) === parentCode);
-                                  let loc = pNom ? String(pNom['Местоположение'] || '').trim() : '';
-                                  itemsToFetch.push({ code: normalizeStr(rootNom['ID Родител']), qty: parseFloat(rootNom['Разходна норма']) || 1, loc: loc, type: 'материал' });
+                          let bomChildSet = new Set(relevantChildren.map(c => normalizeStr(c['ID Компонент'])));
+                          let blankInfo = getNomParentBlankInfo(code, bomChildSet);
+                          if (blankInfo) {
+                              hasLimit = true;
+                              if (blankInfo.sets < maxAllowed) maxAllowed = blankInfo.sets;
+                              if (blankInfo.sets < displayMaxAllowed) displayMaxAllowed = blankInfo.sets;
+                              if (blankInfo.sets < totalShortage) {
+                                  blockingReasons.push(`${blankInfo.rawCode} (${blankInfo.avail} налични)`);
                               }
+                              if (maxAllowed < totalShortage && !blockingReasons.includes('Липсващи компоненти')) {
+                                  blockingReasons.push('Липсващи компоненти');
+                              }
+                              itemsToFetch.push({ code: blankInfo.rawCode, qty: blankInfo.qty, loc: blankInfo.loc, type: 'материал', avail: blankInfo.avail, sets: blankInfo.sets });
                           }
                       }
                       
@@ -1468,25 +1519,23 @@ async function loadTasks(isSilent = false) {
                                           if (minSets < maxAllowed) maxAllowed = minSets;
                                       }
 
-                                      // 3. Ако е първа операция, описваме заготовката/суровината за взимане
+                                      // 3. Ако е първа операция, проверяваме и описваме заготовката/суровината за взимане
                                       if (rIdx === 0) {
-                                          let rootNom = globalNomData.find(n => normalizeStr(n['ID Детайл']) === normalizeStr(partCode));
-                                          let parentMat = (rootNom && rootNom['ID Родител']) ? String(rootNom['ID Родител']).trim() : (partObj.material_code || '');
-                                          let parentNorm = (rootNom && rootNom['Разходна норма']) ? (parseFloat(rootNom['Разходна норма']) || 1) : (parseFloat(partObj.material_norm) || 1);
-
-                                          if (parentMat) {
-                                              let pNom = globalNomData.find(n => normalizeStr(n['ID Детайл']) === normalizeStr(parentMat));
-                                              let pSklad = getSkladQty(parentMat);
-                                              let loc = pNom ? String(pNom['Местоположение'] || '').trim() : '';
-                                              if (pSklad > 0) {
-                                                  loc = (loc ? loc + ' | ' : '') + `${pSklad} налични в Склад`;
+                                          let probaChildSet = new Set(myChildren.map(mc => normalizeStr(mc.code)));
+                                          let blankInfo = getNomParentBlankInfo(partCode, probaChildSet, partObj.material_code, partObj.material_norm);
+                                          if (blankInfo) {
+                                              hasLimit = true;
+                                              if (blankInfo.sets < maxAllowed) maxAllowed = blankInfo.sets;
+                                              if (blankInfo.sets < shortage) {
+                                                  blockingReasons.push(`${blankInfo.rawCode} (${blankInfo.avail} налични)`);
                                               }
                                               itemsToFetch.push({
-                                                  code: parentMat,
-                                                  qty: parentNorm,
-                                                  loc: loc || 'Склад Материали',
+                                                  code: blankInfo.rawCode,
+                                                  qty: blankInfo.qty,
+                                                  loc: blankInfo.loc,
                                                   type: 'материал',
-                                                  avail: pSklad
+                                                  avail: blankInfo.avail,
+                                                  sets: blankInfo.sets
                                               });
                                           }
                                       }
@@ -2237,6 +2286,54 @@ window.traceRootDeficitOrigin = function(partName, opNum, opName, missingQty = 1
             };
         }
         if (traceBomDeep) return null;
+    }
+
+    // 2.5. Проверка за изходна заготовка/материал от Номенклатура (ID Родител)
+    const curNomItem = (typeof globalNomData !== 'undefined' && globalNomData)
+        ? globalNomData.find(n => normalizeStr(n['ID Детайл']) === norm)
+        : null;
+    if (curNomItem && curNomItem['ID Родител'] && normalizeStr(curNomItem['ID Родител']) !== '') {
+        const rawMatCode = String(curNomItem['ID Родител']).trim();
+        const matNormCode = normalizeStr(rawMatCode);
+        const matReqMult = parseFloat(curNomItem['Разходна норма']) || 1;
+        const matRoutes = (typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[matNormCode])
+            ? globalRoutesByDetail[matNormCode]
+            : [];
+        let matStock = 0;
+        if (matRoutes.length > 0) {
+            const lastMatOp = normalizeStr(matRoutes[matRoutes.length - 1]['Име на операция']);
+            matStock = stockMap[matNormCode + '_' + lastMatOp] || 0;
+        } else {
+            const skladMatAvail = (typeof getSkladQty === 'function') ? getSkladQty(matNormCode) : 0;
+            matStock = (stockMap[matNormCode + '_готов продукт'] || 0) + skladMatAvail;
+        }
+        if (matStock < (missingQty * matReqMult)) {
+            if (matRoutes.length > 0) {
+                const firstMatOp = matRoutes[0];
+                return {
+                    rootPart: rawMatCode,
+                    rootOpNum: firstMatOp['№ Операция'],
+                    rootOpName: firstMatOp['Име на операция'],
+                    rootMachine: firstMatOp['Машина'] || 'Обща',
+                    isChild: true,
+                    isRaw: false,
+                    chain: [`${rawMatCode} (Оп. ${firstMatOp['№ Операция']} ${firstMatOp['Име на операция']} / ${firstMatOp['Машина'] || 'Обща'})`],
+                    intermediate: null,
+                    reason: `Липсва заготовка ${rawMatCode} от ${firstMatOp['Машина'] || 'Обща'}`
+                };
+            }
+            return {
+                rootPart: rawMatCode,
+                rootOpNum: null,
+                rootOpName: 'Склад Материали',
+                rootMachine: 'Склад Материали',
+                isChild: true,
+                isRaw: true,
+                chain: [`${rawMatCode} (Склад Материали)`],
+                intermediate: null,
+                reason: `Липсва суровина/материал ${rawMatCode} от Склад Материали`
+            };
+        }
     }
 
     // 3. Fallback към Склад
