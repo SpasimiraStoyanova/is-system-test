@@ -22,26 +22,64 @@ function toolMatchesMachine(toolMachineName, currentMach) {
 }
 
 window.openTerminalToolingRequestModal = async function() {
-    let mach = (typeof currentMachine !== 'undefined' && currentMachine) ? currentMachine : (localStorage.getItem('mes_machine') || 'ВСИЧКИ');
-    if (!mach || mach === 'ВСИЧКИ' || mach === 'Всички' || mach.includes(',')) {
+    let rawMach = (typeof currentMachine !== 'undefined' && currentMachine) ? currentMachine : (localStorage.getItem('mes_machine') || 'ВСИЧКИ');
+    let assignedMachines = String(rawMach || '')
+        .split(',')
+        .map(m => m.trim())
+        .filter(m => m && m.toUpperCase() !== 'ВСИЧКИ');
+
+    let machineOptions = [...assignedMachines];
+    if (machineOptions.length === 0) {
+        try {
+            const { data: routesData } = await client.from('marshruti').select('Машина').limit(100000);
+            const set = new Set();
+            (routesData || []).forEach(r => {
+                const m = String(r['Машина'] || '').trim();
+                if (m) set.add(m);
+            });
+            machineOptions = Array.from(set).sort((a, b) => a.localeCompare(b, 'bg'));
+        } catch(e) {}
+    }
+
+    if (machineOptions.length === 0) {
         Swal.fire({
             icon: 'info',
-            title: 'Изберете конкретна машина',
-            text: 'Заявка за пластини или екипировка може да се изпраща само за една конкретна машина, която ги използва, а не за всички общо.'
+            title: 'Няма налични машини',
+            text: 'Моля, изберете работно място от горната лента.'
         });
         return;
     }
 
-    // Зареждаме пластините/инструментите за това работно място от tooling_inventory
-    let machTools = [];
-    let toolPackSizeMap = {};
+    let defaultMach = machineOptions.length === 1 ? machineOptions[0] : '';
+    if (!defaultMach && typeof activeTaskId !== 'undefined' && activeTaskId && typeof globalTasks !== 'undefined' && Array.isArray(globalTasks)) {
+        const activeTask = globalTasks.find(t => String(t.id) === String(activeTaskId) || String(t.otchetId) === String(activeTaskId));
+        const activeMach = activeTask ? String(activeTask.machine || activeTask['Машина'] || '').trim() : '';
+        if (activeMach) {
+            const matchedOpt = machineOptions.find(m => m.toLowerCase() === activeMach.toLowerCase());
+            if (matchedOpt) defaultMach = matchedOpt;
+        }
+    }
+
+    // Зареждаме всички пластини/инструменти от tooling_inventory веднъж
+    let allInvTools = [];
     try {
         const { data: invTools } = await client.from('tooling_inventory')
             .select('item_code, name, machine_name, pack_size, quantity, unit')
             .order('item_code');
+        allInvTools = invTools || [];
+    } catch(e) {}
 
-        machTools = (invTools || [])
-            .filter(t => toolMatchesMachine(t.machine_name, mach))
+    function buildToolsForMachine(targetMach) {
+        const toolPackSizeMap = {};
+        const machList = targetMach
+            ? [targetMach]
+            : (assignedMachines.length > 0 ? assignedMachines : []);
+
+        const filteredTools = allInvTools
+            .filter(t => {
+                if (machList.length === 0) return true;
+                return machList.some(m => toolMatchesMachine(t.machine_name, m));
+            })
             .map(t => {
                 const code = String(t.item_code || '').trim();
                 const name = String(t.name || '').trim();
@@ -60,23 +98,34 @@ window.openTerminalToolingRequestModal = async function() {
 
                 return { code, name, value, packSize, qty, unit, machineLabel };
             });
-    } catch(e) {}
 
-    window._tempToolPackSizeMap = toolPackSizeMap;
+        return { machTools: filteredTools, toolPackSizeMap };
+    }
+
+    let initialToolData = buildToolsForMachine(defaultMach);
+    let machTools = initialToolData.machTools;
+    window._tempToolPackSizeMap = initialToolData.toolPackSizeMap;
+
+    const machineFieldHtml = (machineOptions.length === 1)
+        ? `<input type="text" id="swalToolMachineReadonly" value="${escapeHtml(machineOptions[0])}" readonly style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; background: #f8fafc; font-weight: 800; color: #1e293b; box-sizing: border-box;">`
+        : `<select id="swalToolMachineSelect" style="width: 100%; padding: 9px 12px; border: 1.5px solid #3b82f6; border-radius: 8px; background: #ffffff; font-weight: 800; color: #1e293b; box-sizing: border-box; font-size: 0.98em;">
+                <option value="">-- Изберете за коя машина е заявката (${machineOptions.length}) --</option>
+                ${machineOptions.map(m => `<option value="${escapeHtml(m)}" ${m === defaultMach ? 'selected' : ''}>🏭 ${escapeHtml(m)}</option>`).join('')}
+           </select>`;
 
     const { value: formValues } = await Swal.fire({
         title: '🛠️ Заявка за Пластини / Инструмент',
         html: `
             <div style="text-align: left; font-size: 0.9em; display: flex; flex-direction: column; gap: 10px;">
                 <div>
-                    <label style="font-weight: 700; color: #475569;">🏭 Работно Място:</label>
-                    <input type="text" value="${escapeHtml(mach)}" readonly style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; background: #f8fafc; font-weight: 800; color: #1e293b; box-sizing: border-box;">
+                    <label style="font-weight: 700; color: #475569;">🏭 Работно Място (Машина): *</label>
+                    ${machineFieldHtml}
                 </div>
                 <div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px;">
                         <label style="font-weight: 700; color: #475569;">📦 Изискван инструмент / пластина: *</label>
-                        <span style="font-size: 0.78em; font-weight: 700; color: ${machTools.length > 0 ? '#0369a1' : '#64748b'}; background: ${machTools.length > 0 ? '#e0f2fe' : '#f1f5f9'}; padding: 2px 8px; border-radius: 999px; white-space: nowrap;">
-                            ${machTools.length > 0 ? `📋 ${machTools.length} поз. за машината` : '✍️ Свободен текст'}
+                        <span id="swalToolListCountBadge" style="font-size: 0.78em; font-weight: 700; color: ${machTools.length > 0 ? '#0369a1' : '#64748b'}; background: ${machTools.length > 0 ? '#e0f2fe' : '#f1f5f9'}; padding: 2px 8px; border-radius: 999px; white-space: nowrap;">
+                            ${machTools.length > 0 ? `📋 ${machTools.length} поз. ${defaultMach ? 'за машината' : 'общо'}` : '✍️ Свободен текст'}
                         </span>
                     </div>
                     <div id="swalToolPickerWrap" style="position: relative;">
@@ -123,8 +172,11 @@ window.openTerminalToolingRequestModal = async function() {
             const dropdown = document.getElementById('swalToolDropdown');
             const badge = document.getElementById('swalToolPackSizeBadge');
             const qtyInp = document.getElementById('swalToolQty');
+            const machineSelect = document.getElementById('swalToolMachineSelect');
+            const listCountBadge = document.getElementById('swalToolListCountBadge');
             if (!wrap || !input || !toggleBtn || !dropdown) return;
 
+            let activeTargetMachine = machineSelect ? machineSelect.value.trim() : defaultMach;
             let lastAutoQty = 10;
 
             const applyPackSize = (ps) => {
@@ -181,9 +233,10 @@ window.openTerminalToolingRequestModal = async function() {
                         </div>
                     `;
                 } else if (machTools.length === 0 && !q) {
+                    const targetLabel = activeTargetMachine || 'избраните машини';
                     rowsHtml = `
                         <div style="padding: 12px; color: #64748b; font-size: 0.86em; text-align: center;">
-                            Няма въведени инструменти за „${escapeHtml(mach)}“ в Склад Инструментална Екипировка.<br>Можете да въведете текста ръчно по-горе.
+                            Няма въведени инструменти за „${escapeHtml(targetLabel)}“ в Склад Инструментална Екипировка.<br>Можете да въведете текста ръчно по-горе.
                         </div>
                     `;
                 }
@@ -217,6 +270,31 @@ window.openTerminalToolingRequestModal = async function() {
                 dropdown.style.display = 'block';
                 toggleBtn.innerText = '▲';
             };
+
+            if (machineSelect) {
+                machineSelect.addEventListener('change', () => {
+                    activeTargetMachine = machineSelect.value.trim();
+                    const rebuilt = buildToolsForMachine(activeTargetMachine);
+                    machTools = rebuilt.machTools;
+                    window._tempToolPackSizeMap = rebuilt.toolPackSizeMap;
+
+                    if (listCountBadge) {
+                        if (machTools.length > 0) {
+                            listCountBadge.style.color = '#0369a1';
+                            listCountBadge.style.background = '#e0f2fe';
+                            listCountBadge.innerText = `📋 ${machTools.length} поз. ${activeTargetMachine ? 'за машината' : 'общо'}`;
+                        } else {
+                            listCountBadge.style.color = '#64748b';
+                            listCountBadge.style.background = '#f1f5f9';
+                            listCountBadge.innerText = '✍️ Свободен текст';
+                        }
+                    }
+
+                    if (dropdown.style.display !== 'none') {
+                        renderDropdown(input.value, true);
+                    }
+                });
+            }
 
             input.addEventListener('focus', () => openDropdown(true));
             input.addEventListener('click', () => openDropdown(true));
@@ -264,14 +342,21 @@ window.openTerminalToolingRequestModal = async function() {
         cancelButtonText: 'Отказ',
         confirmButtonColor: '#d97706',
         preConfirm: () => {
+            const machSelect = document.getElementById('swalToolMachineSelect');
+            const chosenMachine = machSelect ? machSelect.value.trim() : defaultMach;
             const item = document.getElementById('swalToolItem').value.trim();
             const qty = parseFloat(document.getElementById('swalToolQty').value) || 10;
             const notes = document.getElementById('swalToolNotes').value.trim();
+            if (!chosenMachine) {
+                Swal.showValidationMessage('Моля, изберете за коя машина е заявката!');
+                return false;
+            }
             if (!item) {
                 Swal.showValidationMessage('Моля, въведете име или код на инструмента/пластината!');
                 return false;
             }
             return {
+                machine: chosenMachine,
                 tool_item: item,
                 urgency: document.getElementById('swalToolUrgency').value,
                 notes: notes ? `[Изискани: ${qty} бр.] ${notes}` : `[Изискани: ${qty} бр.]`
@@ -284,7 +369,7 @@ window.openTerminalToolingRequestModal = async function() {
         try {
             const opName = (typeof currentOperator !== 'undefined' && currentOperator) ? currentOperator : (localStorage.getItem('mes_operator') || 'Оператор');
             const { error } = await client.from('tooling_requests').insert([{
-                workstation_name: mach,
+                workstation_name: formValues.machine,
                 operator_name: opName,
                 tool_item: formValues.tool_item,
                 urgency: formValues.urgency,
