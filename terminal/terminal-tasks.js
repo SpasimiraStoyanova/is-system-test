@@ -761,7 +761,8 @@ async function loadTasks(isSilent = false) {
       allItemsArray.forEach(item => getDepth(item));
       allItemsArray.sort((a, b) => (depths[a] || 0) - (depths[b] || 0));
 
-      const getNomParentBlankInfo = (partCode, excludedSet, overrideMat, overrideNorm) => {
+      const getNomParentBlankInfo = (partCode, excludedSet, overrideMat, overrideNorm, options = {}) => {
+          const excludeGeneralInventory = Boolean(options && options.excludeGeneralInventory);
           const cNorm = normalizeStr(partCode);
           const rootNom = (cNorm && nomRes.data) ? nomRes.data.find(n => normalizeStr(n['ID Детайл']) === cNorm) : null;
           const rawParentCode = (rootNom && rootNom['ID Родител'] && normalizeStr(rootNom['ID Родител']) !== '')
@@ -776,7 +777,7 @@ async function loadTasks(isSilent = false) {
           const pNom = nomRes.data ? nomRes.data.find(n => normalizeStr(n['ID Детайл']) === parentCode) : null;
           const pRoutes = globalRoutesByDetail[parentCode] || [];
           let wipAvail = 0;
-          if (pRoutes.length > 0) {
+          if (!excludeGeneralInventory && pRoutes.length > 0) {
               const lastChildOp = normalizeStr(pRoutes[pRoutes.length - 1]['Име на операция']);
               wipAvail = physicalStock[parentCode + '_' + lastChildOp] || 0;
           }
@@ -790,11 +791,11 @@ async function loadTasks(isSilent = false) {
               locTexts.push(`${wipAvail}бр. ${lastDrop ? 'в ' + lastDrop : 'в Буфер'}`);
           }
           if (skladAvail > 0) {
-              locTexts.push(`${skladAvail}бр. в Склад`);
+              locTexts.push(`${skladAvail}бр. в ${excludeGeneralInventory ? 'Склад Материали' : 'Склад'}`);
           }
           if (locTexts.length === 0) {
               const pLoc = pNom ? String(pNom['Местоположение'] || '').trim() : '';
-              locTexts.push(pLoc ? `0бр. (${pLoc})` : '0бр. налични');
+              locTexts.push(pLoc ? `0бр. (${pLoc})` : (excludeGeneralInventory ? '0бр. в Склад Материали' : '0бр. налични'));
           }
 
           return {
@@ -1261,11 +1262,23 @@ async function loadTasks(isSilent = false) {
           const activeProbi = activeProbiRes ? activeProbiRes.data : null;
           if (activeProbi && activeProbi.length > 0) {
               const probaIds = activeProbi.map(p => p.id);
-              const { data: probaComps } = await client.from('probi_components').select('*').in('proba_id', probaIds);
+              const [probaCompsRes, probaInvRes] = await Promise.all([
+                  client.from('probi_components').select('*').in('proba_id', probaIds),
+                  client.from('probi_inventory').select('*').in('proba_id', probaIds).then(r => r).catch(() => ({ data: [] }))
+              ]);
+              const probaComps = probaCompsRes ? probaCompsRes.data : null;
+              const probaInvRows = (probaInvRes && !probaInvRes.error && Array.isArray(probaInvRes.data)) ? probaInvRes.data : [];
 
               if (probaComps && probaComps.length > 0) {
                   activeProbi.forEach(proba => {
                       const myComps = probaComps.filter(c => c.proba_id === proba.id);
+                      const myProbaInv = {};
+                      probaInvRows.forEach(pi => {
+                          if (pi.proba_id === proba.id) {
+                              const piKey = normalizeStr(pi.part_code) + '_' + normalizeStr(pi.operation);
+                              myProbaInv[piKey] = (myProbaInv[piKey] || 0) + (parseFloat(pi.quantity) || 0);
+                          }
+                      });
                       let isUrgentProba = (proba.is_urgent === true || (proba.notes && proba.notes.includes('[СПЕШНА]')) || (proba.notes && proba.notes.toLowerCase().includes('спешн')));
                       let pKey = 'PROBA_' + proba.id;
                       let probaTarget = parseFloat(proba.target_qty) || 1;
@@ -1489,13 +1502,13 @@ async function loadTasks(isSilent = false) {
                                               }
 
                                               let skladAvail = getSkladQty(cCode);
-                                              let wipAvail = 0;
-                                              if (cRoutes.length > 0) {
-                                                  let lastCOp = normalizeStr(cRoutes[cRoutes.length - 1]['Име на операция'] || cRoutes[cRoutes.length - 1].op_name);
-                                                  wipAvail = physicalStock[cNorm + '_' + lastCOp] || 0;
-                                              }
+                                              // Пробите са напълно изолирани от общия сериен склад (inventory) — четат само от Склад Проби (probi_inventory / отчети по пробата) + Склад Материали (sklad)
+                                              const probiReadyKey = cNorm + '_готов продукт';
+                                              const probaChildAvail = Object.prototype.hasOwnProperty.call(myProbaInv, probiReadyKey)
+                                                  ? Math.max(0, myProbaInv[probiReadyKey])
+                                                  : Math.max(0, probaChildDone - (doneQty * cMult));
 
-                                              let totalChildAvail = probaChildDone + skladAvail + wipAvail;
+                                              let totalChildAvail = probaChildAvail + skladAvail;
                                               let sets = Math.floor(totalChildAvail / cMult);
                                               if (sets < minSets) minSets = sets;
                                               if (sets < shortage) {
@@ -1505,9 +1518,8 @@ async function loadTasks(isSilent = false) {
                                               let nomItem = globalNomData.find(n => normalizeStr(n['ID Детайл']) === cNorm);
                                               let type = nomItem ? normalizeStr(nomItem['Тип']) : '';
                                               let locParts = [];
-                                              if (probaChildDone > 0) locParts.push(`${probaChildDone}бр. от Проба`);
-                                              if (wipAvail > 0) locParts.push(`${wipAvail}бр. в Буфер`);
-                                              if (skladAvail > 0) locParts.push(`${skladAvail}бр. в Склад`);
+                                              if (probaChildAvail > 0) locParts.push(`${probaChildAvail}бр. в Склад Проби`);
+                                              if (skladAvail > 0) locParts.push(`${skladAvail}бр. в Склад Материали`);
                                               if (locParts.length === 0) locParts.push(`0бр. налични`);
 
                                               itemsToFetch.push({
@@ -1523,10 +1535,10 @@ async function loadTasks(isSilent = false) {
                                           if (minSets < maxAllowed) maxAllowed = minSets;
                                       }
 
-                                      // 3. Ако е първа операция, проверяваме и описваме заготовката/суровината за взимане
+                                      // 3. Ако е първа операция, проверяваме и описваме заготовката/суровината за взимане (само от Склад Материали, без общия inventory)
                                       if (rIdx === 0) {
                                           let probaChildSet = new Set(myChildren.map(mc => normalizeStr(mc.code)));
-                                          let blankInfo = getNomParentBlankInfo(partCode, probaChildSet, partObj.material_code, partObj.material_norm);
+                                          let blankInfo = getNomParentBlankInfo(partCode, probaChildSet, partObj.material_code, partObj.material_norm, { excludeGeneralInventory: true });
                                           if (blankInfo) {
                                               hasLimit = true;
                                               if (blankInfo.sets < maxAllowed) maxAllowed = blankInfo.sets;
@@ -3368,6 +3380,8 @@ function initUnblockedRealtimeWatcher() {
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sklad' }, triggerDebouncedRealtimeTaskRefresh)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sklad' }, triggerDebouncedRealtimeTaskRefresh)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'probi' }, triggerDebouncedRealtimeTaskRefresh)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'probi_inventory' }, triggerDebouncedRealtimeTaskRefresh)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'probi_inventory' }, triggerDebouncedRealtimeTaskRefresh)
             .subscribe();
     } catch (err) {
         console.warn('initUnblockedRealtimeWatcher fallback to 30s polling:', err);
