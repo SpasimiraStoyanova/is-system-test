@@ -641,20 +641,83 @@ async function updateCompQty(compId, newQty, probaId) {
 }
 
 // --- NEW PART DIALOG WITH OPTIONAL PARENT ---
+function normalizeProbiRouteCode(str, mapHomoglyphs = false) {
+    let s = String(str || '').replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
+    if (mapHomoglyphs) {
+        const cyrToLat = { 'а': 'a', 'е': 'e', 'о': 'o', 'р': 'p', 'с': 'c', 'х': 'x', 'к': 'k', 'м': 'm', 'н': 'h', 'в': 'b', 'т': 't' };
+        s = s.replace(/[аеорсхкмнавт]/g, ch => cyrToLat[ch] || ch);
+    }
+    return s;
+}
+
+async function fetchAllProbiMarshruti() {
+    let all = [];
+    let from = 0;
+    const step = 1000;
+    while (true) {
+        const { data, error } = await client.from('marshruti').select('*').range(from, from + step - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all = all.concat(data);
+        if (data.length < step) break;
+        from += step;
+    }
+    return all;
+}
+
+function findMatchingRoutesForCode(allRoutes, rawCopyCode) {
+    const queryExact = normalizeProbiRouteCode(rawCopyCode, false);
+    if (!queryExact) return [];
+
+    // 1. Точно съвпадение по Код на детайла (нормализирани интервали и регистър)
+    let matched = allRoutes.filter(r => normalizeProbiRouteCode(r['Код на детайла'], false) === queryExact);
+
+    // 2. Ако е въведено Вътрешно име от Номенклатура -> преобразуваме към ID Детайл
+    if (matched.length === 0 && Array.isArray(window._probaNomList)) {
+        const nomHit = window._probaNomList.find(n =>
+            normalizeProbiRouteCode(n['Вътрешно име'], false) === queryExact ||
+            normalizeProbiRouteCode(n['ID Детайл'], false) === queryExact
+        );
+        if (nomHit && nomHit['ID Детайл']) {
+            const resolved = normalizeProbiRouteCode(nomHit['ID Детайл'], false);
+            matched = allRoutes.filter(r => normalizeProbiRouteCode(r['Код на детайла'], false) === resolved);
+        }
+    }
+
+    // 3. Резервен вариант: кирилица/латиница двойници (напр. Х vs X, С vs C, А vs A)
+    if (matched.length === 0) {
+        const queryHomo = normalizeProbiRouteCode(rawCopyCode, true);
+        matched = allRoutes.filter(r => normalizeProbiRouteCode(r['Код на детайла'], true) === queryHomo);
+    }
+
+    matched.sort((a, b) => (parseInt(a['№ Операция'], 10) || 0) - (parseInt(b['№ Операция'], 10) || 0));
+    return matched;
+}
+
 async function openNewPartDialog(probaId, parentPartCode = null) {
     let machines = [];
+    let allRoutesCache = [];
     try {
-        const { data } = await client.from('marshruti').select('Машина').limit(1000);
-        if (data) {
-            data.forEach(r => {
-                let m = (r['Машина'] || '').trim();
-                if (m && !machines.includes(m)) machines.push(m);
-            });
-            machines.sort();
-        }
+        allRoutesCache = await fetchAllProbiMarshruti();
+        allRoutesCache.forEach(r => {
+            let m = (r['Машина'] || '').trim();
+            if (m && !machines.includes(m)) machines.push(m);
+        });
+        machines.sort();
     } catch (e) {
-        console.warn('Machines fetch failed:', e);
+        console.warn('Routes/Machines fetch failed:', e);
     }
+
+    const routeDetailCodes = [];
+    const seenRouteCodes = new Set();
+    allRoutesCache.forEach(r => {
+        const c = String(r['Код на детайла'] || '').replace(/[\u00A0\s]+/g, ' ').trim();
+        if (c && !seenRouteCodes.has(c.toLowerCase())) {
+            seenRouteCodes.add(c.toLowerCase());
+            routeDetailCodes.push(c);
+        }
+    });
+    routeDetailCodes.sort((a, b) => a.localeCompare(b, 'bg'));
 
     let machinesOptionsHtml = machines.map(m => `<option value="${m}">${m}</option>`).join('');
 
@@ -710,8 +773,9 @@ async function openNewPartDialog(probaId, parentPartCode = null) {
                         <label style="display:block; font-size:0.8rem; font-weight:700; margin-bottom:4px; color:#475569;">Изберете детайл, чийто маршрут да копираме:</label>
                         <input id="copyFromPartInput" list="dlNomParts" placeholder="Въведете или изберете код..." style="width:100%; box-sizing:border-box; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.85rem;">
                         <datalist id="dlNomParts">
-                            ${(window._probaNomList || []).map(n => `<option value="${n['ID Детайл']}">${n['ID Детайл']}</option>`).join('')}
+                            ${routeDetailCodes.map(c => `<option value="${c.replace(/"/g, '&quot;')}">${c}</option>`).join('')}
                         </datalist>
+                        <div id="copyRoutePreview" style="margin-top:6px; font-size:0.78rem; color:#64748b;"></div>
                     </div>
 
                     <div id="manualRouteBox">
@@ -738,6 +802,28 @@ async function openNewPartDialog(probaId, parentPartCode = null) {
         cancelButtonText: 'Отказ',
         confirmButtonColor: '#7c3aed',
         focusConfirm: false,
+        didOpen: () => {
+            const copyInp = document.getElementById('copyFromPartInput');
+            const previewEl = document.getElementById('copyRoutePreview');
+            if (copyInp && previewEl) {
+                const updatePreview = () => {
+                    const val = copyInp.value.trim();
+                    if (!val) {
+                        previewEl.innerHTML = '';
+                        return;
+                    }
+                    const found = findMatchingRoutesForCode(allRoutesCache, val);
+                    if (found.length > 0) {
+                        previewEl.innerHTML = `<span style="color:#15803d; font-weight:700;">✅ Намерени ${found.length} операции:</span> ` +
+                            found.map(r => `<b>${r['№ Операция'] || 10}</b> ${r['Име на операция'] || ''}`).join(' ➔ ');
+                    } else {
+                        previewEl.innerHTML = `<span style="color:#dc2626; font-weight:600;">⚠️ Няма намерени операции за „${val}“</span>`;
+                    }
+                };
+                copyInp.addEventListener('input', updatePreview);
+                copyInp.addEventListener('change', updatePreview);
+            }
+        },
         preConfirm: async () => {
             const name = document.getElementById('swalNewPartName').value.trim();
             const qty = parseFloat(document.getElementById('swalNewPartQty').value);
@@ -757,7 +843,10 @@ async function openNewPartDialog(probaId, parentPartCode = null) {
                     Swal.showValidationMessage('Изберете детайл за копиране на маршрута!');
                     return false;
                 }
-                const { data: routes } = await client.from('marshruti').select('*').ilike('Код на детайла', copyCode).order('№ Операция');
+                if (allRoutesCache.length === 0) {
+                    allRoutesCache = await fetchAllProbiMarshruti();
+                }
+                const routes = findMatchingRoutesForCode(allRoutesCache, copyCode);
                 if (!routes || routes.length === 0) {
                     Swal.showValidationMessage(`Детайлът ${copyCode} няма въведени операции в marshruti!`);
                     return false;
