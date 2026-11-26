@@ -14,6 +14,7 @@
         isLoading: false
     };
 
+    let spotlightLoadPromise = null;
     let currentSelectedDetail = null;
 
     // Глобално следене за клавиш Ctrl+K / Cmd+K
@@ -29,13 +30,17 @@
         }
     });
 
-    window.openSpotlightModal = async function(initialQuery = '') {
+    function ensureSpotlightBackdrop() {
         let backdrop = document.getElementById('spotlightModalBackdrop');
         if (!backdrop) {
             createSpotlightDOM();
             backdrop = document.getElementById('spotlightModalBackdrop');
         }
+        return backdrop;
+    }
 
+    window.openSpotlightModal = async function(initialQuery = '') {
+        const backdrop = ensureSpotlightBackdrop();
         backdrop.style.display = 'flex';
         const input = document.getElementById('spotlightSearchInput');
         if (input) {
@@ -44,15 +49,18 @@
         }
 
         showSpotlightState('search');
+        if (!spotlightCache.isLoaded) {
+            renderSpotlightInitialList();
+        }
 
         // Фоново зареждане или опресняване на справочните данни
-        ensureSpotlightCache().then(() => {
-            if (input && input.value.trim()) {
-                handleSpotlightSearch(input.value.trim());
-            } else {
-                renderSpotlightInitialList();
-            }
-        });
+        await ensureSpotlightCache();
+        const currentQuery = input ? input.value.trim() : '';
+        if (currentQuery) {
+            handleSpotlightSearch(currentQuery);
+        } else {
+            renderSpotlightInitialList();
+        }
     };
 
     window.closeSpotlightModal = function() {
@@ -63,31 +71,36 @@
 
     async function ensureSpotlightCache(force = false) {
         if (!force && spotlightCache.isLoaded) return;
-        if (spotlightCache.isLoading) return;
+        if (!force && spotlightLoadPromise) return spotlightLoadPromise;
+
         spotlightCache.isLoading = true;
+        spotlightLoadPromise = (async () => {
+            try {
+                const [nomRes, invRes, skladRes, plansRes, routesRes, bomRes] = await Promise.all([
+                    client.from('Номенклатура').select('*').limit(20000),
+                    client.from('inventory').select('*').limit(20000),
+                    client.from('sklad').select('*').limit(20000),
+                    client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', '📦 Опакован']).limit(5000),
+                    client.from('marshruti').select('*').limit(20000),
+                    client.from('bom').select('*').limit(20000)
+                ]);
 
-        try {
-            const [nomRes, invRes, skladRes, plansRes, routesRes, bomRes] = await Promise.all([
-                client.from('Номенклатура').select('*').limit(20000),
-                client.from('inventory').select('*').limit(20000),
-                client.from('sklad').select('*').limit(20000),
-                client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', '📦 Опакован']).limit(5000),
-                client.from('marshruti').select('*').limit(20000),
-                client.from('bom').select('*').limit(20000)
-            ]);
+                spotlightCache.nomenclature = nomRes.data || [];
+                spotlightCache.inventory = invRes.data || [];
+                spotlightCache.sklad = skladRes.data || [];
+                spotlightCache.plans = plansRes.data || [];
+                spotlightCache.routes = routesRes.data || [];
+                spotlightCache.bom = bomRes.data || [];
+                spotlightCache.isLoaded = true;
+            } catch (err) {
+                console.warn("Грешка при фоново зареждане на Spotlight кеш:", err);
+            } finally {
+                spotlightCache.isLoading = false;
+                spotlightLoadPromise = null;
+            }
+        })();
 
-            spotlightCache.nomenclature = nomRes.data || [];
-            spotlightCache.inventory = invRes.data || [];
-            spotlightCache.sklad = skladRes.data || [];
-            spotlightCache.plans = plansRes.data || [];
-            spotlightCache.routes = routesRes.data || [];
-            spotlightCache.bom = bomRes.data || [];
-            spotlightCache.isLoaded = true;
-        } catch (err) {
-            console.warn("Грешка при фоново зареждане на Spotlight кеш:", err);
-        } finally {
-            spotlightCache.isLoading = false;
-        }
+        return spotlightLoadPromise;
     }
 
     function createSpotlightDOM() {
@@ -137,18 +150,18 @@
         }
     }
 
-    window.showSpotlightState = function(state) {
+    window.showSpotlightState = function(state, populateIfEmpty = false) {
         const resultsEl = document.getElementById('spotlightResultsContainer');
         const dossierEl = document.getElementById('spotlightDossierContainer');
         if (state === 'search') {
-            if (resultsEl) {
-                resultsEl.style.display = 'block';
-                if (!resultsEl.innerHTML.trim()) {
-                    const inp = document.getElementById('spotlightSearchInput');
-                    handleSpotlightSearch(inp ? inp.value.trim() : '');
-                }
-            }
+            if (resultsEl) resultsEl.style.display = 'block';
             if (dossierEl) dossierEl.style.display = 'none';
+            if (populateIfEmpty && resultsEl && !resultsEl.innerHTML.trim()) {
+                const inp = document.getElementById('spotlightSearchInput');
+                const q = inp ? inp.value.trim() : '';
+                if (q) handleSpotlightSearch(q);
+                else renderSpotlightInitialList();
+            }
         } else if (state === 'dossier') {
             if (resultsEl) resultsEl.style.display = 'none';
             if (dossierEl) dossierEl.style.display = 'block';
@@ -332,6 +345,8 @@
     // ==============================================================================
     window.openSpotlightPartDossier = async function(partCode) {
         if (!partCode) return;
+        const backdrop = ensureSpotlightBackdrop();
+        backdrop.style.display = 'flex';
         currentSelectedDetail = partCode;
         showSpotlightState('dossier');
 
@@ -345,6 +360,7 @@
             </div>
         `;
 
+        try {
         await ensureSpotlightCache();
 
         const cleanCode = String(partCode).trim();
@@ -533,7 +549,7 @@
             <div>
                 <!-- Top Header: Back button + Title -->
                 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #f1f5f9; padding-bottom:12px; margin-bottom:14px;">
-                    <button type="button" onclick="showSpotlightState('search')" 
+                    <button type="button" onclick="showSpotlightState('search', true)" 
                             style="background:#f1f5f9; border:1px solid #cbd5e1; color:#475569; padding:6px 12px; border-radius:8px; font-weight:700; font-size:0.85em; cursor:pointer; display:flex; align-items:center; gap:6px;">
                         ⬅️ Назад към търсенето
                     </button>
@@ -720,6 +736,16 @@
         `;
 
         container.innerHTML = html;
+        } catch (err) {
+            console.error('openSpotlightPartDossier error:', err);
+            container.innerHTML = `
+                <div style="padding:20px; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; color:#b91c1c;">
+                    <div style="font-weight:800; margin-bottom:6px;">⚠️ Грешка при зареждане на досието</div>
+                    <div style="font-size:0.9em;">${err && err.message ? err.message : err}</div>
+                    <button type="button" onclick="showSpotlightState('search', true)" style="margin-top:10px; background:#ffffff; border:1px solid #fca5a5; color:#b91c1c; padding:5px 12px; border-radius:6px; font-weight:700; cursor:pointer;">⬅️ Назад</button>
+                </div>
+            `;
+        }
     };
 
     window.spotlightNavigateToTab = function(tabKey, filterQuery) {
