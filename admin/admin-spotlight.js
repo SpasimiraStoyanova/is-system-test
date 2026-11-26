@@ -11,11 +11,40 @@
         routes: [],
         bom: [],
         isLoaded: false,
-        isLoading: false
+        isLoading: false,
+        loadedAt: 0
     };
 
+    const SPOTLIGHT_CACHE_TTL_MS = 20000;
     let spotlightLoadPromise = null;
     let currentSelectedDetail = null;
+
+    function normSpotStr(s) {
+        return String(s || '').replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
+    }
+
+    async function fetchAllSpotlightRows(tableName, extraFilter = null) {
+        let allRows = [];
+        let start = 0;
+        const step = 1000;
+        while (true) {
+            let query = client.from(tableName).select('*').range(start, start + step - 1);
+            if (typeof extraFilter === 'function') {
+                query = extraFilter(query);
+            }
+            const { data, error } = await query;
+            if (error) throw error;
+            if (data && data.length > 0) allRows.push(...data);
+            if (!data || data.length < step) break;
+            start += step;
+        }
+        return allRows;
+    }
+
+    window.invalidateSpotlightCache = function() {
+        spotlightCache.isLoaded = false;
+        spotlightCache.loadedAt = 0;
+    };
 
     // Глобално следене за клавиш Ctrl+K / Cmd+K
     document.addEventListener('keydown', function(e) {
@@ -70,28 +99,30 @@
     };
 
     async function ensureSpotlightCache(force = false) {
-        if (!force && spotlightCache.isLoaded) return;
+        const isFresh = spotlightCache.isLoaded && (Date.now() - (spotlightCache.loadedAt || 0) < SPOTLIGHT_CACHE_TTL_MS);
+        if (!force && isFresh) return;
         if (!force && spotlightLoadPromise) return spotlightLoadPromise;
 
         spotlightCache.isLoading = true;
         spotlightLoadPromise = (async () => {
             try {
-                const [nomRes, invRes, skladRes, plansRes, routesRes, bomRes] = await Promise.all([
-                    client.from('Номенклатура').select('*').limit(20000),
-                    client.from('inventory').select('*').limit(20000),
-                    client.from('sklad').select('*').limit(20000),
-                    client.from('plan').select('*').in('Статус', ['Активен', 'Завършен', '📦 Опакован']).limit(5000),
-                    client.from('marshruti').select('*').limit(20000),
-                    client.from('bom').select('*').limit(20000)
+                const [nomRows, invRows, skladRows, planRows, routeRows, bomRows] = await Promise.all([
+                    fetchAllSpotlightRows('Номенклатура'),
+                    fetchAllSpotlightRows('inventory'),
+                    fetchAllSpotlightRows('sklad'),
+                    fetchAllSpotlightRows('plan', q => q.in('Статус', ['Активен', 'Завършен', '📦 Опакован'])),
+                    fetchAllSpotlightRows('marshruti'),
+                    fetchAllSpotlightRows('bom')
                 ]);
 
-                spotlightCache.nomenclature = nomRes.data || [];
-                spotlightCache.inventory = invRes.data || [];
-                spotlightCache.sklad = skladRes.data || [];
-                spotlightCache.plans = plansRes.data || [];
-                spotlightCache.routes = routesRes.data || [];
-                spotlightCache.bom = bomRes.data || [];
+                spotlightCache.nomenclature = nomRows || [];
+                spotlightCache.inventory = invRows || [];
+                spotlightCache.sklad = skladRows || [];
+                spotlightCache.plans = planRows || [];
+                spotlightCache.routes = routeRows || [];
+                spotlightCache.bom = bomRows || [];
                 spotlightCache.isLoaded = true;
+                spotlightCache.loadedAt = Date.now();
             } catch (err) {
                 console.warn("Грешка при фоново зареждане на Spotlight кеш:", err);
             } finally {
@@ -364,16 +395,16 @@
         await ensureSpotlightCache();
 
         const cleanCode = String(partCode).trim();
-        const lowerCode = cleanCode.toLowerCase();
+        const lowerCode = normSpotStr(cleanCode);
 
         // 1. Номенклатура
         const nom = spotlightCache.nomenclature.find(n => 
-            String(n['ID Детайл'] || '').trim().toLowerCase() === lowerCode || 
-            String(n['Вътрешно име'] || '').trim().toLowerCase() === lowerCode
+            normSpotStr(n['ID Детайл']) === lowerCode || 
+            normSpotStr(n['Вътрешно име']) === lowerCode
         ) || {};
 
         const formalCode = String(nom['ID Детайл'] || cleanCode).trim();
-        const formalLower = formalCode.toLowerCase();
+        const formalLower = normSpotStr(formalCode);
         const displayName = String(nom['Вътрешно име'] || formalCode).trim();
         const drawingUrl = nom['Линк към чертеж'] || '';
         const sopUrl = nom['Линк към СОП'] || '';
@@ -384,10 +415,10 @@
         let gpQty = 0;
         let wipOps = [];
         (spotlightCache.inventory || []).forEach(r => {
-            if (targetKeys.has(String(r['ID Детайл'] || '').trim().toLowerCase())) {
+            if (targetKeys.has(normSpotStr(r['ID Детайл']))) {
                 let op = String(r['Операция'] || '').trim();
                 let q = parseFloat(r['Количество']) || 0;
-                if (op.toLowerCase() === 'готов продукт') {
+                if (normSpotStr(op) === 'готов продукт') {
                     gpQty += q;
                 } else {
                     wipOps.push({ op: op, qty: q });
@@ -396,7 +427,7 @@
         });
 
         // 3. Склад Материали (Суровина)
-        let rawMaterial = spotlightCache.sklad.find(s => targetKeys.has(String(s['ID Детайл'] || '').trim().toLowerCase()));
+        let rawMaterial = spotlightCache.sklad.find(s => targetKeys.has(normSpotStr(s['ID Детайл'])));
         let rawStock = rawMaterial ? (parseFloat(rawMaterial['Остатък']) || 0) : null;
         let rawUnit = rawMaterial ? (rawMaterial['Мерна единица'] || 'бр.') : '';
 
