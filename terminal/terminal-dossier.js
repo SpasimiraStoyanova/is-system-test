@@ -770,8 +770,8 @@ async function buildLiveDigitalCardHtml(email, workerName) {
     const adminDed = adminViolations.length * 15;
     const disciplinePts = Math.max(0, 100 - (lateDed + missDed + wrongDed + scrapDed + adminDed));
 
-    // 3S Одити + Звено
-    const worker3sRow = (workers3sRes.data || []).find(w => dossierNorm(w.worker_name) === displayNameNorm || dossierNorm(w.worker_name) === targetNameNorm);
+    // 3S Одити + Звена (поддържа 1 или повече звена в audit_3s_workers)
+    const worker3sRows = (workers3sRes.data || []).filter(w => dossierNorm(w.worker_name) === displayNameNorm || dossierNorm(w.worker_name) === targetNameNorm);
     const savedIndState = Array.isArray(draftDetails.indAuditsState) ? draftDetails.indAuditsState : [];
     const myIndAudits = allAudits
         .filter(a => a.target_type !== 'area' && (dossierNorm(a.target_name) === targetEmail || dossierNorm(a.target_name) === displayNameNorm))
@@ -780,8 +780,18 @@ async function buildLiveDigitalCardHtml(email, workerName) {
             return { ...a, isExcused: !!(st && st.isExcused) };
         });
 
-    const mySector = (worker3sRow && worker3sRow.sector) ? worker3sRow.sector : (myIndAudits[0] ? myIndAudits[0].sector : '');
-    const myAreaAudits = mySector ? allAudits.filter(a => a.target_type === 'area' && dossierNorm(a.sector) === dossierNorm(mySector)) : [];
+    const mySectors = [];
+    const addSector = (s) => {
+        const clean = String(s || '').trim();
+        if (clean && !mySectors.some(x => dossierNorm(x) === dossierNorm(clean))) mySectors.push(clean);
+    };
+    worker3sRows.forEach(w => addSector(w.sector));
+    myIndAudits.forEach(a => addSector(a.sector));
+    const mySector = mySectors.join(', ');
+    const mySectorKeys = new Set(mySectors.map(dossierNorm));
+    const myAreaAudits = mySectorKeys.size > 0
+        ? allAudits.filter(a => a.target_type === 'area' && mySectorKeys.has(dossierNorm(a.sector)))
+        : [];
 
     const activeInd = myIndAudits.filter(a => !a.isExcused);
     const hasIndAuditData = myIndAudits.length > 0 || (draftDetails.manual3sInd !== undefined && draftDetails.manual3sInd !== null);

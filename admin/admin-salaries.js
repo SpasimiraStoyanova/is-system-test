@@ -441,11 +441,16 @@ window.calculateMonthlySalaries = async function () {
             currentSalaryMonthStatus = 'Не е запазено';
         }
 
-        // Карта на звената на служителите от audit_3s_workers
-        const workerSectorMap = {};
+        // Карта на звената на служителите от audit_3s_workers (поддържа 1 или повече звена на служител)
+        const workerSectorsMap = {};
         workers3s.forEach(w => {
             if (w.worker_name && w.sector) {
-                workerSectorMap[salNorm(w.worker_name)] = String(w.sector).trim();
+                const key = salNorm(w.worker_name);
+                const sec = String(w.sector).trim();
+                if (!workerSectorsMap[key]) workerSectorsMap[key] = [];
+                if (!workerSectorsMap[key].some(x => salNorm(x) === salNorm(sec))) {
+                    workerSectorsMap[key].push(sec);
+                }
             }
         });
 
@@ -688,12 +693,28 @@ window.calculateMonthlySalaries = async function () {
                 }
             });
 
-            // Звено на служителя
-            let workerSector = workerSectorMap[nameNorm] || '';
-            if (!workerSector && workerIndAudits.length > 0) {
-                workerSector = workerIndAudits[0].sector || '';
-            }
-            const workerAreaAudits = workerSector ? (areaAuditsBySector[salNorm(workerSector)] || []) : [];
+            // Звена на служителя (от audit_3s_workers + звената на личните му 3S одити)
+            const workerSectors = [];
+            const addWorkerSector = (sec) => {
+                const clean = String(sec || '').trim();
+                if (clean && !workerSectors.some(x => salNorm(x) === salNorm(clean))) {
+                    workerSectors.push(clean);
+                }
+            };
+            (workerSectorsMap[nameNorm] || []).forEach(addWorkerSector);
+            workerIndAudits.forEach(a => addWorkerSector(a.sector));
+
+            const workerSector = workerSectors.join(', ');
+            const seenAreaIds = new Set();
+            const workerAreaAudits = [];
+            workerSectors.forEach(sec => {
+                (areaAuditsBySector[salNorm(sec)] || []).forEach(a => {
+                    if (!seenAreaIds.has(a.id)) {
+                        seenAreaIds.add(a.id);
+                        workerAreaAudits.push(a);
+                    }
+                });
+            });
 
             const activeIndAudits = workerIndAudits.filter(a => !a.isExcused);
             const auto3sInd = activeIndAudits.length > 0
