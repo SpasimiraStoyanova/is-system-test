@@ -870,12 +870,17 @@ async function loadCurrentTableData(forceRefresh = false) {
         document.getElementById('mainTable').style.display = 'none';
 
         let query;
+        let otchetiPlanPromise = null;
         if (currentTab === 'sklad_inventory') {
             query = client.from('plan').select('id').limit(1); // dummy query
         } else {
-            query = client.from(config.table).select('*').limit(10000);
+            const selectCols = (currentTab === 'otcheti')
+                ? 'id, "ID План", "ID Детайл", "Операция", "Количество", "Статус", "Оператор", "Време Старт", "Дата"'
+                : '*';
+            query = client.from(config.table).select(selectCols).limit(10000);
             if (currentTab === 'otcheti') {
                 query = query.order('Дата', { ascending: false });
+                otchetiPlanPromise = client.from('plan').select('id, "Вътрешно име", "Месец", "Година"');
             }
             if (currentTab === 'brak') {
                 query = query.eq('Статус', 'Брак').order('Дата', { ascending: false });
@@ -883,7 +888,11 @@ async function loadCurrentTableData(forceRefresh = false) {
             if (currentTab === 'chekiraniya') query = query.order('Време', { ascending: false });
             if (currentTab === 'equipment_protocols') query = query.order('created_at', { ascending: false });
         }
-        const { data, error } = await query; if (error) throw error;
+        const [{ data, error }, otchetiPlanRes] = await Promise.all([
+            query,
+            otchetiPlanPromise || Promise.resolve(null)
+        ]);
+        if (error) throw error;
         let rows = data || [];
         if (currentTab === 'plan') {
             const [nomRes, routeRes, otchetiRes, invRes] = await Promise.all([
@@ -1093,8 +1102,8 @@ async function loadCurrentTableData(forceRefresh = false) {
             });
 
         } else if (currentTab === 'otcheti') {
-            const planRes = await client.from('plan').select('id, "Вътрешно име", "Месец", "Година"');
-            if (!planRes.error && planRes.data) {
+            const planRes = otchetiPlanRes || await client.from('plan').select('id, "Вътрешно име", "Месец", "Година"');
+            if (planRes && !planRes.error && planRes.data) {
                 const planMap = {};
                 planRes.data.forEach(p => {
                     let m = (p['Месец'] && p['Година']) ? `${p['Месец']} ${p['Година']}` : '';
@@ -1269,10 +1278,74 @@ function renderDynamicTable(itemsToRender = null) {
 
     tbody.innerHTML = '';
 
-    if (currentRenderedRows.length === 0) { tbody.innerHTML = `<tr><td colspan="${config.fields.length + (config.readOnlyTab ? 0 : 2)}" style="text-align:center; padding:40px;">Няма данни.</td></tr>`; table.style.display = 'table'; return; }
+    if (currentRenderedRows.length === 0) { tbody.innerHTML = `<tr><td colspan="${getVisibleAdminColSpan(config)}" style="text-align:center; padding:40px;">Няма данни.</td></tr>`; table.style.display = 'table'; return; }
 
-    currentRenderedRows.forEach((item) => {
-        const row = document.createElement('tr'); const trueIndex = globalRows.indexOf(item);
+    adminRowIndexMap = new Map();
+    globalRows.forEach((r, idx) => adminRowIndexMap.set(r, idx));
+    adminTableRenderedCount = 0;
+    renderMoreAdminTableRows(ADMIN_TABLE_PAGE_SIZE);
+}
+
+const ADMIN_TABLE_PAGE_SIZE = 200;
+let adminTableRenderedCount = 0;
+let adminRowIndexMap = new Map();
+
+function getVisibleAdminColSpan(config) {
+    const visibleFields = config.fields.filter(f => !f.hideOnAdd).length;
+    return visibleFields + (config.readOnlyTab ? 0 : 2);
+}
+
+function renderMoreAdminTableRows(chunkSize = ADMIN_TABLE_PAGE_SIZE) {
+    const table = document.getElementById('mainTable');
+    const tbody = document.getElementById('tableBody');
+    const config = tableConfigs[currentTab];
+    if (!table || !tbody || !config) return;
+
+    const existingPager = document.getElementById('tablePaginationRow');
+    if (existingPager) existingPager.remove();
+
+    const start = adminTableRenderedCount;
+    const end = Math.min(currentRenderedRows.length, start + Math.max(1, chunkSize));
+    const frag = document.createDocumentFragment();
+
+    for (let idx = start; idx < end; idx++) {
+        const item = currentRenderedRows[idx];
+        const mappedIndex = adminRowIndexMap.get(item);
+        const trueIndex = (mappedIndex !== undefined) ? mappedIndex : idx;
+        frag.appendChild(buildDynamicTableRow(item, trueIndex, config));
+    }
+
+    adminTableRenderedCount = end;
+
+    if (adminTableRenderedCount < currentRenderedRows.length) {
+        const remaining = currentRenderedRows.length - adminTableRenderedCount;
+        const nextStep = Math.min(ADMIN_TABLE_PAGE_SIZE, remaining);
+        const pagerTr = document.createElement('tr');
+        pagerTr.id = 'tablePaginationRow';
+        pagerTr.style.background = '#f8fafc';
+        pagerTr.innerHTML = `
+            <td colspan="${getVisibleAdminColSpan(config)}" style="text-align:center; padding:12px; border-top:2px solid #e2e8f0;">
+                <span style="color:#475569; font-weight:700; margin-right:12px;">Показани ${adminTableRenderedCount} от ${currentRenderedRows.length} записа</span>
+                <button type="button" onclick="renderMoreAdminTableRows(${ADMIN_TABLE_PAGE_SIZE})" style="background:#2563eb; color:#ffffff; border:none; border-radius:6px; padding:6px 14px; font-weight:800; cursor:pointer; margin-right:6px;">⬇️ Покажи още ${nextStep}</button>
+                <button type="button" onclick="renderMoreAdminTableRows(${remaining})" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; border-radius:6px; padding:6px 14px; font-weight:700; cursor:pointer;">📋 Покажи всички (${remaining})</button>
+            </td>
+        `;
+        frag.appendChild(pagerTr);
+    }
+
+    tbody.appendChild(frag);
+    table.style.display = 'table';
+
+    const allCheckbox = document.getElementById('selectAllCb');
+    if (allCheckbox) {
+        const visibleCheckboxes = document.querySelectorAll('.row-cb');
+        const allChecked = visibleCheckboxes.length > 0 && Array.from(visibleCheckboxes).every(cb => cb.checked);
+        allCheckbox.checked = allChecked;
+    }
+}
+
+function buildDynamicTableRow(item, trueIndex, config) {
+        const row = document.createElement('tr');
         if (currentTab === 'chekiraniya') {
             let isLate = false; if (item['Действие'] === 'Влизане' && item['Време']) { let d = new Date(item['Време']); if (d.getHours() > 8 || (d.getHours() === 8 && d.getMinutes() > 0)) isLate = true; }
             if (isLate || (item['Бележка'] && item['Бележка'].includes('ИЗВЪН ОБЕКТА'))) { row.style.backgroundColor = '#fef2f2'; row.style.borderLeft = '5px solid #ef4444'; }
@@ -1556,16 +1629,7 @@ function renderDynamicTable(itemsToRender = null) {
             tdActions.innerHTML = `${extraActionBtns}${editDeleteBtns}`;
             row.appendChild(tdActions);
         }
-        tbody.appendChild(row);
-    });
-    table.style.display = 'table';
-
-    const allCheckbox = document.getElementById('selectAllCb');
-    if (allCheckbox) {
-        const visibleCheckboxes = document.querySelectorAll('.row-cb');
-        const allChecked = visibleCheckboxes.length > 0 && Array.from(visibleCheckboxes).every(cb => cb.checked);
-        allCheckbox.checked = allChecked;
-    }
+        return row;
 }
 
 function filterTable() {

@@ -96,13 +96,169 @@ function addLogToHistory(type, qty, taskId) {
     updateHistoryUI();
 }
 
+async function fetchLiveProbaTaskStockLimits(taskData) {
+    if (!taskData || !taskData.isProba || !taskData.plan_id || !taskData.probaId) return null;
+
+    const pKey = String(taskData.plan_id).trim();
+    const partCode = String(taskData.name || '').trim();
+    const partNorm = normalizeStr(partCode);
+
+    const [repRes, probiInvRes, compsRes, skladRes] = await Promise.all([
+        client.from('otcheti').select('"ID Детайл", "Операция", "Количество", "Статус"').eq('ID План', pKey),
+        client.from('probi_inventory').select('part_code, operation, quantity').eq('proba_id', taskData.probaId),
+        client.from('probi_components').select('part_code, parent_part_code, qty_per_unit, is_new, material_code, material_norm, custom_routes').eq('proba_id', taskData.probaId),
+        client.from('sklad').select('"ID Детайл", Остатък').limit(10000)
+    ]);
+
+    if (repRes.error || skladRes.error) return null;
+
+    const myComps = (compsRes && !compsRes.error && Array.isArray(compsRes.data)) ? compsRes.data : [];
+    const compRecord = myComps.find(c => normalizeStr(c.part_code) === partNorm);
+
+    let compRoutes = [];
+    if (compRecord && compRecord.is_new && Array.isArray(compRecord.custom_routes) && compRecord.custom_routes.length > 0) {
+        compRoutes = compRecord.custom_routes.slice().sort((a, b) => (parseInt(a.op_num || a['№ Операция']) || 0) - (parseInt(b.op_num || b['№ Операция']) || 0));
+    } else {
+        compRoutes = ((typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[partNorm]) ? globalRoutesByDetail[partNorm] : [])
+            .slice()
+            .sort((a, b) => (parseInt(a['№ Операция'] || a.op_num) || 0) - (parseInt(b['№ Операция'] || b.op_num) || 0));
+    }
+
+    if (compRoutes.length === 0) return null;
+
+    const curOpNum = parseInt(taskData.opNum, 10) || 0;
+    const curOpNorm = normalizeStr(taskData.op);
+    let rIdx = compRoutes.findIndex(r => (parseInt(r['№ Операция'] || r.op_num) || 0) === curOpNum);
+    if (rIdx === -1 && curOpNorm) {
+        rIdx = compRoutes.findIndex(r => normalizeStr(r['Име на операция'] || r.op_name) === curOpNorm);
+    }
+    if (rIdx === -1) return null;
+
+    const reports = repRes.data || [];
+    const opDoneMap = {};
+    const opInProgressAny = {};
+    reports.forEach(rep => {
+        if (normalizeStr(rep['ID Детайл']) !== partNorm) return;
+        const opN = normalizeStr(rep['Операция']);
+        const st = String(rep['Статус'] || '').trim();
+        const q = parseFloat(rep['Количество']) || 0;
+        if (st === 'Отчетено' || st === 'Изпратено') {
+            opDoneMap[opN] = (opDoneMap[opN] || 0) + q;
+        } else if (st === 'Започната') {
+            opInProgressAny[opN] = (opInProgressAny[opN] || 0) + q;
+        }
+    });
+
+    const doneQty = opDoneMap[curOpNorm] || 0;
+    const inProgQty = opInProgressAny[curOpNorm] || 0;
+    const totalTarget = Number(taskData.totalNeed || 0);
+    const shortage = Math.max(0, totalTarget - doneQty);
+    let limit = shortage;
+    let hasPrev = false;
+    let livePrevOpStock = taskData.prevOpStock || 0;
+
+    if (rIdx > 0) {
+        hasPrev = true;
+        const prevRoute = compRoutes[rIdx - 1];
+        const prevOpNorm = normalizeStr(prevRoute['Име на операция'] || prevRoute.op_name);
+        const donePrev = opDoneMap[prevOpNorm] || 0;
+        livePrevOpStock = Math.max(0, donePrev - (doneQty + inProgQty));
+        if (livePrevOpStock < limit) limit = livePrevOpStock;
+    }
+
+    const myProbaInv = {};
+    ((probiInvRes && !probiInvRes.error && Array.isArray(probiInvRes.data)) ? probiInvRes.data : []).forEach(pi => {
+        const piKey = normalizeStr(pi.part_code) + '_' + normalizeStr(pi.operation);
+        myProbaInv[piKey] = (myProbaInv[piKey] || 0) + (parseFloat(pi.quantity) || 0);
+    });
+
+    const freshSkladMap = {};
+    (skladRes.data || []).forEach(s => {
+        const sc = normalizeStr(s['ID Детайл']);
+        if (sc) freshSkladMap[sc] = (parseFloat(s['Остатък']) || 0);
+    });
+
+    const bomData = (typeof globalBomData !== 'undefined' && globalBomData) ? globalBomData : [];
+    const myChildren = [];
+    bomData.filter(b => normalizeStr(b['ID Родител']) === partNorm).forEach(b => {
+        myChildren.push({
+            code: String(b['ID Компонент']).trim(),
+            qty: parseFloat(b['Количество']) || 1,
+            opNum: b['Влага се на Оп. №'] ? parseFloat(b['Влага се на Оп. №']) : 0
+        });
+    });
+    myComps.filter(c => c.parent_part_code && normalizeStr(c.parent_part_code) === partNorm).forEach(c => {
+        const cNorm = normalizeStr(c.part_code);
+        if (!myChildren.some(ex => normalizeStr(ex.code) === cNorm)) {
+            myChildren.push({ code: String(c.part_code).trim(), qty: parseFloat(c.qty_per_unit) || 1, opNum: 0 });
+        }
+    });
+
+    const relevantChildren = myChildren.filter(c => c.opNum > 0 ? c.opNum === curOpNum : rIdx === 0);
+    if (relevantChildren.length > 0) {
+        let minSets = Infinity;
+        relevantChildren.forEach(child => {
+            const cNorm = normalizeStr(child.code);
+            const childObj = myComps.find(c => normalizeStr(c.part_code) === cNorm);
+            let cRoutes = [];
+            if (childObj && childObj.is_new && Array.isArray(childObj.custom_routes) && childObj.custom_routes.length > 0) {
+                cRoutes = childObj.custom_routes.slice().sort((a, b) => (parseInt(a.op_num || a['№ Операция']) || 0) - (parseInt(b.op_num || b['№ Операция']) || 0));
+            } else {
+                cRoutes = ((typeof globalRoutesByDetail !== 'undefined' && globalRoutesByDetail[cNorm]) ? globalRoutesByDetail[cNorm] : [])
+                    .slice()
+                    .sort((a, b) => (parseInt(a['№ Операция'] || a.op_num) || 0) - (parseInt(b['№ Операция'] || b.op_num) || 0));
+            }
+            let probaChildDone = 0;
+            if (cRoutes.length > 0) {
+                const lastCOp = normalizeStr(cRoutes[cRoutes.length - 1]['Име на операция'] || cRoutes[cRoutes.length - 1].op_name);
+                reports.forEach(rep => {
+                    if (normalizeStr(rep['ID Детайл']) === cNorm && normalizeStr(rep['Операция']) === lastCOp && (rep['Статус'] === 'Отчетено' || rep['Статус'] === 'Изпратено')) {
+                        probaChildDone += (parseFloat(rep['Количество']) || 0);
+                    }
+                });
+            }
+            const probiReadyKey = cNorm + '_готов продукт';
+            const probaChildAvail = Object.prototype.hasOwnProperty.call(myProbaInv, probiReadyKey)
+                ? Math.max(0, myProbaInv[probiReadyKey])
+                : Math.max(0, probaChildDone - (doneQty * child.qty));
+            const skladAvail = freshSkladMap[cNorm] || 0;
+            const sets = Math.floor((probaChildAvail + skladAvail) / child.qty);
+            if (sets < minSets) minSets = sets;
+        });
+        if (minSets < limit) limit = minSets;
+    }
+
+    if (rIdx === 0) {
+        const excludedSet = new Set(myChildren.map(mc => normalizeStr(mc.code)));
+        const rootNom = (typeof globalNomData !== 'undefined' && globalNomData)
+            ? globalNomData.find(n => normalizeStr(n['ID Детайл']) === partNorm)
+            : null;
+        const rawMat = (rootNom && rootNom['ID Родител'] && normalizeStr(rootNom['ID Родител']) !== '')
+            ? String(rootNom['ID Родител']).trim()
+            : (compRecord && compRecord.material_code ? String(compRecord.material_code).trim() : '');
+        const matNormCode = normalizeStr(rawMat);
+        if (matNormCode && !excludedSet.has(matNormCode)) {
+            const matNorm = (rootNom && rootNom['Разходна норма'])
+                ? (parseFloat(rootNom['Разходна норма']) || 1)
+                : (compRecord ? (parseFloat(compRecord.material_norm) || 1) : 1);
+            const skladAvail = freshSkladMap[matNormCode] || 0;
+            const sets = Math.floor(skladAvail / matNorm);
+            if (sets < limit) limit = sets;
+        }
+    }
+
+    if (limit < 0) limit = 0;
+    return { maxAllowed: limit, prevOpStock: livePrevOpStock, hasPrevOp: hasPrev };
+}
+
 // Бърза и жива проверка директно в inventory + sklad за конкретната задача (~80ms, без теглене на всички таблици и без прерисуване на DOM)
 async function fetchLiveTaskStockLimits(taskData) {
     if (!taskData || !taskData.hasLimit) return null;
-    if (taskData.isProba || taskData.isGreenCard) return null; // За Проби/Буфери се ползва пълното пресмятане
+    if (taskData.isProba) return await fetchLiveProbaTaskStockLimits(taskData);
+    if (taskData.isGreenCard) return null; // За Буфери се ползва пълното пресмятане
 
     const [invRes, skladRes] = await Promise.all([
-        client.from('inventory').select('*').limit(10000),
+        client.from('inventory').select('"ID Детайл", "Операция", Количество').limit(10000),
         client.from('sklad').select('"ID Детайл", Остатък').limit(10000)
     ]);
     if (invRes.error || skladRes.error) return null;
@@ -205,8 +361,14 @@ async function fetchLiveTaskStockLimits(taskData) {
     return { maxAllowed: limit, prevOpStock: livePrevOpStock };
 }
 
-async function validateRealTimeStock(taskData, val) {
+async function validateRealTimeStock(taskData, val, alreadyCheckedAtMs = 0) {
     if (!taskData.hasLimit) return { ok: true };
+
+    if (alreadyCheckedAtMs && (Date.now() - alreadyCheckedAtMs) < 8000) {
+        const cachedAllowed = (taskData.realMaxAllowed !== undefined) ? taskData.realMaxAllowed : (taskData.maxAllowed || 0);
+        if (val > cachedAllowed) return { ok: false, maxAllowed: cachedAllowed };
+        return { ok: true, maxAllowed: cachedAllowed };
+    }
 
     try {
         const live = await fetchLiveTaskStockLimits(taskData);
@@ -241,7 +403,9 @@ async function refreshTaskStockBeforeSubmit(taskId, taskData, inputElem) {
             return Object.assign({}, taskData, {
                 maxAllowed: live.maxAllowed,
                 realMaxAllowed: live.maxAllowed,
-                prevOpStock: taskData.hasPrevOp ? live.prevOpStock : taskData.prevOpStock
+                hasPrevOp: Boolean(live.hasPrevOp || taskData.hasPrevOp),
+                prevOpStock: (live.hasPrevOp || taskData.hasPrevOp) ? live.prevOpStock : taskData.prevOpStock,
+                __liveCheckedAt: Date.now()
             });
         }
     } catch (err) {
@@ -254,8 +418,8 @@ async function refreshTaskStockBeforeSubmit(taskId, taskData, inputElem) {
         const restoredInput = document.getElementById('qty_' + taskId);
         if (restoredInput && savedVal !== '') restoredInput.value = savedVal;
         const freshTask = globalTasks.find(t => t.id === taskId);
-        if (freshTask) return freshTask;
-        return Object.assign({}, taskData, { maxAllowed: 0, realMaxAllowed: 0, prevOpStock: 0 });
+        if (freshTask) return Object.assign({}, freshTask, { __liveCheckedAt: Date.now() });
+        return Object.assign({}, taskData, { maxAllowed: 0, realMaxAllowed: 0, prevOpStock: 0, __liveCheckedAt: Date.now() });
     } catch (err) {
         console.warn("Грешка при опресняване на наличност преди отчет:", err);
         return taskData;
@@ -367,7 +531,23 @@ async function finishTask(taskId, btn) {
     taskData = globalTasks.find(t => t.id === taskId);
     if (!taskData) return;
 
-    taskData = await refreshTaskStockBeforeSubmit(taskId, taskData, inputElem);
+    const origBtnHtml = btn ? btn.innerHTML : '✅ ОТЧЕТИ';
+    const restoreSubmitBtn = () => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origBtnHtml;
+        }
+    };
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ ПРОВЕРКА...';
+    }
+
+    try {
+        taskData = await refreshTaskStockBeforeSubmit(taskId, taskData, inputElem);
+    } catch (e) {
+        console.warn('refreshTaskStockBeforeSubmit warning:', e);
+    }
 
     let isDiscrepancyAccepted = false;
     let prevStock = (taskData.hasPrevOp && taskData.prevOpStock !== undefined) ? taskData.prevOpStock : (taskData.maxAllowed || 0);
@@ -419,7 +599,7 @@ async function finishTask(taskId, btn) {
             focusConfirm: true
         });
 
-        if (!warnResult.isConfirmed) return;
+        if (!warnResult.isConfirmed) { restoreSubmitBtn(); return; }
         isDiscrepancyAccepted = true;
     }
 
@@ -437,14 +617,14 @@ async function finishTask(taskId, btn) {
         shouldProceed = confirmResult.isConfirmed;
     }
 
-    if (!shouldProceed) return;
+    if (!shouldProceed) { restoreSubmitBtn(); return; }
 
     btn.disabled = true;
     btn.innerHTML = "ЗАПИС...";
     Swal.fire({ title: 'Проверка и Отчитане...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
     try {
         if (taskData.hasLimit && !isDiscrepancyAccepted) {
-            let validation = await validateRealTimeStock(taskData, val);
+            let validation = await validateRealTimeStock(taskData, val, taskData.__liveCheckedAt || 0);
             if (!validation.ok) {
                 if (validation.maxAllowed <= 0) {
                     await forceCancelTask(taskId, taskData, "Някой друг вече е отчел всички бройки. Задачата се приключва автоматично.");
@@ -482,9 +662,10 @@ async function finishTask(taskId, btn) {
             setTaskFilter('ready');
         }
         try { localStorage.setItem('mes_last_task_idle_start', String(Date.now())); } catch (e) { }
-        Swal.fire({ icon: 'success', title: 'Браво!', text: 'Отчетени: ' + val + ' бр.', timer: 1500, showConfirmButton: false }).then(() => {
+        const bgRefreshPromise = loadTasks(true);
+        Swal.fire({ icon: 'success', title: 'Браво!', text: 'Отчетени: ' + val + ' бр.', timer: 1200, showConfirmButton: false }).then(() => {
             if (currentTaskFilter === 'taken') setTaskFilter('ready');
-            loadTasks();
+            return bgRefreshPromise;
         });
     } catch (err) {
         if (!navigator.onLine || err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('fetch')) {
