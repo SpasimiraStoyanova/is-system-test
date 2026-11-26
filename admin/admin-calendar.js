@@ -749,10 +749,11 @@ window.openCompleteEventModal = function(eventId) {
     const modal = document.getElementById('completeEventModalBackdrop');
     if (!modal) return;
 
+    const defaultAdminActor = (typeof getAdminDisplayName === 'function') ? getAdminDisplayName() : 'Администратор';
     document.getElementById('compModalEventId').value = ev.id;
     document.getElementById('compModalTitle').innerText = `Отчитане: ${ev.title} (${ev.machine_name || 'Завод'})`;
     document.getElementById('compDateInput').value = new Date().toISOString().split('T')[0];
-    document.getElementById('compByInput').value = 'Администратор';
+    document.getElementById('compByInput').value = defaultAdminActor;
     document.getElementById('compNotesInput').value = '';
     document.getElementById('compPartsInput').value = '';
     document.getElementById('compCostInput').value = '';
@@ -1207,11 +1208,12 @@ window.openAddManualLogModal = function() {
     const modal = document.getElementById('addManualLogModalBackdrop');
     if (!modal) return;
 
+    const defaultAdminActor = (typeof getAdminDisplayName === 'function') ? getAdminDisplayName() : 'Администратор';
     document.getElementById('manualLogDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('manualLogMachineSelect').value = '';
     document.getElementById('manualLogActivityType').value = 'Извънреден ремонт';
     document.getElementById('manualLogTitle').value = '';
-    document.getElementById('manualLogBy').value = 'Администратор';
+    document.getElementById('manualLogBy').value = defaultAdminActor;
     document.getElementById('manualLogNotes').value = '';
     document.getElementById('manualLogParts').value = '';
     document.getElementById('manualLogCost').value = '';

@@ -985,23 +985,26 @@ async function renderVSM(dateKey) {
                 }
 
                 // 3. Ръчна корекция през Админ панела
+                const adminActor = log.changed_by || n['Извършил'] || log.changed_by_email || (opWorker.includes('—') ? opWorker.split('—').slice(1).join('—').trim() : '');
+                const actorBadge = adminActor ? ` [Админ: <b>${adminActor}</b>]` : '';
+
                 if (log.action_type === 'MANUAL_ADJUSTMENT' || isSysManual) {
                     let changeText = (oq !== null && nq !== null && oq !== nq)
                         ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
                         : `променено на <span style="color:#10b981; font-weight:bold;">${nq || 0} бр.</span>`;
-                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция (Админ панел)</b>: ${changeText}</li>`;
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция (Админ панел)</b>: ${changeText}${actorBadge}</li>`;
                 }
 
                 // 4. Обикновени INSERT / UPDATE / DELETE от склад
                 if (log.action_type === 'INSERT') {
-                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: 📦 <b style="color:#10b981;">Добавен в склад</b> с <b>${nq || 0} бр.</b></li>`;
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: 📦 <b style="color:#10b981;">Добавен в склад</b> с <b>${nq || 0} бр.</b>${actorBadge}</li>`;
                 } else if (log.action_type === 'UPDATE') {
                     let changeText = (oq !== null && nq !== null && oq !== nq) 
                         ? `променено от <span style="color:#ef4444;">${oq}</span> на <span style="color:#10b981; font-weight:bold;">${nq} бр.</span> (${diffSign}${diffQty} бр.)`
                         : `редакция на запис в склад`;
-                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция в склад</b>: ${changeText}</li>`;
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: ✏️ <b style="color:#f59e0b;">Ръчна корекция в склад</b>: ${changeText}${actorBadge}</li>`;
                 } else if (log.action_type === 'DELETE') {
-                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: <b style="color:#ef4444;">Изтрит от склад</b> (беше ${oq || 0} бр.)</li>`;
+                    return `<li style="margin-bottom:4px;">🕒 ${dStr}: <b style="color:#ef4444;">Изтрит от склад</b> (беше ${oq || 0} бр.)${actorBadge}</li>`;
                 }
                 return `<li style="margin-bottom:4px;">🕒 ${dStr}: Действие ${log.action_type}</li>`;
             });
@@ -1408,13 +1411,19 @@ window.openRevisionModal = async function(opName, cBalance, currentStock) {
 
                     // Записваме и одит за ревизия
                     try {
-                        await client.from('audit_logs').insert([{
+                        const revPayload = {
                             table_name: 'inventory',
                             action_type: 'REVISION',
                             old_data: { 'ID Детайл': targetId, 'Операция': opName, 'Количество': baseQty },
                             new_data: { 'ID Детайл': targetId, 'Операция': opName, 'Количество': actualQty, 'Разлика': diff, 'Проверил': user, 'Бележка': notes },
-                            changed_at: now
-                        }]);
+                            changed_at: now,
+                            changed_by: user
+                        };
+                        const { error: revErr } = await client.from('audit_logs').insert([revPayload]);
+                        if (revErr && String(revErr.message || '').toLowerCase().includes('changed_by')) {
+                            delete revPayload.changed_by;
+                            await client.from('audit_logs').insert([revPayload]);
+                        }
                     } catch(e) {
                         console.warn('Не можа да се запише REVISION в audit_logs:', e);
                     }

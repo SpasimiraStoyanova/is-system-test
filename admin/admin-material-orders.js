@@ -367,17 +367,22 @@ window.receiveMaterialOrder = async function(orderId) {
 
             // 3. Записваме в одит лога
             try {
-                const adminEmail = localStorage.getItem('last_admin_email') || 'Администратор';
-                await client.from('audit_logs').insert([{
+                const adminActor = (typeof getAdminDisplayName === 'function') ? getAdminDisplayName() : (localStorage.getItem('last_admin_email') || 'Администратор');
+                const payload = {
                     table_name: 'sklad',
                     action_type: 'DELIVERY_RECEIVE',
                     new_data: {
                         'ID Детайл': materialName,
                         'Заприходено': confirmedQty,
                         'Поръчка_ID': orderId,
-                        'Приел': adminEmail
+                        'Приел': adminActor
                     }
-                }]);
+                };
+                if (typeof insertAdminAuditLog === 'function') {
+                    await insertAdminAuditLog(payload);
+                } else {
+                    await client.from('audit_logs').insert([payload]);
+                }
             } catch(e) {}
 
             // Инвалидираме кеша и презареждаме таблицата на склада ако сме в него
@@ -1402,8 +1407,8 @@ window.executeSingleMonthlyMaterialOrder = async function(idx) {
 
         // Одит лог
         try {
-            const adminEmail = localStorage.getItem('last_admin_email') || 'Администратор';
-            await client.from('audit_logs').insert([{
+            const adminActor = (typeof getAdminDisplayName === 'function') ? getAdminDisplayName() : (localStorage.getItem('last_admin_email') || 'Администратор');
+            const payload = {
                 table_name: 'porachki_materiali',
                 action_type: 'MONTHLY_MATERIAL_ORDER_20TH',
                 new_data: {
@@ -1412,9 +1417,14 @@ window.executeSingleMonthlyMaterialOrder = async function(idx) {
                     deficit: item.deficit,
                     supplier: supplier,
                     email: email,
-                    user: adminEmail
+                    user: adminActor
                 }
-            }]);
+            };
+            if (typeof insertAdminAuditLog === 'function') {
+                await insertAdminAuditLog(payload);
+            } else {
+                await client.from('audit_logs').insert([payload]);
+            }
         } catch(e) {}
 
         if (window.invalidateAdminCache) {
@@ -1557,17 +1567,22 @@ window.executeBatchMonthlyMaterialOrders = async function() {
 
             // Одит лог
             try {
-                const adminEmail = localStorage.getItem('last_admin_email') || 'Администратор';
-                await client.from('audit_logs').insert([{
+                const adminActor = (typeof getAdminDisplayName === 'function') ? getAdminDisplayName() : (localStorage.getItem('last_admin_email') || 'Администратор');
+                const payload = {
                     table_name: 'porachki_materiali',
                     action_type: 'MONTHLY_MATERIAL_BATCH_ORDER_20TH',
                     new_data: {
                         count: itemsToOrder.length,
                         total_quantity: totalQty,
                         suppliers_count: groupKeys.length,
-                        user: adminEmail
+                        user: adminActor
                     }
-                }]);
+                };
+                if (typeof insertAdminAuditLog === 'function') {
+                    await insertAdminAuditLog(payload);
+                } else {
+                    await client.from('audit_logs').insert([payload]);
+                }
             } catch(e) {}
 
             if (window.invalidateAdminCache) {

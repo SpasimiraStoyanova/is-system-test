@@ -1,4 +1,4 @@
-﻿let transformSourceData = [];
+let transformSourceData = [];
 let bomDataForTransform = [];
 let nomenclatureDataForTransform = [];
 let transformAvailableQty = 0;
@@ -262,13 +262,15 @@ async function executeTransformation() {
         }
         
         // 3. Log to Otcheti for traceability. 
-        // We MUST use 'СИСТЕМА (Корекция...' to bypass the DB trigger which would otherwise deduct BOM again and double-add inventory!
+        // We MUST use 'СИСТЕМА (Корекция...' prefix to bypass the DB trigger which would otherwise deduct BOM again and double-add inventory!
+        const adminActor = (typeof getAdminDisplayName === 'function') ? getAdminDisplayName() : 'Администратор';
+        const transformOperator = `СИСТЕМА (Корекция - Трансформация) — ${adminActor}`;
         await client.from('otcheti').insert([{
             'ID Детайл': targetId,
             'Операция': op,
             'Количество': qty,
             'Статус': 'Отчетено',
-            'Оператор': 'СИСТЕМА (Корекция - Трансформация)',
+            'Оператор': transformOperator,
             'ID План': `TRANSFORM FROM ${sourceId}`,
             'Дата': new Date().toISOString()
         }]);
@@ -279,10 +281,19 @@ async function executeTransformation() {
             'Операция': op,
             'Количество': -qty,
             'Статус': 'Отчетено',
-            'Оператор': 'СИСТЕМА (Корекция - Трансформация)',
+            'Оператор': transformOperator,
             'ID План': `TRANSFORM TO ${targetId}`,
             'Дата': new Date().toISOString()
         }]);
+
+        if (typeof insertAdminAuditLog === 'function') {
+            await insertAdminAuditLog({
+                table_name: 'inventory',
+                action_type: 'MANUAL_ADJUSTMENT',
+                old_data: { 'ID Детайл': sourceId, 'Операция': op, 'Количество': qty },
+                new_data: { 'ID Детайл': targetId, 'Операция': op, 'Количество': qty, 'Бележка': `Трансформация: ${sourceId} ➔ ${targetId}` }
+            });
+        }
         
         Swal.fire('Успех!', 'Трансформацията е завършена.', 'success');
         document.getElementById('transformModalBackdrop').style.display = 'none';

@@ -3,6 +3,82 @@
 // ==========================================
 let currentAdminUser = null;
 let isAppInitialized = false;
+window.adminNamesByEmail = window.adminNamesByEmail || {};
+
+window.getAdminEmail = function () {
+    if (currentAdminUser && currentAdminUser.email) {
+        return String(currentAdminUser.email).trim();
+    }
+    try {
+        return (localStorage.getItem('last_admin_email') || '').trim();
+    } catch (e) {
+        return '';
+    }
+};
+
+window.getAdminDisplayName = function () {
+    const email = window.getAdminEmail();
+    const normEmail = email.toLowerCase();
+    if (normEmail && window.adminNamesByEmail && window.adminNamesByEmail[normEmail]) {
+        return window.adminNamesByEmail[normEmail];
+    }
+    const metaName = currentAdminUser && currentAdminUser.user_metadata
+        ? (currentAdminUser.user_metadata.full_name || currentAdminUser.user_metadata.name || '')
+        : '';
+    if (metaName && String(metaName).trim()) {
+        return String(metaName).trim();
+    }
+    return email || 'Администратор';
+};
+
+window.insertAdminAuditLog = async function (entry) {
+    if (!entry) return;
+    const actorName = window.getAdminDisplayName();
+    const actorEmail = window.getAdminEmail();
+    const newData = Object.assign({}, entry.new_data || {});
+    if (!newData['Извършил']) {
+        newData['Извършил'] = actorName;
+    }
+
+    const fullPayload = Object.assign({}, entry, {
+        new_data: newData,
+        changed_by: actorName,
+        changed_by_email: actorEmail || null
+    });
+
+    try {
+        const { error } = await client.from('audit_logs').insert([fullPayload]);
+        if (error) {
+            const msg = String(error.message || '').toLowerCase();
+            if (msg.includes('changed_by') || msg.includes('schema cache') || msg.includes('column')) {
+                const fallbackPayload = Object.assign({}, entry, { new_data: newData });
+                await client.from('audit_logs').insert([fallbackPayload]);
+            }
+        }
+    } catch (e) {
+        console.warn('insertAdminAuditLog warning:', e);
+    }
+};
+
+async function loadAdminNameDirectory() {
+    try {
+        const { data } = await client.from('personal').select('Имейл, Име');
+        if (data && Array.isArray(data)) {
+            const map = {};
+            data.forEach(p => {
+                const em = (p['Имейл'] || '').toLowerCase().trim();
+                const nm = (p['Име'] || '').trim();
+                if (em && nm) map[em] = nm;
+            });
+            window.adminNamesByEmail = map;
+            if (currentAdminUser) {
+                renderNavAuthArea(currentAdminUser);
+            }
+        }
+    } catch (e) {
+        console.warn('Could not load admin name directory:', e);
+    }
+}
 
 window.onload = async () => {
     await initAdminAuth();
@@ -62,10 +138,11 @@ function renderNavAuthArea(user) {
     const navAuth = document.getElementById('navAuthArea');
     if (!navAuth) return;
     const userEmail = (user && user.email) ? user.email : 'Администратор';
+    const displayName = (typeof window.getAdminDisplayName === 'function') ? window.getAdminDisplayName() : userEmail;
     navAuth.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; background: #ffffff; border: 1px solid #e2e8f0; padding: 4px 10px; border-radius: 9999px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" title="Влезли сте като: ${userEmail}">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; background: #ffffff; border: 1px solid #e2e8f0; padding: 4px 10px; border-radius: 9999px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" title="Влезли сте като: ${displayName} (${userEmail})">
             <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e;" title="Активна защитена сесия"></span>
-            <span style="font-weight: 700; color: #334155; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${userEmail}</span>
+            <span style="font-weight: 700; color: #334155; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${displayName}</span>
         </div>
         <button type="button" onclick="promptChangeAdminPassword()" class="btn-admin-pass-change" title="Смяна на паролата за вход в системата">
             <span>🔑</span> <span>Смени парола</span>
@@ -287,6 +364,7 @@ let globalActivePlansForDropdown = [];
 let globalColumnFilters = {};
 
 function initializeApp() {
+    loadAdminNameDirectory();
     client.from('plan').select('id, "Вътрешно име"').in('Статус', ['Активен']).then(res => {
         if (res.data) globalActivePlansForDropdown = res.data;
     });
@@ -2063,9 +2141,10 @@ async function saveForm(e) {
                         throw new Error(`Недостатъчна наличност! Опитвате се да извадите повече бройки, отколкото има в склада (Налични: ${currentStock}).`);
                     }
 
+                    const adminActor = getAdminDisplayName();
                     let auditNewData = { "ID Детайл": cleanDet, "Разлика": (qty !== 0 ? qty : -defectsQty), "Ново Количество": newTotal, "Операция": opName };
 
-                    await client.from('audit_logs').insert([{ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData }]);
+                    await insertAdminAuditLog({ table_name: tName, action_type: 'MANUAL_ADJUSTMENT', old_data: { "Количество": currentStock }, new_data: auditNewData });
 
                     let payload = { "ID Детайл": exactDet, "Операция": exactOp, "Количество": newTotal };
                     let { error: upsertErr } = await client.from(tName).upsert([payload], { onConflict: 'ID Детайл, Операция' });
@@ -2078,7 +2157,7 @@ async function saveForm(e) {
                             "Операция": exactOp,
                             "Количество": qty,
                             "Статус": "Отчетено",
-                            "Оператор": "СИСТЕМА (Корекция наличност)",
+                            "Оператор": `СИСТЕМА (Корекция наличност) — ${adminActor}`,
                             "Дата": new Date().toISOString()
                         };
                         await client.from('otcheti').insert([otchetiPayload]);
@@ -2091,7 +2170,7 @@ async function saveForm(e) {
                             "Операция": exactOp,
                             "Количество": defectsQty,
                             "Статус": "Брак",
-                            "Оператор": "Администратор",
+                            "Оператор": adminActor,
                             "Дата": new Date().toISOString()
                         };
                         await client.from('otcheti').insert([brakPayload]);
@@ -2154,7 +2233,7 @@ async function saveForm(e) {
 
                     let auditNewData = { "ID Детайл": cleanDet, "Операция": opName, "Разлика": diff, "Ново Количество": newTotal };
 
-                    await client.from('audit_logs').insert([{ table_name: tName, action_type: 'UPDATE', old_data: { "Количество": oldQty }, new_data: auditNewData }]);
+                    await insertAdminAuditLog({ table_name: tName, action_type: 'UPDATE', old_data: { "Количество": oldQty }, new_data: auditNewData });
 
                     let otchetiPayload = {
                         "ID План": null,
@@ -2162,7 +2241,7 @@ async function saveForm(e) {
                         "Операция": opName,
                         "Количество": diff,
                         "Статус": "Отчетено",
-                        "Оператор": "СИСТЕМА (Корекция наличност)",
+                        "Оператор": `СИСТЕМА (Корекция наличност) — ${getAdminDisplayName()}`,
                         "Дата": new Date().toISOString()
                     };
                     await client.from('otcheti').insert([otchetiPayload]);
@@ -2269,7 +2348,7 @@ async function saveForm(e) {
                 }
 
                 Swal.fire({ title: 'Изписване от склад...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-                let otchetiPayload = { "ID План": null, "ID Детайл": detailID, "Операция": selectedOp, "Количество": -qtyToDeduct, "Статус": "Отчетено", "Оператор": "СИСТЕМА (Експедиция)", "Дата": new Date().toISOString() };
+                let otchetiPayload = { "ID План": null, "ID Детайл": detailID, "Операция": selectedOp, "Количество": -qtyToDeduct, "Статус": "Отчетено", "Оператор": `СИСТЕМА (Експедиция) — ${getAdminDisplayName()}`, "Дата": new Date().toISOString() };
                 const { error: otchetiErr } = await client.from('otcheti').insert([otchetiPayload]);
                 if (otchetiErr) throw otchetiErr;
             }
@@ -2310,7 +2389,7 @@ async function saveForm(e) {
                         "Операция": opName,
                         "Количество": delta,
                         "Статус": "Отчетено",
-                        "Оператор": "СИСТЕМА (Корекция наличност)",
+                        "Оператор": `СИСТЕМА (Корекция наличност) — ${getAdminDisplayName()}`,
                         "Дата": new Date().toISOString()
                     };
                     const { error: updErr2 } = await client.from('otcheti').insert([otchetiPayload]);
@@ -2423,7 +2502,7 @@ async function deleteItem(index) {
 
                 let auditNewData = { "ID Детайл": cleanDet, "Ново Количество": 0 };
                 if (currentTab === 'sklad_wip') auditNewData["Операция"] = opName;
-                await client.from('audit_logs').insert([{ table_name: tName, action_type: 'DELETE', old_data: { "Количество": row['Общо'] }, new_data: auditNewData }]);
+                await insertAdminAuditLog({ table_name: tName, action_type: 'DELETE', old_data: { "Количество": row['Общо'] }, new_data: auditNewData });
                 if (window.invalidateAdminCache) window.invalidateAdminCache();
                 Swal.fire({ icon: 'success', title: 'Изтрито!', timer: 1000, showConfirmButton: false });
                 loadCurrentTableData(true);
@@ -2589,6 +2668,7 @@ window.massLogisticsAction = async function (month, year) {
             }
 
             // 2. Подготвяме отчетите за Експедиция
+            const adminActor = getAdminDisplayName();
             let otchetiInserts = detailsToShip.map(d => {
                 let idDetail = nomMap[d["Вътрешно име"]] || d["Вътрешно име"];
                 return {
@@ -2597,7 +2677,7 @@ window.massLogisticsAction = async function (month, year) {
                     "Операция": "Експедиция",
                     "Количество": parseFloat(d["Целево количество"]) || 0,
                     "Статус": "Изпратено",
-                    "Оператор": "Система (Логистика)",
+                    "Оператор": `Система (Логистика) — ${adminActor}`,
                     "Дата": new Date().toISOString()
                 };
             });
@@ -2803,11 +2883,53 @@ function openAuditModal() {
     fetchAuditLogs();
 }
 
+function resolveAuditActor(log) {
+    if (!log) return 'Система';
+    const newData = log.new_data || {};
+    const oldData = log.old_data || {};
+    const directName = (log.changed_by || '').trim();
+    if (directName) {
+        const lower = directName.toLowerCase();
+        if (window.adminNamesByEmail && window.adminNamesByEmail[lower]) {
+            return window.adminNamesByEmail[lower];
+        }
+        return directName;
+    }
+    const directEmail = (log.changed_by_email || '').toLowerCase().trim();
+    if (directEmail) {
+        if (window.adminNamesByEmail && window.adminNamesByEmail[directEmail]) {
+            return window.adminNamesByEmail[directEmail];
+        }
+        return log.changed_by_email;
+    }
+    const embedded = newData['Извършил'] || newData['Проверил'] || newData['Приел'] || newData['user'] || newData['changed_by'] || oldData['Извършил'];
+    if (embedded && String(embedded).trim()) {
+        const empStr = String(embedded).trim();
+        const lower = empStr.toLowerCase();
+        if (window.adminNamesByEmail && window.adminNamesByEmail[lower]) {
+            return window.adminNamesByEmail[lower];
+        }
+        return empStr;
+    }
+    return 'Система / Терминал';
+}
+
+function formatAuditActorBadge(actorName) {
+    const safeName = String(actorName || 'Система / Терминал')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const isSystem = safeName === 'Система / Терминал' || safeName === 'Система';
+    if (isSystem) {
+        return `<span style="display:inline-block; background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1; padding:2px 8px; border-radius:999px; font-size:0.82em; font-weight:700;">🤖 ${safeName}</span>`;
+    }
+    return `<span style="display:inline-block; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; padding:2px 8px; border-radius:999px; font-size:0.82em; font-weight:800;">👤 ${safeName}</span>`;
+}
+
 function formatAuditLogDetails(log) {
     let oldData = log.old_data || {};
     let newData = log.new_data || {};
     let tName = log.table_name || '';
     let action = log.action_type || '';
+    const ignoredMetaKeys = new Set(['Извършил', 'changed_by', 'changed_by_email']);
 
     // 1. Склад
     if (['inventory', 'inventory_gp', 'inventory_wip'].includes(tName)) {
@@ -2893,13 +3015,40 @@ function formatAuditLogDetails(log) {
         return `${header}<br><div style="margin-top:4px; font-size:0.9em; color:#334155;">${changes.join(' | ')}</div>`;
     }
 
-    // 5. Общ случай
-    let idStr = newData['ID Детайл'] || newData['Вътрешно име'] || newData['Име'] || newData['id'] || '';
+    // 5. Персонал (маскираме паролата в историята)
+    if (tName === 'personal') {
+        let workerTitle = newData['Име'] || oldData['Име'] || newData['Имейл'] || oldData['Имейл'] || 'Служител';
+        let workerEmail = newData['Имейл'] || oldData['Имейл'] || '';
+        let header = `👤 <b>Служител:</b> <b>${workerTitle}</b>${workerEmail && workerEmail !== workerTitle ? ` <span style="color:#64748b; font-size:0.88em;">(${workerEmail})</span>` : ''}`;
+        if (action === 'INSERT') {
+            return `${header} ➔ Добавен в персонал (Статус: <b>${newData['Статус'] || 'Активен'}</b>)`;
+        }
+        if (action === 'DELETE') {
+            return `🗑️ <b>Изтрит служител:</b> <b>${workerTitle}</b>`;
+        }
+        let changes = [];
+        for (let k in newData) {
+            if (ignoredMetaKeys.has(k)) continue;
+            let ov = String(oldData[k] === null || oldData[k] === undefined ? '' : oldData[k]).trim();
+            let nv = String(newData[k] === null || newData[k] === undefined ? '' : newData[k]).trim();
+            if (ov !== nv) {
+                if (k === 'password') {
+                    changes.push(nv ? `<b>Парола / ПИН:</b> <span style="color:#4338ca; font-weight:bold;">•••• (зададена / променена)</span>` : `<b>Парола / ПИН:</b> <span style="color:#dc2626; font-weight:bold;">премахната</span>`);
+                } else {
+                    changes.push(`<b>${k}:</b> <span style="text-decoration:line-through; color:#ef4444;">${ov || 'няма'}</span> ➔ <span style="color:#16a34a; font-weight:bold;">${nv || 'няма'}</span>`);
+                }
+            }
+        }
+        return `${header}<br><div style="margin-top:4px; font-size:0.9em; color:#334155;">${changes.length > 0 ? changes.join(' | ') : '<span style="color:#94a3b8;">Няма съществена промяна</span>'}</div>`;
+    }
+
+    // 6. Общ случай
+    let idStr = newData['ID Детайл'] || newData['Вътрешно име'] || newData['Име'] || newData['Материал'] || newData['item'] || newData['id'] || '';
     let header = idStr ? `<div style="font-weight:bold; color:#1e293b; margin-bottom:3px;">🔑 Запис: <b>${idStr}</b></div>` : '';
-    if (action === 'INSERT') {
+    if (action === 'INSERT' || action === 'DELIVERY_RECEIVE' || action === 'DELIVERY_RECEIPT' || action === 'MONTHLY_MATERIAL_ORDER_20TH' || action === 'MONTHLY_MATERIAL_BATCH_ORDER_20TH') {
         let fields = [];
         for (let k in newData) {
-            if (k !== 'id' && k !== 'created_at' && newData[k] !== null && String(newData[k]).trim() !== '') {
+            if (k !== 'id' && k !== 'created_at' && !ignoredMetaKeys.has(k) && newData[k] !== null && String(newData[k]).trim() !== '') {
                 fields.push(`<b>${k}:</b> ${newData[k]}`);
             }
         }
@@ -2910,6 +3059,7 @@ function formatAuditLogDetails(log) {
     }
     let changes = [];
     for (let k in newData) {
+        if (ignoredMetaKeys.has(k)) continue;
         let ov = String(oldData[k] === null || oldData[k] === undefined ? '' : oldData[k]).trim();
         let nv = String(newData[k] === null || newData[k] === undefined ? '' : newData[k]).trim();
         if (ov !== nv) {
@@ -2970,15 +3120,17 @@ async function fetchAuditLogs() {
             }
 
             let html = '<table style="width:100%; border-collapse:collapse; background:white; font-size:0.9em; box-shadow:0 1px 3px rgba(0,0,0,0.1);">';
-            html += '<thead style="background:#f8fafc; color:#0f172a;"><tr><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:150px;">Време</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:120px;">Събитие</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left;">Детайли (Проследимост)</th></tr></thead><tbody>';
+            html += '<thead style="background:#f8fafc; color:#0f172a;"><tr><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:150px;">Време</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:165px;">Потребител</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:120px;">Събитие</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left;">Детайли (Проследимост)</th></tr></thead><tbody>';
 
             combined.forEach(item => {
                 let dateStr = item.time.toLocaleString('bg-BG');
 
                 if (item.type === 'otchet') {
                     let o = item.data;
+                    let actorBadge = formatAuditActorBadge(o['Оператор'] || 'Оператор');
                     html += `<tr>
                         <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
+                        <td style="padding:10px; border:1px solid #e2e8f0;">${actorBadge}</td>
                         <td style="padding:10px; border:1px solid #e2e8f0;"><span style="background:#dbeafe; color:#1e40af; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ОТЧЕТЕНО</span></td>
                         <td style="padding:10px; border:1px solid #e2e8f0;">
                             Отчетен <b>${o['ID Детайл']}</b> от <b>${o['Оператор']}</b> (Оп: ${o['Операция']}) ➡️ <span style="color:#16a34a; font-weight:bold;">+${o['Количество']} бр.</span>
@@ -2988,6 +3140,7 @@ async function fetchAuditLogs() {
                     let log = item.data;
                     let oldData = log.old_data || {};
                     let newData = log.new_data || {};
+                    let actorBadge = formatAuditActorBadge(resolveAuditActor(log));
 
                     if (['inventory', 'inventory_gp', 'inventory_wip'].includes(log.table_name)) {
                         let actionBadge = '<span style="background:#fef3c7; color:#d97706; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">СКЛАД</span>';
@@ -3015,6 +3168,7 @@ async function fetchAuditLogs() {
 
                         html += `<tr>
                             <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
+                            <td style="padding:10px; border:1px solid #e2e8f0;">${actorBadge}</td>
                             <td style="padding:10px; border:1px solid #e2e8f0;">${actionBadge}</td>
                             <td style="padding:10px; border:1px solid #e2e8f0;">${detailsHtml}</td>
                         </tr>`;
@@ -3029,6 +3183,7 @@ async function fetchAuditLogs() {
 
                         html += `<tr>
                             <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
+                            <td style="padding:10px; border:1px solid #e2e8f0;">${actorBadge}</td>
                             <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${actionBadge}<br><span style="font-size:0.85em; color:#64748b;">${log.table_name}</span></td>
                             <td style="padding:10px; border:1px solid #e2e8f0;">${detailsHtml}</td>
                         </tr>`;
@@ -3061,10 +3216,11 @@ async function fetchAuditLogs() {
         }
 
         let html = '<table style="width:100%; border-collapse:collapse; background:white; font-size:0.9em; box-shadow:0 1px 3px rgba(0,0,0,0.1);">';
-        html += '<thead style="background:#e2e8f0; color:#475569;"><tr><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:150px;">Време</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:120px;">Таблица</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:center; width:80px;">Действие</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left;">Детайли</th></tr></thead><tbody>';
+        html += '<thead style="background:#e2e8f0; color:#475569;"><tr><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:150px;">Време</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:170px;">Потребител</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left; width:120px;">Таблица</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:center; width:90px;">Действие</th><th style="padding:10px; border:1px solid #cbd5e1; text-align:left;">Детайли</th></tr></thead><tbody>';
 
         data.forEach(log => {
             let dateStr = new Date(log.changed_at).toLocaleString('bg-BG');
+            let actorBadge = formatAuditActorBadge(resolveAuditActor(log));
             let actionBadge = '';
             if (log.action_type === 'DELETE') actionBadge = '<span style="background:#fee2e2; color:#b91c1c; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ИЗТРИВАНЕ</span>';
             else if (log.action_type === 'INSERT') actionBadge = '<span style="background:#dcfce7; color:#166534; padding:3px 8px; border-radius:12px; font-weight:bold; font-size:0.8em;">ДОБАВЯНЕ</span>';
@@ -3074,6 +3230,7 @@ async function fetchAuditLogs() {
 
             html += `<tr>
                 <td style="padding:10px; border:1px solid #e2e8f0; color:#475569;">${dateStr}</td>
+                <td style="padding:10px; border:1px solid #e2e8f0;">${actorBadge}</td>
                 <td style="padding:10px; border:1px solid #e2e8f0; font-weight:bold; color:#1e293b;">${log.table_name}</td>
                 <td style="padding:10px; border:1px solid #e2e8f0; text-align:center;">${actionBadge}</td>
                 <td style="padding:10px; border:1px solid #e2e8f0; font-family:monospace; word-break:break-word;">${detailsHtml}</td>
@@ -3452,7 +3609,7 @@ window.openSilentLocationCheckModal = async function () {
         if (!selectedEmail) return;
 
         const { email: targetEmail, name: targetName } = selectedEmail;
-        const adminEmail = localStorage.getItem('last_admin_email') || 'Администрация';
+        const adminActor = getAdminDisplayName();
 
         // Създаваме заявката в таблица location_ping_requests
         const { data: pingRow, error: pErr } = await client
@@ -3460,7 +3617,7 @@ window.openSilentLocationCheckModal = async function () {
             .insert([{
                 worker_email: targetEmail,
                 worker_name: targetName,
-                requested_by: adminEmail,
+                requested_by: adminActor,
                 status: 'PENDING'
             }])
             .select()

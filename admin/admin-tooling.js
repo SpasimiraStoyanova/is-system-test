@@ -428,7 +428,7 @@ window.openToolingOrderModal = async function(reqId) {
     if (formValues) {
         Swal.fire({ title: 'Записване на поръчката...', didOpen: () => Swal.showLoading() });
         try {
-            const adminEmail = localStorage.getItem('last_admin_email') || 'Администратор';
+            const adminActor = (typeof getAdminDisplayName === 'function') ? getAdminDisplayName() : (localStorage.getItem('last_admin_email') || 'Администратор');
             const appendNote = `[Поръчано: ${formValues.qty} бр.${formValues.supplier ? ' от ' + formValues.supplier : ''}] ${formValues.notes || ''}`.trim();
 
             if (formValues.supplier && formValues.email) {
@@ -444,7 +444,7 @@ window.openToolingOrderModal = async function(reqId) {
                     status: 'Поръчана',
                     notes: appendNote,
                     resolved_at: new Date().toISOString(),
-                    resolved_by: adminEmail
+                    resolved_by: adminActor
                 })
                 .eq('id', req.id);
             if (reqErr) throw reqErr;
@@ -589,7 +589,7 @@ window.openToolingReceiveModal = async function(reqId) {
     if (receiveValues) {
         Swal.fire({ title: 'Заприходяване...', didOpen: () => Swal.showLoading() });
         try {
-            const adminEmail = localStorage.getItem('last_admin_email') || 'Администратор';
+            const adminActor = (typeof getAdminDisplayName === 'function') ? getAdminDisplayName() : (localStorage.getItem('last_admin_email') || 'Администратор');
             const appendNote = `${req.notes || ''} [Прието: +${receiveValues.qty} бр. ${receiveValues.notes}]`.trim();
 
             // 1. Обновяваме tooling_requests
@@ -599,7 +599,7 @@ window.openToolingReceiveModal = async function(reqId) {
                     status: 'Осигурена',
                     notes: appendNote,
                     resolved_at: new Date().toISOString(),
-                    resolved_by: adminEmail
+                    resolved_by: adminActor
                 })
                 .eq('id', req.id);
             if (reqErr) throw reqErr;
@@ -618,12 +618,17 @@ window.openToolingReceiveModal = async function(reqId) {
 
                 // Записваме одит лог
                 try {
-                    await client.from('audit_logs').insert([{
+                    const auditPayload = {
                         table_name: 'tooling_inventory',
                         action_type: 'DELIVERY_RECEIPT',
                         old_data: { quantity: currentStock },
                         new_data: { quantity: newStock, item: req.tool_item, received_qty: receiveValues.qty }
-                    }]);
+                    };
+                    if (typeof insertAdminAuditLog === 'function') {
+                        await insertAdminAuditLog(auditPayload);
+                    } else {
+                        await client.from('audit_logs').insert([auditPayload]);
+                    }
                 } catch(e) {}
             }
 
@@ -649,12 +654,13 @@ window.openToolingReceiveModal = async function(reqId) {
 
 window.updateToolingReqStatus = async function(reqId, newStatus) {
     try {
+        const adminActor = (typeof getAdminDisplayName === 'function') ? getAdminDisplayName() : (localStorage.getItem('last_admin_email') || 'Администратор');
         const { error } = await client
             .from('tooling_requests')
             .update({
                 status: newStatus,
                 resolved_at: new Date().toISOString(),
-                resolved_by: localStorage.getItem('last_admin_email') || 'Администратор'
+                resolved_by: adminActor
             })
             .eq('id', reqId);
 
@@ -1128,7 +1134,7 @@ window.openCreateEquipmentProtocolModal = async function(preselectedEmail = null
         return `<option value="${escapeHtml(w['Имейл'])}" data-name="${escapeHtml(w['Име'])}" ${isSel}>${escapeHtml(w['Име'])} (${escapeHtml(w['Имейл'])})</option>`;
     }).join('');
     const today = new Date().toISOString().split('T')[0];
-    const defaultHandedBy = localStorage.getItem('last_admin_email') || 'Администрация';
+    const defaultHandedBy = (typeof getAdminDisplayName === 'function') ? getAdminDisplayName() : (localStorage.getItem('last_admin_email') || 'Администрация');
     const protoNum = `ППП-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
 
     Swal.fire({
