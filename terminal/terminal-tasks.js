@@ -365,7 +365,11 @@ async function changeMachine(isInitial = false) {
         const { isConfirmed } = await Swal.fire({ title: 'Работно място', html: checkboxHtml, showCancelButton: !isInitial, allowOutsideClick: !isInitial, confirmButtonText: 'Потвърди', confirmButtonColor: '#2563eb', preConfirm: () => { let selected = []; document.querySelectorAll('.machine-cb:checked').forEach(cb => selected.push(cb.value)); return selected; } });
         if (isConfirmed) {
             let finalSelection = []; document.querySelectorAll('.machine-cb:checked').forEach(cb => finalSelection.push(cb.value));
-            currentMachine = finalSelection.join(','); localStorage.setItem('mes_machine', currentMachine);
+            const nextMachine = finalSelection.join(',');
+            if (nextMachine !== currentMachine && typeof resetUnblockTrackerForScope === 'function') {
+                resetUnblockTrackerForScope(nextMachine);
+            }
+            currentMachine = nextMachine; localStorage.setItem('mes_machine', currentMachine);
             document.getElementById('uiMachineName').innerText = (finalSelection.length > 0) ? finalSelection.join(', ') : "ВСИЧКИ";
             if (typeof syncWorkerMachineToDb === 'function') syncWorkerMachineToDb();
             loadTasks();
@@ -1735,6 +1739,12 @@ async function loadTasks(isSilent = false) {
       }
 
       renderTasks(globalTasks);
+      if (typeof trackBlockedToReadyTransitions === 'function') {
+          trackBlockedToReadyTransitions(globalTasks);
+      }
+      if (typeof initUnblockedRealtimeWatcher === 'function') {
+          initUnblockedRealtimeWatcher();
+      }
       if (typeof checkPendingSpotAudits === 'function') {
           checkPendingSpotAudits();
       }
@@ -3041,4 +3051,325 @@ async function checkTerminalAndonAlerts() {
 
 if (!window.andonPollInterval) {
     window.andonPollInterval = setInterval(checkTerminalAndonAlerts, 15000);
+}
+
+// ============================================================================
+// АВТОМАТИЧНО ИЗВЕСТИЕ ПРИ ОТПУШВАНЕ НА БЛОКИРАНА ЗАДАЧА (ДОРИ БЕЗ ЗАЯВКА)
+// ============================================================================
+const UNBLOCK_SEEN_STORAGE_PREFIX = 'mes_seen_blocked_v1_';
+const UNBLOCK_ALERTS_STORAGE_PREFIX = 'mes_unblocked_alerts_v1_';
+const UNBLOCK_SEEN_MAX_AGE_MS = 16 * 60 * 60 * 1000;
+
+function escapeUnblockHtml(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getUnblockScopeKey(machineOverride) {
+    const emailPart = normalizeStr(typeof currentEmail !== 'undefined' && currentEmail ? currentEmail : 'anon');
+    const machRaw = machineOverride !== undefined
+        ? machineOverride
+        : (typeof currentMachine !== 'undefined' && currentMachine ? currentMachine : 'ВСИЧКИ');
+    const machPart = normalizeStr(machRaw || 'всички') || 'всички';
+    return emailPart + '___' + machPart;
+}
+
+function getUnblockTrackKey(t) {
+    if (!t) return '';
+    if (t.isProba) {
+        return 'proba___' + String(t.probaId || '') + '___' + normalizeStr(t.name) + '___' + (parseInt(t.opNum, 10) || 0) + '___' + normalizeStr(t.op);
+    }
+    const kind = t.isGreenCard ? 'buffer' : 'plan';
+    return kind + '___' + normalizeStr(t.name) + '___' + (parseInt(t.opNum, 10) || 0) + '___' + normalizeStr(t.op) + '___' + normalizeStr(t.machine);
+}
+
+function isTaskEffectivelyBlockedForAlert(t) {
+    return Boolean(t && (t.isBlocked || (t.hasLimit && Number(t.maxAllowed) <= 0)));
+}
+
+function readSessionJson(storageKey, fallbackVal) {
+    try {
+        const raw = sessionStorage.getItem(storageKey);
+        return raw ? JSON.parse(raw) : fallbackVal;
+    } catch (e) {
+        return fallbackVal;
+    }
+}
+
+function writeSessionJson(storageKey, val) {
+    try {
+        sessionStorage.setItem(storageKey, JSON.stringify(val));
+    } catch (e) {}
+}
+
+function resetUnblockTrackerForScope(targetMachine) {
+    const scope = getUnblockScopeKey(targetMachine);
+    try {
+        sessionStorage.removeItem(UNBLOCK_SEEN_STORAGE_PREFIX + scope);
+        sessionStorage.removeItem(UNBLOCK_ALERTS_STORAGE_PREFIX + scope);
+    } catch (e) {}
+    const banner = document.getElementById('terminalUnblockedAlertArea');
+    if (banner) {
+        banner.style.display = 'none';
+        banner.innerHTML = '';
+    }
+}
+
+function playUnblockedChime() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const now = ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99]; // C5 -> E5 -> G5 (позитивен сигнал за свободна задача)
+        notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.14);
+            gain.gain.setValueAtTime(0.001, now + idx * 0.14);
+            gain.gain.linearRampToValueAtTime(0.18, now + idx * 0.14 + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.14 + 0.24);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now + idx * 0.14);
+            osc.stop(now + idx * 0.14 + 0.26);
+        });
+    } catch (e) {}
+}
+
+function sendUnblockedBrowserNotification(newlyUnblocked) {
+    try {
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+            navigator.vibrate([120, 70, 140]);
+        }
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+        const first = newlyUnblocked[0];
+        const count = newlyUnblocked.length;
+        const title = count === 1
+            ? `🔓 Свободна задача: ${first.name}`
+            : `🔓 ${count} блокирани задачи вече са свободни!`;
+        const availText = first.hasLimit ? `${first.availQty} бр. налични` : 'готова за поемане';
+        const body = count === 1
+            ? `Оп. ${first.opNum} (${first.op})${first.machine ? ' • ' + first.machine : ''} — ${availText}. Можете да поемете задачата.`
+            : `${first.name} (Оп. ${first.opNum}) и още ${count - 1} задача/и са готови в таб „🟢 Мога“.`;
+        new Notification(title, {
+            body: body,
+            tag: 'mes-task-unblocked',
+            renotify: true
+        });
+    } catch (e) {}
+}
+
+function renderUnblockedTasksBanner(alertsList) {
+    const banner = document.getElementById('terminalUnblockedAlertArea');
+    if (!banner) return;
+    if (!Array.isArray(alertsList) || alertsList.length === 0) {
+        banner.style.display = 'none';
+        banner.innerHTML = '';
+        return;
+    }
+
+    const itemsHtml = alertsList.map(item => {
+        const partLabel = escapeUnblockHtml(item.name || '');
+        const internalLabel = item.internalName ? ` <span style="color:#475569; font-weight:600;">(${escapeUnblockHtml(item.internalName)})</span>` : '';
+        const opLabel = `Оп. ${escapeUnblockHtml(item.opNum)} — ${escapeUnblockHtml(item.op)}`;
+        const machLabel = item.machine ? ` • Машина: <b>${escapeUnblockHtml(item.machine)}</b>` : '';
+        const availBadge = item.hasLimit
+            ? `<span style="background:#16a34a; color:#ffffff; padding:2px 8px; border-radius:999px; font-size:0.82em; font-weight:800; margin-left:6px;">📦 Налични: ${escapeUnblockHtml(item.availQty)} бр.</span>`
+            : `<span style="background:#059669; color:#ffffff; padding:2px 8px; border-radius:999px; font-size:0.82em; font-weight:800; margin-left:6px;">✅ Свободна</span>`;
+
+        return `
+            <div style="padding:8px 10px; background:rgba(255,255,255,0.85); border:1px solid #86efac; border-radius:10px; margin-bottom:6px;">
+                <div style="font-size:0.96em; color:#064e3b;">
+                    <b>${partLabel}</b>${internalLabel} ${availBadge}
+                </div>
+                <div style="font-size:0.84em; color:#1e293b; margin-top:2px;">
+                    ${opLabel}${machLabel}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const firstIdAttr = escapeUnblockHtml(alertsList[0].id || '');
+    const badgeText = alertsList.length === 1 ? '1 задача готова' : `${alertsList.length} задачи готови`;
+
+    banner.innerHTML = `
+        <div class="terminal-andon-alert" style="border: 2px solid #10b981; border-left: 6px solid #059669; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); box-shadow: 0 8px 20px rgba(16, 185, 129, 0.22);">
+            <div class="andon-header">
+                <div class="andon-title" style="color: #065f46;">
+                    <span>🔓</span>
+                    <span>БЛОКИРАНА ЗАДАЧА ВЕЧЕ Е СВОБОДНА!</span>
+                </div>
+                <span class="andon-badge" style="background: #059669; color: #ffffff;">${badgeText}</span>
+            </div>
+            <div class="andon-body" style="color: #064e3b;">
+                <div style="margin-bottom: 8px; font-size: 0.92em;">
+                    Отчетени са бройки или има нова наличност — вече можете да поемете:
+                </div>
+                ${itemsHtml}
+            </div>
+            <div class="andon-actions" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <button type="button" class="andon-ack-btn" data-task-id="${firstIdAttr}" onclick="openUnblockedTaskInReady(this.dataset.taskId)" style="background: #16a34a; color: #ffffff; font-weight: 900; box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);">
+                    🟢 Покажи в МОГА
+                </button>
+                <button type="button" class="andon-ack-btn" onclick="dismissUnblockedAlerts()" style="background: #475569; color: #ffffff; font-size: 0.88em;">
+                    👌 Разбрах
+                </button>
+            </div>
+        </div>
+    `;
+    banner.style.display = 'block';
+}
+
+function dismissUnblockedAlerts() {
+    const scope = getUnblockScopeKey();
+    try {
+        sessionStorage.removeItem(UNBLOCK_ALERTS_STORAGE_PREFIX + scope);
+    } catch (e) {}
+    renderUnblockedTasksBanner([]);
+}
+
+function openUnblockedTaskInReady(cardTaskId) {
+    if (typeof setTaskFilter === 'function') {
+        setTaskFilter('ready');
+    }
+    dismissUnblockedAlerts();
+    if (!cardTaskId) return;
+    setTimeout(() => {
+        const el = document.getElementById('card_' + cardTaskId);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const prevOutline = el.style.outline;
+            const prevShadow = el.style.boxShadow;
+            el.style.outline = '4px solid #10b981';
+            el.style.boxShadow = '0 0 0 6px rgba(16, 185, 129, 0.28)';
+            setTimeout(() => {
+                el.style.outline = prevOutline;
+                el.style.boxShadow = prevShadow;
+            }, 2600);
+        }
+    }, 80);
+}
+
+function trackBlockedToReadyTransitions(tasks) {
+    try {
+        if (typeof isUserCheckedIn === 'undefined' || !isUserCheckedIn) return;
+        if (!Array.isArray(tasks)) return;
+
+        const now = Date.now();
+        const scope = getUnblockScopeKey();
+        const seenKey = UNBLOCK_SEEN_STORAGE_PREFIX + scope;
+        const alertsKey = UNBLOCK_ALERTS_STORAGE_PREFIX + scope;
+
+        const rawSeen = readSessionJson(seenKey, {});
+        const seenBlocked = {};
+        Object.keys(rawSeen || {}).forEach(k => {
+            if (rawSeen[k] && (!rawSeen[k].ts || (now - rawSeen[k].ts) < UNBLOCK_SEEN_MAX_AGE_MS)) {
+                seenBlocked[k] = rawSeen[k];
+            }
+        });
+
+        let alertsList = readSessionJson(alertsKey, []);
+        if (!Array.isArray(alertsList)) alertsList = [];
+        const alertsMap = {};
+        alertsList.forEach(a => {
+            if (a && a.key) alertsMap[a.key] = a;
+        });
+
+        const currentKeys = new Set();
+        const takenOrBlockedKeys = new Set();
+        const newlyUnblocked = [];
+
+        tasks.forEach(t => {
+            const key = getUnblockTrackKey(t);
+            if (!key) return;
+            currentKeys.add(key);
+
+            const isBlocked = isTaskEffectivelyBlockedForAlert(t);
+            if (isBlocked) {
+                takenOrBlockedKeys.add(key);
+                seenBlocked[key] = {
+                    name: t.name || '',
+                    opNum: t.opNum || 0,
+                    ts: now
+                };
+            } else {
+                if (t.isTaken) {
+                    takenOrBlockedKeys.add(key);
+                } else if (seenBlocked[key]) {
+                    const alertObj = {
+                        key: key,
+                        id: t.id || '',
+                        name: t.name || '',
+                        internalName: t.internalName || '',
+                        op: t.op || '',
+                        opNum: t.opNum || 0,
+                        machine: t.machine || '',
+                        planName: t.plan_name || '',
+                        availQty: t.hasLimit ? Number(t.maxAllowed || 0) : Number(t.totalNeed || 0),
+                        hasLimit: Boolean(t.hasLimit),
+                        detectedAt: now
+                    };
+                    newlyUnblocked.push(alertObj);
+                    alertsMap[key] = alertObj;
+                }
+                delete seenBlocked[key];
+            }
+        });
+
+        // Премахваме вече изчезнали от списъка задачи, за да не остават остарели записи
+        Object.keys(seenBlocked).forEach(k => {
+            if (!currentKeys.has(k)) delete seenBlocked[k];
+        });
+        alertsList = Object.values(alertsMap).filter(a => currentKeys.has(a.key) && !takenOrBlockedKeys.has(a.key));
+
+        writeSessionJson(seenKey, seenBlocked);
+        writeSessionJson(alertsKey, alertsList);
+
+        if (newlyUnblocked.length > 0) {
+            playUnblockedChime();
+            sendUnblockedBrowserNotification(newlyUnblocked);
+        }
+        renderUnblockedTasksBanner(alertsList);
+    } catch (err) {
+        console.error('trackBlockedToReadyTransitions error:', err);
+    }
+}
+
+function triggerDebouncedRealtimeTaskRefresh() {
+    if (typeof isUserCheckedIn === 'undefined' || !isUserCheckedIn) return;
+    if (typeof activeTaskId !== 'undefined' && activeTaskId) return;
+    if (window._unblockRealtimeRefreshTimer) {
+        clearTimeout(window._unblockRealtimeRefreshTimer);
+    }
+    window._unblockRealtimeRefreshTimer = setTimeout(() => {
+        if (typeof isUserCheckedIn !== 'undefined' && isUserCheckedIn && (!activeTaskId) && typeof loadTasks === 'function') {
+            loadTasks(true);
+        }
+    }, 1800);
+}
+
+function initUnblockedRealtimeWatcher() {
+    if (window._unblockRealtimeChannelInit) return;
+    if (typeof client === 'undefined' || typeof client.channel !== 'function') return;
+    window._unblockRealtimeChannelInit = true;
+    try {
+        window._unblockRealtimeChannel = client
+            .channel('terminal-unblock-watch')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'otcheti' }, triggerDebouncedRealtimeTaskRefresh)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'otcheti' }, triggerDebouncedRealtimeTaskRefresh)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'inventory' }, triggerDebouncedRealtimeTaskRefresh)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'inventory' }, triggerDebouncedRealtimeTaskRefresh)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sklad' }, triggerDebouncedRealtimeTaskRefresh)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sklad' }, triggerDebouncedRealtimeTaskRefresh)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'probi' }, triggerDebouncedRealtimeTaskRefresh)
+            .subscribe();
+    } catch (err) {
+        console.warn('initUnblockedRealtimeWatcher fallback to 30s polling:', err);
+    }
 }
