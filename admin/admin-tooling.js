@@ -51,8 +51,8 @@ async function fetchToolingRequests() {
 
             // Изпращане на сигнал към телефона
             if (window.sendAmciPushNotification && newestReq) {
-                const mac = newestReq.machine_name || 'Цех';
-                const item = newestReq.item_name || 'Пластини / Инструменти';
+                const mac = newestReq.workstation_name || newestReq.machine_name || 'Цех';
+                const item = newestReq.tool_item || newestReq.item_name || 'Пластини / Инструменти';
                 const op = newestReq.operator_name || 'Работник';
                 window.sendAmciPushNotification(
                     `⚠️ Заявка за инструменти (${mac})`,
@@ -66,7 +66,7 @@ async function fetchToolingRequests() {
     }
 }
 
-// Обновяване на баджовете в навигацията
+// Обновяване на баджовете в навигацията и постоянния банер
 function updateToolingReqBadges() {
     const pendingCount = globalToolingRequests.filter(r => r.status === 'Чакаща').length;
     const badge = document.getElementById('adminToolingReqBadge');
@@ -87,6 +87,85 @@ function updateToolingReqBadges() {
             btnBadge.style.display = 'none';
         }
     }
+    if (typeof window.refreshAdminPlanningBadge === 'function') {
+        window.refreshAdminPlanningBadge();
+    } else {
+        const planningBadge = document.getElementById('adminPlanningBadge');
+        if (planningBadge) {
+            if (pendingCount > 0) {
+                planningBadge.innerText = pendingCount;
+                planningBadge.style.display = 'inline-block';
+                planningBadge.style.animation = 'pulse 1.8s infinite';
+            } else {
+                planningBadge.style.display = 'none';
+            }
+        }
+    }
+    renderToolingRequestsBanner();
+}
+
+function renderToolingRequestsBanner() {
+    const globalBanner = document.getElementById('adminGlobalAlertBanner');
+    if (!globalBanner || !globalBanner.parentNode) return;
+
+    let toolingBanner = document.getElementById('adminToolingAlertBanner');
+    if (!toolingBanner) {
+        toolingBanner = document.createElement('div');
+        toolingBanner.id = 'adminToolingAlertBanner';
+        toolingBanner.style.cssText = 'display: none; margin-bottom: 12px; width: 100%;';
+        globalBanner.parentNode.insertBefore(toolingBanner, globalBanner.nextSibling);
+    }
+
+    const pendingReqs = (globalToolingRequests || []).filter(r => r.status === 'Чакаща');
+    const count = pendingReqs.length;
+    if (count === 0) {
+        toolingBanner.innerHTML = '';
+        toolingBanner.style.display = 'none';
+        return;
+    }
+
+    const newest = pendingReqs[0];
+    const hasCritical = pendingReqs.some(r => r.urgency === 'Машината спира!');
+    const timeStr = newest.created_at
+        ? new Date(newest.created_at).toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' })
+        : '';
+    const opName = escapeHtml(newest.operator_name || 'Оператор');
+    const macName = escapeHtml(newest.workstation_name || newest.machine_name || 'Цех');
+    const toolName = escapeHtml(newest.tool_item || newest.item_name || 'Пластина / Инструмент');
+    const urgBadge = newest.urgency === 'Машината спира!'
+        ? '<span style="background:#dc2626; color:#ffffff; padding:2px 7px; border-radius:6px; font-weight:900; font-size:0.8em; margin-left:6px;">🔴 КРИТИЧНО</span>'
+        : (newest.urgency === 'Спешна'
+            ? '<span style="background:#fef3c7; color:#b45309; border:1px solid #fcd34d; padding:2px 7px; border-radius:6px; font-weight:800; font-size:0.8em; margin-left:6px;">🟡 Спешна</span>'
+            : '');
+
+    const summaryHtml = count === 1
+        ? `В ${timeStr} ч. <b>${opName}</b> (машина <b style="color:#1d4ed8;">${macName}</b>) заяви инструмент / пластина: <b style="color:#92400e;">${toolName}</b>${urgBadge}`
+        : `<b>${count} чакащи заявки за инструменти / пластини от цеха</b> (последна в ${timeStr} ч.: <b>${toolName}</b> за <b>${macName}</b> от ${opName})${urgBadge}`;
+
+    const borderCol = hasCritical ? '#dc2626' : '#d97706';
+    const bgGrad = hasCritical
+        ? 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)'
+        : 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)';
+    const textCol = hasCritical ? '#991b1b' : '#92400e';
+    const btnGrad = hasCritical
+        ? 'linear-gradient(135deg, #dc2626, #b91c1c)'
+        : 'linear-gradient(135deg, #d97706, #b45309)';
+
+    toolingBanner.innerHTML = `
+        <div style="background: ${bgGrad}; border: 1px solid ${hasCritical ? '#fca5a5' : '#fcd34d'}; border-left: 5px solid ${borderCol}; padding: 10px 16px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(217, 119, 6, 0.12); flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px; font-size: 0.92em; color: ${textCol};">
+                <span style="font-size: 1.3em;">${hasCritical ? '🚨' : '🛠️'}</span>
+                <span>${summaryHtml}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" onclick="if(typeof playNotificationChime==='function') playNotificationChime()" title="Тест на звука" style="background:rgba(255,255,255,0.75); border:1px solid ${hasCritical ? '#fca5a5' : '#fcd34d'}; padding:7px 10px; border-radius:8px; cursor:pointer; font-size:0.9em;">🔊</button>
+                <button type="button" onclick="openToolingRequestsModal()" style="background: ${btnGrad}; color: white; border: none; padding: 7px 15px; border-radius: 8px; font-weight: 800; font-size: 0.85em; cursor: pointer; box-shadow: 0 2px 4px rgba(180, 83, 9, 0.28);">
+                    🛠️ Преглед на заявките (${count})
+                </button>
+            </div>
+        </div>
+    `;
+    toolingBanner.style.display = 'block';
 }
 
 // Изскачащо известие (Toast) при нова заявка за инструмент / пластина

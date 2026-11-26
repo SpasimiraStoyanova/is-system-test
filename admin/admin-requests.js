@@ -191,6 +191,28 @@ async function fetchMaterialRequests() {
     }
 }
 
+window.refreshAdminPlanningBadge = function() {
+    const matPending = (typeof globalMaterialRequests !== 'undefined' && Array.isArray(globalMaterialRequests))
+        ? globalMaterialRequests.filter(r => r.status === 'Чакаща').length
+        : 0;
+    const toolPending = (typeof globalToolingRequests !== 'undefined' && Array.isArray(globalToolingRequests))
+        ? globalToolingRequests.filter(r => r.status === 'Чакаща').length
+        : 0;
+    const totalUrgent = matPending + toolPending;
+
+    const badge = document.getElementById('adminPlanningBadge');
+    if (badge) {
+        if (totalUrgent > 0) {
+            badge.innerText = totalUrgent;
+            badge.style.display = 'inline-block';
+            badge.style.animation = 'pulse 1.8s infinite';
+            badge.title = `Чакащи заявки от цеха: ${matPending} заготовки, ${toolPending} инструменти/пластини`;
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+};
+
 function updatePlanningBadgesAndBanner() {
     const pendingRequests = globalMaterialRequests.filter(r => r.status === 'Чакаща');
     const count = pendingRequests.length;
@@ -203,20 +225,11 @@ function updatePlanningBadgesAndBanner() {
     lastKnownPendingCount = count;
     isFirstReqLoad = false;
 
-    const badge = document.getElementById('adminPlanningBadge');
     const subBadge = document.getElementById('adminPlanningSubBadge');
     const banner = document.getElementById('adminGlobalAlertBanner');
 
-    // 1. Обновяване на баджа на бутона 'Планиране'
-    if (badge) {
-        if (count > 0) {
-            badge.innerText = count;
-            badge.style.display = 'inline-block';
-            badge.style.animation = 'pulse 1.8s infinite';
-        } else {
-            badge.style.display = 'none';
-        }
-    }
+    // 1. Обновяване на общия бадж на бутона 'Планиране' (заготовки + пластини/инструменти)
+    window.refreshAdminPlanningBadge();
 
     if (subBadge) {
         if (count > 0) {
