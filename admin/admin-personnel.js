@@ -138,13 +138,13 @@ async function openWorkerFolder(email) {
 async function loadWorkerPassword(email) {
     const pwInput = document.getElementById('workerPasswordInput');
     if (!pwInput) return;
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    if (!normalizedEmail) return;
     try {
-        const { data } = await dosietaClient.from('personal').select('password').eq('Имейл', email).limit(1);
-        if (data && data.length > 0 && data[0].password) {
-            pwInput.value = data[0].password;
-        } else {
-            pwInput.value = '';
-        }
+        const { data, error } = await client.from('personal').select('id, Имейл, password');
+        if (error) throw error;
+        const match = (data || []).find(r => (r['Имейл'] || '').toLowerCase().trim() === normalizedEmail);
+        pwInput.value = (match && match.password) ? match.password : '';
     } catch (e) {
         console.warn('Could not load worker password:', e);
     }
@@ -154,10 +154,26 @@ async function saveWorkerPassword() {
     const pwInput = document.getElementById('workerPasswordInput');
     const newPassword = pwInput ? pwInput.value.trim() : '';
     if (!currentFolderEmail) return;
+    const normalizedEmail = currentFolderEmail.toLowerCase().trim();
 
     Swal.fire({ title: 'Запазване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     try {
-        const { error } = await dosietaClient.from('personal').update({ password: newPassword || null }).eq('Имейл', currentFolderEmail);
+        const { data: rows, error: findErr } = await client.from('personal').select('id, Имейл');
+        if (findErr) throw findErr;
+
+        const matchedIds = (rows || [])
+            .filter(r => (r['Имейл'] || '').toLowerCase().trim() === normalizedEmail)
+            .map(r => r.id)
+            .filter(id => id !== null && id !== undefined);
+
+        if (matchedIds.length === 0) {
+            throw new Error(`Не е намерен запис за служител ${currentFolderEmail} в таблица personal.`);
+        }
+
+        const { error } = await client
+            .from('personal')
+            .update({ password: newPassword || null })
+            .in('id', matchedIds);
         if (error) throw error;
         Swal.fire({
             icon: 'success',
