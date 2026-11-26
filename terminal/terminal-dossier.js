@@ -784,13 +784,20 @@ async function buildLiveDigitalCardHtml(email, workerName) {
     const myAreaAudits = mySector ? allAudits.filter(a => a.target_type === 'area' && dossierNorm(a.sector) === dossierNorm(mySector)) : [];
 
     const activeInd = myIndAudits.filter(a => !a.isExcused);
+    const hasIndAuditData = myIndAudits.length > 0 || (draftDetails.manual3sInd !== undefined && draftDetails.manual3sInd !== null);
+    const hasAreaAuditData = myAreaAudits.length > 0 || (draftDetails.manual3sArea !== undefined && draftDetails.manual3sArea !== null);
     const indPts = (draftDetails.manual3sInd !== undefined && draftDetails.manual3sInd !== null)
         ? Number(draftDetails.manual3sInd)
-        : (activeInd.length > 0 ? Math.round((activeInd.reduce((s, a) => s + ((parseFloat(a.percentage) || 0) / 100) * 60, 0) / activeInd.length) * 10) / 10 : 60);
+        : (activeInd.length > 0
+            ? Math.round((activeInd.reduce((s, a) => s + ((parseFloat(a.percentage) || 0) / 100) * 60, 0) / activeInd.length) * 10) / 10
+            : (myIndAudits.length > 0 ? 60 : 0));
     const areaPts = (draftDetails.manual3sArea !== undefined && draftDetails.manual3sArea !== null)
         ? Number(draftDetails.manual3sArea)
-        : (myAreaAudits.length > 0 ? Math.round((myAreaAudits.reduce((s, a) => s + ((parseFloat(a.percentage) || 0) / 100) * 12, 0) / myAreaAudits.length) * 10) / 10 : 12);
+        : (myAreaAudits.length > 0
+            ? Math.round((myAreaAudits.reduce((s, a) => s + ((parseFloat(a.percentage) || 0) / 100) * 12, 0) / myAreaAudits.length) * 10) / 10
+            : 0);
     const total3sPts = Math.min(72, Math.round((indPts + areaPts) * 10) / 10);
+    const no3sAuditAtAll = !hasIndAuditData && !hasAreaAuditData;
 
     const workedDays = (draftDetails.manualWorkedDays !== undefined && draftDetails.manualWorkedDays !== null) ? Number(draftDetails.manualWorkedDays) : presentDates.size;
     const attCoeff = Math.min(1.0, Math.round((workedDays / Math.max(1, effectiveBaseDays)) * 100) / 100);
@@ -841,10 +848,10 @@ async function buildLiveDigitalCardHtml(email, workerName) {
             </div>
 
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:12px;">
-                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:9px; text-align:center;">
-                    <div style="font-size:0.72em; font-weight:800; color:#166534;">🧹 3S ОДИТ (30%)</div>
-                    <div style="font-size:1.25em; font-weight:900; color:#15803d;">${total3sPts} / 72 т.</div>
-                    <div style="font-size:0.72em; color:#166534;">Инд. ${indPts}/60 • Зона ${areaPts}/12</div>
+                <div style="background:${no3sAuditAtAll ? '#f8fafc' : (total3sPts >= 64 ? '#f0fdf4' : '#fffbeb')}; border:1px solid ${no3sAuditAtAll ? '#cbd5e1' : (total3sPts >= 64 ? '#bbf7d0' : '#fde68a')}; border-radius:8px; padding:9px; text-align:center;">
+                    <div style="font-size:0.72em; font-weight:800; color:${no3sAuditAtAll ? '#64748b' : '#166534'};">🧹 3S ОДИТ (30%)</div>
+                    <div style="font-size:1.25em; font-weight:900; color:${no3sAuditAtAll ? '#475569' : '#15803d'};">${total3sPts} / 72 т.</div>
+                    <div style="font-size:0.72em; color:${no3sAuditAtAll ? '#64748b' : '#166534'};">${no3sAuditAtAll ? 'Няма одит' : `Инд. ${indPts}/60 • Зона ${areaPts}/12`}</div>
                 </div>
                 <div style="background:${disciplinePts < 100 ? '#fef2f2' : '#f0fdf4'}; border:1px solid ${disciplinePts < 100 ? '#fecaca' : '#bbf7d0'}; border-radius:8px; padding:9px; text-align:center;">
                     <div style="font-size:0.72em; font-weight:800; color:${disciplinePts < 100 ? '#991b1b' : '#166534'};">⚖️ ДИСЦИПЛИНА (60%)</div>
@@ -953,9 +960,9 @@ window.renderSelectedWorkerPayslip = function (index) {
         const workedDays = Number(details.workedDays ?? 0);
         const baseDays = Number(details.baseWorkingDays ?? 20);
         const attCoeff = Number(details.attendanceCoeff ?? 1);
-        const s3sInd = Number(details.score3sIndPoints ?? 60);
-        const s3sArea = Number(details.score3sAreaPoints ?? 12);
-        const s3sTot = Number(details.score3sTotalPoints ?? 72);
+        const s3sInd = Number(details.score3sIndPoints ?? 0);
+        const s3sArea = Number(details.score3sAreaPoints ?? 0);
+        const s3sTot = Number(details.score3sTotalPoints ?? 0);
         const eur3s = Number(details.eur3sTotal ?? 0);
         const discPts = Number(details.disciplinePoints ?? 100);
         const eurDisc = Number(details.eurDiscipline ?? 0);

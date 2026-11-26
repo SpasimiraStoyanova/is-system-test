@@ -280,13 +280,13 @@ function recomputeWorkerFormula(calc) {
     calc.effectiveWorkedDays = workedDays;
     calc.attendanceCoeff = Math.min(1.0, Math.round((workedDays / effectiveBaseDays) * 10000) / 10000);
 
-    // 1. Компонент 3S (30% = до 72 точки: 60 инд. + 12 обща зона)
+    // 1. Компонент 3S (30% = до 72 точки: 60 инд. + 12 обща зона; без одит = 0 т.)
     const indPts = (calc.manual3sInd !== null && calc.manual3sInd !== undefined)
         ? Math.min(BONUS_CONSTANTS.MAX_3S_INDIVIDUAL, Math.max(0, parseFloat(calc.manual3sInd) || 0))
-        : (calc.auto3sInd !== undefined ? calc.auto3sInd : BONUS_CONSTANTS.MAX_3S_INDIVIDUAL);
+        : (calc.auto3sInd !== undefined ? calc.auto3sInd : 0);
     const areaPts = (calc.manual3sArea !== null && calc.manual3sArea !== undefined)
         ? Math.min(BONUS_CONSTANTS.MAX_3S_AREA, Math.max(0, parseFloat(calc.manual3sArea) || 0))
-        : (calc.auto3sArea !== undefined ? calc.auto3sArea : BONUS_CONSTANTS.MAX_3S_AREA);
+        : (calc.auto3sArea !== undefined ? calc.auto3sArea : 0);
 
     calc.score3sIndPoints = Math.round(indPts * 100) / 100;
     calc.score3sAreaPoints = Math.round(areaPts * 100) / 100;
@@ -698,11 +698,11 @@ window.calculateMonthlySalaries = async function () {
             const activeIndAudits = workerIndAudits.filter(a => !a.isExcused);
             const auto3sInd = activeIndAudits.length > 0
                 ? Math.round((activeIndAudits.reduce((sum, a) => sum + ((parseFloat(a.percentage) || 0) / 100) * BONUS_CONSTANTS.MAX_3S_INDIVIDUAL, 0) / activeIndAudits.length) * 100) / 100
-                : BONUS_CONSTANTS.MAX_3S_INDIVIDUAL;
+                : (workerIndAudits.length > 0 ? BONUS_CONSTANTS.MAX_3S_INDIVIDUAL : 0);
 
             const auto3sArea = workerAreaAudits.length > 0
                 ? Math.round((workerAreaAudits.reduce((sum, a) => sum + ((parseFloat(a.percentage) || 0) / 100) * BONUS_CONSTANTS.MAX_3S_AREA, 0) / workerAreaAudits.length) * 100) / 100
-                : BONUS_CONSTANTS.MAX_3S_AREA;
+                : 0;
 
             const calcObj = {
                 workerEmail: email,
@@ -886,8 +886,9 @@ function renderSalariesLayout() {
                         ${salaryCalculations.map((calc, idx) => {
                             const discWarn = calc.disciplinePoints < 100;
                             const hasUncheckedScrap = (calc.otchetiScraps || []).length > 0 && calc.operatorScrapCount === 0;
-                            const s3sColor = calc.score3sPct >= 90 ? '#15803d' : (calc.score3sPct >= 75 ? '#b45309' : '#dc2626');
-                            const s3sBg = calc.score3sPct >= 90 ? '#f0fdf4' : (calc.score3sPct >= 75 ? '#fffbeb' : '#fef2f2');
+                            const no3sAuditAtAll = (calc.workerIndAudits || []).length === 0 && (calc.workerAreaAudits || []).length === 0 && calc.manual3sInd === null && calc.manual3sArea === null;
+                            const s3sColor = no3sAuditAtAll ? '#64748b' : (calc.score3sPct >= 90 ? '#15803d' : (calc.score3sPct >= 75 ? '#b45309' : '#dc2626'));
+                            const s3sBg = no3sAuditAtAll ? '#f1f5f9' : (calc.score3sPct >= 90 ? '#f0fdf4' : (calc.score3sPct >= 75 ? '#fffbeb' : '#fef2f2'));
                             return `
                                 <tr style="border-bottom:1px solid #f1f5f9;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
                                     <td style="padding:9px 10px;">
@@ -910,7 +911,7 @@ function renderSalariesLayout() {
                                     </td>
                                     <td style="padding:9px 8px; text-align:center;">
                                         <button type="button" onclick="show3sDetailsModal(${idx})" style="background:${s3sBg}; border:1px solid #cbd5e1; color:${s3sColor}; padding:4px 9px; border-radius:7px; font-weight:800; cursor:pointer; font-size:0.9em;">
-                                            ${calc.score3sTotalPoints}/72 т. (${calc.score3sPct.toFixed(0)}%)
+                                            ${no3sAuditAtAll ? '0/72 т. (Няма одит)' : `${calc.score3sTotalPoints}/72 т. (${calc.score3sPct.toFixed(0)}%)`}
                                         </button>
                                         <div style="font-size:0.78em; color:#475569; margin-top:2px; font-weight:700;">+${calc.eur3sTotal.toFixed(2)} €</div>
                                     </td>
@@ -1292,12 +1293,12 @@ window.show3sDetailsModal = function (idx) {
 
                 <div style="font-weight:800; color:#334155; margin:6px 0 4px;">👤 Лични 3S Одити (${calc.workerIndAudits.length}):</div>
                 <table style="width:100%; border-collapse:collapse; margin-bottom:10px; border:1px solid #e2e8f0;">
-                    <tbody>${indRows || '<tr><td style="padding:8px; color:#64748b;">Няма проведени лични одити (по подразбиране 60/60 т.)</td></tr>'}</tbody>
+                    <tbody>${indRows || '<tr><td style="padding:8px; color:#64748b;">Няма проведени лични одити (0/60 т. — няма одит)</td></tr>'}</tbody>
                 </table>
 
                 <div style="font-weight:800; color:#334155; margin:6px 0 4px;">🏭 Одити Обща зона ${calc.sector ? `(${salEsc(calc.sector)})` : '(незачислено звено)'}:</div>
                 <table style="width:100%; border-collapse:collapse; border:1px solid #e2e8f0;">
-                    <tbody>${areaRows || '<tr><td style="padding:8px; color:#64748b;">Няма одити за обща зона (по подразбиране 12/12 т.)</td></tr>'}</tbody>
+                    <tbody>${areaRows || '<tr><td style="padding:8px; color:#64748b;">Няма одити за обща зона (0/12 т. — няма одит)</td></tr>'}</tbody>
                 </table>
             </div>
         `,
