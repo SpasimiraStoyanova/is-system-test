@@ -3,7 +3,112 @@
 // ==========================================
 let currentAdminUser = null;
 let isAppInitialized = false;
+window.isAdminViewer = false;
 window.adminNamesByEmail = window.adminNamesByEmail || {};
+
+window.isViewerMode = function () {
+    return window.isAdminViewer === true;
+};
+
+window.showViewerReadOnlyAlert = function () {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            icon: 'info',
+            title: '👁️ Режим „Само преглед“',
+            text: 'Вашият акаунт е с права само за четене (Viewer). Нямате права да добавяте, редактирате или изтривате данни.',
+            confirmButtonColor: '#4338ca'
+        });
+    }
+    return false;
+};
+
+function installViewerSupabaseGuard() {
+    if (!client || client.__viewerGuardInstalled) return;
+    client.__viewerGuardInstalled = true;
+
+    const origFrom = client.from.bind(client);
+    client.from = function (tableName) {
+        const builder = origFrom(tableName);
+        if (!window.isViewerMode() || !builder) return builder;
+
+        const blockWrite = () => {
+            window.showViewerReadOnlyAlert();
+            const errObj = { message: 'Режим само за преглед (Viewer): нямате права за редакция.' };
+            const blockedRes = Promise.resolve({ data: null, error: errObj });
+            const chain = {
+                eq: () => chain,
+                neq: () => chain,
+                in: () => chain,
+                ilike: () => chain,
+                is: () => chain,
+                gte: () => chain,
+                lte: () => chain,
+                match: () => chain,
+                select: () => chain,
+                single: () => blockedRes,
+                maybeSingle: () => blockedRes,
+                then: (resolve, reject) => blockedRes.then(resolve, reject),
+                catch: (reject) => blockedRes.catch(reject)
+            };
+            return chain;
+        };
+
+        builder.insert = blockWrite;
+        builder.update = blockWrite;
+        builder.upsert = blockWrite;
+        builder.delete = blockWrite;
+        return builder;
+    };
+
+    if (client.storage && typeof client.storage.from === 'function') {
+        const origStorageFrom = client.storage.from.bind(client.storage);
+        client.storage.from = function (bucketName) {
+            const bucket = origStorageFrom(bucketName);
+            if (!window.isViewerMode() || !bucket) return bucket;
+
+            const blockStorage = () => {
+                window.showViewerReadOnlyAlert();
+                return Promise.resolve({ data: null, error: { message: 'Режим само за преглед (Viewer): нямате права за промяна на файлове.' } });
+            };
+            bucket.upload = blockStorage;
+            bucket.update = blockStorage;
+            bucket.remove = blockStorage;
+            bucket.move = blockStorage;
+            return bucket;
+        };
+    }
+}
+
+async function detectAdminViewerRole(user) {
+    let isViewer = false;
+    try {
+        const appRole = String(user?.app_metadata?.role || '').trim().toLowerCase();
+        if (appRole === 'viewer') {
+            isViewer = true;
+        } else if (user && user.email) {
+            const cleanEmail = String(user.email).trim().toLowerCase();
+            const { data, error } = await client
+                .from('admin_roles')
+                .select('role')
+                .ilike('email', cleanEmail)
+                .limit(1);
+            if (!error && data && data.length > 0 && String(data[0].role || '').trim().toLowerCase() === 'viewer') {
+                isViewer = true;
+            }
+        }
+    } catch (e) {
+        console.warn('detectAdminViewerRole warning:', e);
+    }
+
+    window.isAdminViewer = isViewer;
+    if (document.body) {
+        document.body.classList.toggle('admin-viewer-mode', isViewer);
+    }
+    if (isViewer) {
+        installViewerSupabaseGuard();
+    }
+    return isViewer;
+}
 
 window.getAdminEmail = function () {
     if (currentAdminUser && currentAdminUser.email) {
@@ -119,8 +224,9 @@ async function initAdminAuth() {
     }
 }
 
-function onAdminAuthSuccess(user) {
+async function onAdminAuthSuccess(user) {
     currentAdminUser = user;
+    await detectAdminViewerRole(user);
     const app = document.getElementById('appContent');
     if (app) {
         app.style.display = 'block';
@@ -139,9 +245,13 @@ function renderNavAuthArea(user) {
     if (!navAuth) return;
     const userEmail = (user && user.email) ? user.email : 'Администратор';
     const displayName = (typeof window.getAdminDisplayName === 'function') ? window.getAdminDisplayName() : userEmail;
+    const viewerBadgeHtml = window.isViewerMode()
+        ? `<span style="background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; padding: 3px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;" title="Акаунтът е само за преглед (Read-only)">👁️ Само преглед</span>`
+        : '';
     navAuth.innerHTML = `
+        ${viewerBadgeHtml}
         <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; background: #ffffff; border: 1px solid #e2e8f0; padding: 4px 10px; border-radius: 9999px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" title="Влезли сте като: ${displayName} (${userEmail})">
-            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e;" title="Активна защитена сесия"></span>
+            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${window.isViewerMode() ? '#8b5cf6' : '#22c55e'};" title="Активна защитена сесия"></span>
             <span style="font-weight: 700; color: #334155; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${displayName}</span>
         </div>
         <button type="button" onclick="promptChangeAdminPassword()" class="btn-admin-pass-change" title="Смяна на паролата за вход в системата">
@@ -604,15 +714,16 @@ function switchTab(tabKey, force = false) {
     const locHistBtn = document.getElementById('locationHistoryBtn');
 
     addBtn.innerText = `➕ Нов запис в ${config.label.replace(/[^а-яА-Я ]/g, '').trim()}`;
-    addBtn.style.display = (config.readOnlyTab && tabKey !== 'sklad_inventory') ? 'none' : 'flex';
-    if (pdfBtn) pdfBtn.style.display = (tabKey === 'plan') ? 'flex' : 'none';
+    const viewerMode = window.isViewerMode();
+    addBtn.style.display = (!viewerMode && (!config.readOnlyTab || tabKey === 'sklad_inventory')) ? 'flex' : 'none';
+    if (pdfBtn) pdfBtn.style.display = (!viewerMode && tabKey === 'plan') ? 'flex' : 'none';
     if (mrpBtn) mrpBtn.style.display = (tabKey === 'sklad' || tabKey === 'porachki') ? 'flex' : 'none';
     if (matOrdersBtn) matOrdersBtn.style.display = (tabKey === 'sklad') ? 'flex' : 'none';
     if (monthlyDeficitBtn) monthlyDeficitBtn.style.display = (tabKey === 'sklad') ? 'flex' : 'none';
-    if (transBtn) transBtn.style.display = (tabKey === 'sklad_inventory') ? 'flex' : 'none';
-    if (syncMacBtn) syncMacBtn.style.display = (tabKey === 'workstations') ? 'flex' : 'none';
+    if (transBtn) transBtn.style.display = (!viewerMode && tabKey === 'sklad_inventory') ? 'flex' : 'none';
+    if (syncMacBtn) syncMacBtn.style.display = (!viewerMode && tabKey === 'workstations') ? 'flex' : 'none';
     if (toolReqBtn) toolReqBtn.style.display = (tabKey === 'tooling_sklad') ? 'flex' : 'none';
-    if (locCheckBtn) locCheckBtn.style.display = (tabKey === 'chekiraniya') ? 'flex' : 'none';
+    if (locCheckBtn) locCheckBtn.style.display = (!viewerMode && tabKey === 'chekiraniya') ? 'flex' : 'none';
     if (locHistBtn) locHistBtn.style.display = (tabKey === 'chekiraniya') ? 'flex' : 'none';
 
     // Тук прехвърлихме показването на папките само когато сме в менюто Персонал
@@ -624,11 +735,11 @@ function switchTab(tabKey, force = false) {
     const roomsContainer = document.getElementById('roomsInventoryContainer');
     if (roomsContainer) { roomsContainer.style.display = (tabKey === 'rooms_inventory') ? 'block' : 'none'; }
     if (tabKey === 'probi') {
-        addBtn.style.display = 'flex';
+        addBtn.style.display = viewerMode ? 'none' : 'flex';
         addBtn.innerText = '➕ Нова Проба';
         addBtn.onclick = () => { if (typeof openCreateProbaModal === 'function') openCreateProbaModal(); };
     } else if (tabKey === 'equipment_protocols') {
-        addBtn.style.display = 'flex';
+        addBtn.style.display = viewerMode ? 'none' : 'flex';
         addBtn.innerText = '🦺 Нов Протокол за Зачисляване';
         addBtn.onclick = () => { if (typeof openCreateEquipmentProtocolModal === 'function') openCreateEquipmentProtocolModal(); };
     } else {
@@ -656,6 +767,7 @@ function updateMassActionBar() {
 }
 
 async function deleteSelectedItems() {
+    if (window.isViewerMode()) return window.showViewerReadOnlyAlert();
     const config = tableConfigs[currentTab]; const count = selectedIndices.size;
     const res = await Swal.fire({ title: `Изтриване на ${count} записа?`, text: "Това действие е безвъзвратно!", icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Да, изтрий всички!', cancelButtonText: 'Отказ' });
     if (res.isConfirmed) {
@@ -1438,7 +1550,10 @@ function renderDynamicTable(itemsToRender = null) {
                     <button type="button" class="action-btn" onclick="openEquipmentProtocolViewModal(${item.id})" title="👁️ Преглед на протокола и зачислените вещи" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; margin-right:4px; font-weight:bold;">👁️</button>
                 `;
             }
-            tdActions.innerHTML = `${extraActionBtns}<button class="action-btn btn-edit" onclick="openEditModal(${trueIndex})" title="Редактирай">✏️</button><button class="action-btn btn-delete" onclick="deleteItem(${trueIndex})" title="Изтрий">🗑️</button>`;
+            const editDeleteBtns = window.isViewerMode()
+                ? ''
+                : `<button class="action-btn btn-edit" onclick="openEditModal(${trueIndex})" title="Редактирай">✏️</button><button class="action-btn btn-delete" onclick="deleteItem(${trueIndex})" title="Изтрий">🗑️</button>`;
+            tdActions.innerHTML = `${extraActionBtns}${editDeleteBtns}`;
             row.appendChild(tdActions);
         }
         tbody.appendChild(row);
@@ -1893,8 +2008,8 @@ function buildForm(data = null) {
     }
 }
 
-function openAddModal() { isEditMode = false; editingIndex = null; document.getElementById('modalTitle').innerHTML = '➕ Добавяне: ' + tableConfigs[currentTab].label.replace(/[^а-яА-Я ]/g, '').trim(); buildForm(); document.getElementById('modalBackdrop').style.display = 'flex'; }
-function openEditModal(index) { isEditMode = true; editingIndex = index; document.getElementById('modalTitle').innerHTML = '✏️ Редакция: ' + tableConfigs[currentTab].label.replace(/[^а-яА-Я ]/g, '').trim(); buildForm(globalRows[index]); document.getElementById('modalBackdrop').style.display = 'flex'; }
+function openAddModal() { if (window.isViewerMode()) return window.showViewerReadOnlyAlert(); isEditMode = false; editingIndex = null; document.getElementById('modalTitle').innerHTML = '➕ Добавяне: ' + tableConfigs[currentTab].label.replace(/[^а-яА-Я ]/g, '').trim(); buildForm(); document.getElementById('modalBackdrop').style.display = 'flex'; }
+function openEditModal(index) { if (window.isViewerMode()) return window.showViewerReadOnlyAlert(); isEditMode = true; editingIndex = index; document.getElementById('modalTitle').innerHTML = '✏️ Редакция: ' + tableConfigs[currentTab].label.replace(/[^а-яА-Я ]/g, '').trim(); buildForm(globalRows[index]); document.getElementById('modalBackdrop').style.display = 'flex'; }
 function closeModal() { document.getElementById('modalBackdrop').style.display = 'none'; }
 
 async function fetchAll(table, orderCol) {
@@ -2088,7 +2203,9 @@ async function computeSkladData() {
 // backflushSimulation removed as it is no longer used
 
 async function saveForm(e) {
-    e.preventDefault(); const config = tableConfigs[currentTab]; const btn = e.target.querySelector('button[type="submit"]'); btn.innerText = 'Записване...'; btn.disabled = true;
+    e.preventDefault();
+    if (window.isViewerMode()) return window.showViewerReadOnlyAlert();
+    const config = tableConfigs[currentTab]; const btn = e.target.querySelector('button[type="submit"]'); btn.innerText = 'Записване...'; btn.disabled = true;
 
     if (currentTab === 'sklad_inventory') {
         try {
@@ -2483,6 +2600,7 @@ async function saveForm(e) {
 }
 
 async function deleteItem(index) {
+    if (window.isViewerMode()) return window.showViewerReadOnlyAlert();
     const config = tableConfigs[currentTab]; const row = globalRows[index];
 
     if (currentTab === 'sklad_inventory') {
@@ -3246,6 +3364,7 @@ async function fetchAuditLogs() {
 }
 
 window.forceReloadTerminals = async function () {
+    if (window.isViewerMode()) return window.showViewerReadOnlyAlert();
     Swal.fire({
         title: 'Сигурни ли сте?',
         text: 'Това ще презареди екраните на всички терминали в цеха.',

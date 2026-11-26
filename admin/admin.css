@@ -1466,5 +1466,59 @@ tbody tr:hover td {
   transform: translateY(-1px);
 }
 
+/* ============================================================
+   👁️ VIEWER MODE (READ-ONLY) - Скриване на бутони за промяна
+   ============================================================ */
+body.admin-viewer-mode #addNewBtn,
+body.admin-viewer-mode #pdfBtn,
+body.admin-viewer-mode #transformResolverBtn,
+body.admin-viewer-mode #syncMachinesBtn,
+body.admin-viewer-mode #silentLocationCheckBtn,
+body.admin-viewer-mode .btn-edit,
+body.admin-viewer-mode .btn-delete,
+body.admin-viewer-mode .btn-danger-mass,
+body.admin-viewer-mode .btn-mass-action,
+body.admin-viewer-mode .dossier-pin-bar .btn-primary,
+body.admin-viewer-mode .upload-area,
+body.admin-viewer-mode .doc-btn-del,
+body.admin-viewer-mode #modalBackdrop button[type="submit"],
+body.admin-viewer-mode [onclick*="forceReloadTerminals"],
+body.admin-viewer-mode [onclick*="openNotificationDialog"],
+body.admin-viewer-mode [onclick*="testAmciPushNotification"],
+body.admin-viewer-mode [onclick*="saveMonthlySalariesToDb"],
+body.admin-viewer-mode [onclick*="publishMonthlySalariesToTerminals"],
+body.admin-viewer-mode [onclick*="unpublishMonthlySalaries"],
+body.admin-viewer-mode [onclick*="openCreateEquipmentProtocolModal"],
+body.admin-viewer-mode [onclick*="openCreateProbaModal"],
+body.admin-viewer-mode [onclick*="openCreateRoomModal"],
+body.admin-viewer-mode [onclick*="openAddWorkstationModal"],
+body.admin-viewer-mode [onclick*="openAddMachineModal"],
+body.admin-viewer-mode [onclick*="openAddTool"],
+body.admin-viewer-mode [onclick*="openEditRoomModal"],
+body.admin-viewer-mode [onclick*="deleteRoom"],
+body.admin-viewer-mode [onclick*="deleteTool"],
+body.admin-viewer-mode [onclick*="unassignMachine"],
+body.admin-viewer-mode [onclick*="openToolCalibrationModal"],
+body.admin-viewer-mode [onclick*="triggerToolCalibrationModal"],
+body.admin-viewer-mode [onclick*="openCreateMaterialOrderModal"],
+body.admin-viewer-mode [onclick*="save3sQuestion"],
+body.admin-viewer-mode [onclick*="openAdd3sQuestionModal"],
+body.admin-viewer-mode [onclick*="saveSectorAuditor"],
+body.admin-viewer-mode [onclick*="addSectorWorker"],
+body.admin-viewer-mode [onclick*="deleteSectorWorker"],
+body.admin-viewer-mode [onclick*="addSectorArea"],
+body.admin-viewer-mode [onclick*="deleteSectorArea"],
+body.admin-viewer-mode [onclick*="launchProba"],
+body.admin-viewer-mode [onclick*="openProbiConstructorModal"] {
+  display: none !important;
+}
+
+body.admin-viewer-mode .dossier-pin-input {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+  cursor: not-allowed;
+}
+
+
 
 

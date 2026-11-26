@@ -708,9 +708,9 @@
           <span class="section-tag">Навигация</span>
         </div>
 
-        <h3 id="sub-auth">2.1. Лента за сесия, търсене и общи бутони</h3>
+        <h3 id="sub-auth">2.1. Лента за сесия, роли, търсене и общи бутони</h3>
         <ul>
-          <li><strong>Сесия (<code>#navAuthArea</code>):</strong> Показва имейла на влезлия администратор (<code>Активна защитена сесия</code>).</li>
+          <li><strong>Сесия и роли (<code>#navAuthArea</code>):</strong> Показва името на влезлия администратор (<code>Активна защитена сесия</code>). Поддържа се и роля <strong><code>viewer</code> (👁️ Само преглед)</strong> чрез таблица <code>admin_roles</code> (скрипт <code>setup_admin_viewer_role.sql</code>): потребител с роля <code>viewer</code> вижда всички табове, досиета, справки, заплати, монитори и одит лога, но бутоните за добавяне, редакция, триене, качване на документи, одобряване и изпращане на команди са скрити и блокирани както в интерфейса, така и на ниво Supabase RLS (<code>INSERT/UPDATE/DELETE</code>).</li>
           <li><span class="ui-btn">🔑 Смени парола</span> — отваря прозорец за промяна на паролата на администратора директно в Supabase Auth.</li>
           <li><span class="ui-btn">🚪 Изход</span> — след потвърждение излиза от сесията, изчиства <code>sessionStorage</code> и презарежда страницата.</li>
           <li><span class="ui-btn">📖 Инструкции</span> — отваря настоящото ръководство (<code>manual.html</code>) в нов прозорец.</li>

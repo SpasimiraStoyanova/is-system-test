@@ -129,7 +129,10 @@ async function openWorkerFolder(email) {
     currentFolderEmail = email; 
     document.getElementById('currentWorkerName').innerText = email; 
     const pwInput = document.getElementById('workerPasswordInput');
-    if (pwInput) pwInput.value = '';
+    if (pwInput) {
+        pwInput.value = '';
+        pwInput.readOnly = (typeof isViewerMode === 'function' && isViewerMode());
+    }
     document.getElementById('folderModalBackdrop').style.display = 'flex'; 
     switchFolderTab('att'); 
     loadWorkerPassword(email);
@@ -151,6 +154,9 @@ async function loadWorkerPassword(email) {
 }
 
 async function saveWorkerPassword() {
+    if (typeof isViewerMode === 'function' && isViewerMode()) {
+        return typeof showViewerReadOnlyAlert === 'function' ? showViewerReadOnlyAlert() : false;
+    }
     const pwInput = document.getElementById('workerPasswordInput');
     const newPassword = pwInput ? pwInput.value.trim() : '';
     if (!currentFolderEmail) return;
@@ -664,6 +670,9 @@ function renderWorkerDocsList() {
 }
 
 async function uploadWorkerDoc() {
+    if (typeof isViewerMode === 'function' && isViewerMode()) {
+        return typeof showViewerReadOnlyAlert === 'function' ? showViewerReadOnlyAlert() : false;
+    }
     const fileInput = document.getElementById('docUploadInput');
     const catSelect = document.getElementById('docCategorySelect');
     const file = fileInput ? fileInput.files[0] : null;
@@ -734,6 +743,9 @@ async function uploadWorkerDoc() {
 }
 
 async function deleteWorkerDoc(encodedName, encodedCleanName) {
+    if (typeof isViewerMode === 'function' && isViewerMode()) {
+        return typeof showViewerReadOnlyAlert === 'function' ? showViewerReadOnlyAlert() : false;
+    }
     const rawName = decodeURIComponent(encodedName);
     const cleanName = encodedCleanName ? decodeURIComponent(encodedCleanName) : rawName;
 
@@ -778,6 +790,7 @@ async function deleteWorkerDoc(encodedName, encodedCleanName) {
 }
 
 async function runInvisibleAutoCheckout() {
+    if (typeof isViewerMode === 'function' && isViewerMode()) return;
     try {
         const { data, error } = await client.from('chekiraniya').select('*').in('Действие', ['Влизане', 'Излизане', 'Авто излизане']).order('Време', { ascending: false }).limit(2000); if(error) return;
         let userState = {}; let userLastTime = {}; 
