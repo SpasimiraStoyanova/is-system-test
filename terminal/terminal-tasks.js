@@ -1509,9 +1509,16 @@ async function loadTasks(isSilent = false) {
                                               let skladAvail = getSkladQty(cCode);
                                               // Пробите са напълно изолирани от общия сериен склад (inventory) — четат само от Склад Проби (probi_inventory / отчети по пробата) + Склад Материали (sklad)
                                               const probiReadyKey = cNorm + '_готов продукт';
-                                              const probaChildAvail = Object.prototype.hasOwnProperty.call(myProbaInv, probiReadyKey)
-                                                  ? Math.max(0, myProbaInv[probiReadyKey])
-                                                  : Math.max(0, probaChildDone - (doneQty * cMult));
+                                              const otchetiRemaining = Math.max(0, probaChildDone - (doneQty * cMult));
+                                              let probaChildAvail = 0;
+                                              if (cRoutes.length > 0) {
+                                                  // Детайл с маршрут е готов за родителя САМО до нивото на отчетената му последна операция (предпазва от преждевременно отключване след междинна операция)
+                                                  probaChildAvail = Object.prototype.hasOwnProperty.call(myProbaInv, probiReadyKey)
+                                                      ? Math.min(otchetiRemaining, Math.max(0, myProbaInv[probiReadyKey]))
+                                                      : otchetiRemaining;
+                                              } else if (Object.prototype.hasOwnProperty.call(myProbaInv, probiReadyKey)) {
+                                                  probaChildAvail = Math.max(0, myProbaInv[probiReadyKey]);
+                                              }
 
                                               let totalChildAvail = probaChildAvail + skladAvail;
                                               let sets = Math.floor(totalChildAvail / cMult);

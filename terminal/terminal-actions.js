@@ -218,9 +218,15 @@ async function fetchLiveProbaTaskStockLimits(taskData) {
                 });
             }
             const probiReadyKey = cNorm + '_готов продукт';
-            const probaChildAvail = Object.prototype.hasOwnProperty.call(myProbaInv, probiReadyKey)
-                ? Math.max(0, myProbaInv[probiReadyKey])
-                : Math.max(0, probaChildDone - (doneQty * child.qty));
+            const otchetiRemaining = Math.max(0, probaChildDone - (doneQty * child.qty));
+            let probaChildAvail = 0;
+            if (cRoutes.length > 0) {
+                probaChildAvail = Object.prototype.hasOwnProperty.call(myProbaInv, probiReadyKey)
+                    ? Math.min(otchetiRemaining, Math.max(0, myProbaInv[probiReadyKey]))
+                    : otchetiRemaining;
+            } else if (Object.prototype.hasOwnProperty.call(myProbaInv, probiReadyKey)) {
+                probaChildAvail = Math.max(0, myProbaInv[probiReadyKey]);
+            }
             const skladAvail = freshSkladMap[cNorm] || 0;
             const sets = Math.floor((probaChildAvail + skladAvail) / child.qty);
             if (sets < minSets) minSets = sets;

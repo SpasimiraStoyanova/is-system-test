@@ -2103,7 +2103,7 @@ async function openProbiProgressModal(probaId) {
                     `;
                 }).join('');
 
-                let readyFinished = Math.max(lastOpDone, probiInvReady);
+                let readyFinished = lastOpDone;
                 isPartDone = readyFinished >= needed;
                 isPartInProgress = !isPartDone && (readyFinished > 0 || hasAnyDone || probiInvWip > 0);
 
