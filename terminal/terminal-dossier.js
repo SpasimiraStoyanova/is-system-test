@@ -549,38 +549,371 @@ function renderTermAttendanceList() {
 }
 
 // ========================================================
-// 💰 Електронен фиш за заплати & бонуси в терминала
+// 💰 Личен дигитален картон (на живо) & Електронен фиш в терминала
 // ========================================================
 let currentWorkerSalaryLogs = [];
+const DOSSIER_MONTHS_BG = [
+    'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
+    'Юли', 'Август', 'Септември', 'Октомври', 'Ноември', 'Декември'
+];
+
+function dossierNorm(str) {
+    return String(str || '').replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase();
+}
+
+function dossierEsc(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function parseDossierUtcDate(raw) {
+    if (!raw) return null;
+    let s = String(raw).trim();
+    if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const [y, m, d] = s.split('-').map(Number);
+        return new Date(y, m - 1, d, 12, 0, 0);
+    }
+    if (!s.endsWith('Z') && !s.includes('+') && !/\-\d{2}:?\d{2}$/.test(s)) {
+        s += 'Z';
+    }
+    const dt = new Date(s);
+    return isNaN(dt.getTime()) ? null : dt;
+}
+
+function toDossierLocalIso(raw) {
+    const dt = raw instanceof Date ? raw : parseDossierUtcDate(raw);
+    if (!dt) return '';
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+async function buildLiveDigitalCardHtml(email, workerName) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const monthIdx = now.getMonth();
+    const monthName = DOSSIER_MONTHS_BG[monthIdx];
+    const todayIso = toDossierLocalIso(now);
+
+    const qFrom = new Date(Date.UTC(year, monthIdx, 0, 0, 0, 0)).toISOString();
+    const qTo = new Date(Date.UTC(year, monthIdx + 1, 2, 23, 59, 59, 999)).toISOString();
+
+    const targetEmail = dossierNorm(email);
+    const targetNameNorm = dossierNorm(workerName);
+
+    const [persRes, checkRes, otchRes, auditsRes, workers3sRes, draftLogsRes] = await Promise.all([
+        termDosietaClient.from('personal').select('*').ilike('Имейл', targetEmail).limit(1),
+        termDosietaClient.from('chekiraniya').select('*').gte('Време', qFrom).lte('Време', qTo).order('Време', { ascending: true }).limit(20000),
+        termDosietaClient.from('otcheti').select('id, "ID Детайл", "Операция", "Количество", "Оператор", "Статус", "Дата"').gte('Дата', qFrom).lte('Дата', qTo).limit(20000),
+        termDosietaClient.from('audit_3s_logs').select('*').gte('created_at', qFrom).lte('created_at', qTo).order('created_at', { ascending: false }).limit(2000),
+        termDosietaClient.from('audit_3s_workers').select('*').eq('is_active', true),
+        termDosietaClient.from('salary_monthly_logs').select('*').eq('month', monthName).eq('year', year)
+    ]);
+
+    const workerRow = (persRes.data && persRes.data[0]) ? persRes.data[0] : {};
+    const displayName = String(workerRow['Име'] || workerName || email).trim();
+    const displayNameNorm = dossierNorm(displayName);
+    const baseBonus = parseFloat(workerRow['Базов бонус']) || 0;
+
+    const allChecks = (checkRes.data || []).filter(c => {
+        const d = parseDossierUtcDate(c['Време']);
+        return d && d.getFullYear() === year && d.getMonth() === monthIdx;
+    });
+    const allOtcheti = (otchRes.data || []).filter(o => {
+        const d = parseDossierUtcDate(o['Дата']);
+        return d && d.getFullYear() === year && d.getMonth() === monthIdx;
+    });
+    const allAudits = (auditsRes.data || []).filter(a => {
+        const d = parseDossierUtcDate(a.audit_date || a.created_at);
+        return d && d.getFullYear() === year && d.getMonth() === monthIdx;
+    });
+
+    const draftLogs = draftLogsRes.data || [];
+    let monthConfig = null;
+    let workerDraft = null;
+    draftLogs.forEach(s => {
+        if (s.details_json && s.details_json.monthConfig && !monthConfig) {
+            monthConfig = s.details_json.monthConfig;
+        }
+        if (s.worker_email && dossierNorm(s.worker_email) === targetEmail) {
+            workerDraft = s;
+        }
+    });
+    const draftDetails = (workerDraft && workerDraft.details_json) ? workerDraft.details_json : {};
+
+    // Колективни почивни дни / база дни
+    const checkinsByDate = {};
+    allChecks.forEach(c => {
+        if (c['Действие'] !== 'Влизане') return;
+        const iso = toDossierLocalIso(c['Време']);
+        const em = dossierNorm(c['Имейл']);
+        if (iso && em) {
+            if (!checkinsByDate[iso]) checkinsByDate[iso] = new Set();
+            checkinsByDate[iso].add(em);
+        }
+    });
+    const activeDates = Object.keys(checkinsByDate).sort();
+    const peakCount = activeDates.reduce((m, iso) => Math.max(m, checkinsByDate[iso].size), 0);
+    const plantThresh = peakCount >= 3 ? Math.max(2, Math.floor(peakCount * 0.2)) : 1;
+
+    const totalDaysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+    const autoOffDates = [];
+    if (activeDates.length >= 2) {
+        for (let dNum = 1; dNum <= totalDaysInMonth; dNum++) {
+            const dt = new Date(year, monthIdx, dNum, 12, 0, 0);
+            if (dt.getDay() === 0 || dt.getDay() === 6) continue;
+            const iso = toDossierLocalIso(dt);
+            if (iso >= todayIso) continue;
+            const cnt = checkinsByDate[iso] ? checkinsByDate[iso].size : 0;
+            if (cnt < plantThresh) autoOffDates.push(iso);
+        }
+    }
+
+    const nominalDays = (monthConfig && monthConfig.nominalDays) ? Number(monthConfig.nominalDays) : 20;
+    const offDatesList = (monthConfig && Array.isArray(monthConfig.manualCollectiveOffDates))
+        ? monthConfig.manualCollectiveOffDates
+        : autoOffDates;
+    const offSet = new Set(offDatesList);
+    const effectiveBaseDays = (monthConfig && monthConfig.effectiveBaseDays)
+        ? Number(monthConfig.effectiveBaseDays)
+        : Math.max(1, nominalDays - offSet.size);
+
+    // Лични чекирания, часове и закъснения (> 08:00 ч.)
+    const myChecks = allChecks.filter(c => dossierNorm(c['Имейл']) === targetEmail);
+    const presentDates = new Set();
+    const firstInByDate = {};
+    const lastOutByDate = {};
+    const lates = [];
+
+    myChecks.forEach(c => {
+        const d = parseDossierUtcDate(c['Време']);
+        if (!d) return;
+        const iso = toDossierLocalIso(d);
+        const act = String(c['Действие'] || '').trim();
+        if (act === 'Влизане') {
+            presentDates.add(iso);
+            if (!firstInByDate[iso] || d < firstInByDate[iso]) firstInByDate[iso] = d;
+        } else if (act === 'Излизане' || act === 'Авто излизане') {
+            if (!lastOutByDate[iso] || d > lastOutByDate[iso]) lastOutByDate[iso] = d;
+        }
+    });
+
+    let workedHours = 0;
+    Object.keys(firstInByDate).sort().forEach(iso => {
+        const dIn = firstInByDate[iso];
+        const dOut = lastOutByDate[iso];
+        workedHours += (dOut && dOut > dIn) ? Math.min(14, Math.max(0.5, (dOut - dIn) / 3600000)) : 8;
+        const totalMins = dIn.getHours() * 60 + dIn.getMinutes();
+        if (totalMins > 480) { // след 08:00 ч.
+            lates.push({
+                isoDate: iso,
+                dateStr: dIn.toLocaleDateString('bg-BG'),
+                timeStr: dIn.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' }),
+                minutesLate: totalMins - 480,
+                isExcused: false,
+                excuseNote: ''
+            });
+        }
+    });
+
+    const savedLates = Array.isArray(draftDetails.lates) ? draftDetails.lates : [];
+    lates.forEach(l => {
+        const sl = savedLates.find(s => (s.isoDate && s.isoDate === l.isoDate) || (s.dateStr === l.dateStr && s.timeStr === l.timeStr));
+        if (sl && sl.isExcused) { l.isExcused = true; l.excuseNote = sl.excuseNote || 'Оправдано'; }
+    });
+
+    // Отчети: непопълнен дневен отчет + брак по вина на оператора
+    const myOtcheti = allOtcheti.filter(o => {
+        const op = dossierNorm(o['Оператор']);
+        return op === targetEmail || op === displayNameNorm || (displayNameNorm.length >= 3 && op.includes(displayNameNorm));
+    });
+    const reportedDates = new Set();
+    const myScrapFaults = [];
+    const scrapFaultMap = draftDetails.scrapFaultMap || {};
+
+    myOtcheti.forEach(o => {
+        const iso = toDossierLocalIso(o['Дата']);
+        if (iso) reportedDates.add(iso);
+        if (String(o['Статус'] || '').trim() === 'Брак' && scrapFaultMap[String(o.id)] && scrapFaultMap[String(o.id)].isOperatorFault) {
+            myScrapFaults.push({ dateStr: iso, part: o['ID Детайл'] || '', qty: o['Количество'] || 0 });
+        }
+    });
+
+    const missingReports = [];
+    Array.from(presentDates).sort().forEach(iso => {
+        if (iso >= todayIso || offSet.has(iso)) return;
+        if (!reportedDates.has(iso)) {
+            missingReports.push({ isoDate: iso, dateStr: iso.split('-').reverse().join('.'), isExcused: false });
+        }
+    });
+    const savedMissing = Array.isArray(draftDetails.missingReports) ? draftDetails.missingReports : [];
+    missingReports.forEach(m => {
+        const sm = savedMissing.find(s => s.isoDate === m.isoDate);
+        if (sm && sm.isExcused) { m.isExcused = true; m.excuseNote = sm.excuseNote || 'Оправдано'; }
+    });
+
+    const wrongReports = Array.isArray(draftDetails.wrongReports) ? draftDetails.wrongReports : [];
+    const manualScraps = Array.isArray(draftDetails.manualScrapEvents) ? draftDetails.manualScrapEvents : [];
+    const adminViolations = Array.isArray(draftDetails.adminViolations) ? draftDetails.adminViolations : [];
+
+    const unexcusedLatesCount = lates.filter(l => !l.isExcused).length;
+    const unexcusedMissingCount = missingReports.filter(m => !m.isExcused).length;
+    const totalScrapFaultCount = myScrapFaults.length + manualScraps.length;
+
+    const lateDed = Math.max(0, unexcusedLatesCount - 3) * 10;
+    const missDed = Math.max(0, unexcusedMissingCount - 2) * 8;
+    const wrongDed = wrongReports.length * 5;
+    const scrapDed = totalScrapFaultCount * 15;
+    const adminDed = adminViolations.length * 15;
+    const disciplinePts = Math.max(0, 100 - (lateDed + missDed + wrongDed + scrapDed + adminDed));
+
+    // 3S Одити + Звено
+    const worker3sRow = (workers3sRes.data || []).find(w => dossierNorm(w.worker_name) === displayNameNorm || dossierNorm(w.worker_name) === targetNameNorm);
+    const savedIndState = Array.isArray(draftDetails.indAuditsState) ? draftDetails.indAuditsState : [];
+    const myIndAudits = allAudits
+        .filter(a => a.target_type !== 'area' && (dossierNorm(a.target_name) === targetEmail || dossierNorm(a.target_name) === displayNameNorm))
+        .map(a => {
+            const st = savedIndState.find(s => s.id === a.id);
+            return { ...a, isExcused: !!(st && st.isExcused) };
+        });
+
+    const mySector = (worker3sRow && worker3sRow.sector) ? worker3sRow.sector : (myIndAudits[0] ? myIndAudits[0].sector : '');
+    const myAreaAudits = mySector ? allAudits.filter(a => a.target_type === 'area' && dossierNorm(a.sector) === dossierNorm(mySector)) : [];
+
+    const activeInd = myIndAudits.filter(a => !a.isExcused);
+    const indPts = (draftDetails.manual3sInd !== undefined && draftDetails.manual3sInd !== null)
+        ? Number(draftDetails.manual3sInd)
+        : (activeInd.length > 0 ? Math.round((activeInd.reduce((s, a) => s + ((parseFloat(a.percentage) || 0) / 100) * 60, 0) / activeInd.length) * 10) / 10 : 60);
+    const areaPts = (draftDetails.manual3sArea !== undefined && draftDetails.manual3sArea !== null)
+        ? Number(draftDetails.manual3sArea)
+        : (myAreaAudits.length > 0 ? Math.round((myAreaAudits.reduce((s, a) => s + ((parseFloat(a.percentage) || 0) / 100) * 12, 0) / myAreaAudits.length) * 10) / 10 : 12);
+    const total3sPts = Math.min(72, Math.round((indPts + areaPts) * 10) / 10);
+
+    const workedDays = (draftDetails.manualWorkedDays !== undefined && draftDetails.manualWorkedDays !== null) ? Number(draftDetails.manualWorkedDays) : presentDates.size;
+    const attCoeff = Math.min(1.0, Math.round((workedDays / Math.max(1, effectiveBaseDays)) * 100) / 100);
+    const mgrPct = (draftDetails.managerScorePct !== undefined && draftDetails.managerScorePct !== null) ? Number(draftDetails.managerScorePct) : 100;
+    const rewards = Array.isArray(draftDetails.rewards) ? draftDetails.rewards : [];
+    const rewardsSum = (draftDetails.totalRewardsEur !== undefined) ? Number(draftDetails.totalRewardsEur) : rewards.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+
+    const estCore = baseBonus * attCoeff * (0.30 * (total3sPts / 72) + 0.60 * (disciplinePts / 100) + 0.10 * (mgrPct / 100));
+    const estTotal = Math.max(0, Math.round((estCore + rewardsSum) * 100) / 100);
+
+    const renderAuditItem = (a, isArea) => {
+        const answersList = Array.isArray(a.answers) ? a.answers : [];
+        const checklistHtml = answersList.length > 0 ? `
+            <details style="margin-top:6px;">
+                <summary style="cursor:pointer; font-size:0.8em; font-weight:700; color:#4338ca;">📋 Виж чек-листа (${answersList.length} въпроса)</summary>
+                <div style="margin-top:4px; display:flex; flex-direction:column; gap:3px; padding-left:8px; border-left:2px solid #c7d2fe;">
+                    ${answersList.map(ans => `<div style="font-size:0.78em; color:#334155;"><b>${dossierEsc(ans.question_code || '')}</b> ${dossierEsc(ans.question_title || '')}: <b>${ans.points ?? '-'} / 4 т.</b></div>`).join('')}
+                </div>
+            </details>` : '';
+        return `
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; margin-top:6px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                    <span style="font-weight:800; font-size:0.84em; color:#1e293b;">${isArea ? '🏭 Обща зона' : '👤 Работно място'} • ${dossierEsc(a.audit_date || (a.created_at || '').split('T')[0])}${a.isExcused ? ' (🕊️ Оправдан)' : ''}</span>
+                    <span style="font-weight:900; color:${(a.percentage || 0) >= 80 ? '#15803d' : '#dc2626'}; font-size:0.86em;">${a.percentage}% (${a.total_points}/${a.max_points} т.)</span>
+                </div>
+                ${a.notes ? `<div style="font-size:0.8em; color:#475569; margin-top:3px;">💬 ${dossierEsc(a.notes)}</div>` : ''}
+                ${a.photo_url ? `<div style="margin-top:5px;"><a href="${dossierEsc(a.photo_url)}" target="_blank" style="display:inline-flex; align-items:center; gap:4px; background:#eff6ff; color:#1d4ed8; padding:3px 8px; border-radius:5px; font-size:0.78em; font-weight:800; text-decoration:none; border:1px solid #bfdbfe;">🖼️ Отвори снимка от одита</a></div>` : ''}
+                ${checklistHtml}
+            </div>
+        `;
+    };
+
+    const allAuditsMerged = [
+        ...myIndAudits.map(a => renderAuditItem(a, false)),
+        ...myAreaAudits.map(a => renderAuditItem(a, true))
+    ].join('');
+
+    return `
+        <div style="background:white; border:1.5px solid #c7d2fe; border-radius:12px; padding:16px; margin:0 auto 14px auto; max-width:640px; box-shadow:0 3px 10px rgba(67,56,202,0.08);">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #eef2ff; padding-bottom:10px; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <div>
+                    <div style="font-weight:900; color:#312e81; font-size:1.05em;">📡 Личен дигитален картон (На живо)</div>
+                    <div style="font-size:0.8em; color:#64748b;">Текущ месец: <b>${monthName} ${year} г.</b>${mySector ? ` • Звено: <b>${dossierEsc(mySector)}</b>` : ''}</div>
+                </div>
+                <span style="background:#eef2ff; color:#4338ca; padding:3px 10px; border-radius:999px; font-size:0.76em; font-weight:800;">
+                    📅 ${workedDays} / ${effectiveBaseDays} дни (× ${attCoeff.toFixed(2)}) • ${Math.round(workedHours * 10) / 10} ч.
+                </span>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:12px;">
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:9px; text-align:center;">
+                    <div style="font-size:0.72em; font-weight:800; color:#166534;">🧹 3S ОДИТ (30%)</div>
+                    <div style="font-size:1.25em; font-weight:900; color:#15803d;">${total3sPts} / 72 т.</div>
+                    <div style="font-size:0.72em; color:#166534;">Инд. ${indPts}/60 • Зона ${areaPts}/12</div>
+                </div>
+                <div style="background:${disciplinePts < 100 ? '#fef2f2' : '#f0fdf4'}; border:1px solid ${disciplinePts < 100 ? '#fecaca' : '#bbf7d0'}; border-radius:8px; padding:9px; text-align:center;">
+                    <div style="font-size:0.72em; font-weight:800; color:${disciplinePts < 100 ? '#991b1b' : '#166534'};">⚖️ ДИСЦИПЛИНА (60%)</div>
+                    <div style="font-size:1.25em; font-weight:900; color:${disciplinePts < 100 ? '#dc2626' : '#15803d'};">${disciplinePts} / 100 т.</div>
+                    <div style="font-size:0.72em; color:#64748b;">Закъсн.: ${unexcusedLatesCount}/3 • Отч.: ${unexcusedMissingCount}/2</div>
+                </div>
+                <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:9px; text-align:center;">
+                    <div style="font-size:0.72em; font-weight:800; color:#475569;">👔 РЪКОВОДИТЕЛ (10%)</div>
+                    <div style="font-size:1.25em; font-weight:900; color:#1e293b;">${mgrPct}%</div>
+                    <div style="font-size:0.72em; color:#64748b;">Поощрения: +${rewardsSum.toFixed(2)} €</div>
+                </div>
+                <div style="background:#eef2ff; border:1.5px solid #a5b4fc; border-radius:8px; padding:9px; text-align:center;">
+                    <div style="font-size:0.72em; font-weight:800; color:#3730a3;">💶 ПРОГНОЗА СЕГА</div>
+                    <div style="font-size:1.25em; font-weight:900; color:#4338ca;">${estTotal.toFixed(2)} €</div>
+                    <div style="font-size:0.72em; color:#4338ca;">при база ${baseBonus.toFixed(0)} €</div>
+                </div>
+            </div>
+
+            <div style="font-size:0.82em; color:#334155; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; margin-bottom:8px;">
+                <b>Регистър Дисциплина:</b>
+                ${lates.length > 0 ? `<div>• Закъснения (&gt;08:00): ${lates.map((l, idx) => `${l.dateStr} (${l.timeStr})${l.isExcused ? ' [опр.]' : (idx < 3 ? ' [толеранс]' : ' [-10т]')}`).join(', ')}</div>` : '<div>• Закъснения: 0 (🟢 без закъснения)</div>'}
+                ${missingReports.length > 0 ? `<div>• Дни без отчет: ${missingReports.map(m => `${m.dateStr}${m.isExcused ? ' [опр.]' : ''}`).join(', ')}</div>` : '<div>• Пропуснати дневни отчети: 0</div>'}
+                ${wrongReports.length > 0 ? `<div>• Грешни отчети: ${wrongReports.length} бр. (-${wrongDed} т.)</div>` : ''}
+                ${totalScrapFaultCount > 0 ? `<div>• Брак по вина на оператора: ${totalScrapFaultCount} бр. (-${scrapDed} т.)</div>` : ''}
+                ${adminViolations.length > 0 ? `<div>• Адм. нарушения: ${adminViolations.length} бр. (-${adminDed} т.)</div>` : ''}
+            </div>
+
+            <div>
+                <div style="font-size:0.82em; font-weight:800; color:#334155;">📸 3S Одити и снимки за ${monthName}:</div>
+                ${allAuditsMerged || '<div style="font-size:0.8em; color:#64748b; padding:6px 0;">Все още няма въведени 3S одити за този месец.</div>'}
+            </div>
+        </div>
+    `;
+}
 
 window.loadTermSalary = async function (email) {
     const contentDiv = document.getElementById('termSalaryContent');
     const filterWrap = document.getElementById('termSalaryMonthFilterWrap');
     if (!contentDiv) return;
 
-    contentDiv.innerHTML = `<div style="text-align: center; color: #64748b; padding: 30px 10px;">⏳ Зареждане на одобрени фишове...</div>`;
+    contentDiv.innerHTML = `<div style="text-align: center; color: #64748b; padding: 30px 10px;">⏳ Зареждане на личния картон и фишове...</div>`;
 
     try {
         const targetEmail = (email || '').toLowerCase().trim();
-        const { data, error } = await termDosietaClient
-            .from('salary_monthly_logs')
-            .select('*')
-            .ilike('worker_email', targetEmail)
-            .eq('status', 'Одобрено')
-            .order('year', { ascending: false });
+        const [liveHtml, salaryRes] = await Promise.all([
+            buildLiveDigitalCardHtml(targetEmail, currentDossierWorkerName).catch(e => {
+                console.warn('Live digital card error:', e);
+                return '';
+            }),
+            termDosietaClient
+                .from('salary_monthly_logs')
+                .select('*')
+                .ilike('worker_email', targetEmail)
+                .eq('status', 'Одобрено')
+                .order('year', { ascending: false })
+        ]);
 
-        if (error) throw error;
-
-        currentWorkerSalaryLogs = data || [];
+        if (salaryRes.error) throw salaryRes.error;
+        currentWorkerSalaryLogs = salaryRes.data || [];
 
         if (currentWorkerSalaryLogs.length === 0) {
             if (filterWrap) filterWrap.innerHTML = '';
             contentDiv.innerHTML = `
-                <div style="text-align: center; padding: 40px 20px; background: white; border: 1px dashed #cbd5e1; border-radius: 12px; margin: 10px;">
-                    <div style="font-size: 2.8em; margin-bottom: 8px;">💶</div>
-                    <div style="font-weight: 800; color: #334155; font-size: 1.05em;">Няма публикувани фишове за бонуси</div>
-                    <div style="font-size: 0.85em; color: #64748b; margin-top: 6px; max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.45;">
-                        Когато ръководството одобри и публикува ведомостта за съответния месец, вашият детайлен фиш ще се визуализира тук автоматично.
+                ${liveHtml}
+                <div style="text-align: center; padding: 24px 16px; background: white; border: 1px dashed #cbd5e1; border-radius: 12px; max-width: 640px; margin: 0 auto;">
+                    <div style="font-size: 2em; margin-bottom: 6px;">💶</div>
+                    <div style="font-weight: 800; color: #334155; font-size: 0.98em;">Все още няма одобрен краен фиш за минали месеци</div>
+                    <div style="font-size: 0.82em; color: #64748b; margin-top: 4px;">
+                        Когато ръководството одобри месечната ведомост, финалният фиш ще се появи тук.
                     </div>
                 </div>
             `;
@@ -597,11 +930,11 @@ window.loadTermSalary = async function (email) {
             `;
         }
 
+        window._termLiveDigitalCardHtml = liveHtml;
         renderSelectedWorkerPayslip(0);
-
     } catch (err) {
         console.error('loadTermSalary error:', err);
-        contentDiv.innerHTML = `<div style="color: #b91c1c; text-align: center; padding: 20px; background: #fef2f2; border-radius: 8px;">⚠️ Грешка при зареждане на фишове: ${err.message || err}</div>`;
+        contentDiv.innerHTML = `<div style="color: #b91c1c; text-align: center; padding: 20px; background: #fef2f2; border-radius: 8px;">⚠️ Грешка при зареждане: ${err.message || err}</div>`;
     }
 };
 
@@ -609,106 +942,97 @@ window.renderSelectedWorkerPayslip = function (index) {
     const contentDiv = document.getElementById('termSalaryContent');
     if (!contentDiv || !currentWorkerSalaryLogs[index]) return;
 
+    const liveCardHtml = window._termLiveDigitalCardHtml || '';
     const log = currentWorkerSalaryLogs[index];
     const details = log.details_json || {};
     const baseBonus = Number(log.base_bonus || 0);
+    const finalPayout = Number(log.final_payout || 0);
+    const isV2 = details.formulaVersion === 2;
+
+    if (isV2) {
+        const workedDays = Number(details.workedDays ?? 0);
+        const baseDays = Number(details.baseWorkingDays ?? 20);
+        const attCoeff = Number(details.attendanceCoeff ?? 1);
+        const s3sInd = Number(details.score3sIndPoints ?? 60);
+        const s3sArea = Number(details.score3sAreaPoints ?? 12);
+        const s3sTot = Number(details.score3sTotalPoints ?? 72);
+        const eur3s = Number(details.eur3sTotal ?? 0);
+        const discPts = Number(details.disciplinePoints ?? 100);
+        const eurDisc = Number(details.eurDiscipline ?? 0);
+        const mgrPct = Number(details.managerScorePct ?? 100);
+        const eurMgr = Number(details.eurManager ?? 0);
+        const eurRew = Number(details.totalRewardsEur ?? 0);
+
+        contentDiv.innerHTML = `
+            ${liveCardHtml}
+            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; box-shadow: 0 2px 5px rgba(0,0,0,0.03); max-width: 640px; margin: 0 auto;">
+                <div style="border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <div style="font-weight: 900; font-size: 1.1em; color: #1e3a8a;">📜 Одобрен Фиш: ${dossierEsc(log.month)} ${log.year} г.</div>
+                        <div style="font-size: 0.82em; color: #64748b;">Базова премия: <b>${baseBonus.toFixed(2)} €</b> • Присъствие: <b>${workedDays}/${baseDays} д. (× ${attCoeff.toFixed(2)})</b></div>
+                    </div>
+                    <span style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 3px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.78em;">🟢 Одобрен</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 7px; font-size: 0.88em;">
+                    <div style="display:flex; justify-content:space-between; padding:7px 10px; background:#f8fafc; border-radius:6px;">
+                        <span>🧹 3S Одит (30%): <b>${s3sTot}/72 т.</b> (Инд. ${s3sInd}/60 + Зона ${s3sArea}/12)</span>
+                        <b style="color:#15803d;">+${eur3s.toFixed(2)} €</b>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding:7px 10px; background:#f8fafc; border-radius:6px;">
+                        <span>⚖️ Дисциплина (60%): <b>${discPts}/100 т.</b></span>
+                        <b style="color:#15803d;">+${eurDisc.toFixed(2)} €</b>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding:7px 10px; background:#f8fafc; border-radius:6px;">
+                        <span>👔 Оценка ръководител (10%): <b>${mgrPct}%</b></span>
+                        <b style="color:#15803d;">+${eurMgr.toFixed(2)} €</b>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding:7px 10px; background:#fefce8; border-radius:6px;">
+                        <span>🎁 Поощрения ${details.perfectMonthActive ? '(вкл. Перфектен месец)' : ''}</span>
+                        <b style="color:#d97706;">${eurRew >= 0 ? '+' : ''}${eurRew.toFixed(2)} €</b>
+                    </div>
+                </div>
+                <div style="margin-top: 14px; padding: 12px 16px; background: #f0fdf4; border: 2px solid #86efac; border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 0.8em; font-weight: 800; color: #166534;">КРАЙНА МЕСЕЧНА ПРЕМИЯ:</div>
+                        <div style="font-size: 0.74em; color: #15803d;">Одобрена сума за изплащане</div>
+                    </div>
+                    <div style="font-size: 1.55em; font-weight: 900; color: #15803d;">${finalPayout.toFixed(2)} €</div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    // Обратна съвместимост за одобрени фишове преди въвеждане на новата формула
     const lateCount = Number(log.late_count || 0);
     const latePenalty = Number(log.late_penalty || 0);
     const auditFailed = Number(log.audit_3s_failed_count || 0);
     const auditPenalty = Number(log.audit_3s_penalty || 0);
     const manualAdj = Number(log.manual_adjustment || 0);
     const manualNotes = log.manual_notes || '';
-    const totalBonus = Number(log.total_bonus || 0);
-    const finalPayout = Number(log.final_payout || 0);
-
-    const excusedLateCount = details.excusedLateCount || 0;
-    const excusedAuditCount = details.excusedAuditCount || 0;
-
-    // Percentages (from details_json or calculated)
-    const latePenaltyPct = details.latePenaltyPct !== undefined
-        ? details.latePenaltyPct
-        : (baseBonus > 0 && latePenalty > 0 ? Math.round((latePenalty / baseBonus) * 100) : 0);
-
-    const auditPenaltyPct = details.auditPenaltyPct !== undefined
-        ? details.auditPenaltyPct
-        : (baseBonus > 0 && auditPenalty > 0 ? Math.round((auditPenalty / baseBonus) * 100) : 0);
 
     contentDiv.innerHTML = `
-        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.03); max-width: 600px; margin: 0 auto;">
-            <!-- Header -->
-            <div style="border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <div>
-                    <div style="font-weight: 900; font-size: 1.15em; color: #1e3a8a;">AMCI • Фиш за Бонуси &amp; Мотивация</div>
-                    <div style="font-size: 0.82em; color: #64748b; margin-top: 2px;">
-                        Период: <b>${log.month} ${log.year} г.</b>
-                    </div>
-                </div>
-                <span style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 3px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.78em;">
-                    🟢 Одобрен от Ръководството
-                </span>
+        ${liveCardHtml}
+        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; box-shadow: 0 2px 5px rgba(0,0,0,0.03); max-width: 640px; margin: 0 auto;">
+            <div style="border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-weight: 900; color: #1e3a8a;">📜 Одобрен Фиш: ${dossierEsc(log.month)} ${log.year} г.</div>
+                <span style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 3px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.78em;">🟢 Одобрен</span>
             </div>
-
-            <!-- Employee Info -->
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 0.88em;">
-                <div>
-                    <span style="color: #64748b;">Служител:</span> <b>${log.worker_name || log.worker_email}</b>
+            <div style="display: flex; flex-direction: column; gap: 7px; font-size: 0.88em;">
+                <div style="display:flex; justify-content:space-between; padding:6px 10px; background:#f8fafc; border-radius:6px;">
+                    <span>💶 Базов бонус:</span><b style="color:#1e40af;">+${baseBonus.toFixed(2)} €</b>
                 </div>
-                <div>
-                    <span style="color: #64748b;">Длъжност:</span> <b>${log.position || 'Оператор'}</b>
+                <div style="display:flex; justify-content:space-between; padding:6px 10px; background:#f8fafc; border-radius:6px;">
+                    <span>⏱️ Закъснения (${lateCount}):</span><b style="color:${latePenalty > 0 ? '#dc2626' : '#16a34a'};">-${latePenalty.toFixed(2)} €</b>
                 </div>
+                <div style="display:flex; justify-content:space-between; padding:6px 10px; background:#f8fafc; border-radius:6px;">
+                    <span>🧹 3S одити (${auditFailed}):</span><b style="color:${auditPenalty > 0 ? '#dc2626' : '#16a34a'};">-${auditPenalty.toFixed(2)} €</b>
+                </div>
+                ${manualAdj !== 0 ? `<div style="display:flex; justify-content:space-between; padding:6px 10px; background:#fefce8; border-radius:6px;"><span>🏷️ Корекция (${dossierEsc(manualNotes)}):</span><b>${manualAdj.toFixed(2)} €</b></div>` : ''}
             </div>
-
-            <!-- Details List -->
-            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.88em;">
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #ffffff; border: 1px solid #f1f5f9; border-radius: 6px;">
-                    <span>💶 Базов бонус за длъжността:</span>
-                    <b style="color: #1e40af;">+${baseBonus.toFixed(2)} €</b>
-                </div>
-
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #ffffff; border: 1px solid #f1f5f9; border-radius: 6px;">
-                    <div>
-                        <span>⏱️ Закъснения за смяна (след 08:05):</span>
-                        <span style="font-size: 0.82em; color: #64748b; margin-left: 6px;">(${lateCount} ${lateCount === 1 ? 'път' : 'пъти'}${excusedLateCount > 0 ? ` • ${excusedLateCount} оправдани` : ''}${latePenaltyPct > 0 ? ` • <b>-${latePenaltyPct}%</b>` : ''})</span>
-                    </div>
-                    <b style="color: ${latePenalty > 0 ? '#dc2626' : '#16a34a'};">${latePenalty > 0 ? `-${latePenalty.toFixed(2)} €` : '0.00 €'}</b>
-                </div>
-
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #ffffff; border: 1px solid #f1f5f9; border-radius: 6px;">
-                    <div>
-                        <span>🧹 3S Одити на работното място:</span>
-                        <span style="font-size: 0.82em; color: #64748b; margin-left: 6px;">(${auditFailed} неиздържани${excusedAuditCount > 0 ? ` • ${excusedAuditCount} оправдани` : ''}${auditPenaltyPct > 0 ? ` • <b>-${auditPenaltyPct}%</b>` : ''})</span>
-                    </div>
-                    <b style="color: ${auditPenalty > 0 ? '#dc2626' : '#16a34a'};">${auditPenalty > 0 ? `-${auditPenalty.toFixed(2)} €` : '0.00 €'}</b>
-                </div>
-
-
-
-                ${manualAdj !== 0 ? `
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #fefce8; border: 1px solid #fde047; border-radius: 6px;">
-                    <div>
-                        <span>🏷️ Индивидуална корекция:</span>
-                        ${manualNotes ? `<div style="font-size: 0.78em; color: #713f12; margin-top: 2px;">Бележка: ${manualNotes}</div>` : ''}
-                    </div>
-                    <b style="color: ${manualAdj > 0 ? '#16a34a' : '#dc2626'};">${manualAdj > 0 ? `+${manualAdj.toFixed(2)} €` : `${manualAdj.toFixed(2)} €`}</b>
-                </div>
-                ` : ''}
-            </div>
-
-            <!-- Total Payout Banner -->
-            <div style="margin-top: 16px; padding: 12px 16px; background: #f0fdf4; border: 2px solid #86efac; border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <div style="font-size: 0.8em; font-weight: 800; color: #166534; text-transform: uppercase;">Краен Бонус за изплащане:</div>
-                    <div style="font-size: 0.75em; color: #15803d; margin-top: 1px;">Чиста сума според правилата</div>
-                </div>
-                <div style="font-size: 1.6em; font-weight: 900; color: #15803d;">
-                    ${finalPayout.toFixed(2)} €
-                </div>
-            </div>
-
-            <div style="margin-top: 14px; text-align: right;">
-                <button type="button" onclick="window.print()" style="padding: 6px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 700; color: #334155; font-size: 0.82em; cursor: pointer;">
-                    🖨️ Принтирай фиша
-                </button>
+            <div style="margin-top: 14px; padding: 12px 16px; background: #f0fdf4; border: 2px solid #86efac; border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-weight: 800; color: #166534;">КРАЕН БОНУС:</div>
+                <div style="font-size: 1.5em; font-weight: 900; color: #15803d;">${finalPayout.toFixed(2)} €</div>
             </div>
         </div>
     `;
