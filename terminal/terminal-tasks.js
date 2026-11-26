@@ -1343,8 +1343,13 @@ async function loadTasks(isSilent = false) {
                           });
                       }
 
-                      // Главни детайли на пробата (които нямат parent_part_code или сочат към името на самата проба)
-                      let rootComps = myComps.filter(c => !c.parent_part_code || c.parent_part_code.trim() === '' || normalizeStr(c.parent_part_code) === normalizeStr(proba.name));
+                      // Главни детайли на пробата (ако има дефиниран самят краен продукт с custom_routes, само без-родителните записи са корен, за да не се удвояват децата)
+                      const hasSelfRootComp = myComps.some(c => normalizeStr(c.part_code) === normalizeStr(proba.name));
+                      let rootComps = myComps.filter(c => {
+                          if (!c.parent_part_code || c.parent_part_code.trim() === '') return true;
+                          if (!hasSelfRootComp && normalizeStr(c.parent_part_code) === normalizeStr(proba.name)) return true;
+                          return false;
+                      });
                       rootComps.forEach(comp => {
                           let mult = parseFloat(comp.qty_per_unit) || 1;
                           let target = probaTarget * mult;

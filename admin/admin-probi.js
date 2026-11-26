@@ -279,6 +279,14 @@ function onProbiSearch(e) {
 
 // --- CREATE PROBA MODAL ---
 async function openCreateProbaModal() {
+    let catalog = { machines: [], allRoutesCache: [], routeDetailCodes: [] };
+    try {
+        catalog = await loadProbiRoutesCatalog();
+    } catch (e) {}
+
+    const machinesOptionsHtml = catalog.machines.map(m => `<option value="${m.replace(/"/g, '&quot;')}">${m}</option>`).join('');
+    const routeCodesDatalistHtml = catalog.routeDetailCodes.map(c => `<option value="${c.replace(/"/g, '&quot;')}">${c}</option>`).join('');
+
     const { value: formValues } = await Swal.fire({
         title: '🧪 Нова Опитна Серия (Проба)',
         html: `
@@ -295,20 +303,72 @@ async function openCreateProbaModal() {
                 </label>
 
                 <label style="display:block; font-weight:700; margin-bottom:4px; color:#1e293b;">Бележки и цел на изпитанието (по избор)</label>
-                <textarea id="swalProbaNotes" class="swal2-textarea" placeholder="Особености, специални хлабини, изисквания към инженерите..." style="width:100%; box-sizing:border-box; margin:0; height:80px;"></textarea>
+                <textarea id="swalProbaNotes" class="swal2-textarea" placeholder="Особености, специални хлабини, изисквания към инженерите..." style="width:100%; box-sizing:border-box; margin:0 0 14px 0; height:70px;"></textarea>
+
+                <div style="border-top:1px solid #e2e8f0; padding-top:12px;">
+                    <div style="font-weight:800; color:#1e293b; margin-bottom:6px;">🛠️ Крайният продукт има ли операции за сглобяване / измерване?</div>
+                    <div style="display:flex; gap:14px; margin-bottom:10px; flex-wrap:wrap;">
+                        <label style="font-size:0.85rem; font-weight:700; cursor:pointer; color:#475569;">
+                            <input type="radio" name="probaHasRootOps" value="no" checked onchange="toggleCreateProbaRootOps(false)"> Не (само съставни детайли)
+                        </label>
+                        <label style="font-size:0.85rem; font-weight:700; cursor:pointer; color:#6d28d9;">
+                            <input type="radio" name="probaHasRootOps" value="yes" onchange="toggleCreateProbaRootOps(true)"> Да — въведи операции (Зареждане, Измерване...)
+                        </label>
+                    </div>
+
+                    <div id="createProbaRootOpsContainer" style="display:none; background:#f8fafc; border:1px solid #ddd6fe; border-radius:8px; padding:10px;">
+                        <div style="display:flex; gap:12px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
+                            <label style="font-size:0.83rem; font-weight:700; cursor:pointer;">
+                                <input type="radio" name="routeType" value="manual" checked onchange="toggleRouteInputType(this.value)"> Ръчно въвеждане
+                            </label>
+                            <label style="font-size:0.83rem; font-weight:700; cursor:pointer;">
+                                <input type="radio" name="routeType" value="copy" onchange="toggleRouteInputType(this.value)"> Копирай от съществуващ модел
+                            </label>
+                            <button type="button" onclick="applyFinalAssemblyPreset()" style="margin-left:auto; padding:3px 9px; background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; border-radius:5px; font-size:0.78rem; font-weight:800; cursor:pointer;">
+                                ⚡ Шаблон: Зареждане + Измерване
+                            </button>
+                        </div>
+
+                        <div id="copyRouteBox" style="display:none; background:white; padding:8px; border-radius:6px; border:1px solid #e2e8f0; margin-bottom:6px;">
+                            <input id="copyFromPartInput" list="dlRootCopyParts" placeholder="Изберете модел/детайл за копиране..." style="width:100%; box-sizing:border-box; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.84rem;">
+                            <datalist id="dlRootCopyParts">${routeCodesDatalistHtml}</datalist>
+                            <div id="copyRoutePreview" style="margin-top:6px; font-size:0.78rem; color:#64748b;"></div>
+                        </div>
+
+                        <div id="manualRouteBox">
+                            <div id="manualOpsList" style="max-height:145px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px; padding:6px; background:white;">
+                                <div class="manual-op-row" style="display:flex; gap:6px; margin-bottom:5px; align-items:center;">
+                                    <input type="number" step="10" value="10" class="manual-op-num" placeholder="№" style="width:45px; padding:4px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.82rem; text-align:center;">
+                                    <input type="text" class="manual-op-name" placeholder="напр. Зареждане" style="flex:1; padding:4px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.82rem;">
+                                    <select class="manual-op-machine" style="flex:1; padding:4px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.82rem;">
+                                        <option value="">(Избери машина)</option>
+                                        ${machinesOptionsHtml}
+                                    </select>
+                                </div>
+                            </div>
+                            <button type="button" onclick="addManualOpRow()" style="margin-top:6px; padding:4px 10px; background:#e2e8f0; color:#334155; border:none; border-radius:4px; font-size:0.78rem; font-weight:700; cursor:pointer;">
+                                ➕ Добави още една операция
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         `,
-        width: 550,
+        width: 640,
         showCancelButton: true,
         confirmButtonText: 'Създай и отвори конструктора ➔',
         cancelButtonText: 'Отказ',
         confirmButtonColor: '#7c3aed',
         focusConfirm: false,
-        preConfirm: () => {
+        didOpen: () => {
+            wireProbiCopyPreview(catalog.allRoutesCache);
+        },
+        preConfirm: async () => {
             const name = document.getElementById('swalProbaName').value.trim();
             const qty = parseFloat(document.getElementById('swalProbaQty').value);
             let notes = document.getElementById('swalProbaNotes').value.trim();
             const isUrgent = document.getElementById('swalProbaUrgent').checked;
+            const hasRootOps = document.querySelector('input[name="probaHasRootOps"]:checked')?.value === 'yes';
 
             if (!name) {
                 Swal.showValidationMessage('Моля, въведете име на пробата!');
@@ -318,10 +378,17 @@ async function openCreateProbaModal() {
                 Swal.showValidationMessage('Въведете валидна целева бройка!');
                 return false;
             }
+
+            let rootRoutes = [];
+            if (hasRootOps) {
+                rootRoutes = await collectProbaRoutesFromModal(catalog.allRoutesCache);
+                if (!rootRoutes) return false;
+            }
+
             if (isUrgent) {
                 notes = ('[СПЕШНА] ' + notes).trim();
             }
-            return { name, target_qty: qty, notes };
+            return { name, target_qty: qty, notes, rootRoutes };
         }
     });
 
@@ -338,6 +405,18 @@ async function openCreateProbaModal() {
 
             if (error) throw error;
             if (data && data[0]) {
+                if (Array.isArray(formValues.rootRoutes) && formValues.rootRoutes.length > 0) {
+                    const { error: rootErr } = await client.from('probi_components').insert([{
+                        proba_id: data[0].id,
+                        part_code: formValues.name,
+                        part_name: formValues.name,
+                        qty_per_unit: 1,
+                        is_new: true,
+                        parent_part_code: null,
+                        custom_routes: formValues.rootRoutes
+                    }]);
+                    if (rootErr) throw rootErr;
+                }
                 await fetchProbiData(true);
                 buildProbiUI();
                 openProbiConstructorModal(data[0].id);
@@ -453,14 +532,19 @@ async function openProbiConstructorModal(probaId) {
 
         return `
             <div style="text-align:left; font-size:0.9rem;">
-                <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px; padding:10px 14px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
+                <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px; padding:10px 14px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                     <div>
                         <span style="font-weight:800; color:#6d28d9; font-size:1.05rem;">🧪 ${proba.name}</span>
                         <span style="color:#5b21b6; margin-left:12px;">Цел: <b>${proba.target_qty} бр.</b></span>
                     </div>
-                    <button type="button" onclick="openNewPartDialog(${probaId}, null)" style="padding:6px 12px; background:#7c3aed; color:white; border:none; border-radius:6px; font-weight:800; font-size:0.82rem; cursor:pointer; box-shadow:0 2px 5px rgba(124,58,237,0.3);">
-                        ✨ Създай НОВ детайл
-                    </button>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button type="button" onclick="openProbaRootRoutesModal(${probaId}, 'constructor')" style="padding:6px 12px; background:#059669; color:white; border:none; border-radius:6px; font-weight:800; font-size:0.82rem; cursor:pointer; box-shadow:0 2px 5px rgba(5,150,105,0.28);">
+                            ⚙️ Операции на крайния модел
+                        </button>
+                        <button type="button" onclick="openNewPartDialog(${probaId}, null)" style="padding:6px 12px; background:#7c3aed; color:white; border:none; border-radius:6px; font-weight:800; font-size:0.82rem; cursor:pointer; box-shadow:0 2px 5px rgba(124,58,237,0.3);">
+                            ✨ Създай НОВ детайл
+                        </button>
+                    </div>
                 </div>
 
                 <div style="display:grid; grid-template-columns: 310px 1fr; gap:16px;">
@@ -563,13 +647,26 @@ async function addExistingPartToProba(partCode, parentPartCode = null) {
     const probaId = window._currentProbaId;
     if (!probaId) return;
 
+    let effectiveParent = parentPartCode;
+    if (!effectiveParent) {
+        const proba = probiCache.find(p => p.id === probaId);
+        const existingComps = probiComponentsCache[probaId] || [];
+        if (proba) {
+            const norm = (s) => String(s || '').trim().toLowerCase();
+            const rootModel = existingComps.find(c => !c.parent_part_code && norm(c.part_code) === norm(proba.name));
+            if (rootModel && norm(partCode) !== norm(rootModel.part_code)) {
+                effectiveParent = rootModel.part_code;
+            }
+        }
+    }
+
     try {
         const { error } = await client.from('probi_components').insert([{
             proba_id: probaId,
             part_code: partCode,
             qty_per_unit: 1,
             is_new: false,
-            parent_part_code: parentPartCode
+            parent_part_code: effectiveParent
         }]);
         if (error) throw error;
 
@@ -1039,6 +1136,11 @@ async function openNewPartDialog(probaId, parentPartCode = null) {
     }
 }
 
+window.toggleCreateProbaRootOps = function(show) {
+    const el = document.getElementById('createProbaRootOpsContainer');
+    if (el) el.style.display = show ? 'block' : 'none';
+};
+
 window.toggleRouteInputType = function(val) {
     const copyBox = document.getElementById('copyRouteBox');
     const manualBox = document.getElementById('manualRouteBox');
@@ -1059,6 +1161,294 @@ window.addManualOpRow = function() {
     cloned.querySelector('.manual-op-name').value = '';
     list.appendChild(cloned);
 };
+
+window.applyFinalAssemblyPreset = function() {
+    const radioManual = document.querySelector('input[name="routeType"][value="manual"]');
+    if (radioManual) {
+        radioManual.checked = true;
+        toggleRouteInputType('manual');
+    }
+    const list = document.getElementById('manualOpsList');
+    if (!list) return;
+    const firstRow = list.querySelector('.manual-op-row');
+    if (!firstRow) return;
+    while (list.querySelectorAll('.manual-op-row').length < 2) {
+        addManualOpRow();
+    }
+    const rows = list.querySelectorAll('.manual-op-row');
+    if (rows[0]) {
+        rows[0].querySelector('.manual-op-num').value = 10;
+        rows[0].querySelector('.manual-op-name').value = 'Зареждане';
+    }
+    if (rows[1]) {
+        rows[1].querySelector('.manual-op-num').value = 20;
+        rows[1].querySelector('.manual-op-name').value = 'Измерване';
+    }
+};
+
+async function loadProbiRoutesCatalog() {
+    const machines = [];
+    let allRoutesCache = [];
+    try {
+        allRoutesCache = await fetchAllProbiMarshruti();
+        allRoutesCache.forEach(r => {
+            const m = (r['Машина'] || '').trim();
+            if (m && !machines.includes(m)) machines.push(m);
+        });
+        machines.sort();
+    } catch (e) {
+        console.warn('Routes/Machines fetch failed:', e);
+    }
+
+    const routeDetailCodes = [];
+    const seenRouteCodes = new Set();
+    allRoutesCache.forEach(r => {
+        const c = String(r['Код на детайла'] || '').replace(/[\u00A0\s]+/g, ' ').trim();
+        if (c && !seenRouteCodes.has(c.toLowerCase())) {
+            seenRouteCodes.add(c.toLowerCase());
+            routeDetailCodes.push(c);
+        }
+    });
+    routeDetailCodes.sort((a, b) => a.localeCompare(b, 'bg'));
+
+    return { machines, allRoutesCache, routeDetailCodes };
+}
+
+function wireProbiCopyPreview(allRoutesCache) {
+    const copyInp = document.getElementById('copyFromPartInput');
+    const previewEl = document.getElementById('copyRoutePreview');
+    if (!copyInp || !previewEl) return;
+    const updatePreview = () => {
+        const val = copyInp.value.trim();
+        if (!val) {
+            previewEl.innerHTML = '';
+            return;
+        }
+        const found = findMatchingRoutesForCode(allRoutesCache, val);
+        if (found.length > 0) {
+            previewEl.innerHTML = `<span style="color:#15803d; font-weight:700;">✅ Намерени ${found.length} операции:</span> ` +
+                found.map(r => `<b>${r['№ Операция'] || 10}</b> ${r['Име на операция'] || ''}`).join(' ➔ ');
+        } else {
+            previewEl.innerHTML = `<span style="color:#dc2626; font-weight:600;">⚠️ Няма намерени операции за „${val}“</span>`;
+        }
+    };
+    copyInp.addEventListener('input', updatePreview);
+    copyInp.addEventListener('change', updatePreview);
+}
+
+async function collectProbaRoutesFromModal(allRoutesCache) {
+    const routeType = document.querySelector('input[name="routeType"]:checked')?.value || 'manual';
+    let customRoutes = [];
+    if (routeType === 'copy') {
+        const copyCode = (document.getElementById('copyFromPartInput')?.value || '').trim();
+        if (!copyCode) {
+            Swal.showValidationMessage('Изберете детайл за копиране на маршрута!');
+            return false;
+        }
+        const routesList = (allRoutesCache && allRoutesCache.length > 0) ? allRoutesCache : await fetchAllProbiMarshruti();
+        const found = findMatchingRoutesForCode(routesList, copyCode);
+        if (!found || found.length === 0) {
+            Swal.showValidationMessage(`Детайлът ${copyCode} няма въведени операции в marshruti!`);
+            return false;
+        }
+        customRoutes = found.map(r => ({
+            op_num: parseInt(r['№ Операция'], 10) || 10,
+            op_name: r['Име на операция'],
+            machine: r['Машина'] || ''
+        }));
+    } else {
+        document.querySelectorAll('#manualOpsList .manual-op-row').forEach(row => {
+            const opName = (row.querySelector('.manual-op-name')?.value || '').trim();
+            const opNum = parseInt(row.querySelector('.manual-op-num')?.value, 10) || 10;
+            const machine = (row.querySelector('.manual-op-machine')?.value || '').trim();
+            if (opName) {
+                customRoutes.push({ op_num: opNum, op_name: opName, machine });
+            }
+        });
+        if (customRoutes.length === 0) {
+            Swal.showValidationMessage('Въведете поне една операция!');
+            return false;
+        }
+    }
+    return customRoutes;
+}
+
+async function openProbaRootRoutesModal(probaId, returnTarget = 'constructor') {
+    if (typeof window.isViewerMode === 'function' && window.isViewerMode()) {
+        return window.showViewerReadOnlyAlert();
+    }
+
+    const proba = probiCache.find(p => p.id === probaId);
+    if (!proba) return;
+
+    Swal.fire({ title: 'Зареждане на операции и машини...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    try {
+        const [catalog, compsRes] = await Promise.all([
+            loadProbiRoutesCatalog(),
+            client.from('probi_components').select('*').eq('proba_id', probaId)
+        ]);
+
+        const currentComps = compsRes.data || [];
+        probiComponentsCache[probaId] = currentComps;
+
+        const normStr = (s) => String(s || '').trim().toLowerCase();
+        const escHtml = (s) => String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+
+        const existingRootComp = currentComps.find(c => normStr(c.part_code) === normStr(proba.name));
+        const unparentedOtherComps = currentComps.filter(c =>
+            (!c.parent_part_code || c.parent_part_code.trim() === '') &&
+            normStr(c.part_code) !== normStr(proba.name)
+        );
+
+        const existingRoutes = (existingRootComp && Array.isArray(existingRootComp.custom_routes) && existingRootComp.custom_routes.length > 0)
+            ? existingRootComp.custom_routes
+            : [{ op_num: 10, op_name: '', machine: '' }];
+
+        const machinesOptionsHtml = catalog.machines.map(m => `<option value="${escHtml(m)}">${escHtml(m)}</option>`).join('');
+        const routeCodesDatalistHtml = catalog.routeDetailCodes.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+
+        const initialRowsHtml = existingRoutes.map((r, idx) => {
+            const opNum = parseInt(r.op_num || r['№ Операция'], 10) || ((idx + 1) * 10);
+            const opName = String(r.op_name || r['Име на операция'] || '').trim();
+            const opMach = String(r.machine || r['Машина'] || '').trim();
+            const selectOpts = `<option value="">(Избери машина)</option>` + catalog.machines.map(m =>
+                `<option value="${escHtml(m)}" ${normStr(m) === normStr(opMach) ? 'selected' : ''}>${escHtml(m)}</option>`
+            ).join('');
+            return `
+                <div class="manual-op-row" style="display:flex; gap:6px; margin-bottom:6px; align-items:center;">
+                    <input type="number" step="10" value="${opNum}" class="manual-op-num" placeholder="№" style="width:45px; padding:4px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.82rem; text-align:center;">
+                    <input type="text" value="${escHtml(opName)}" class="manual-op-name" placeholder="Име (напр. Зареждане)" style="flex:1; padding:4px 8px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.82rem;">
+                    <select class="manual-op-machine" style="flex:1; padding:4px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.82rem;">
+                        ${selectOpts}
+                    </select>
+                </div>
+            `;
+        }).join('');
+
+        const linkNoticeHtml = unparentedOtherComps.length > 0 ? `
+            <label style="display:flex; align-items:flex-start; gap:8px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:9px 11px; cursor:pointer; font-size:0.84rem; color:#166534; margin-top:12px;">
+                <input id="linkRootChildrenCb" type="checkbox" checked style="margin-top:2px; transform:scale(1.15);">
+                <span><b>Вложи текущите ${unparentedOtherComps.length} главни компонента</b> (напр. ${escHtml(unparentedOtherComps.slice(0, 3).map(c => c.part_code).join(', '))}...) към 1-вата операция на <b>„${escHtml(proba.name)}“</b>.<br><i>Вече изработените бройки в Склад Проби и отчетите остават запазени, а сглобяването на резолвера ще се отключи директно от тях!</i></span>
+            </label>
+        ` : '';
+
+        const { value: modalData } = await Swal.fire({
+            title: `⚙️ Операции на крайния модел`,
+            width: 650,
+            html: `
+                <div style="text-align:left; font-size:0.9rem;">
+                    <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px; padding:9px 12px; margin-bottom:12px; font-weight:700; color:#5b21b6;">
+                        🧪 Краен продукт: <b>${escHtml(proba.name)}</b> (Цел: ${proba.target_qty} бр.)
+                    </div>
+
+                    <div style="display:flex; gap:12px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
+                        <label style="font-size:0.85rem; font-weight:700; cursor:pointer;">
+                            <input type="radio" name="routeType" value="manual" checked onchange="toggleRouteInputType(this.value)"> Ръчно въвеждане
+                        </label>
+                        <label style="font-size:0.85rem; font-weight:700; cursor:pointer;">
+                            <input type="radio" name="routeType" value="copy" onchange="toggleRouteInputType(this.value)"> Копирай от съществуващ модел
+                        </label>
+                        <button type="button" onclick="applyFinalAssemblyPreset()" style="margin-left:auto; padding:4px 10px; background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; border-radius:6px; font-size:0.78rem; font-weight:800; cursor:pointer;">
+                            ⚡ Шаблон: Зареждане + Измерване
+                        </button>
+                    </div>
+
+                    <div id="copyRouteBox" style="display:none; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0; margin-bottom:10px;">
+                        <label style="display:block; font-size:0.8rem; font-weight:700; margin-bottom:4px; color:#475569;">Изберете модел/детайл, чийто маршрут да копираме:</label>
+                        <input id="copyFromPartInput" list="dlRootModalCopyParts" placeholder="Въведете или изберете код..." style="width:100%; box-sizing:border-box; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.85rem;">
+                        <datalist id="dlRootModalCopyParts">${routeCodesDatalistHtml}</datalist>
+                        <div id="copyRoutePreview" style="margin-top:6px; font-size:0.78rem; color:#64748b;"></div>
+                    </div>
+
+                    <div id="manualRouteBox">
+                        <div id="manualOpsList" style="max-height:190px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px; padding:8px; background:#f8fafc;">
+                            ${initialRowsHtml}
+                        </div>
+                        <button type="button" onclick="addManualOpRow()" style="margin-top:6px; padding:4px 10px; background:#e2e8f0; color:#334155; border:none; border-radius:4px; font-size:0.8rem; font-weight:700; cursor:pointer;">
+                            ➕ Добави още една операция
+                        </button>
+                    </div>
+
+                    ${linkNoticeHtml}
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '💾 Запази операциите',
+            cancelButtonText: 'Отказ',
+            confirmButtonColor: '#059669',
+            cancelButtonColor: '#64748b',
+            didOpen: () => {
+                wireProbiCopyPreview(catalog.allRoutesCache);
+            },
+            preConfirm: async () => {
+                const customRoutes = await collectProbaRoutesFromModal(catalog.allRoutesCache);
+                if (!customRoutes) return false;
+                const linkEl = document.getElementById('linkRootChildrenCb');
+                const linkUnparented = linkEl ? Boolean(linkEl.checked) : false;
+                return { customRoutes, linkUnparented };
+            }
+        });
+
+        if (!modalData) {
+            if (returnTarget === 'constructor') openProbiConstructorModal(probaId);
+            else if (returnTarget === 'progress') openProbiProgressModal(probaId);
+            return;
+        }
+
+        Swal.fire({ title: 'Запазване...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+        if (existingRootComp) {
+            const { error: updRootErr } = await client
+                .from('probi_components')
+                .update({ is_new: true, custom_routes: modalData.customRoutes, parent_part_code: null })
+                .eq('id', existingRootComp.id);
+            if (updRootErr) throw updRootErr;
+        } else {
+            const { error: insRootErr } = await client
+                .from('probi_components')
+                .insert([{
+                    proba_id: probaId,
+                    part_code: proba.name,
+                    part_name: proba.name,
+                    qty_per_unit: 1,
+                    is_new: true,
+                    parent_part_code: null,
+                    custom_routes: modalData.customRoutes
+                }]);
+            if (insRootErr) throw insRootErr;
+        }
+
+        if (modalData.linkUnparented && unparentedOtherComps.length > 0) {
+            const idsToLink = unparentedOtherComps.map(c => c.id);
+            const { error: linkErr } = await client
+                .from('probi_components')
+                .update({ parent_part_code: proba.name })
+                .in('id', idsToLink);
+            if (linkErr) throw linkErr;
+        }
+
+        await fetchProbiData(true);
+        buildProbiUI();
+
+        await Swal.fire({
+            icon: 'success',
+            title: 'Запазено!',
+            text: `Операциите на „${proba.name}“ са запазени и налични в терминала.`,
+            timer: 1400,
+            showConfirmButton: false
+        });
+
+        if (returnTarget === 'constructor') openProbiConstructorModal(probaId);
+        else if (returnTarget === 'progress') openProbiProgressModal(probaId);
+    } catch (err) {
+        Swal.fire('Грешка', err.message, 'error');
+    }
+}
 
 // --- LAUNCH PROBA ---
 async function launchProba(probaId) {
@@ -1813,7 +2203,7 @@ async function openProbiProgressModal(probaId) {
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                             <span style="color:#6d28d9; font-weight:700; font-size:0.95rem;">Целева серия: <b style="font-size:1.15rem; color:#4c1d95;">${proba.target_qty} бр.</b></span>
                             <button type="button" onclick="openProbiInventoryModal()" style="background:#ffffff; color:#6d28d9; border:1.5px solid #a78bfa; padding:5px 12px; border-radius:8px; font-weight:800; font-size:0.8rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 2px rgba(0,0,0,0.05);" title="Преглед на Склад Проби">📦 Склад Проби</button>
-                            ${(typeof window.isViewerMode === 'function' && window.isViewerMode()) ? '' : `<button type="button" onclick="openAddProbiInventoryModal(${proba.id}, 'progress')" style="background:#16a34a; color:#ffffff; border:none; padding:5px 10px; border-radius:8px; font-weight:800; font-size:0.8rem; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.08);" title="Добави готов детайл директно в Склад Проби">➕ Добави детайл</button>`}
+                            ${(typeof window.isViewerMode === 'function' && window.isViewerMode()) ? '' : `<button type="button" onclick="openProbaRootRoutesModal(${proba.id}, 'progress')" style="background:#059669; color:#ffffff; border:none; padding:5px 10px; border-radius:8px; font-weight:800; font-size:0.8rem; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.08);" title="Добави или редактирай операциите на крайния резолвер (Зареждане, Измерване...)">⚙️ Краен модел</button><button type="button" onclick="openAddProbiInventoryModal(${proba.id}, 'progress')" style="background:#16a34a; color:#ffffff; border:none; padding:5px 10px; border-radius:8px; font-weight:800; font-size:0.8rem; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.08);" title="Добави готов детайл директно в Склад Проби">➕ Добави детайл</button>`}
                         </div>
                     </div>
 
@@ -1977,13 +2367,15 @@ async function openExportModal(probaId) {
                 "Описание": proba.notes || 'Одобрен след проба'
             }], { onConflict: 'ID Детайл' });
 
+            const normCode = (v) => String(v || '').trim().toLowerCase();
             // 2. Insert new components into Номенклатура and marshruti
             for (const c of comps) {
+                const isRootModel = normCode(c.part_code) === normCode(proba.name);
                 if (c.is_new) {
                     await client.from('Номенклатура').upsert([{
                         "ID Детайл": c.part_code,
                         "Вътрешно име": c.part_code,
-                        "Тип": c.parent_part_code ? "Под-детайл (от проба)" : "Детайл (от проба)",
+                        "Тип": isRootModel ? "Резолвер" : (c.parent_part_code ? "Под-детайл (от проба)" : "Детайл (от проба)"),
                         "ID Родител": c.material_code || null,
                         "Разходна норма": c.material_norm || 1
                     }], { onConflict: 'ID Детайл' });
@@ -2000,13 +2392,15 @@ async function openExportModal(probaId) {
                     }
                 }
 
-                // 3. Insert BOM line
-                let parentCode = c.parent_part_code ? c.parent_part_code : proba.name;
-                await client.from('bom').insert([{
-                    "ID Родител": parentCode,
-                    "ID Компонент": c.part_code,
-                    "Количество": c.qty_per_unit || 1
-                }]);
+                // 3. Insert BOM line (skip self-reference when c is the root final model)
+                if (!isRootModel) {
+                    let parentCode = c.parent_part_code ? c.parent_part_code : proba.name;
+                    await client.from('bom').insert([{
+                        "ID Родител": parentCode,
+                        "ID Компонент": c.part_code,
+                        "Количество": c.qty_per_unit || 1
+                    }]);
+                }
             }
 
             // 4. Ask to move finished goods from probi_inventory to public.inventory
