@@ -594,17 +594,154 @@ async function openAddSubComponentDialog(parentCompId, parentPartCode, probaId) 
     });
 
     if (choice) {
-        // Select from catalog
+        // Ensure nomenclature list is loaded
+        if (!Array.isArray(window._probaNomList) || window._probaNomList.length === 0) {
+            try {
+                const { data: nomData } = await client.from('Номенклатура').select('*').order('ID Детайл').limit(5000);
+                window._probaNomList = nomData || [];
+            } catch (e) {
+                window._probaNomList = [];
+            }
+        }
+        const catalogList = (window._probaNomList || []).filter(n => n && n['ID Детайл']);
+
+        const escHtml = (s) => String(s || '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+        // Select from catalog with searchable dropdown list
         const { value: selPart } = await Swal.fire({
-            title: `Избор от каталог за: ${parentPartCode}`,
-            input: 'text',
-            inputPlaceholder: 'Въведете точен код на детайла от Номенклатура...',
+            title: `Избор от каталог за: ${escHtml(parentPartCode)}`,
+            width: 560,
+            html: `
+                <div style="text-align:left; font-size:0.9rem;">
+                    <label style="display:block; font-weight:700; color:#475569; margin-bottom:6px;">
+                        🔍 Търсете и изберете детайл от Номенклатура:
+                    </label>
+                    <div style="position:relative; display:flex; align-items:center; margin-bottom:8px;">
+                        <input type="text" id="swalSubCatalogInput" autocomplete="off"
+                            placeholder="Търсете по код, име или тип (напр. Вал, Статор)..."
+                            style="width:100%; padding:10px 38px 10px 12px; border:1.5px solid #94a3b8; border-radius:8px; font-weight:700; box-sizing:border-box; font-size:0.95rem;">
+                        <button type="button" id="swalSubCatalogToggle" tabindex="-1"
+                            style="position:absolute; right:6px; top:50%; transform:translateY(-50%); width:28px; height:28px; border:none; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer; font-size:0.85em;">▲</button>
+                    </div>
+                    <div id="swalSubCatalogSelectedBadge" style="display:none; margin-bottom:8px; padding:6px 10px; background:#ecfdf5; border:1px solid #86efac; border-radius:6px; color:#166534; font-size:0.84rem; font-weight:700;"></div>
+                    <div id="swalSubCatalogList" style="max-height:240px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff;"></div>
+                </div>
+            `,
             showCancelButton: true,
             confirmButtonText: 'Добави като под-детайл',
             confirmButtonColor: '#4338ca',
             cancelButtonText: 'Отказ',
-            inputValidator: (val) => {
-                if (!val || !val.trim()) return 'Моля, въведете код на детайл!';
+            focusConfirm: false,
+            didOpen: () => {
+                const inp = document.getElementById('swalSubCatalogInput');
+                const listEl = document.getElementById('swalSubCatalogList');
+                const toggleBtn = document.getElementById('swalSubCatalogToggle');
+                const selBadge = document.getElementById('swalSubCatalogSelectedBadge');
+                if (!inp || !listEl) return;
+
+                let selectedCode = '';
+
+                const renderCatalogList = (queryText) => {
+                    const qExact = normalizeProbiRouteCode(queryText, false);
+                    const qHomo = normalizeProbiRouteCode(queryText, true);
+
+                    const matches = (!qExact ? catalogList : catalogList.filter(n => {
+                        const c1 = normalizeProbiRouteCode(n['ID Детайл'], false);
+                        const c2 = normalizeProbiRouteCode(n['Вътрешно име'], false);
+                        const c3 = normalizeProbiRouteCode(n['Тип'], false);
+                        const h1 = normalizeProbiRouteCode(n['ID Детайл'], true);
+                        const h2 = normalizeProbiRouteCode(n['Вътрешно име'], true);
+                        return c1.includes(qExact) || c2.includes(qExact) || c3.includes(qExact) || h1.includes(qHomo) || h2.includes(qHomo);
+                    })).slice(0, 80);
+
+                    if (matches.length === 0) {
+                        listEl.innerHTML = `<div style="padding:18px; text-align:center; color:#94a3b8; font-size:0.86rem;">Няма намерени детайли в Номенклатура за „${escHtml(queryText)}“</div>`;
+                        return;
+                    }
+
+                    listEl.innerHTML = matches.map((n, idx) => {
+                        const code = String(n['ID Детайл'] || '').trim();
+                        const intName = String(n['Вътрешно име'] || '').trim();
+                        const typ = String(n['Тип'] || '').trim();
+                        const isSel = selectedCode && selectedCode === code;
+                        return `
+                            <div class="swal-sub-cat-row" data-code="${escHtml(code)}"
+                                style="padding:8px 12px; border-bottom:1px solid #f1f5f9; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:8px; background:${isSel ? '#eef2ff' : '#ffffff'};">
+                                <div style="min-width:0;">
+                                    <div style="font-weight:800; color:#1e293b; font-size:0.9rem;">${escHtml(code)}</div>
+                                    ${intName && intName.toLowerCase() !== code.toLowerCase() ? `<div style="font-size:0.78rem; color:#64748b;">${escHtml(intName)}</div>` : ''}
+                                </div>
+                                ${typ ? `<span style="background:#f1f5f9; color:#475569; padding:2px 7px; border-radius:6px; font-size:0.75rem; font-weight:700; white-space:nowrap;">${escHtml(typ)}</span>` : ''}
+                            </div>
+                        `;
+                    }).join('');
+
+                    listEl.querySelectorAll('.swal-sub-cat-row').forEach(row => {
+                        row.addEventListener('mouseenter', () => {
+                            if (selectedCode !== row.getAttribute('data-code')) row.style.background = '#f8fafc';
+                        });
+                        row.addEventListener('mouseleave', () => {
+                            row.style.background = (selectedCode === row.getAttribute('data-code')) ? '#eef2ff' : '#ffffff';
+                        });
+                        row.addEventListener('click', () => {
+                            selectedCode = row.getAttribute('data-code') || '';
+                            inp.value = selectedCode;
+                            if (selBadge) {
+                                selBadge.style.display = 'block';
+                                selBadge.innerHTML = `✅ Избран детайл: <b>${escHtml(selectedCode)}</b>`;
+                            }
+                            renderCatalogList(inp.value);
+                        });
+                        row.addEventListener('dblclick', () => {
+                            selectedCode = row.getAttribute('data-code') || '';
+                            inp.value = selectedCode;
+                            Swal.clickConfirm();
+                        });
+                    });
+                };
+
+                inp.addEventListener('input', () => {
+                    selectedCode = '';
+                    if (selBadge) selBadge.style.display = 'none';
+                    listEl.style.display = 'block';
+                    if (toggleBtn) toggleBtn.innerText = '▲';
+                    renderCatalogList(inp.value);
+                });
+
+                if (toggleBtn) {
+                    toggleBtn.addEventListener('click', () => {
+                        const isHidden = listEl.style.display === 'none';
+                        listEl.style.display = isHidden ? 'block' : 'none';
+                        toggleBtn.innerText = isHidden ? '▲' : '▼';
+                        if (isHidden) renderCatalogList(inp.value);
+                    });
+                }
+
+                renderCatalogList('');
+                setTimeout(() => inp.focus(), 40);
+            },
+            preConfirm: () => {
+                const rawVal = (document.getElementById('swalSubCatalogInput')?.value || '').trim();
+                if (!rawVal) {
+                    Swal.showValidationMessage('Моля, изберете детайл от списъка!');
+                    return false;
+                }
+                const qExact = normalizeProbiRouteCode(rawVal, false);
+                const qHomo = normalizeProbiRouteCode(rawVal, true);
+                const found = catalogList.find(n =>
+                    normalizeProbiRouteCode(n['ID Детайл'], false) === qExact ||
+                    normalizeProbiRouteCode(n['Вътрешно име'], false) === qExact
+                ) || catalogList.find(n =>
+                    normalizeProbiRouteCode(n['ID Детайл'], true) === qHomo ||
+                    normalizeProbiRouteCode(n['Вътрешно име'], true) === qHomo
+                );
+                if (!found) {
+                    Swal.showValidationMessage(`Детайлът „${rawVal}“ не е намерен в Номенклатура — изберете го от падащия списък!`);
+                    return false;
+                }
+                return String(found['ID Детайл']).trim();
             }
         });
         if (selPart) {
